@@ -1,47 +1,119 @@
-import { useState } from "react";
+import {
+  useState
+} from "react";
 
-import { SettingsContent } from "./components/Content.jsx";
-import { SettingsSidebar } from "./components/Sidebar.jsx";
-import { SettingsTopbar } from "./components/Topbar.jsx";
-import { useWindowMaximized } from "./hooks/useWindowMaximized.js";
+import {
+  useResolvedTheme
+} from "../shared/hooks/useResolvedTheme.js";
+
+import {
+  SettingsContent
+} from "./components/Content.jsx";
+
+import {
+  SettingsSidebar
+} from "./components/Sidebar.jsx";
+
+import {
+  SettingsTopbar
+} from "./components/Topbar.jsx";
+
+import {
+  useAppInfo
+} from "./hooks/useAppInfo.js";
+
+import {
+  useSettings
+} from "./hooks/useSettings.js";
+
+import {
+  useWindowMaximized
+} from "./hooks/useWindowMaximized.js";
+
 import "./Setting.css";
 
 export default function Setting() {
-  const [activeTab, setActiveTab] =
-    useState("general");
+  const [
+    activeTab,
+    setActiveTab
+  ] = useState("general");
 
-  const [collapsed, setCollapsed] =
-    useState(false);
+  const [
+    collapsed,
+    setCollapsed
+  ] = useState(false);
 
   const isMaximized =
     useWindowMaximized();
 
+  const appInfo =
+    useAppInfo();
+
+  const {
+    settings,
+    status,
+    updateSection,
+    resetAll
+  } = useSettings();
+
+  const theme =
+    useResolvedTheme(
+      settings
+        .appearance
+        .theme
+    );
+
   return (
     <div
       className={
-        `setting-shell${
+        [
+          "setting-shell",
+
           isMaximized
-            ? " is-maximized"
+            ? "is-maximized"
+            : "",
+
+          theme === "dark"
+            ? "theme-dark"
+            : "",
+
+          settings
+            .appearance
+            .reducedMotion
+            ? "reduce-motion"
             : ""
-        }`
+        ]
+          .filter(Boolean)
+          .join(" ")
       }
+      style={{
+        "--accent":
+          settings
+            .appearance
+            .accentColor
+      }}
     >
       <SettingsTopbar
         collapsed={collapsed}
         isMaximized={isMaximized}
+        status={status}
         onToggleSidebar={() => {
           setCollapsed(
-            (current) => !current
+            (current) =>
+              !current
           );
         }}
         onMinimize={() => {
-          window.api?.minimizeWindow?.();
+          window.api
+            ?.minimizeWindow?.();
         }}
         onMaximize={() => {
-          window.api?.maximizeWindow?.();
+          window.api
+            ?.maximizeWindow?.();
         }}
         onClose={() => {
-          window.api?.closeWindow?.();
+          window.api
+            ?.closeWindow?.();
         }}
       />
 
@@ -49,11 +121,19 @@ export default function Setting() {
         <SettingsSidebar
           collapsed={collapsed}
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={
+            setActiveTab
+          }
         />
 
         <SettingsContent
           activeTab={activeTab}
+          settings={settings}
+          appInfo={appInfo}
+          onUpdateSection={
+            updateSection
+          }
+          onReset={resetAll}
         />
       </div>
     </div>

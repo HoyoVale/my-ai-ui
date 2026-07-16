@@ -1,6 +1,9 @@
 export function InputComposer({
+  className = "",
+  style,
   textareaRef,
   value,
+  placeholder,
   canSend,
   onChange,
   onKeyDown,
@@ -8,15 +11,23 @@ export function InputComposer({
   onClose
 }) {
   return (
-    <div className="input-bar">
+    <div
+      className={
+        `input-bar ${className}`
+          .trim()
+      }
+      style={style}
+    >
       <textarea
         ref={textareaRef}
         className="input-bar__field"
         rows={1}
-        placeholder="Type a message..."
+        placeholder={placeholder}
         value={value}
         onChange={(event) => {
-          onChange(event.target.value);
+          onChange(
+            event.target.value
+          );
         }}
         onKeyDown={onKeyDown}
         autoFocus
@@ -41,7 +52,13 @@ export function InputComposer({
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          <line x1="22" y1="2" x2="11" y2="13" />
+          <line
+            x1="22"
+            y1="2"
+            x2="11"
+            y2="13"
+          />
+
           <polygon points="22 2 15 22 11 13 2 9 22 2" />
         </svg>
       </button>
@@ -63,8 +80,19 @@ export function InputComposer({
           strokeLinecap="round"
           aria-hidden="true"
         >
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
+          <line
+            x1="18"
+            y1="6"
+            x2="6"
+            y2="18"
+          />
+
+          <line
+            x1="6"
+            y1="6"
+            x2="18"
+            y2="18"
+          />
         </svg>
       </button>
     </div>

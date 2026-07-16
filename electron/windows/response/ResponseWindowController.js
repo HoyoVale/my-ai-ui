@@ -10,6 +10,10 @@ import {
 } from "../../shared/rendererRoutes.js";
 
 import {
+  getSettings
+} from "../../settings/settingsStore.js";
+
+import {
   getPetWindow
 } from "../pet/petWindow.js";
 
@@ -18,10 +22,7 @@ import {
 } from "./responsePlacement.js";
 
 import {
-  RESPONSE_MAX_HEIGHT,
-  RESPONSE_MAX_WIDTH,
-  RESPONSE_MIN_HEIGHT,
-  RESPONSE_MIN_WIDTH
+  getResponseMetrics
 } from "./responseConstants.js";
 
 function clamp(
@@ -47,15 +48,20 @@ export class ResponseWindowController {
 
     this.attachedPet = null;
     this.petMoveHandler = null;
+    this.petResizeHandler = null;
     this.petClosedHandler = null;
 
     this.currentSide = "right";
 
-    this.logicalWidth =
-      RESPONSE_MAX_WIDTH;
+    /*
+     * Controller 会在 app ready 之前被 import。
+     * 这里不能调用 app.getPath() 间接读取设置，
+     * 所以先使用默认逻辑尺寸，首次 open 时再读取真实设置。
+     */
+    this.logicalWidth = 440;
+    this.logicalHeight = 284;
 
-    this.logicalHeight =
-      RESPONSE_MAX_HEIGHT;
+    this.autoCloseTimer = null;
   }
 
   open() {
@@ -75,16 +81,25 @@ export class ResponseWindowController {
       return null;
     }
 
+    const settings =
+      getSettings();
+
+    const metrics =
+      getResponseMetrics(
+        settings
+      );
+
     this.logicalWidth =
-      RESPONSE_MAX_WIDTH;
+      metrics.maxWidth;
 
     this.logicalHeight =
-      RESPONSE_MAX_HEIGHT;
+      metrics.maxHeight;
 
     const placement =
       calculateResponsePlacement(
         this.logicalWidth,
-        this.logicalHeight
+        this.logicalHeight,
+        settings
       );
 
     this.window =
@@ -99,16 +114,16 @@ export class ResponseWindowController {
           this.logicalHeight,
 
         minWidth:
-          RESPONSE_MIN_WIDTH,
+          metrics.minWidth,
 
         maxWidth:
-          RESPONSE_MAX_WIDTH,
+          metrics.maxWidth,
 
         minHeight:
-          RESPONSE_MIN_HEIGHT,
+          metrics.minHeight,
 
         maxHeight:
-          RESPONSE_MAX_HEIGHT,
+          metrics.maxHeight,
 
         show: false,
 
@@ -126,7 +141,11 @@ export class ResponseWindowController {
         fullscreenable: false,
 
         skipTaskbar: true,
-        alwaysOnTop: true
+
+        alwaysOnTop:
+          settings
+            .response
+            .alwaysOnTop
       });
 
     this.ready = false;
@@ -170,6 +189,7 @@ export class ResponseWindowController {
     this.window.on(
       "closed",
       () => {
+        this.clearAutoClose();
         this.detachFromPet();
         this.resetAfterClose();
       }
@@ -206,21 +226,31 @@ export class ResponseWindowController {
       return;
     }
 
+    const settings =
+      getSettings();
+
+    const metrics =
+      getResponseMetrics(
+        settings
+      );
+
     this.logicalWidth =
       clamp(
         Math.ceil(width),
-        RESPONSE_MIN_WIDTH,
-        RESPONSE_MAX_WIDTH
+        metrics.minWidth,
+        metrics.maxWidth
       );
 
     this.logicalHeight =
       clamp(
         Math.ceil(height),
-        RESPONSE_MIN_HEIGHT,
-        RESPONSE_MAX_HEIGHT
+        metrics.minHeight,
+        metrics.maxHeight
       );
 
-    this.applyBounds();
+    this.applyBounds(
+      settings
+    );
 
     if (
       !this.dismissed &&
@@ -230,12 +260,80 @@ export class ResponseWindowController {
     }
   }
 
+  applySettings(settings) {
+    if (
+      !this.window ||
+      this.window.isDestroyed()
+    ) {
+      return;
+    }
+
+    const metrics =
+      getResponseMetrics(
+        settings
+      );
+
+    this.logicalWidth =
+      clamp(
+        this.logicalWidth,
+        metrics.minWidth,
+        metrics.maxWidth
+      );
+
+    this.logicalHeight =
+      clamp(
+        this.logicalHeight,
+        metrics.minHeight,
+        metrics.maxHeight
+      );
+
+    this.window.setMinimumSize(
+      1,
+      1
+    );
+
+    this.window.setMaximumSize(
+      10000,
+      10000
+    );
+
+    this.window.setMinimumSize(
+      metrics.minWidth,
+      metrics.minHeight
+    );
+
+    this.window.setMaximumSize(
+      metrics.maxWidth,
+      metrics.maxHeight
+    );
+
+    this.window.setAlwaysOnTop(
+      settings
+        .response
+        .alwaysOnTop
+    );
+
+    this.applyBounds(
+      settings
+    );
+
+    if (
+      !this.streamActive
+    ) {
+      this.scheduleAutoClose(
+        settings
+      );
+    }
+  }
+
   startStream() {
     const window = this.open();
 
     if (!window) {
       return;
     }
+
+    this.clearAutoClose();
 
     this.streamActive = true;
     this.dismissed = false;
@@ -289,9 +387,15 @@ export class ResponseWindowController {
         .response
         .STREAM_END
     );
+
+    this.scheduleAutoClose(
+      getSettings()
+    );
   }
 
   clear() {
+    this.clearAutoClose();
+
     this.streamActive = false;
 
     this.send(
@@ -316,6 +420,8 @@ export class ResponseWindowController {
     ) {
       return;
     }
+
+    this.clearAutoClose();
 
     this.dismissed = true;
 
@@ -402,7 +508,9 @@ export class ResponseWindowController {
     }
   }
 
-  applyBounds() {
+  applyBounds(
+    settings = getSettings()
+  ) {
     if (
       !this.window ||
       this.window.isDestroyed()
@@ -413,7 +521,8 @@ export class ResponseWindowController {
     const placement =
       calculateResponsePlacement(
         this.logicalWidth,
-        this.logicalHeight
+        this.logicalHeight,
+        settings
       );
 
     this.window.setBounds(
@@ -453,10 +562,53 @@ export class ResponseWindowController {
     );
   }
 
+  scheduleAutoClose(
+    settings
+  ) {
+    this.clearAutoClose();
+
+    const seconds =
+      settings
+        .response
+        .autoCloseSeconds;
+
+    if (
+      !seconds ||
+      this.streamActive ||
+      this.dismissed
+    ) {
+      return;
+    }
+
+    this.autoCloseTimer =
+      setTimeout(
+        () => {
+          this.dismiss();
+        },
+        seconds * 1000
+      );
+  }
+
+  clearAutoClose() {
+    if (!this.autoCloseTimer) {
+      return;
+    }
+
+    clearTimeout(
+      this.autoCloseTimer
+    );
+
+    this.autoCloseTimer = null;
+  }
+
   attachToPet(pet) {
     this.attachedPet = pet;
 
     this.petMoveHandler = () => {
+      this.applyBounds();
+    };
+
+    this.petResizeHandler = () => {
       this.applyBounds();
     };
 
@@ -467,6 +619,11 @@ export class ResponseWindowController {
     pet.on(
       "move",
       this.petMoveHandler
+    );
+
+    pet.on(
+      "resize",
+      this.petResizeHandler
     );
 
     pet.on(
@@ -491,6 +648,16 @@ export class ResponseWindowController {
       }
 
       if (
+        this.petResizeHandler
+      ) {
+        this.attachedPet
+          .removeListener(
+            "resize",
+            this.petResizeHandler
+          );
+      }
+
+      if (
         this.petClosedHandler
       ) {
         this.attachedPet
@@ -503,10 +670,16 @@ export class ResponseWindowController {
 
     this.attachedPet = null;
     this.petMoveHandler = null;
+    this.petResizeHandler = null;
     this.petClosedHandler = null;
   }
 
   resetAfterClose() {
+    const metrics =
+      getResponseMetrics(
+        getSettings()
+      );
+
     this.window = null;
 
     this.ready = false;
@@ -518,9 +691,9 @@ export class ResponseWindowController {
     this.currentSide = "right";
 
     this.logicalWidth =
-      RESPONSE_MAX_WIDTH;
+      metrics.maxWidth;
 
     this.logicalHeight =
-      RESPONSE_MAX_HEIGHT;
+      metrics.maxHeight;
   }
 }

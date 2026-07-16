@@ -1,0 +1,100 @@
+import {
+  app,
+  BrowserWindow
+} from "electron";
+
+import IPC_CHANNELS
+  from "../shared/ipcChannels.cjs";
+
+import {
+  applyInputWindowSettings
+} from "../windows/input/inputWindow.js";
+
+import {
+  applyPetWindowSettings
+} from "../windows/pet/petWindow.js";
+
+import {
+  applyResponseWindowSettings
+} from "../windows/response/index.js";
+
+import {
+  applySettingWindowSettings
+} from "../windows/setting/settingWindow.js";
+
+export function applyGeneralSettings(
+  settings
+) {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  try {
+    app.setLoginItemSettings({
+      openAtLogin:
+        Boolean(
+          settings
+            .general
+            .launchAtLogin
+        )
+    });
+  } catch (error) {
+    console.warn(
+      "设置开机启动失败：",
+      error
+    );
+  }
+}
+
+export function applySettingsToOpenWindows(
+  settings
+) {
+  applyGeneralSettings(
+    settings
+  );
+
+  applyPetWindowSettings(
+    settings
+  );
+
+  applyInputWindowSettings(
+    settings
+  );
+
+  applyResponseWindowSettings(
+    settings
+  );
+
+  applySettingWindowSettings(
+    settings
+  );
+}
+
+export function broadcastSettings(
+  settings
+) {
+  for (
+    const window
+    of BrowserWindow
+      .getAllWindows()
+  ) {
+    if (
+      window.isDestroyed() ||
+      window
+        .webContents
+        .isDestroyed()
+    ) {
+      continue;
+    }
+
+    window
+      .webContents
+      .send(
+        IPC_CHANNELS
+          .settings
+          .CHANGED,
+
+        settings
+      );
+  }
+}

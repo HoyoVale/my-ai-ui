@@ -1,8 +1,25 @@
-import { Icon } from "./Icon.jsx";
+import {
+  Icon
+} from "./Icon.jsx";
+
+const STATUS_TEXT = {
+  loading:
+    "正在读取",
+
+  saving:
+    "正在保存",
+
+  saved:
+    "已保存",
+
+  error:
+    "保存失败"
+};
 
 export function SettingsTopbar({
   collapsed,
   isMaximized,
+  status,
   onToggleSidebar,
   onMinimize,
   onMaximize,
@@ -34,6 +51,14 @@ export function SettingsTopbar({
 
         <span className="setting-topbar__name">
           Xixi
+        </span>
+
+        <span
+          className={
+            `setting-save-status setting-save-status--${status}`
+          }
+        >
+          {STATUS_TEXT[status]}
         </span>
       </div>
 

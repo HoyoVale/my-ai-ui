@@ -1,6 +1,7 @@
 import {
   app,
-  BrowserWindow
+  BrowserWindow,
+  nativeTheme
 } from "electron";
 
 import {
@@ -8,17 +9,45 @@ import {
 } from "./ipc/registerIpcHandlers.js";
 
 import {
+  getSettings
+} from "./settings/settingsStore.js";
+
+import {
+  applySettingsToOpenWindows,
+  broadcastSettings
+} from "./settings/settingsRuntime.js";
+
+import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
 
-/*
- * IPC 只注册一次。
- * 注册动作本身不依赖窗口已经创建。
- */
 registerIpcHandlers();
 
 app.whenReady().then(() => {
+  const settings =
+    getSettings();
+
   createPetWindow();
+
+  applySettingsToOpenWindows(
+    settings
+  );
+
+  nativeTheme.on(
+    "updated",
+    () => {
+      const current =
+        getSettings();
+
+      applySettingsToOpenWindows(
+        current
+      );
+
+      broadcastSettings(
+        current
+      );
+    }
+  );
 
   app.on("activate", () => {
     if (

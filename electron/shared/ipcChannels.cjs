@@ -50,6 +50,23 @@ const IPC_CHANNELS =
         "response-side-changed"
     }),
 
+    settings: Object.freeze({
+      GET:
+        "settings-get",
+
+      UPDATE:
+        "settings-update",
+
+      RESET:
+        "settings-reset",
+
+      CHANGED:
+        "settings-changed",
+
+      GET_APP_INFO:
+        "settings-get-app-info"
+    }),
+
     window: Object.freeze({
       MINIMIZE:
         "minimize-window",

@@ -17,6 +17,14 @@ export function resizeResponseWindow(
   );
 }
 
+export function applyResponseWindowSettings(
+  settings
+) {
+  controller.applySettings(
+    settings
+  );
+}
+
 export function startResponseStream() {
   controller.startStream();
 }

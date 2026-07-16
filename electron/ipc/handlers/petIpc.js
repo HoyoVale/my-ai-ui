@@ -6,7 +6,8 @@ import IPC_CHANNELS
   from "../../shared/ipcChannels.cjs";
 
 import {
-  getPetWindow
+  getPetWindow,
+  savePetWindowPosition
 } from "../../windows/pet/petWindow.js";
 
 let dragState = null;
@@ -68,11 +69,6 @@ export function registerPetIpc() {
       const bounds =
         pet.getBounds();
 
-      /*
-       * 记录拖动开始时的固定基准。
-       * 后续不根据上一帧位置累加，
-       * 避免透明窗口坐标漂移。
-       */
       dragState = {
         webContentsId:
           event.sender.id,
@@ -141,6 +137,7 @@ export function registerPetIpc() {
         {
           x,
           y,
+
           width:
             dragState.width,
 
@@ -157,11 +154,14 @@ export function registerPetIpc() {
     (event) => {
       if (
         dragState
-          ?.webContentsId ===
+          ?.webContentsId !==
         event.sender.id
       ) {
-        dragState = null;
+        return;
       }
+
+      dragState = null;
+      savePetWindowPosition();
     }
   );
 }

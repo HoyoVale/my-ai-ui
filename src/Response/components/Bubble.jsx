@@ -4,6 +4,9 @@ export function ResponseBubble({
   text,
   streaming,
   side,
+  theme,
+  reducedMotion,
+  style,
   onScroll,
   onDismiss
 }) {
@@ -11,8 +14,20 @@ export function ResponseBubble({
     <div
       ref={shellRef}
       className={
-        `response-shell response-shell--${side}`
+        [
+          "response-shell",
+          `response-shell--${side}`,
+          theme === "dark"
+            ? "theme-dark"
+            : "",
+          reducedMotion
+            ? "reduce-motion"
+            : ""
+        ]
+          .filter(Boolean)
+          .join(" ")
       }
+      style={style}
     >
       <article
         className={

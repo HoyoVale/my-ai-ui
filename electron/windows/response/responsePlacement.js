@@ -6,10 +6,7 @@ import {
   getPetWindow
 } from "../pet/petWindow.js";
 
-import {
-  RESPONSE_PET_GAP,
-  RESPONSE_SCREEN_MARGIN
-} from "./responseConstants.js";
+const SCREEN_MARGIN = 12;
 
 function clampToAvailableRange(
   value,
@@ -28,7 +25,8 @@ function clampToAvailableRange(
 
 export function calculateResponsePlacement(
   width,
-  height
+  height,
+  settings
 ) {
   const pet = getPetWindow();
 
@@ -37,16 +35,14 @@ export function calculateResponsePlacement(
     pet.isDestroyed()
   ) {
     return {
-      x:
-        RESPONSE_SCREEN_MARGIN,
-
-      y:
-        RESPONSE_SCREEN_MARGIN,
-
-      side:
-        "right"
+      x: SCREEN_MARGIN,
+      y: SCREEN_MARGIN,
+      side: "right"
     };
   }
+
+  const response =
+    settings.response;
 
   const petBounds =
     pet.getBounds();
@@ -74,28 +70,33 @@ export function calculateResponsePlacement(
   const rightX =
     petBounds.x +
     petBounds.width +
-    RESPONSE_PET_GAP;
+    response.gap;
 
   const leftX =
     petBounds.x -
     width -
-    RESPONSE_PET_GAP;
+    response.gap;
 
   const rightHasSpace =
     rightX + width <=
     workAreaRight -
-    RESPONSE_SCREEN_MARGIN;
+    SCREEN_MARGIN;
 
   const leftHasSpace =
     leftX >=
     workAreaX +
-    RESPONSE_SCREEN_MARGIN;
+    SCREEN_MARGIN;
 
-  const side =
-    rightHasSpace ||
-    !leftHasSpace
-      ? "right"
-      : "left";
+  let side =
+    response.preferredSide;
+
+  if (side === "auto") {
+    side =
+      rightHasSpace ||
+      !leftHasSpace
+        ? "right"
+        : "left";
+  }
 
   let x =
     side === "right"
@@ -106,26 +107,26 @@ export function calculateResponsePlacement(
     petBounds.y +
     Math.round(
       petBounds.height *
-      0.16
+      response.anchorRatio
     );
 
   const minX =
     workAreaX +
-    RESPONSE_SCREEN_MARGIN;
+    SCREEN_MARGIN;
 
   const minY =
     workAreaY +
-    RESPONSE_SCREEN_MARGIN;
+    SCREEN_MARGIN;
 
   const maxX =
     workAreaRight -
     width -
-    RESPONSE_SCREEN_MARGIN;
+    SCREEN_MARGIN;
 
   const maxY =
     workAreaBottom -
     height -
-    RESPONSE_SCREEN_MARGIN;
+    SCREEN_MARGIN;
 
   x = clampToAvailableRange(
     x,

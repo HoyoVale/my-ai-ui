@@ -2,8 +2,40 @@ import {
   SETTING_TABS
 } from "../constants/Tabs.js";
 
+import {
+  AboutPanel
+} from "../panels/AboutPanel.jsx";
+
+import {
+  AppearancePanel
+} from "../panels/AppearancePanel.jsx";
+
+import {
+  GeneralPanel
+} from "../panels/GeneralPanel.jsx";
+
+import {
+  InputPanel
+} from "../panels/InputPanel.jsx";
+
+import {
+  PetPanel
+} from "../panels/PetPanel.jsx";
+
+import {
+  PlaceholderPanel
+} from "../panels/PlaceholderPanel.jsx";
+
+import {
+  ResponsePanel
+} from "../panels/ResponsePanel.jsx";
+
 export function SettingsContent({
-  activeTab
+  activeTab,
+  settings,
+  appInfo,
+  onUpdateSection,
+  onReset
 }) {
   const tab =
     SETTING_TABS.find(
@@ -11,25 +43,104 @@ export function SettingsContent({
         item.id === activeTab
     ) ?? SETTING_TABS[0];
 
+  const panel = {
+    general: (
+      <GeneralPanel
+        settings={settings}
+        appInfo={appInfo}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "general",
+            patch
+          );
+        }}
+        onReset={onReset}
+      />
+    ),
+
+    appearance: (
+      <AppearancePanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "appearance",
+            patch
+          );
+        }}
+      />
+    ),
+
+    pet: (
+      <PetPanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "pet",
+            patch
+          );
+        }}
+      />
+    ),
+
+    input: (
+      <InputPanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "input",
+            patch
+          );
+        }}
+      />
+    ),
+
+    response: (
+      <ResponsePanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "response",
+            patch
+          );
+        }}
+      />
+    ),
+
+    personality: (
+      <PlaceholderPanel
+        title="Personality"
+        description="后续接入角色提示词、语气和行为规则。"
+      />
+    ),
+
+    model: (
+      <PlaceholderPanel
+        title="Model"
+        description="后续接入模型服务、API 地址和生成参数。"
+      />
+    ),
+
+    about: (
+      <AboutPanel
+        appInfo={appInfo}
+      />
+    )
+  }[activeTab];
+
   return (
     <main className="setting-content">
       <div className="setting-content__scroll">
         <section className="setting-page">
           <header className="setting-page__header">
-            <h1>{tab.label}</h1>
+            <h1>{tab.title}</h1>
 
             <p>
-              Settings for{" "}
-              {tab.label.toLowerCase()}{" "}
-              will be placed here.
+              {tab.description}
             </p>
           </header>
 
-          <div className="setting-canvas">
-            <div className="setting-canvas__placeholder">
-              <span className="setting-canvas__dot" />
-              <span>Content area</span>
-            </div>
+          <div className="setting-page__body">
+            {panel}
           </div>
         </section>
       </div>

@@ -1,33 +1,51 @@
-import { useLayoutEffect } from "react";
+import {
+  useLayoutEffect
+} from "react";
 
 const MIN_WINDOW_HEIGHT = 48;
-const MAX_TEXTAREA_HEIGHT = 120;
 const WINDOW_VERTICAL_SPACE = 16;
 
 export function useInputWindowResize({
   value,
-  textareaRef
+  textareaRef,
+  settings
 }) {
   useLayoutEffect(() => {
-    const textarea = textareaRef.current;
+    const textarea =
+      textareaRef.current;
 
-    if (!textarea) {
+    if (
+      !textarea ||
+      !settings
+    ) {
       return;
     }
 
-    textarea.style.height = "0px";
+    const lineHeight =
+      Math.round(
+        settings.fontSize *
+        1.45
+      );
 
-    const contentHeight = Math.min(
-      textarea.scrollHeight,
-      MAX_TEXTAREA_HEIGHT
-    );
+    const maxTextareaHeight =
+      settings.maxLines *
+      lineHeight;
+
+    textarea.style.height =
+      "0px";
+
+    const contentHeight =
+      Math.min(
+        textarea.scrollHeight,
+        maxTextareaHeight
+      );
 
     textarea.style.height =
       `${contentHeight}px`;
 
     textarea.style.overflowY =
       textarea.scrollHeight >
-      MAX_TEXTAREA_HEIGHT
+      maxTextareaHeight
         ? "auto"
         : "hidden";
 
@@ -40,8 +58,14 @@ export function useInputWindowResize({
         )
       );
 
-    window.api?.resizeInputWindow?.(
-      requestedWindowHeight
-    );
-  }, [value, textareaRef]);
+    window.api
+      ?.resizeInputWindow?.(
+        requestedWindowHeight
+      );
+  }, [
+    value,
+    textareaRef,
+    settings?.fontSize,
+    settings?.maxLines
+  ]);
 }

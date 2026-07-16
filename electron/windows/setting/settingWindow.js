@@ -9,7 +9,25 @@ import {
   getRendererUrl
 } from "../../shared/rendererRoutes.js";
 
+import {
+  getSettings
+} from "../../settings/settingsStore.js";
+
+import {
+  resolveMainTheme
+} from "../../settings/theme.js";
+
 let settingWindow = null;
+
+function getBackgroundColor(
+  settings
+) {
+  return resolveMainTheme(
+    settings
+  ) === "dark"
+    ? "#212121"
+    : "#ffffff";
+}
 
 function emitWindowState(
   isMaximized
@@ -48,20 +66,25 @@ export function openSettingWindow() {
     return settingWindow;
   }
 
+  const settings =
+    getSettings();
+
   settingWindow =
     createBaseWindow({
-      width: 1200,
-      height: 800,
+      width: 1120,
+      height: 760,
 
-      minWidth: 500,
-      minHeight: 600,
+      minWidth: 760,
+      minHeight: 560,
 
       show: false,
 
       transparent: false,
 
       backgroundColor:
-        "#ffffff",
+        getBackgroundColor(
+          settings
+        ),
 
       resizable: true,
       minimizable: true,
@@ -112,8 +135,36 @@ export function openSettingWindow() {
   return settingWindow;
 }
 
+export function applySettingWindowSettings(
+  settings
+) {
+  if (
+    !settingWindow ||
+    settingWindow.isDestroyed()
+  ) {
+    return;
+  }
+
+  settingWindow.setBackgroundColor(
+    getBackgroundColor(
+      settings
+    )
+  );
+}
+
 export function getSettingWindow() {
   return settingWindow;
+}
+
+export function isSettingSender(
+  webContents
+) {
+  return Boolean(
+    settingWindow &&
+    !settingWindow.isDestroyed() &&
+    settingWindow.webContents ===
+      webContents
+  );
 }
 
 export function closeSettingWindow() {

@@ -41,14 +41,39 @@ export function Icon({
       </>
     ),
 
-    personalization: (
+    appearance: (
       <>
-        <circle
-          cx="12"
-          cy="8"
-          r="3.2"
-        />
+        <path d="M12 3a9 9 0 1 0 9 9c0-1.1-.9-2-2-2h-1.8a2.2 2.2 0 0 1-2.2-2.2V5.2A2.2 2.2 0 0 0 12 3Z" />
+        <circle cx="7.5" cy="11" r=".8" fill="currentColor" stroke="none" />
+        <circle cx="9.5" cy="7.5" r=".8" fill="currentColor" stroke="none" />
+        <circle cx="13.5" cy="6.5" r=".8" fill="currentColor" stroke="none" />
+      </>
+    ),
 
+    pet: (
+      <>
+        <path d="M8 10V7.5A3.5 3.5 0 0 1 11.5 4h1A3.5 3.5 0 0 1 16 7.5V10" />
+        <path d="M6 11a6 6 0 0 0 12 0v-1H6v1Z" />
+        <path d="M9 17v3M15 17v3" />
+      </>
+    ),
+
+    input: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="3" />
+        <path d="M7 10h10M7 14h7" />
+      </>
+    ),
+
+    response: (
+      <>
+        <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H10l-5 4v-4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+      </>
+    ),
+
+    personality: (
+      <>
+        <circle cx="12" cy="8" r="3.2" />
         <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
       </>
     ),

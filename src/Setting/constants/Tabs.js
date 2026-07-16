@@ -1,18 +1,90 @@
-export const SETTING_TABS = [
+export const SETTING_GROUPS = [
   {
-    id: "general",
-    label: "General"
+    id: "app",
+    label: "应用",
+    tabs: [
+      {
+        id: "general",
+        label: "General",
+        title: "通用",
+        description:
+          "管理应用启动方式与桌宠位置记忆。"
+      },
+      {
+        id: "appearance",
+        label: "Appearance",
+        title: "外观",
+        description:
+          "设置主题、强调色与动画偏好。"
+      }
+    ]
   },
+
   {
-    id: "personalization",
-    label: "Personalization"
+    id: "windows",
+    label: "窗口",
+    tabs: [
+      {
+        id: "pet",
+        label: "Pet",
+        title: "桌宠",
+        description:
+          "调整桌宠尺寸、透明度和窗口行为。"
+      },
+      {
+        id: "input",
+        label: "Input",
+        title: "输入框",
+        description:
+          "调整输入窗口的尺寸、文字和视觉样式。"
+      },
+      {
+        id: "response",
+        label: "Response",
+        title: "回复气泡",
+        description:
+          "调整回复气泡的位置、尺寸、样式和关闭行为。"
+      }
+    ]
   },
+
   {
-    id: "model",
-    label: "Model"
+    id: "ai",
+    label: "AI",
+    tabs: [
+      {
+        id: "personality",
+        label: "Personality",
+        title: "个性",
+        description:
+          "角色人格与行为设定将在后续接入。"
+      },
+      {
+        id: "model",
+        label: "Model",
+        title: "模型",
+        description:
+          "模型服务与生成参数将在后续接入。"
+      }
+    ]
   },
+
   {
-    id: "about",
-    label: "About"
+    id: "other",
+    label: "其他",
+    tabs: [
+      {
+        id: "about",
+        label: "About",
+        title: "关于",
+        description:
+          "查看应用版本、运行环境和设置文件位置。"
+      }
+    ]
   }
 ];
+
+export const SETTING_TABS =
+  SETTING_GROUPS.flatMap(
+    (group) => group.tabs
+  );

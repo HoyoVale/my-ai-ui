@@ -4,11 +4,9 @@ const {
 } = require("electron");
 
 /*
- * Electron 20+ 默认启用 renderer sandbox。
- *
- * 沙箱 preload 不能通过 require("./other-file.cjs")
- * 加载本地 CommonJS 模块，所以当前项目在没有
- * preload bundler 的情况下，preload 必须保持单文件。
+ * 当前项目没有单独的 preload bundler。
+ * Electron renderer sandbox 下 preload 保持单文件，
+ * 避免 require 本地模块导致 window.api 注入失败。
  */
 
 const CHANNELS = Object.freeze({
@@ -53,6 +51,21 @@ const CHANNELS = Object.freeze({
 
   RESPONSE_SIDE_CHANGED:
     "response-side-changed",
+
+  SETTINGS_GET:
+    "settings-get",
+
+  SETTINGS_UPDATE:
+    "settings-update",
+
+  SETTINGS_RESET:
+    "settings-reset",
+
+  SETTINGS_CHANGED:
+    "settings-changed",
+
+  SETTINGS_GET_APP_INFO:
+    "settings-get-app-info",
 
   MINIMIZE_WINDOW:
     "minimize-window",
@@ -116,8 +129,6 @@ function normalizePoint(point) {
 }
 
 const api = Object.freeze({
-  /* ---------- 打开窗口 ---------- */
-
   openInput: () => {
     ipcRenderer.send(
       CHANNELS.OPEN_INPUT
@@ -135,8 +146,6 @@ const api = Object.freeze({
       CHANNELS.OPEN_SETTING
     );
   },
-
-  /* ---------- Pet 拖动 ---------- */
 
   startPetDrag: (point) => {
     ipcRenderer.send(
@@ -158,8 +167,6 @@ const api = Object.freeze({
     );
   },
 
-  /* ---------- Input ---------- */
-
   resizeInputWindow: (
     height
   ) => {
@@ -170,8 +177,6 @@ const api = Object.freeze({
       Number(height)
     );
   },
-
-  /* ---------- Response ---------- */
 
   dismissResponseWindow: () => {
     ipcRenderer.send(
@@ -269,7 +274,43 @@ const api = Object.freeze({
     );
   },
 
-  /* ---------- 通用窗口控制 ---------- */
+  getSettings: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.SETTINGS_GET
+    );
+  },
+
+  updateSettings: (
+    patch
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS.SETTINGS_UPDATE,
+      patch
+    );
+  },
+
+  resetSettings: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.SETTINGS_RESET
+    );
+  },
+
+  getAppInfo: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .SETTINGS_GET_APP_INFO
+    );
+  },
+
+  onSettingsChanged: (
+    callback
+  ) => {
+    return subscribe(
+      CHANNELS.SETTINGS_CHANGED,
+      callback,
+      (settings) => settings
+    );
+  },
 
   minimizeWindow: () => {
     ipcRenderer.send(

@@ -1,13 +1,45 @@
-import { useRef } from "react";
+import {
+  useRef
+} from "react";
 
-import { ResponseBubble } from "./components/Bubble.jsx";
-import { useResponseLayout } from "./hooks/useResponseLayout.js";
-import { useResponseStream } from "./hooks/useResponseStream.js";
+import {
+  useAppSettings
+} from "../shared/hooks/useAppSettings.js";
+
+import {
+  useResolvedTheme
+} from "../shared/hooks/useResolvedTheme.js";
+
+import {
+  ResponseBubble
+} from "./components/Bubble.jsx";
+
+import {
+  useResponseLayout
+} from "./hooks/useResponseLayout.js";
+
+import {
+  useResponseStream
+} from "./hooks/useResponseStream.js";
+
 import "./Response.css";
 
 export default function Response() {
-  const shellRef = useRef(null);
-  const contentRef = useRef(null);
+  const shellRef =
+    useRef(null);
+
+  const contentRef =
+    useRef(null);
+
+  const settings =
+    useAppSettings();
+
+  const theme =
+    useResolvedTheme(
+      settings
+        .appearance
+        .theme
+    );
 
   const {
     text,
@@ -29,6 +61,9 @@ export default function Response() {
     return null;
   }
 
+  const response =
+    settings.response;
+
   return (
     <ResponseBubble
       shellRef={shellRef}
@@ -36,6 +71,36 @@ export default function Response() {
       text={text}
       streaming={streaming}
       side={side}
+      theme={theme}
+      reducedMotion={
+        settings
+          .appearance
+          .reducedMotion
+      }
+      style={{
+        "--response-max-width":
+          `${response.bubbleMaxWidth}px`,
+
+        "--response-max-height":
+          `${response.contentMaxHeight}px`,
+
+        "--response-font-size":
+          `${response.fontSize}px`,
+
+        "--response-line-height":
+          response.lineHeight,
+
+        "--response-background-opacity":
+          response.backgroundOpacity,
+
+        "--response-radius":
+          `${response.borderRadius}px`,
+
+        "--accent":
+          settings
+            .appearance
+            .accentColor
+      }}
       onScroll={handleScroll}
       onDismiss={() => {
         window.api

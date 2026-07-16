@@ -7,27 +7,25 @@ import {
 } from "../../shared/rendererRoutes.js";
 
 import {
+  getSettings
+} from "../../settings/settingsStore.js";
+
+import {
   getPetWindow
 } from "../pet/petWindow.js";
 
-const GAP = 4;
-const EXTRA_WIDTH = 40;
-
-export const INPUT_MIN_HEIGHT =
-  48;
-
-export const INPUT_MAX_HEIGHT =
-  152;
+const INPUT_MIN_HEIGHT = 48;
+const INPUT_VERTICAL_SPACE = 16;
 
 let inputWindow = null;
 let attachedPet = null;
 
 let fixedInputWidth = null;
-
 let logicalInputHeight =
   INPUT_MIN_HEIGHT;
 
 let petMoveHandler = null;
+let petResizeHandler = null;
 let petClosedHandler = null;
 
 function clamp(
@@ -41,7 +39,44 @@ function clamp(
   );
 }
 
-function getAnchorBounds() {
+function getInputMetrics(
+  settings = getSettings()
+) {
+  const input =
+    settings.input;
+
+  const lineHeight =
+    Math.round(
+      input.fontSize *
+      1.45
+    );
+
+  return {
+    gap:
+      input.gap,
+
+    extraWidth:
+      input.extraWidth,
+
+    minHeight:
+      INPUT_MIN_HEIGHT,
+
+    maxHeight:
+      Math.max(
+        INPUT_MIN_HEIGHT,
+        input.maxLines *
+          lineHeight +
+          INPUT_VERTICAL_SPACE
+      ),
+
+    alwaysOnTop:
+      input.alwaysOnTop
+  };
+}
+
+function getAnchorBounds(
+  settings = getSettings()
+) {
   const pet = getPetWindow();
 
   if (
@@ -51,29 +86,36 @@ function getAnchorBounds() {
     return null;
   }
 
+  const metrics =
+    getInputMetrics(
+      settings
+    );
+
   const petBounds =
     pet.getBounds();
 
   return {
     x: Math.round(
       petBounds.x -
-      EXTRA_WIDTH / 2
+      metrics.extraWidth / 2
     ),
 
     y: Math.round(
       petBounds.y +
       petBounds.height +
-      GAP
+      metrics.gap
     ),
 
     width: Math.round(
       petBounds.width +
-      EXTRA_WIDTH
+      metrics.extraWidth
     )
   };
 }
 
-function applyInputBounds() {
+function applyInputBounds(
+  settings = getSettings()
+) {
   if (
     !inputWindow ||
     inputWindow.isDestroyed() ||
@@ -85,7 +127,9 @@ function applyInputBounds() {
   }
 
   const anchor =
-    getAnchorBounds();
+    getAnchorBounds(
+      settings
+    );
 
   if (!anchor) {
     return;
@@ -106,6 +150,63 @@ function applyInputBounds() {
   );
 }
 
+function updateSizeConstraints(
+  settings
+) {
+  if (
+    !inputWindow ||
+    inputWindow.isDestroyed()
+  ) {
+    return;
+  }
+
+  const metrics =
+    getInputMetrics(
+      settings
+    );
+
+  const anchor =
+    getAnchorBounds(
+      settings
+    );
+
+  if (!anchor) {
+    return;
+  }
+
+  fixedInputWidth =
+    anchor.width;
+
+  logicalInputHeight =
+    Math.round(
+      clamp(
+        logicalInputHeight,
+        metrics.minHeight,
+        metrics.maxHeight
+      )
+    );
+
+  inputWindow.setMinimumSize(
+    1,
+    1
+  );
+
+  inputWindow.setMaximumSize(
+    10000,
+    10000
+  );
+
+  inputWindow.setMinimumSize(
+    fixedInputWidth,
+    metrics.minHeight
+  );
+
+  inputWindow.setMaximumSize(
+    fixedInputWidth,
+    metrics.maxHeight
+  );
+}
+
 function detachPetListeners() {
   if (
     attachedPet &&
@@ -115,6 +216,13 @@ function detachPetListeners() {
       attachedPet.removeListener(
         "move",
         petMoveHandler
+      );
+    }
+
+    if (petResizeHandler) {
+      attachedPet.removeListener(
+        "resize",
+        petResizeHandler
       );
     }
 
@@ -128,6 +236,7 @@ function detachPetListeners() {
 
   attachedPet = null;
   petMoveHandler = null;
+  petResizeHandler = null;
   petClosedHandler = null;
 }
 
@@ -143,9 +252,18 @@ export function openInputWindow() {
   }
 
   const pet = getPetWindow();
+  const settings =
+    getSettings();
+
+  const metrics =
+    getInputMetrics(
+      settings
+    );
 
   const anchor =
-    getAnchorBounds();
+    getAnchorBounds(
+      settings
+    );
 
   if (
     !pet ||
@@ -159,7 +277,7 @@ export function openInputWindow() {
     anchor.width;
 
   logicalInputHeight =
-    INPUT_MIN_HEIGHT;
+    metrics.minHeight;
 
   inputWindow =
     createBaseWindow({
@@ -179,10 +297,10 @@ export function openInputWindow() {
         fixedInputWidth,
 
       minHeight:
-        INPUT_MIN_HEIGHT,
+        metrics.minHeight,
 
       maxHeight:
-        INPUT_MAX_HEIGHT,
+        metrics.maxHeight,
 
       show: false,
 
@@ -196,18 +314,11 @@ export function openInputWindow() {
       maximizable: false,
       fullscreenable: false,
 
-      skipTaskbar: true
+      skipTaskbar: true,
+
+      alwaysOnTop:
+        metrics.alwaysOnTop
     });
-
-  inputWindow.setMinimumSize(
-    fixedInputWidth,
-    INPUT_MIN_HEIGHT
-  );
-
-  inputWindow.setMaximumSize(
-    fixedInputWidth,
-    INPUT_MAX_HEIGHT
-  );
 
   inputWindow.loadURL(
     getRendererUrl("/input")
@@ -234,6 +345,12 @@ export function openInputWindow() {
     applyInputBounds();
   };
 
+  petResizeHandler = () => {
+    applyInputWindowSettings(
+      getSettings()
+    );
+  };
+
   petClosedHandler = () => {
     closeInputWindow();
   };
@@ -241,6 +358,11 @@ export function openInputWindow() {
   pet.on(
     "move",
     petMoveHandler
+  );
+
+  pet.on(
+    "resize",
+    petResizeHandler
   );
 
   pet.on(
@@ -262,6 +384,34 @@ export function openInputWindow() {
   );
 
   return inputWindow;
+}
+
+export function applyInputWindowSettings(
+  settings
+) {
+  if (
+    !inputWindow ||
+    inputWindow.isDestroyed()
+  ) {
+    return;
+  }
+
+  const metrics =
+    getInputMetrics(
+      settings
+    );
+
+  updateSizeConstraints(
+    settings
+  );
+
+  inputWindow.setAlwaysOnTop(
+    metrics.alwaysOnTop
+  );
+
+  applyInputBounds(
+    settings
+  );
 }
 
 export function resizeInputWindow(
@@ -288,16 +438,26 @@ export function resizeInputWindow(
     return;
   }
 
+  const settings =
+    getSettings();
+
+  const metrics =
+    getInputMetrics(
+      settings
+    );
+
   logicalInputHeight =
     Math.round(
       clamp(
         numericHeight,
-        INPUT_MIN_HEIGHT,
-        INPUT_MAX_HEIGHT
+        metrics.minHeight,
+        metrics.maxHeight
       )
     );
 
-  applyInputBounds();
+  applyInputBounds(
+    settings
+  );
 }
 
 export function isInputSender(
