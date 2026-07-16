@@ -1,0 +1,69 @@
+export function ResponseBubble({
+  shellRef,
+  contentRef,
+  text,
+  streaming,
+  side,
+  onScroll,
+  onDismiss
+}) {
+  return (
+    <div
+      ref={shellRef}
+      className={
+        `response-shell response-shell--${side}`
+      }
+    >
+      <article
+        className={
+          `response-bubble${
+            streaming
+              ? " is-streaming"
+              : ""
+          }`
+        }
+        aria-live="polite"
+      >
+        <button
+          className="response-bubble__close"
+          type="button"
+          title="关闭"
+          aria-label="关闭回复"
+          onClick={onDismiss}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M2 2L10 10M10 2L2 10"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+
+        <div
+          ref={contentRef}
+          className="response-bubble__content"
+          onScroll={onScroll}
+        >
+          <span className="response-bubble__text">
+            {text}
+          </span>
+
+          {streaming && (
+            <span
+              className="response-bubble__cursor"
+              aria-hidden="true"
+            />
+          )}
+        </div>
+      </article>
+    </div>
+  );
+}

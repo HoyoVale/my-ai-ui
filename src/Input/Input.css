@@ -1,0 +1,140 @@
+/* 保持一个功能目录一份样式文件，避免组件拆分后 CSS 也过度碎片化。 */
+
+.input-bar {
+  --bg: #ffffff;
+  --border: #e5e5e5;
+  --text: #1a1a1a;
+  --shadow:
+    0 4px 24px rgba(0, 0, 0, 0.10),
+    0 1px 4px rgba(0, 0, 0, 0.06);
+
+  position: relative;
+
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+
+  width: 100vw;
+  height: 100vh;
+  padding: 8px 36px 8px 14px;
+
+  overflow: hidden;
+
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
+
+  box-sizing: border-box;
+}
+
+.input-bar__field {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  min-height: 24px;
+  max-height: 120px;
+
+  padding: 2px 0;
+
+  resize: none;
+  overflow-x: hidden;
+  overflow-y: hidden;
+
+  border: none;
+  outline: none;
+
+  background: transparent;
+  color: var(--text);
+
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+
+  box-sizing: border-box;
+}
+
+.input-bar__field::placeholder {
+  color: #b8b8b8;
+}
+
+.input-bar__send {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+
+  background: transparent;
+  color: #bbbbbb;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.input-bar__send:hover:not(:disabled) {
+  background: #eeeeee;
+  color: var(--text);
+}
+
+.input-bar__send:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.input-bar__close {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+
+  width: 24px;
+  height: 24px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+
+  background: transparent;
+  color: #bbbbbb;
+
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+
+.input-bar:hover .input-bar__close,
+.input-bar:focus-within .input-bar__close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.input-bar__close:hover {
+  background: #eeeeee;
+  color: #666666;
+}
