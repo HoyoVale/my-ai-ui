@@ -624,19 +624,6 @@ async function main() {
       )
       .waitFor();
 
-    await conversation
-      .locator(
-        '[data-testid="conversation-summary-input"]'
-      )
-      .fill(
-        "E2E 手动会话摘要"
-      );
-
-    await conversation
-      .locator(
-        '[data-testid="conversation-summary-save"]'
-      )
-      .click();
 
     const firstUserMessage =
       conversation
@@ -694,6 +681,22 @@ async function main() {
         .then(
           (text) =>
             Boolean(text?.trim())
+        ),
+      true
+    );
+
+    assert.equal(
+      await conversation
+        .locator(
+          '.context-breakdown__value em'
+        )
+        .first()
+        .textContent()
+        .then(
+          (text) =>
+            Boolean(
+              text?.includes("%")
+            )
         ),
       true
     );

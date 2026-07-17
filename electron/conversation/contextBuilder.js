@@ -180,20 +180,3 @@ export function buildPinnedConversationContext(
     ...lines
   ].join("\n");
 }
-
-export function buildConversationSummaryContext(
-  summary
-) {
-  const normalized =
-    String(summary ?? "")
-      .trim();
-
-  if (!normalized) {
-    return "";
-  }
-
-  return [
-    "以下是用户手动维护的当前会话摘要：",
-    normalized
-  ].join("\n");
-}

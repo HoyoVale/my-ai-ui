@@ -171,7 +171,7 @@ describe(
   "ContextAssembler budget and managed context",
   () => {
     it(
-      "includes summary and pinned messages in system context with a token breakdown",
+      "includes pinned messages in system context with a token breakdown",
       () => {
         const result =
           assembleAgentContext({
@@ -186,8 +186,6 @@ describe(
               }
             },
             conversation: {
-              summary:
-                "manual summary",
               contextStartAfterMessageId:
                 "old-answer",
               messages: [
@@ -220,10 +218,6 @@ describe(
 
         assert.match(
           result.system,
-          /manual summary/
-        );
-        assert.match(
-          result.system,
           /pinned rule/
         );
         assert.deepEqual(
@@ -234,17 +228,6 @@ describe(
               content: "latest"
             }
           ]
-        );
-        assert.equal(
-          result.budget
-            .sections
-            .some(
-              (section) =>
-                section.id ===
-                  "summary" &&
-                section.tokens > 0
-            ),
-          true
         );
         assert.equal(
           result.metadata

@@ -103,8 +103,6 @@ const CHANNELS = Object.freeze({
   CONVERSATION_CLEAR:
     "conversation-clear",
 
-  CONVERSATION_UPDATE_SUMMARY:
-    "conversation-update-summary",
 
   CONVERSATION_RESET_CONTEXT:
     "conversation-reset-context",
@@ -509,24 +507,6 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS
         .CONVERSATION_CLEAR
-    );
-  },
-
-  updateConversationSummary: (
-    conversationId,
-    summary
-  ) => {
-    return ipcRenderer.invoke(
-      CHANNELS
-        .CONVERSATION_UPDATE_SUMMARY,
-      {
-        conversationId:
-          String(
-            conversationId ?? ""
-          ),
-        summary:
-          String(summary ?? "")
-      }
     );
   },
 

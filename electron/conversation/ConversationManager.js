@@ -162,7 +162,6 @@ export class ConversationManager {
           .slice(0, 80) ||
         "新会话",
 
-      summary: "",
       contextStartAfterMessageId: null,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -378,42 +377,6 @@ export class ConversationManager {
         conversation
           .contextStartAfterMessageId
     });
-  }
-
-  updateSummary(
-    conversationId,
-    summary
-  ) {
-    const conversation =
-      this.findMutableConversation(
-        conversationId
-      );
-
-    if (!conversation) {
-      return {
-        ok: false,
-        code: "conversation-not-found",
-        message: "会话不存在。"
-      };
-    }
-
-    conversation.summary =
-      String(summary ?? "")
-        .trim()
-        .slice(0, 12000);
-
-    conversation.updatedAt =
-      this.now();
-
-    this.commit();
-
-    return {
-      ok: true,
-      conversation:
-        this.getConversation(
-          conversationId
-        )
-    };
   }
 
   resetContext(
@@ -655,10 +618,6 @@ export class ConversationManager {
           ?.content
           ?.slice(0, 80) ??
         "",
-      hasSummary:
-        Boolean(
-          conversation.summary
-        ),
       pinnedMessageCount:
         conversation.messages.filter(
           (message) =>

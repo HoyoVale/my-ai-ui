@@ -200,7 +200,6 @@ app.whenReady().then(
               "getConversationState",
               "getConversation",
               "createConversation",
-              "updateConversationSummary",
               "resetConversationContext",
               "updateMessageContext",
               "inspectConversationContext",

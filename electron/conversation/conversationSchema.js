@@ -1,4 +1,4 @@
-const STORE_VERSION = 2;
+const STORE_VERSION = 3;
 
 const MESSAGE_ROLES =
   new Set([
@@ -218,12 +218,6 @@ export function sanitizeConversation(
         80
       ).trim() || "新会话",
 
-    summary:
-      stringValue(
-        source.summary,
-        "",
-        12000
-      ).trim(),
 
     contextStartAfterMessageId:
       messageIds.has(

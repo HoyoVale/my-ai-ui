@@ -237,7 +237,7 @@ describe(
   "ConversationManager context controls",
   () => {
     it(
-      "updates summaries, message flags and reset boundary without deleting history",
+      "updates message flags and reset boundary without deleting history",
       () => {
         const manager =
           createManager();
@@ -260,10 +260,6 @@ describe(
           content: "reply"
         });
 
-        manager.updateSummary(
-          conversation.id,
-          "manual summary"
-        );
 
         manager.updateMessageContext({
           conversationId:
@@ -282,10 +278,6 @@ describe(
             conversation.id
           );
 
-        assert.equal(
-          saved.summary,
-          "manual summary"
-        );
         assert.equal(
           saved.messages[0]
             .pinnedToContext,

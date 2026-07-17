@@ -160,7 +160,6 @@ describe(
 );
 
 import {
-  buildConversationSummaryContext,
   buildPinnedConversationContext,
   selectShortTermContextMessages
 } from "../../electron/conversation/contextBuilder.js";
@@ -220,7 +219,7 @@ describe(
     );
 
     it(
-      "builds pinned and summary system context separately",
+      "builds pinned system context separately",
       () => {
         assert.match(
           buildPinnedConversationContext([
@@ -234,13 +233,6 @@ describe(
             }
           ]),
           /keep this/
-        );
-
-        assert.match(
-          buildConversationSummaryContext(
-            "current objective"
-          ),
-          /current objective/
         );
       }
     );

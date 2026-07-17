@@ -87,7 +87,7 @@ export function buildTokenBudget({
       )
     );
 
-  const normalizedSections =
+  const baseSections =
     sections.map((section) => ({
       ...section,
       tokens:
@@ -101,10 +101,31 @@ export function buildTokenBudget({
     }));
 
   const inputTokens =
-    normalizedSections.reduce(
+    baseSections.reduce(
       (total, section) =>
         total + section.tokens,
       0
+    );
+
+  const totalTokens =
+    inputTokens +
+    normalizedReserve;
+
+  const normalizedSections =
+    baseSections.map(
+      (section) => ({
+        ...section,
+        inputShareRatio:
+          inputTokens > 0
+            ? section.tokens /
+              inputTokens
+            : 0,
+        budgetShareRatio:
+          normalizedBudget > 0
+            ? section.tokens /
+              normalizedBudget
+            : 0
+      })
     );
 
   const inputLimit =
@@ -123,9 +144,7 @@ export function buildTokenBudget({
 
   return {
     estimated: true,
-    totalTokens:
-      inputTokens +
-      normalizedReserve,
+    totalTokens,
     inputTokens,
     outputReserve:
       normalizedReserve,
@@ -140,6 +159,14 @@ export function buildTokenBudget({
         inputLimit
       ),
     usageRatio:
+      normalizedBudget > 0
+        ? Math.min(
+            1,
+            totalTokens /
+              normalizedBudget
+          )
+        : 1,
+    inputUsageRatio:
       inputLimit > 0
         ? Math.min(
             1,

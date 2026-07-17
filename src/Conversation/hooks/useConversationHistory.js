@@ -185,19 +185,6 @@ export function useConversationHistory() {
             )
       ),
 
-    saveSummary: (
-      conversationId,
-      summary
-    ) =>
-      runAction(
-        () =>
-          window.api
-            ?.updateConversationSummary?.(
-              conversationId,
-              summary
-            )
-      ),
-
     resetContext: (
       conversationId
     ) =>

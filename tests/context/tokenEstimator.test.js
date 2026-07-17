@@ -67,6 +67,20 @@ describe(
           budget.remaining,
           964
         );
+        assert.equal(
+          budget.sections[0]
+            .inputShareRatio,
+          0.75
+        );
+        assert.equal(
+          budget.sections[1]
+            .inputShareRatio,
+          0.25
+        );
+        assert.equal(
+          budget.usageRatio,
+          60 / 1024
+        );
       }
     );
   }

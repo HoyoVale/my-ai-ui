@@ -160,7 +160,7 @@ export default function Conversation() {
 
     const confirmed =
       window.confirm(
-        "清除当前短期上下文？历史消息仍会保留，固定消息和会话摘要不受影响。"
+        "清除当前短期上下文？历史消息仍会保留，固定消息不受影响。"
       );
 
     if (!confirmed) {
@@ -316,16 +316,6 @@ export default function Conversation() {
           busy={history.busy}
           onClose={() => {
             setContextOpen(false);
-          }}
-          onSaveSummary={(summary) => {
-            if (!history.current) {
-              return;
-            }
-
-            return history.saveSummary(
-              history.current.id,
-              summary
-            );
           }}
           onResetContext={
             resetContext

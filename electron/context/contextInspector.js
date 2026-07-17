@@ -25,7 +25,6 @@ function getInspectionQuery(
         message.status === "complete"
     )
     ?.content ??
-    conversation?.summary ??
     conversation?.title ??
     "";
 }
@@ -63,8 +62,6 @@ export function inspectConversationContext(
     conversationId:
       conversation.id,
     title: conversation.title,
-    summary:
-      conversation.summary,
     contextStartAfterMessageId:
       conversation
         .contextStartAfterMessageId,

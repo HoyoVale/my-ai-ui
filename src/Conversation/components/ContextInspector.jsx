@@ -1,10 +1,4 @@
 import {
-  useEffect,
-  useMemo,
-  useState
-} from "react";
-
-import {
   ConversationIcon
 } from "./Icon.jsx";
 
@@ -38,55 +32,43 @@ function formatTokens(
   );
 }
 
+function formatPercent(
+  ratio
+) {
+  const percent =
+    Math.max(
+      0,
+      Number(ratio) || 0
+    ) * 100;
+
+  if (percent === 0) {
+    return "0%";
+  }
+
+  if (percent < 10) {
+    return `${percent.toFixed(1)}%`;
+  }
+
+  return `${Math.round(percent)}%`;
+}
+
 export function ConversationContextInspector({
   open,
   conversation,
   inspection,
   busy,
   onClose,
-  onSaveSummary,
   onResetContext
 }) {
-  const [summary, setSummary] =
-    useState("");
-
-  useEffect(() => {
-    setSummary(
-      conversation?.summary ?? ""
-    );
-  }, [
-    conversation?.id,
-    conversation?.summary
-  ]);
+  if (!open) {
+    return null;
+  }
 
   const budget =
     inspection?.budget;
 
   const sections =
     budget?.sections ?? [];
-
-  const maxSectionTokens =
-    useMemo(
-      () =>
-        Math.max(
-          1,
-          ...sections.map(
-            (section) =>
-              section.tokens
-          )
-        ),
-      [sections]
-    );
-
-  const summaryChanged =
-    summary.trim() !==
-    String(
-      conversation?.summary ?? ""
-    ).trim();
-
-  if (!open) {
-    return null;
-  }
 
   return (
     <aside
@@ -126,32 +108,47 @@ export function ConversationContextInspector({
             <div className="context-budget-card__top">
               <div>
                 <span>预计总占用</span>
-                <strong data-testid="context-total-tokens">
-                  {formatTokens(
-                    budget.totalTokens
-                  )}
-                  <small> tokens</small>
+                <strong>
+                  <b data-testid="context-total-tokens">
+                    {formatTokens(
+                      budget.totalTokens
+                    )}
+                  </b>
+                  <small>
+                    / {formatTokens(
+                      budget.contextTokenBudget
+                    )} tokens
+                  </small>
                 </strong>
               </div>
 
               <div className="context-budget-card__ratio">
-                {Math.round(
-                  budget.usageRatio * 100
-                )}%
+                {formatPercent(
+                  budget.usageRatio
+                )}
               </div>
             </div>
 
-            <div className="context-budget-card__track">
+            <div
+              className="context-budget-card__track"
+              role="progressbar"
+              aria-label="预计总 Token 占上下文上限"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow={
+                Math.round(
+                  budget.usageRatio *
+                    100
+                )
+              }
+            >
               <span
                 style={{
                   width:
-                    `${Math.max(
-                      1,
-                      Math.min(
-                        100,
-                        budget.usageRatio *
-                          100
-                      )
+                    `${Math.min(
+                      100,
+                      budget.usageRatio *
+                        100
                     )}%`
                 }}
               />
@@ -169,105 +166,98 @@ export function ConversationContextInspector({
                 )}
               </span>
               <span>
-                上限 {formatTokens(
-                  budget.contextTokenBudget
+                输入剩余 {formatTokens(
+                  budget.remaining
                 )}
               </span>
             </div>
 
             <p>
-              Token 为本地估算值，实际用量以模型返回为准。
+              总进度条表示“预计总占用 ÷ 上下文上限”。Token 为本地估算值。
             </p>
           </section>
 
           <section className="context-section">
             <div className="context-section__title">
-              <strong>组成</strong>
+              <strong>输入组成</strong>
               <span>
                 {budget.overflowTokens > 0
                   ? `超出约 ${formatTokens(
                       budget.overflowTokens
                     )}`
-                  : `输入剩余约 ${formatTokens(
-                      budget.remaining
-                    )}`}
+                  : `共 ${formatTokens(
+                      budget.inputTokens
+                    )} tokens`}
               </span>
             </div>
 
             <div className="context-breakdown">
               {sections.map(
-                (section) => (
-                  <div
-                    className="context-breakdown__row"
-                    key={section.id}
-                  >
-                    <div className="context-breakdown__label">
-                      <span>{section.label}</span>
-                      <strong>
-                        {formatTokens(
-                          section.tokens
-                        )}
-                      </strong>
-                    </div>
+                (section) => {
+                  const share =
+                    section
+                      .inputShareRatio ??
+                    (
+                      budget.inputTokens >
+                      0
+                        ? section.tokens /
+                          budget.inputTokens
+                        : 0
+                    );
 
-                    <div className="context-breakdown__track">
-                      <span
-                        style={{
-                          width:
-                            `${Math.max(
-                              section.tokens > 0
-                                ? 3
-                                : 0,
-                              section.tokens /
-                                maxSectionTokens *
-                                100
-                            )}%`
-                        }}
-                      />
+                  return (
+                    <div
+                      className="context-breakdown__row"
+                      key={section.id}
+                    >
+                      <div className="context-breakdown__label">
+                        <span>{section.label}</span>
+
+                        <div className="context-breakdown__value">
+                          <strong>
+                            {formatTokens(
+                              section.tokens
+                            )} tokens
+                          </strong>
+                          <em>
+                            {formatPercent(
+                              share
+                            )}
+                          </em>
+                        </div>
+                      </div>
+
+                      <div
+                        className="context-breakdown__track"
+                        role="progressbar"
+                        aria-label={`${section.label}占输入 Token`}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow={
+                          Math.round(
+                            share * 100
+                          )
+                        }
+                      >
+                        <span
+                          style={{
+                            width:
+                              `${Math.min(
+                                100,
+                                share * 100
+                              )}%`
+                          }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                )
+                  );
+                }
               )}
             </div>
-          </section>
 
-          <section className="context-section">
-            <div className="context-section__title">
-              <strong>会话摘要</strong>
-              <span>
-                {summary.length}/12000
-              </span>
-            </div>
-
-            <textarea
-              className="context-summary"
-              data-testid="conversation-summary-input"
-              value={summary}
-              maxLength={12000}
-              placeholder="手动记录当前会话的目标、已完成事项和下一步。摘要会持续加入本会话上下文。"
-              onChange={(event) => {
-                setSummary(
-                  event.target.value
-                );
-              }}
-            />
-
-            <button
-              type="button"
-              className="context-secondary-button"
-              data-testid="conversation-summary-save"
-              disabled={
-                busy ||
-                !summaryChanged
-              }
-              onClick={() => {
-                void onSaveSummary?.(
-                  summary
-                );
-              }}
-            >
-              保存摘要
-            </button>
+            <p className="context-breakdown__note">
+              每条长条表示该部分占当前输入 Token 的比例，右侧同时显示准确 Token 数与百分比。
+            </p>
           </section>
 
           <section className="context-section">
@@ -312,7 +302,7 @@ export function ConversationContextInspector({
               <div>
                 <strong>从这里开始新上下文</strong>
                 <span>
-                  保留历史记录，但下一次请求不再携带当前消息之前的普通对话。固定消息和摘要仍然有效。
+                  保留历史记录，但下一次请求不再携带当前消息之前的普通对话。固定消息仍然有效。
                 </span>
               </div>
             </div>

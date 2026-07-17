@@ -25,7 +25,6 @@ npm run test:e2e
 The E2E flow also verifies:
 
 - opening the Conversation context inspector
-- saving a manual conversation summary
 - pinning a message to the current conversation
 - excluding another message from context
 - reading the Token budget

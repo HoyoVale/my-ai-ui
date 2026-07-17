@@ -1,5 +1,4 @@
 import {
-  buildConversationSummaryContext,
   buildPinnedConversationContext,
   selectPinnedContextMessages,
   selectShortTermContextMessages
@@ -89,10 +88,6 @@ export function assembleAgentContext({
           memories
         );
 
-  const summaryContext =
-    buildConversationSummaryContext(
-      conversation?.summary
-    );
 
   const pinnedContext =
     buildPinnedConversationContext(
@@ -103,7 +98,6 @@ export function assembleAgentContext({
     BASE_SYSTEM_CONTEXT,
     personalityContext,
     memoryContext,
-    summaryContext,
     pinnedContext
   ].filter(Boolean);
 
@@ -148,14 +142,6 @@ export function assembleAgentContext({
             )
         },
         {
-          id: "summary",
-          label: "会话摘要",
-          tokens:
-            estimateTextTokens(
-              summaryContext
-            )
-        },
-        {
           id: "pinned",
           label: "固定消息",
           tokens:
@@ -194,8 +180,6 @@ export function assembleAgentContext({
         normalizedSettings
           .conversation
           ?.contextTurns ?? 8,
-      summaryIncluded:
-        Boolean(summaryContext),
       pinnedMessageCount:
         pinnedMessages.length,
       recentMessageIds:

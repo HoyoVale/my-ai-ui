@@ -173,28 +173,6 @@ export function registerConversationIpc() {
   ipcMain.handle(
     IPC_CHANNELS
       .conversation
-      .UPDATE_SUMMARY,
-    (_event, input = {}) => {
-      const busy =
-        rejectWhenBusy();
-
-      if (busy) {
-        return busy;
-      }
-
-      return conversationManager
-        .updateSummary(
-          String(
-            input.conversationId ?? ""
-          ),
-          input.summary
-        );
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS
-      .conversation
       .RESET_CONTEXT,
     (_event, conversationId) => {
       const busy =

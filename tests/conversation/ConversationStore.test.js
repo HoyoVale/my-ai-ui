@@ -76,7 +76,7 @@ describe(
         assert.deepEqual(
           store.load(),
           {
-            version: 2,
+            version: 3,
             currentConversationId:
               null,
             conversations: []
@@ -170,6 +170,7 @@ describe(
               {
                 id: "legacy",
                 title: "Legacy",
+                summary: "obsolete summary",
                 createdAt: 1,
                 updatedAt: 2,
                 messages: [
@@ -192,12 +193,14 @@ describe(
 
         assert.equal(
           loaded.version,
-          2
+          3
         );
         assert.equal(
-          loaded.conversations[0]
-            .summary,
-          ""
+          Object.hasOwn(
+            loaded.conversations[0],
+            "summary"
+          ),
+          false
         );
         assert.equal(
           loaded.conversations[0]
@@ -251,7 +254,7 @@ describe(
           assert.deepEqual(
             store.load(),
             {
-              version: 2,
+              version: 3,
               currentConversationId:
                 null,
               conversations: []

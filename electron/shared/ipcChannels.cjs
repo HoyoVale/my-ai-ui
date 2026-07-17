@@ -104,8 +104,6 @@ const IPC_CHANNELS =
       CLEAR:
         "conversation-clear",
 
-      UPDATE_SUMMARY:
-        "conversation-update-summary",
 
       RESET_CONTEXT:
         "conversation-reset-context",
