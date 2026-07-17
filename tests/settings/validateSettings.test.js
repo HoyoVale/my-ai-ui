@@ -58,3 +58,68 @@ describe(
     );
   }
 );
+
+
+describe(
+  "conversation window settings validation",
+  () => {
+    it(
+      "clamps layout and preserves booleans",
+      () => {
+        const settings =
+          sanitizeSettings({
+            conversationWindow: {
+              sidebarWidth: 999,
+              messageMaxWidth: 10,
+              fontSize: 40,
+              compactList: true,
+              showPreview: false,
+              alwaysOnTop: true
+            }
+          });
+
+        assert.equal(
+          settings
+            .conversationWindow
+            .sidebarWidth,
+          420
+        );
+
+        assert.equal(
+          settings
+            .conversationWindow
+            .messageMaxWidth,
+          520
+        );
+
+        assert.equal(
+          settings
+            .conversationWindow
+            .fontSize,
+          22
+        );
+
+        assert.equal(
+          settings
+            .conversationWindow
+            .compactList,
+          true
+        );
+
+        assert.equal(
+          settings
+            .conversationWindow
+            .showPreview,
+          false
+        );
+
+        assert.equal(
+          settings
+            .conversationWindow
+            .alwaysOnTop,
+          true
+        );
+      }
+    );
+  }
+);

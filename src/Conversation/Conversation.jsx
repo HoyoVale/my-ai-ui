@@ -1,5 +1,6 @@
 import {
-  useMemo
+  useMemo,
+  useState
 } from "react";
 
 import {
@@ -36,6 +37,9 @@ export default function Conversation() {
   const settings =
     useAppSettings();
 
+  const conversationWindow =
+    settings.conversationWindow;
+
   const theme =
     useResolvedTheme(
       settings
@@ -48,6 +52,55 @@ export default function Conversation() {
 
   const history =
     useConversationHistory();
+
+  const [
+    sidebarCollapsed,
+    setSidebarCollapsed
+  ] = useState(false);
+
+  const [
+    query,
+    setQuery
+  ] = useState("");
+
+  const filteredConversations =
+    useMemo(
+      () => {
+        const normalized =
+          query
+            .trim()
+            .toLowerCase();
+
+        if (!normalized) {
+          return history
+            .conversations;
+        }
+
+        return history
+          .conversations
+          .filter(
+            (conversation) => {
+              return [
+                conversation.title,
+                conversation.preview
+              ]
+                .filter(Boolean)
+                .some(
+                  (value) =>
+                    String(value)
+                      .toLowerCase()
+                      .includes(
+                        normalized
+                      )
+                );
+            }
+          );
+      },
+      [
+        history.conversations,
+        query
+      ]
+    );
 
   const currentTitle =
     history.current
@@ -67,6 +120,13 @@ export default function Conversation() {
             .reducedMotion
             ? "reduce-motion"
             : "",
+          conversationWindow
+            .compactList
+            ? "is-compact-list"
+            : "",
+          sidebarCollapsed
+            ? "is-sidebar-collapsed"
+            : "",
           isMaximized
             ? "is-maximized"
             : ""
@@ -75,13 +135,21 @@ export default function Conversation() {
           .join(" ");
       },
       [
+        conversationWindow
+          .compactList,
         isMaximized,
         settings
           .appearance
           .reducedMotion,
+        sidebarCollapsed,
         theme
       ]
     );
+
+  const openInput = () => {
+    window.api
+      ?.openInput?.();
+  };
 
   return (
     <div
@@ -91,14 +159,38 @@ export default function Conversation() {
         "--conversation-accent":
           settings
             .appearance
-            .accentColor
+            .accentColor,
+
+        "--conversation-sidebar-width":
+          `${conversationWindow.sidebarWidth}px`,
+
+        "--conversation-message-max-width":
+          `${conversationWindow.messageMaxWidth}px`,
+
+        "--conversation-font-size":
+          `${conversationWindow.fontSize}px`
       }}
     >
       <ConversationTopbar
         title={currentTitle}
+        messageCount={
+          history.current
+            ?.messages
+            .length ?? 0
+        }
+        sidebarCollapsed={
+          sidebarCollapsed
+        }
         isMaximized={
           isMaximized
         }
+        onToggleSidebar={() => {
+          setSidebarCollapsed(
+            (current) =>
+              !current
+          );
+        }}
+        onOpenInput={openInput}
         onMinimize={() => {
           window.api
             ?.minimizeWindow?.();
@@ -116,13 +208,24 @@ export default function Conversation() {
       <div className="conversation-layout">
         <ConversationSidebar
           conversations={
-            history.conversations
+            filteredConversations
+          }
+          totalConversations={
+            history
+              .conversations
+              .length
           }
           currentConversationId={
             history.state
               .currentConversationId
           }
           busy={history.busy}
+          query={query}
+          showPreview={
+            conversationWindow
+              .showPreview
+          }
+          onQueryChange={setQuery}
           onCreate={() => {
             void history.create();
           }}
@@ -143,36 +246,6 @@ export default function Conversation() {
         />
 
         <main className="conversation-main">
-          <header className="conversation-main__header">
-            <div>
-              <span>当前会话</span>
-
-              <h1
-                data-testid="conversation-current-title"
-              >
-                {currentTitle}
-              </h1>
-
-              <p>
-                {history.current
-                  ? `${history.current.messages.length} 条消息`
-                  : "选择一个会话查看完整记录"}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              className="conversation-continue"
-              data-testid="conversation-open-input"
-              onClick={() => {
-                window.api
-                  ?.openInput?.();
-              }}
-            >
-              继续对话
-            </button>
-          </header>
-
           {history.error && (
             <div className="conversation-alert">
               {history.error}
@@ -180,12 +253,11 @@ export default function Conversation() {
           )}
 
           <ConversationMessageList
-            loading={
-              history.loading
-            }
+            loading={history.loading}
             conversation={
               history.current
             }
+            onOpenInput={openInput}
           />
         </main>
       </div>

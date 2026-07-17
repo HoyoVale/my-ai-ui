@@ -44,6 +44,13 @@ export const SETTING_GROUPS = [
         title: "回复气泡",
         description:
           "调整回复气泡的位置、尺寸、样式和关闭行为。"
+      },
+      {
+        id: "conversationWindow",
+        label: "Conversation",
+        title: "会话窗口",
+        description:
+          "调整会话记录窗口的布局、阅读样式和窗口行为。"
       }
     ]
   },
@@ -68,10 +75,10 @@ export const SETTING_GROUPS = [
       },
       {
         id: "conversation",
-        label: "Conversation",
-        title: "会话",
+        label: "Context",
+        title: "会话与上下文",
         description:
-          "管理会话保存、短期上下文和历史记录。"
+          "管理会话保存、短期上下文和历史数据。"
       }
     ]
   },

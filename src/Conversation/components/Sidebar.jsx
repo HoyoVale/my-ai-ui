@@ -1,3 +1,7 @@
+import {
+  ConversationIcon
+} from "./Icon.jsx";
+
 function formatUpdatedAt(
   timestamp
 ) {
@@ -5,55 +9,108 @@ function formatUpdatedAt(
     return "";
   }
 
+  const date =
+    new Date(timestamp);
+
+  const now =
+    new Date();
+
+  if (
+    date.toDateString() ===
+    now.toDateString()
+  ) {
+    return new Intl
+      .DateTimeFormat(
+        "zh-CN",
+        {
+          hour: "2-digit",
+          minute: "2-digit"
+        }
+      )
+      .format(date);
+  }
+
   return new Intl
     .DateTimeFormat(
       "zh-CN",
       {
         month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit"
+        day: "2-digit"
       }
     )
-    .format(
-      new Date(timestamp)
-    );
+    .format(date);
 }
 
 export function ConversationSidebar({
   conversations,
+  totalConversations,
   currentConversationId,
   busy,
+  query,
+  showPreview,
+  onQueryChange,
   onCreate,
   onSelect,
   onDelete
 }) {
   return (
     <aside className="conversation-sidebar">
-      <button
-        type="button"
-        className="conversation-new"
-        data-testid="conversation-new"
-        disabled={busy}
-        onClick={onCreate}
-      >
-        <span aria-hidden="true">
-          ＋
-        </span>
-        新建会话
-      </button>
+      <div className="conversation-sidebar__top">
+        <button
+          type="button"
+          className="conversation-new"
+          data-testid="conversation-new"
+          disabled={busy}
+          onClick={onCreate}
+        >
+          <ConversationIcon
+            name="plus"
+            size={17}
+          />
+          新建会话
+        </button>
+
+        <label className="conversation-search">
+          <ConversationIcon
+            name="search"
+            size={16}
+          />
+          <input
+            type="search"
+            value={query}
+            placeholder="搜索会话"
+            aria-label="搜索会话"
+            onChange={(event) => {
+              onQueryChange(
+                event.target.value
+              );
+            }}
+          />
+        </label>
+      </div>
 
       <div className="conversation-sidebar__heading">
-        历史记录
-        <span>
-          {conversations.length}
-        </span>
+        <span>历史记录</span>
+        <small>{totalConversations}</small>
       </div>
 
       <div className="conversation-sidebar__list">
         {conversations.length === 0 ? (
           <div className="conversation-sidebar__empty">
-            暂无会话
+            <ConversationIcon
+              name="spark"
+              size={22}
+            />
+            <strong>
+              {query
+                ? "没有匹配的会话"
+                : "暂无会话"}
+            </strong>
+            <span>
+              {query
+                ? "尝试使用其他关键词。"
+                : "发送消息后会自动保存在这里。"}
+            </span>
           </div>
         ) : (
           conversations.map(
@@ -87,29 +144,34 @@ export function ConversationSidebar({
                       );
                     }}
                   >
-                    <strong>
-                      {conversation.title}
-                    </strong>
-
-                    <span>
-                      {conversation.messageCount} 条
-                      ·{" "}
-                      {formatUpdatedAt(
-                        conversation.updatedAt
-                      )}
+                    <span className="conversation-history-item__title-row">
+                      <strong>
+                        {conversation.title}
+                      </strong>
+                      <time>
+                        {formatUpdatedAt(
+                          conversation.updatedAt
+                        )}
+                      </time>
                     </span>
 
-                    {conversation.preview && (
+                    {showPreview &&
+                      conversation.preview && (
                       <small>
                         {conversation.preview}
                       </small>
                     )}
+
+                    <span className="conversation-history-item__count">
+                      {conversation.messageCount} 条消息
+                    </span>
                   </button>
 
                   <button
                     type="button"
                     className="conversation-history-item__delete"
                     aria-label={`删除 ${conversation.title}`}
+                    title="删除会话"
                     disabled={busy}
                     onClick={() => {
                       onDelete(
@@ -117,7 +179,10 @@ export function ConversationSidebar({
                       );
                     }}
                   >
-                    ×
+                    <ConversationIcon
+                      name="trash"
+                      size={15}
+                    />
                   </button>
                 </div>
               );

@@ -1,90 +1,160 @@
+import {
+  ConversationIcon
+} from "./Icon.jsx";
+
 export function ConversationTopbar({
   title,
+  messageCount,
+  sidebarCollapsed,
   isMaximized,
+  onToggleSidebar,
+  onOpenInput,
   onMinimize,
   onMaximize,
   onClose
 }) {
   return (
     <header className="conversation-topbar">
-      <div className="conversation-topbar__title">
-        <span>会话</span>
-        <strong>{title}</strong>
+      <div className="conversation-topbar__left">
+        <button
+          type="button"
+          className="conversation-icon-button"
+          title={
+            sidebarCollapsed
+              ? "显示侧栏"
+              : "隐藏侧栏"
+          }
+          aria-label={
+            sidebarCollapsed
+              ? "显示侧栏"
+              : "隐藏侧栏"
+          }
+          onClick={onToggleSidebar}
+        >
+          <ConversationIcon
+            name="sidebar"
+            size={17}
+          />
+        </button>
+
+        <div className="conversation-topbar__title">
+          <strong
+            data-testid="conversation-current-title"
+          >
+            {title}
+          </strong>
+
+          <span>
+            {messageCount > 0
+              ? `${messageCount} 条消息`
+              : "新会话"}
+          </span>
+        </div>
       </div>
 
-      <div className="conversation-window-controls">
-        <WindowButton
-          label="Minimize"
-          onClick={onMinimize}
+      <div className="conversation-topbar__right">
+        <button
+          type="button"
+          className="conversation-continue"
+          data-testid="conversation-open-input"
+          onClick={onOpenInput}
         >
-          <path
-            d="M1.5 5h7"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
+          继续对话
+          <ConversationIcon
+            name="arrow"
+            size={15}
           />
-        </WindowButton>
+        </button>
 
-        <WindowButton
-          label={
-            isMaximized
-              ? "Restore"
-              : "Maximize"
-          }
-          onClick={onMaximize}
-        >
-          {isMaximized ? (
-            <>
-              <rect
-                x="3.5"
-                y="1.5"
-                width="6"
-                height="6"
-                rx="1"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.1"
-              />
+        <WindowControls
+          isMaximized={isMaximized}
+          onMinimize={onMinimize}
+          onMaximize={onMaximize}
+          onClose={onClose}
+        />
+      </div>
+    </header>
+  );
+}
 
-              <rect
-                x="1.5"
-                y="3.5"
-                width="6"
-                height="6"
-                rx="1"
-                fill="var(--conversation-topbar)"
-                stroke="currentColor"
-                strokeWidth="1.1"
-              />
-            </>
-          ) : (
+function WindowControls({
+  isMaximized,
+  onMinimize,
+  onMaximize,
+  onClose
+}) {
+  return (
+    <div className="conversation-window-controls">
+      <WindowButton
+        label="Minimize"
+        onClick={onMinimize}
+      >
+        <path
+          d="M1.5 5h7"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </WindowButton>
+
+      <WindowButton
+        label={
+          isMaximized
+            ? "Restore"
+            : "Maximize"
+        }
+        onClick={onMaximize}
+      >
+        {isMaximized ? (
+          <>
             <rect
-              x="1.5"
+              x="3.5"
               y="1.5"
-              width="8"
-              height="8"
-              rx="1.2"
+              width="6"
+              height="6"
+              rx="1"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.1"
             />
-          )}
-        </WindowButton>
-
-        <WindowButton
-          label="Close"
-          className="conversation-window-button--close"
-          onClick={onClose}
-        >
-          <path
-            d="m2 2 6 6M8 2 2 8"
+            <rect
+              x="1.5"
+              y="3.5"
+              width="6"
+              height="6"
+              rx="1"
+              fill="var(--conversation-topbar)"
+              stroke="currentColor"
+              strokeWidth="1.1"
+            />
+          </>
+        ) : (
+          <rect
+            x="1.5"
+            y="1.5"
+            width="8"
+            height="8"
+            rx="1.2"
+            fill="none"
             stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
+            strokeWidth="1.1"
           />
-        </WindowButton>
-      </div>
-    </header>
+        )}
+      </WindowButton>
+
+      <WindowButton
+        label="Close"
+        className="conversation-window-button--close"
+        onClick={onClose}
+      >
+        <path
+          d="m2 2 6 6M8 2 2 8"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </WindowButton>
+    </div>
   );
 }
 

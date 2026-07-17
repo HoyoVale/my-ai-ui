@@ -661,8 +661,41 @@ async function main() {
       4
     );
 
+    await pet.evaluate(
+      () => {
+        window.api
+          ?.openSetting?.();
+      }
+    );
+
+    const setting =
+      await waitForWindow(
+        electronApp,
+        "/setting"
+      );
+
+    await setting
+      .locator(
+        '[data-testid="setting-tab-conversationWindow"]'
+      )
+      .click();
+
+    await waitForText(
+      setting.locator(
+        ".setting-page__header"
+      ),
+      "会话窗口"
+    );
+
+    await waitForText(
+      setting.locator(
+        ".setting-page__body"
+      ),
+      "侧栏宽度"
+    );
+
     console.log(
-      "Playwright Electron E2E passed: two replies, response re-open, conversation switch."
+      "Playwright Electron E2E passed: two replies, response re-open, conversation switch, conversation settings."
     );
   } catch (error) {
     if (electronApp) {

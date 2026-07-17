@@ -15,6 +15,10 @@ import {
 } from "../panels/ConversationPanel.jsx";
 
 import {
+  ConversationWindowPanel
+} from "../panels/ConversationWindowPanel.jsx";
+
+import {
   GeneralPanel
 } from "../panels/GeneralPanel.jsx";
 
@@ -108,6 +112,18 @@ export function SettingsContent({
         onUpdate={(patch) => {
           onUpdateSection(
             "response",
+            patch
+          );
+        }}
+      />
+    ),
+
+    conversationWindow: (
+      <ConversationWindowPanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "conversationWindow",
             patch
           );
         }}

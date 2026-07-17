@@ -44,6 +44,7 @@ export function SettingsSidebar({
                   <button
                     key={tab.id}
                     type="button"
+                    data-testid={`setting-tab-${tab.id}`}
                     className={
                       `setting-sidebar__item${
                         activeTab === tab.id

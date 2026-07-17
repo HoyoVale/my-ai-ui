@@ -1678,3 +1678,59 @@
     width: min(100%, 340px);
   }
 }
+
+/* Conversation context data summary */
+.conversation-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+
+  margin-top: 14px;
+  padding: 14px 16px;
+
+  border:
+    1px solid
+    color-mix(
+      in srgb,
+      var(--setting-danger) 22%,
+      var(--setting-border)
+    );
+
+  border-radius: 11px;
+
+  background:
+    color-mix(
+      in srgb,
+      var(--setting-danger) 4%,
+      var(--setting-surface)
+    );
+}
+
+.conversation-danger-zone > div {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.conversation-danger-zone strong {
+  color: var(--setting-text);
+
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.conversation-danger-zone span {
+  color: var(--setting-text-faint);
+
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .conversation-danger-zone {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

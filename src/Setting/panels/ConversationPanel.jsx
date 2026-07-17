@@ -10,28 +10,6 @@ import {
   useConversations
 } from "../hooks/useConversations.js";
 
-function formatDate(
-  timestamp
-) {
-  if (!timestamp) {
-    return "—";
-  }
-
-  return new Intl
-    .DateTimeFormat(
-      "zh-CN",
-      {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit"
-      }
-    )
-    .format(
-      new Date(timestamp)
-    );
-}
-
 export function ConversationPanel({
   settings,
   onUpdate
@@ -42,8 +20,6 @@ export function ConversationPanel({
     status,
     error,
     create,
-    select,
-    remove,
     clear
   } = useConversations();
 
@@ -94,7 +70,7 @@ export function ConversationPanel({
 
       <SettingsSection
         title="保存策略"
-        description="会话数据保存在 Electron 用户数据目录中。"
+        description="控制历史会话的数量、标题与未完成回复。"
       >
         <SettingRow
           title="最多保留会话"
@@ -140,7 +116,7 @@ export function ConversationPanel({
 
         <SettingRow
           title="保存中止的回复"
-          description="停止生成时保存已经收到的部分文字，但不会把它加入后续模型上下文。"
+          description="停止生成时保留已收到的文字，但不把它加入后续模型上下文。"
         >
           <Toggle
             checked={
@@ -160,12 +136,12 @@ export function ConversationPanel({
       </SettingsSection>
 
       <SettingsSection
-        title="当前会话"
-        description="当前阶段由 Input 自动使用选中的会话。"
+        title="会话数据"
+        description="完整消息浏览、切换和单个删除操作已集中到会话窗口。"
       >
         <div className="conversation-current">
           <div>
-            <span>当前</span>
+            <span>当前会话</span>
 
             <strong>
               {state
@@ -181,7 +157,7 @@ export function ConversationPanel({
                     state
                       .currentConversation
                       .messageCount
-                  } 条消息`
+                  } 条消息 · 共 ${state.totalConversations} 个会话`
                 : "发送第一条消息时将自动创建"}
             </small>
           </div>
@@ -213,99 +189,15 @@ export function ConversationPanel({
             {error}
           </div>
         )}
-      </SettingsSection>
-
-      <SettingsSection
-        title="历史会话"
-        description={`共 ${state.totalConversations} 个会话。`}
-      >
-        {conversations.length === 0 ? (
-          <div className="conversation-empty">
-            暂无会话记录
-          </div>
-        ) : (
-          <div className="conversation-list">
-            {conversations.map(
-              (conversation) => {
-                const isCurrent =
-                  conversation.id ===
-                  state
-                    .currentConversationId;
-
-                return (
-                  <div
-                    className={
-                      `conversation-item${
-                        isCurrent
-                          ? " is-current"
-                          : ""
-                      }`
-                    }
-                    key={
-                      conversation.id
-                    }
-                  >
-                    <button
-                      type="button"
-                      className="conversation-item__main"
-                      disabled={
-                        isWorking
-                      }
-                      onClick={() => {
-                        void select(
-                          conversation.id
-                        );
-                      }}
-                    >
-                      <strong>
-                        {conversation.title}
-                      </strong>
-
-                      <span>
-                        {
-                          conversation
-                            .messageCount
-                        } 条消息
-                        ·{" "}
-                        {formatDate(
-                          conversation
-                            .updatedAt
-                        )}
-                      </span>
-
-                      {conversation.preview && (
-                        <small>
-                          {
-                            conversation
-                              .preview
-                          }
-                        </small>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      className="conversation-item__delete"
-                      disabled={
-                        isWorking
-                      }
-                      aria-label={`删除 ${conversation.title}`}
-                      onClick={() => {
-                        void remove(
-                          conversation.id
-                        );
-                      }}
-                    >
-                      删除
-                    </button>
-                  </div>
-                );
-              }
-            )}
-          </div>
-        )}
 
         <div className="conversation-danger-zone">
+          <div>
+            <strong>清空会话数据</strong>
+            <span>
+              删除当前保存的 {conversations.length} 个会话，此操作无法撤销。
+            </span>
+          </div>
+
           <ActionButton
             tone="danger"
             disabled={

@@ -52,6 +52,15 @@ export const DEFAULT_SETTINGS = {
     enabled: false
   },
 
+  conversationWindow: {
+    sidebarWidth: 288,
+    messageMaxWidth: 780,
+    fontSize: 15,
+    compactList: false,
+    showPreview: true,
+    alwaysOnTop: false
+  },
+
   conversation: {
     contextTurns: 8,
     maxConversations: 100,

@@ -190,6 +190,9 @@ export function sanitizeSettings(
   const personality =
     source.personality ?? {};
 
+  const conversationWindow =
+    source.conversationWindow ?? {};
+
   const conversation =
     source.conversation ?? {};
 
@@ -490,6 +493,68 @@ export function sanitizeSettings(
           personality.enabled,
           defaults.personality
             .enabled
+        )
+    },
+
+    conversationWindow: {
+      sidebarWidth:
+        integerValue(
+          conversationWindow
+            .sidebarWidth,
+          defaults
+            .conversationWindow
+            .sidebarWidth,
+          220,
+          420
+        ),
+
+      messageMaxWidth:
+        integerValue(
+          conversationWindow
+            .messageMaxWidth,
+          defaults
+            .conversationWindow
+            .messageMaxWidth,
+          520,
+          1200
+        ),
+
+      fontSize:
+        integerValue(
+          conversationWindow
+            .fontSize,
+          defaults
+            .conversationWindow
+            .fontSize,
+          12,
+          22
+        ),
+
+      compactList:
+        booleanValue(
+          conversationWindow
+            .compactList,
+          defaults
+            .conversationWindow
+            .compactList
+        ),
+
+      showPreview:
+        booleanValue(
+          conversationWindow
+            .showPreview,
+          defaults
+            .conversationWindow
+            .showPreview
+        ),
+
+      alwaysOnTop:
+        booleanValue(
+          conversationWindow
+            .alwaysOnTop,
+          defaults
+            .conversationWindow
+            .alwaysOnTop
         )
     },
 

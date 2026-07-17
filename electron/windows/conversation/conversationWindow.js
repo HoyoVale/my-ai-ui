@@ -70,11 +70,11 @@ export function openConversationWindow() {
 
   conversationWindow =
     createBaseWindow({
-      width: 1040,
-      height: 720,
+      width: 1120,
+      height: 760,
 
-      minWidth: 760,
-      minHeight: 520,
+      minWidth: 780,
+      minHeight: 540,
 
       show: false,
 
@@ -88,7 +88,14 @@ export function openConversationWindow() {
       resizable: true,
       minimizable: true,
       maximizable: true,
-      fullscreenable: true
+      fullscreenable: true,
+
+      alwaysOnTop:
+        Boolean(
+          settings
+            .conversationWindow
+            .alwaysOnTop
+        )
     });
 
   conversationWindow.on(
@@ -151,6 +158,15 @@ export function applyConversationWindowSettings(
     .setBackgroundColor(
       getBackgroundColor(
         settings
+      )
+    );
+
+  conversationWindow
+    .setAlwaysOnTop(
+      Boolean(
+        settings
+          .conversationWindow
+          .alwaysOnTop
       )
     );
 }
