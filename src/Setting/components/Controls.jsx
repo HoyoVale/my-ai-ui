@@ -160,14 +160,19 @@ export function Select({
 export function TextInput({
   value,
   placeholder,
+  type = "text",
+  disabled = false,
+  autoComplete,
   onChange
 }) {
   return (
     <input
       className="settings-text-input"
-      type="text"
+      type={type}
       value={value}
       placeholder={placeholder}
+      disabled={disabled}
+      autoComplete={autoComplete}
       onChange={(event) => {
         onChange?.(
           event.target.value
@@ -296,6 +301,7 @@ export function ColorSwatches({
 export function ActionButton({
   children,
   tone = "normal",
+  disabled = false,
   onClick
 }) {
   return (
@@ -304,6 +310,7 @@ export function ActionButton({
       className={
         `settings-action settings-action--${tone}`
       }
+      disabled={disabled}
       onClick={onClick}
     >
       {children}

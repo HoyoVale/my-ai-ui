@@ -33,7 +33,7 @@
   height: 100vh;
 
   padding:
-    8px 36px
+    8px 38px
     8px 14px;
 
   overflow: hidden;
@@ -113,9 +113,12 @@
   width: 0;
   min-width: 0;
   min-height:
-    var(--input-line-height);
+    calc(
+      var(--input-line-height)
+      + 12px
+    );
 
-  padding: 2px 0;
+  padding: 6px 0;
 
   resize: none;
 
@@ -183,8 +186,8 @@
 
 .input-bar__close {
   position: absolute;
-  top: 8px;
-  right: 6px;
+  top: 7px;
+  right: 7px;
 
   width: 24px;
   height: 24px;
@@ -236,4 +239,37 @@
 
   transition-duration:
     0.01ms !important;
+}
+
+.input-bar__send.is-running {
+  color: var(--input-text);
+  background: var(--input-hover);
+}
+
+.input-bar__stop-icon {
+  width: 10px;
+  height: 10px;
+
+  display: block;
+
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.input-bar__stop-icon.is-stopping {
+  opacity: 0.55;
+  animation:
+    input-stop-pulse
+    700ms ease-in-out
+    infinite alternate;
+}
+
+@keyframes input-stop-pulse {
+  from {
+    transform: scale(0.86);
+  }
+
+  to {
+    transform: scale(1);
+  }
 }

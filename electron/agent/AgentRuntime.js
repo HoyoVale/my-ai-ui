@@ -1,0 +1,459 @@
+import {
+  BrowserWindow
+} from "electron";
+
+import {
+  generateText,
+  streamText
+} from "ai";
+
+import crypto from "node:crypto";
+
+import IPC_CHANNELS
+  from "../shared/ipcChannels.cjs";
+
+import {
+  getSettings
+} from "../settings/settingsStore.js";
+
+import {
+  sanitizeSettings
+} from "../settings/validateSettings.js";
+
+import {
+  appendResponseChunk,
+  endResponseStream,
+  startResponseStream
+} from "../windows/response/index.js";
+
+import {
+  createConfiguredModel
+} from "./modelFactory.js";
+
+import {
+  getModelApiKey
+} from "./credentialStore.js";
+
+import {
+  formatAgentError,
+  isAbortError
+} from "./agentErrors.js";
+
+const DEFAULT_SYSTEM_PROMPT = `
+你是 Xixi，一个运行在用户桌面上的轻量 AI 助手。
+请使用用户当前使用的语言回答。
+回答应当清晰、自然、直接；除非用户要求，否则不要写得过长。
+当前阶段你只负责普通对话，不调用工具，也不声称自己完成了尚未执行的操作。
+`.trim();
+
+function cloneStatus(status) {
+  return {
+    ...status
+  };
+}
+
+export class AgentRuntime {
+  constructor() {
+    this.activeRun = null;
+
+    this.status = {
+      state: "idle",
+      runId: null,
+      startedAt: null,
+      lastError: null
+    };
+  }
+
+  getStatus() {
+    return cloneStatus(
+      this.status
+    );
+  }
+
+  startMessage(content) {
+    const message =
+      String(content ?? "")
+        .trim();
+
+    if (!message) {
+      return {
+        ok: false,
+        code: "empty-message",
+        message:
+          "消息不能为空。"
+      };
+    }
+
+    if (this.activeRun) {
+      return {
+        ok: false,
+        code: "busy",
+        message:
+          "当前回复尚未结束，请先停止生成。"
+      };
+    }
+
+    if (!getModelApiKey()) {
+      const errorMessage =
+        "尚未配置 DeepSeek API Key。请先在 Setting → Model 中保存密钥。";
+
+      startResponseStream();
+      appendResponseChunk(
+        `⚠ ${errorMessage}`
+      );
+      endResponseStream();
+
+      this.setStatus({
+        state: "error",
+        runId: null,
+        startedAt: null,
+        lastError:
+          errorMessage
+      });
+
+      return {
+        ok: false,
+        code: "missing-api-key",
+        message: errorMessage
+      };
+    }
+
+    const runId =
+      crypto.randomUUID();
+
+    const abortController =
+      new AbortController();
+
+    this.activeRun = {
+      runId,
+      abortController
+    };
+
+    this.setStatus({
+      state: "running",
+      runId,
+      startedAt:
+        Date.now(),
+      lastError: null
+    });
+
+    void this.runMessage({
+      runId,
+      message,
+      abortController
+    });
+
+    return {
+      ok: true,
+      runId
+    };
+  }
+
+  stop() {
+    if (!this.activeRun) {
+      return {
+        ok: false,
+        code: "idle",
+        message:
+          "当前没有正在生成的回复。"
+      };
+    }
+
+    this.setStatus({
+      ...this.status,
+      state: "stopping"
+    });
+
+    this.activeRun
+      .abortController
+      .abort(
+        "user-stop"
+      );
+
+    return {
+      ok: true,
+      runId:
+        this.activeRun.runId
+    };
+  }
+
+  async testConnection(
+    modelOverride = {}
+  ) {
+    const settings =
+      getSettings();
+
+    const modelSettings =
+      sanitizeSettings({
+        ...settings,
+
+        model: {
+          ...settings.model,
+          ...modelOverride
+        }
+      }).model;
+
+    const startedAt =
+      Date.now();
+
+    try {
+      const result =
+        await generateText({
+          model:
+            createConfiguredModel(
+              modelSettings
+            ),
+
+          system:
+            DEFAULT_SYSTEM_PROMPT,
+
+          prompt:
+            "只回复：连接成功",
+
+          maxOutputTokens: 16,
+          temperature: 0,
+          maxRetries: 0,
+
+          timeout: {
+            totalMs:
+              Math.min(
+                modelSettings
+                  .timeoutMs,
+                30000
+              )
+          }
+        });
+
+      return {
+        ok: true,
+        latencyMs:
+          Date.now() -
+          startedAt,
+        text:
+          result.text.trim()
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        latencyMs:
+          Date.now() -
+          startedAt,
+        message:
+          formatAgentError(
+            error
+          )
+      };
+    }
+  }
+
+  async runMessage({
+    runId,
+    message,
+    abortController
+  }) {
+    let receivedText = false;
+
+    try {
+      const settings =
+        getSettings();
+
+      const modelSettings =
+        settings.model;
+
+      const model =
+        createConfiguredModel(
+          modelSettings
+        );
+
+      startResponseStream();
+
+      const result =
+        streamText({
+          model,
+
+          system:
+            DEFAULT_SYSTEM_PROMPT,
+
+          prompt: message,
+
+          temperature:
+            modelSettings
+              .temperature,
+
+          maxOutputTokens:
+            modelSettings
+              .maxOutputTokens,
+
+          maxRetries: 1,
+
+          abortSignal:
+            abortController.signal,
+
+          timeout: {
+            totalMs:
+              modelSettings
+                .timeoutMs,
+            chunkMs:
+              Math.min(
+                45000,
+                modelSettings
+                  .timeoutMs
+              )
+          },
+
+          onError: ({
+            error
+          }) => {
+            console.error(
+              "模型流式请求错误：",
+              error
+            );
+          }
+        });
+
+      for await (
+        const textPart
+        of result.textStream
+      ) {
+        if (
+          !this.isCurrentRun(
+            runId
+          )
+        ) {
+          break;
+        }
+
+        if (textPart) {
+          receivedText = true;
+          appendResponseChunk(
+            textPart
+          );
+        }
+      }
+
+      if (
+        !abortController
+          .signal
+          .aborted &&
+        !receivedText
+      ) {
+        appendResponseChunk(
+          "模型没有返回可显示的文字。"
+        );
+      }
+
+      endResponseStream();
+
+      if (
+        this.isCurrentRun(
+          runId
+        )
+      ) {
+        this.activeRun = null;
+
+        this.setStatus({
+          state: "idle",
+          runId: null,
+          startedAt: null,
+          lastError: null
+        });
+      }
+    } catch (error) {
+      if (
+        abortController
+          .signal
+          .aborted ||
+        isAbortError(error)
+      ) {
+        endResponseStream();
+
+        if (
+          this.isCurrentRun(
+            runId
+          )
+        ) {
+          this.activeRun = null;
+
+          this.setStatus({
+            state: "idle",
+            runId: null,
+            startedAt: null,
+            lastError: null
+          });
+        }
+
+        return;
+      }
+
+      const friendlyMessage =
+        formatAgentError(error);
+
+      console.error(
+        "Agent 运行失败：",
+        error
+      );
+
+      startResponseStream();
+      appendResponseChunk(
+        `⚠ ${friendlyMessage}`
+      );
+      endResponseStream();
+
+      if (
+        this.isCurrentRun(
+          runId
+        )
+      ) {
+        this.activeRun = null;
+
+        this.setStatus({
+          state: "error",
+          runId: null,
+          startedAt: null,
+          lastError:
+            friendlyMessage
+        });
+      }
+    }
+  }
+
+  isCurrentRun(runId) {
+    return (
+      this.activeRun
+        ?.runId === runId
+    );
+  }
+
+  setStatus(nextStatus) {
+    this.status = {
+      ...nextStatus
+    };
+
+    for (
+      const window
+      of BrowserWindow
+        .getAllWindows()
+    ) {
+      if (
+        window.isDestroyed() ||
+        window
+          .webContents
+          .isDestroyed()
+      ) {
+        continue;
+      }
+
+      window
+        .webContents
+        .send(
+          IPC_CHANNELS
+            .agent
+            .STATUS_CHANGED,
+          this.getStatus()
+        );
+    }
+  }
+}
+
+export const agentRuntime =
+  new AgentRuntime();

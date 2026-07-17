@@ -1,4 +1,8 @@
 import {
+  registerAgentIpc
+} from "./handlers/agentIpc.js";
+
+import {
   registerInputIpc
 } from "./handlers/inputIpc.js";
 
@@ -31,6 +35,7 @@ export function registerIpcHandlers() {
 
   registered = true;
 
+  registerAgentIpc();
   registerPetIpc();
   registerInputIpc();
   registerResponseIpc();

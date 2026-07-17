@@ -16,6 +16,7 @@ import {
 
 const INPUT_MIN_HEIGHT = 48;
 const INPUT_VERTICAL_SPACE = 16;
+const INPUT_TEXTAREA_VERTICAL_PADDING = 12;
 
 let inputWindow = null;
 let attachedPet = null;
@@ -66,6 +67,7 @@ function getInputMetrics(
         INPUT_MIN_HEIGHT,
         input.maxLines *
           lineHeight +
+          INPUT_TEXTAREA_VERTICAL_PADDING +
           INPUT_VERTICAL_SPACE
       ),
 

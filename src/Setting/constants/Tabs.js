@@ -64,7 +64,7 @@ export const SETTING_GROUPS = [
         label: "Model",
         title: "模型",
         description:
-          "模型服务与生成参数将在后续接入。"
+          "配置模型服务、API 凭据与生成参数。"
       }
     ]
   },

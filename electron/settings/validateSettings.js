@@ -88,6 +88,49 @@ function stringValue(
     .slice(0, maxLength);
 }
 
+function nonEmptyStringValue(
+  value,
+  fallback,
+  maxLength = 120
+) {
+  const normalized =
+    stringValue(
+      value,
+      fallback,
+      maxLength
+    ).trim();
+
+  return normalized || fallback;
+}
+
+function urlValue(
+  value,
+  fallback
+) {
+  const normalized =
+    nonEmptyStringValue(
+      value,
+      fallback,
+      300
+    ).replace(/\/+$/, "");
+
+  try {
+    const parsed =
+      new URL(normalized);
+
+    if (
+      parsed.protocol !== "http:" &&
+      parsed.protocol !== "https:"
+    ) {
+      return fallback;
+    }
+
+    return normalized;
+  } catch {
+    return fallback;
+  }
+}
+
 function colorValue(
   value,
   fallback
@@ -449,17 +492,50 @@ export function sanitizeSettings(
 
     model: {
       provider:
-        stringValue(
+        enumValue(
           model.provider,
-          defaults.model.provider,
-          80
+          [
+            "deepseek"
+          ],
+          defaults.model.provider
         ),
 
       model:
-        stringValue(
+        nonEmptyStringValue(
           model.model,
           defaults.model.model,
           120
+        ),
+
+      baseURL:
+        urlValue(
+          model.baseURL,
+          defaults.model.baseURL
+        ),
+
+      temperature:
+        numberValue(
+          model.temperature,
+          defaults.model.temperature,
+          0,
+          2
+        ),
+
+      maxOutputTokens:
+        integerValue(
+          model.maxOutputTokens,
+          defaults.model
+            .maxOutputTokens,
+          128,
+          16384
+        ),
+
+      timeoutMs:
+        integerValue(
+          model.timeoutMs,
+          defaults.model.timeoutMs,
+          15000,
+          300000
         )
     }
   };

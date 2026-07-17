@@ -50,6 +50,32 @@ const IPC_CHANNELS =
         "response-side-changed"
     }),
 
+    agent: Object.freeze({
+      SEND_MESSAGE:
+        "agent-send-message",
+
+      STOP:
+        "agent-stop",
+
+      GET_STATUS:
+        "agent-get-status",
+
+      STATUS_CHANGED:
+        "agent-status-changed",
+
+      GET_CREDENTIAL_STATUS:
+        "agent-get-credential-status",
+
+      SET_API_KEY:
+        "agent-set-api-key",
+
+      CLEAR_API_KEY:
+        "agent-clear-api-key",
+
+      TEST_CONNECTION:
+        "agent-test-connection"
+    }),
+
     settings: Object.freeze({
       GET:
         "settings-get",

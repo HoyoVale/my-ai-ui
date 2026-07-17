@@ -53,8 +53,12 @@ export const DEFAULT_SETTINGS = {
   },
 
   model: {
-    provider: "",
-    model: ""
+    provider: "deepseek",
+    model: "deepseek-chat",
+    baseURL: "https://api.deepseek.com",
+    temperature: 0.7,
+    maxOutputTokens: 2048,
+    timeoutMs: 120000
   }
 };
 

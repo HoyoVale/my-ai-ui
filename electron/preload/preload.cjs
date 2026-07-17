@@ -52,6 +52,30 @@ const CHANNELS = Object.freeze({
   RESPONSE_SIDE_CHANGED:
     "response-side-changed",
 
+  AGENT_SEND_MESSAGE:
+    "agent-send-message",
+
+  AGENT_STOP:
+    "agent-stop",
+
+  AGENT_GET_STATUS:
+    "agent-get-status",
+
+  AGENT_STATUS_CHANGED:
+    "agent-status-changed",
+
+  AGENT_GET_CREDENTIAL_STATUS:
+    "agent-get-credential-status",
+
+  AGENT_SET_API_KEY:
+    "agent-set-api-key",
+
+  AGENT_CLEAR_API_KEY:
+    "agent-clear-api-key",
+
+  AGENT_TEST_CONNECTION:
+    "agent-test-connection",
+
   SETTINGS_GET:
     "settings-get",
 
@@ -271,6 +295,74 @@ const api = Object.freeze({
         side === "left"
           ? "left"
           : "right"
+    );
+  },
+
+  sendAgentMessage: (
+    content
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .AGENT_SEND_MESSAGE,
+      String(content ?? "")
+    );
+  },
+
+  stopAgent: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_STOP
+    );
+  },
+
+  getAgentStatus: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .AGENT_GET_STATUS
+    );
+  },
+
+  onAgentStatusChanged: (
+    callback
+  ) => {
+    return subscribe(
+      CHANNELS
+        .AGENT_STATUS_CHANGED,
+      callback,
+      (status) => status
+    );
+  },
+
+  getModelCredentialStatus: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .AGENT_GET_CREDENTIAL_STATUS
+    );
+  },
+
+  setModelApiKey: (
+    apiKey
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .AGENT_SET_API_KEY,
+      String(apiKey ?? "")
+    );
+  },
+
+  clearModelApiKey: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .AGENT_CLEAR_API_KEY
+    );
+  },
+
+  testModelConnection: (
+    modelSettings
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .AGENT_TEST_CONNECTION,
+      modelSettings
     );
   },
 

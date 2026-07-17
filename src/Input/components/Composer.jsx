@@ -5,6 +5,9 @@ export function InputComposer({
   value,
   placeholder,
   canSend,
+  isRunning,
+  isStopping,
+  disabled,
   onChange,
   onKeyDown,
   onSend,
@@ -24,6 +27,7 @@ export function InputComposer({
         rows={1}
         placeholder={placeholder}
         value={value}
+        aria-busy={disabled}
         onChange={(event) => {
           onChange(
             event.target.value
@@ -34,33 +38,63 @@ export function InputComposer({
       />
 
       <button
-        className="input-bar__send"
+        className={
+          `input-bar__send${
+            isRunning
+              ? " is-running"
+              : ""
+          }`
+        }
         type="button"
         onClick={onSend}
-        disabled={!canSend}
-        title="Send"
-        aria-label="Send"
+        disabled={
+          !canSend ||
+          disabled
+        }
+        title={
+          isRunning
+            ? "Stop"
+            : "Send"
+        }
+        aria-label={
+          isRunning
+            ? "Stop generation"
+            : "Send"
+        }
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <line
-            x1="22"
-            y1="2"
-            x2="11"
-            y2="13"
+        {isRunning ? (
+          <span
+            className={
+              `input-bar__stop-icon${
+                isStopping
+                  ? " is-stopping"
+                  : ""
+              }`
+            }
+            aria-hidden="true"
           />
+        ) : (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <line
+              x1="22"
+              y1="2"
+              x2="11"
+              y2="13"
+            />
 
-          <polygon points="22 2 15 22 11 13 2 9 22 2" />
-        </svg>
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        )}
       </button>
 
       <button

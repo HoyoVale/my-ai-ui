@@ -43,6 +43,7 @@ export class ResponseWindowController {
     this.ready = false;
     this.streamActive = false;
     this.dismissed = false;
+    this.hasContent = false;
 
     this.pendingMessages = [];
 
@@ -145,7 +146,16 @@ export class ResponseWindowController {
         alwaysOnTop:
           settings
             .response
-            .alwaysOnTop
+            .alwaysOnTop,
+
+        /*
+         * Response 经常处于隐藏状态。
+         * 禁止后台节流，确保隐藏后仍能及时处理下一次流式 IPC。
+         */
+        webPreferences: {
+          backgroundThrottling:
+            false
+        }
       });
 
     this.ready = false;
@@ -181,6 +191,8 @@ export class ResponseWindowController {
 
             this.currentSide
           );
+
+          this.revealForStream();
         }
       );
 
@@ -337,10 +349,34 @@ export class ResponseWindowController {
 
     this.streamActive = true;
     this.dismissed = false;
+    this.hasContent = false;
+
+    /*
+     * 每次新回复都从最小逻辑尺寸开始。
+     * Renderer 随文本增长再上报真实尺寸，
+     * 避免沿用上一条长回复的大窗口。
+     */
+    const settings =
+      getSettings();
+
+    const metrics =
+      getResponseMetrics(
+        settings
+      );
+
+    this.logicalWidth =
+      metrics.minWidth;
+
+    this.logicalHeight =
+      metrics.minHeight;
 
     if (window.isVisible()) {
       window.hide();
     }
+
+    this.applyBounds(
+      settings
+    );
 
     this.send(
       IPC_CHANNELS
@@ -366,6 +402,8 @@ export class ResponseWindowController {
       this.startStream();
     }
 
+    this.hasContent = true;
+
     this.send(
       IPC_CHANNELS
         .response
@@ -373,6 +411,13 @@ export class ResponseWindowController {
 
       String(chunk)
     );
+
+    /*
+     * 不再等待隐藏 Renderer 的 ResizeObserver 才显示窗口。
+     * 隐藏窗口中的 requestAnimationFrame 可能被 Chromium 节流，
+     * 因而第二条回复永远无法触发 resize IPC。
+     */
+    this.revealForStream();
   }
 
   endStream() {
@@ -397,6 +442,7 @@ export class ResponseWindowController {
     this.clearAutoClose();
 
     this.streamActive = false;
+    this.hasContent = false;
 
     this.send(
       IPC_CHANNELS
@@ -424,6 +470,7 @@ export class ResponseWindowController {
     this.clearAutoClose();
 
     this.dismissed = true;
+    this.hasContent = false;
 
     this.send(
       IPC_CHANNELS
@@ -505,6 +552,24 @@ export class ResponseWindowController {
           message.channel,
           ...message.args
         );
+    }
+  }
+
+  revealForStream() {
+    if (
+      !this.window ||
+      this.window.isDestroyed() ||
+      !this.ready ||
+      !this.hasContent ||
+      this.dismissed
+    ) {
+      return;
+    }
+
+    this.applyBounds();
+
+    if (!this.window.isVisible()) {
+      this.window.showInactive();
     }
   }
 
@@ -685,6 +750,7 @@ export class ResponseWindowController {
     this.ready = false;
     this.streamActive = false;
     this.dismissed = false;
+    this.hasContent = false;
 
     this.pendingMessages = [];
 

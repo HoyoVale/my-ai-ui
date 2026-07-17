@@ -19,6 +19,10 @@ import {
 } from "../panels/InputPanel.jsx";
 
 import {
+  ModelPanel
+} from "../panels/ModelPanel.jsx";
+
+import {
   PetPanel
 } from "../panels/PetPanel.jsx";
 
@@ -114,9 +118,14 @@ export function SettingsContent({
     ),
 
     model: (
-      <PlaceholderPanel
-        title="Model"
-        description="后续接入模型服务、API 地址和生成参数。"
+      <ModelPanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "model",
+            patch
+          );
+        }}
       />
     ),
 

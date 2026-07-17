@@ -16,16 +16,21 @@ import {
 } from "./components/Composer.jsx";
 
 import {
+  useAgentStatus
+} from "./hooks/useAgentStatus.js";
+
+import {
   useInputWindowResize
 } from "./hooks/useInputWindowResize.js";
 
 import "./Input.css";
 
 export default function Input() {
-  const [
-    value,
-    setValue
-  ] = useState("");
+  const [value, setValue] =
+    useState("");
+
+  const [submitting, setSubmitting] =
+    useState(false);
 
   const textareaRef =
     useRef(null);
@@ -40,6 +45,11 @@ export default function Input() {
         .theme
     );
 
+  const {
+    status,
+    isRunning
+  } = useAgentStatus();
+
   const inputSettings =
     settings.input;
 
@@ -50,25 +60,61 @@ export default function Input() {
       inputSettings
   });
 
-  const handleSend = () => {
-    const message =
-      value.trim();
+  const handleSend = async () => {
+    if (isRunning) {
+      await window.api
+        ?.stopAgent?.();
 
-    if (!message) {
       return;
     }
 
-    // TODO: 后续接入正式模型请求 IPC。
-    console.log(
-      "Send message:",
-      message
-    );
+    const message =
+      value.trim();
 
-    setValue("");
+    if (
+      !message ||
+      submitting
+    ) {
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const result =
+        await window.api
+          ?.sendAgentMessage?.(
+            message
+          );
+
+      if (result?.ok) {
+        setValue("");
+      } else if (
+        result?.message
+      ) {
+        console.warn(
+          result.message
+        );
+      }
+    } catch (error) {
+      console.error(
+        "发送消息失败：",
+        error
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleKeyDown =
     (event) => {
+      if (
+        isRunning ||
+        submitting
+      ) {
+        return;
+      }
+
       if (
         event.key === "Enter" &&
         !event.shiftKey &&
@@ -77,7 +123,7 @@ export default function Input() {
           ?.isComposing
       ) {
         event.preventDefault();
-        handleSend();
+        void handleSend();
       }
     };
 
@@ -119,28 +165,31 @@ export default function Input() {
             .appearance
             .accentColor
       }}
-      textareaRef={
-        textareaRef
-      }
+      textareaRef={textareaRef}
       value={value}
       placeholder={
-        inputSettings
-          .placeholder
+        isRunning
+          ? "正在生成回复…"
+          : inputSettings
+              .placeholder
       }
       canSend={
+        isRunning ||
         Boolean(
           value.trim()
         )
       }
-      onChange={
-        setValue
+      isRunning={isRunning}
+      isStopping={
+        status.state ===
+        "stopping"
       }
-      onKeyDown={
-        handleKeyDown
-      }
-      onSend={
-        handleSend
-      }
+      disabled={submitting}
+      onChange={setValue}
+      onKeyDown={handleKeyDown}
+      onSend={() => {
+        void handleSend();
+      }}
       onClose={() => {
         window.api
           ?.closeWindow?.();
