@@ -16,12 +16,44 @@ function getCredentialPath() {
   );
 }
 
+function normalizeRecord(source) {
+  if (
+    source?.version === 2 &&
+    source.credentials &&
+    typeof source.credentials ===
+      "object"
+  ) {
+    return source;
+  }
+
+  if (source?.data) {
+    return {
+      version: 2,
+      credentials: {
+        deepseek: {
+          mode:
+            source.mode ??
+            "plain-text",
+          data: source.data
+        }
+      }
+    };
+  }
+
+  return {
+    version: 2,
+    credentials: {}
+  };
+}
+
 function readCredentialRecord() {
   try {
-    return JSON.parse(
-      fs.readFileSync(
-        getCredentialPath(),
-        "utf8"
+    return normalizeRecord(
+      JSON.parse(
+        fs.readFileSync(
+          getCredentialPath(),
+          "utf8"
+        )
       )
     );
   } catch (error) {
@@ -32,20 +64,16 @@ function readCredentialRecord() {
       );
     }
 
-    return null;
+    return normalizeRecord(null);
   }
 }
 
-function writeCredentialRecord(
-  record
-) {
+function writeCredentialRecord(record) {
   const credentialPath =
     getCredentialPath();
 
   fs.mkdirSync(
-    path.dirname(
-      credentialPath
-    ),
+    path.dirname(credentialPath),
     {
       recursive: true
     }
@@ -54,7 +82,7 @@ function writeCredentialRecord(
   fs.writeFileSync(
     credentialPath,
     JSON.stringify(
-      record,
+      normalizeRecord(record),
       null,
       2
     ),
@@ -65,19 +93,13 @@ function writeCredentialRecord(
   );
 }
 
-function readStoredApiKey() {
-  const record =
-    readCredentialRecord();
-
-  if (!record?.data) {
+function decryptEntry(entry) {
+  if (!entry?.data) {
     return "";
   }
 
   try {
-    if (
-      record.mode ===
-      "safe-storage"
-    ) {
+    if (entry.mode === "safe-storage") {
       if (
         !safeStorage
           .isEncryptionAvailable()
@@ -87,19 +109,14 @@ function readStoredApiKey() {
 
       return safeStorage.decryptString(
         Buffer.from(
-          record.data,
+          entry.data,
           "base64"
         )
       );
     }
 
-    if (
-      record.mode ===
-      "plain-text"
-    ) {
-      return String(
-        record.data
-      );
+    if (entry.mode === "plain-text") {
+      return String(entry.data);
     }
   } catch (error) {
     console.warn(
@@ -111,27 +128,65 @@ function readStoredApiKey() {
   return "";
 }
 
-export function getModelApiKey() {
-  const stored =
-    readStoredApiKey().trim();
+function readStoredApiKey(providerId) {
+  const record =
+    readCredentialRecord();
 
-  if (stored) {
-    return stored;
-  }
-
-  return String(
-    process.env
-      .DEEPSEEK_API_KEY ??
-    ""
+  return decryptEntry(
+    record.credentials[
+      String(providerId ?? "")
+    ]
   ).trim();
 }
 
-export function setModelApiKey(
-  value
+function readEnvironmentApiKey(
+  environmentKey
 ) {
-  const apiKey =
-    String(value ?? "")
+  const key = String(
+    environmentKey ?? ""
+  )
+    .trim()
+    .replace(/[^A-Z0-9_]/gi, "")
+    .toUpperCase();
+
+  if (!key) {
+    return "";
+  }
+
+  return String(
+    process.env[key] ?? ""
+  ).trim();
+}
+
+export function getProviderApiKey({
+  providerId,
+  environmentKey
+} = {}) {
+  return (
+    readStoredApiKey(providerId) ||
+    readEnvironmentApiKey(
+      environmentKey
+    )
+  );
+}
+
+export function setProviderApiKey(
+  providerId,
+  value,
+  environmentKey = ""
+) {
+  const normalizedProviderId =
+    String(providerId ?? "")
       .trim();
+
+  const apiKey = String(value ?? "")
+    .trim();
+
+  if (!normalizedProviderId) {
+    throw new Error(
+      "提供商 ID 不能为空。"
+    );
+  }
 
   if (!apiKey) {
     throw new Error(
@@ -139,87 +194,173 @@ export function setModelApiKey(
     );
   }
 
+  const record =
+    readCredentialRecord();
+
   if (
     safeStorage
       .isEncryptionAvailable()
   ) {
     const encrypted =
-      safeStorage.encryptString(
-        apiKey
-      );
+      safeStorage.encryptString(apiKey);
 
-    writeCredentialRecord({
-      version: 1,
+    record.credentials[
+      normalizedProviderId
+    ] = {
       mode: "safe-storage",
-      data:
-        encrypted.toString(
-          "base64"
-        )
-    });
+      data: encrypted.toString(
+        "base64"
+      )
+    };
   } else {
-    /*
-     * 极少数 Linux 环境可能没有可用的系统密钥服务。
-     * 保留可运行回退，同时在状态中明确标记未受保护。
-     */
-    writeCredentialRecord({
-      version: 1,
+    record.credentials[
+      normalizedProviderId
+    ] = {
       mode: "plain-text",
       data: apiKey
-    });
+    };
   }
 
-  return getModelCredentialStatus();
+  writeCredentialRecord(record);
+
+  return getProviderCredentialStatus({
+    providerId:
+      normalizedProviderId,
+    environmentKey
+  });
 }
 
-export function clearModelApiKey() {
-  try {
-    fs.rmSync(
-      getCredentialPath(),
-      {
-        force: true
-      }
-    );
-  } catch (error) {
-    console.warn(
-      "删除模型凭据失败：",
-      error
-    );
-  }
+export function clearProviderApiKey(
+  providerId,
+  environmentKey = ""
+) {
+  const normalizedProviderId =
+    String(providerId ?? "")
+      .trim();
 
-  return getModelCredentialStatus();
-}
-
-export function getModelCredentialStatus() {
   const record =
     readCredentialRecord();
 
-  if (readStoredApiKey()) {
+  delete record.credentials[
+    normalizedProviderId
+  ];
+
+  if (
+    Object.keys(
+      record.credentials
+    ).length === 0
+  ) {
+    try {
+      fs.rmSync(
+        getCredentialPath(),
+        {
+          force: true
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "删除模型凭据失败：",
+        error
+      );
+    }
+  } else {
+    writeCredentialRecord(record);
+  }
+
+  return getProviderCredentialStatus({
+    providerId:
+      normalizedProviderId,
+    environmentKey
+  });
+}
+
+export function getProviderCredentialStatus({
+  providerId,
+  environmentKey
+} = {}) {
+  const normalizedProviderId =
+    String(providerId ?? "")
+      .trim();
+
+  const record =
+    readCredentialRecord();
+
+  const entry =
+    record.credentials[
+      normalizedProviderId
+    ];
+
+  if (decryptEntry(entry).trim()) {
     return {
+      providerId:
+        normalizedProviderId,
       configured: true,
       source: "saved",
       protected:
-        record?.mode ===
+        entry?.mode ===
         "safe-storage"
     };
   }
 
   if (
-    String(
-      process.env
-        .DEEPSEEK_API_KEY ??
-      ""
-    ).trim()
+    readEnvironmentApiKey(
+      environmentKey
+    )
   ) {
     return {
+      providerId:
+        normalizedProviderId,
       configured: true,
       source: "environment",
-      protected: false
+      protected: false,
+      environmentKey:
+        String(
+          environmentKey ?? ""
+        )
     };
   }
 
   return {
+    providerId:
+      normalizedProviderId,
     configured: false,
     source: "none",
-    protected: false
+    protected: false,
+    environmentKey:
+      String(
+        environmentKey ?? ""
+      )
   };
+}
+
+/* Backward-compatible helpers for older callers. */
+export function getModelApiKey() {
+  return getProviderApiKey({
+    providerId: "deepseek",
+    environmentKey:
+      "DEEPSEEK_API_KEY"
+  });
+}
+
+export function setModelApiKey(value) {
+  return setProviderApiKey(
+    "deepseek",
+    value,
+    "DEEPSEEK_API_KEY"
+  );
+}
+
+export function clearModelApiKey() {
+  return clearProviderApiKey(
+    "deepseek",
+    "DEEPSEEK_API_KEY"
+  );
+}
+
+export function getModelCredentialStatus() {
+  return getProviderCredentialStatus({
+    providerId: "deepseek",
+    environmentKey:
+      "DEEPSEEK_API_KEY"
+  });
 }

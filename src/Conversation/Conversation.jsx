@@ -35,6 +35,10 @@ import {
   useResolvedTheme
 } from "../shared/hooks/useResolvedTheme.js";
 
+import {
+  getWindowTypographyStyle
+} from "../shared/typography.js";
+
 import "./Conversation.css";
 
 export default function Conversation() {
@@ -166,6 +170,11 @@ export default function Conversation() {
       className={rootClassName}
       data-testid="conversation-window"
       style={{
+        ...getWindowTypographyStyle(
+          settings,
+          "conversation"
+        ),
+
         "--conversation-accent":
           settings
             .appearance

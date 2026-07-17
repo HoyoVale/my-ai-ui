@@ -25,17 +25,9 @@
   border-radius: 16px;
   color: var(--conversation-text);
   background: var(--conversation-bg);
-  font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "PingFang SC",
-    "Microsoft YaHei",
-    sans-serif;
-  font-size: 14px;
-  line-height: 1.55;
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size);
+  line-height: var(--app-line-height);
   -webkit-font-smoothing: antialiased;
   color-scheme: light;
 }
@@ -1247,4 +1239,75 @@
   .conversation-message--user .conversation-message__content {
     max-width: 86%;
   }
+}
+
+.context-budget-card__worst {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--conversation-soft);
+  background: var(--conversation-soft-surface);
+  font-size: 10px;
+}
+
+.context-budget-card__worst strong {
+  color: var(--conversation-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.context-budget-card__worst small {
+  color: var(--conversation-faint);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.context-budget-card__worst em {
+  color: var(--conversation-faint);
+  font-size: 9px;
+  font-style: normal;
+}
+
+/* Shared typography and per-window density */
+.conversation-sidebar {
+  padding:
+    calc(20px * var(--app-density-factor))
+    10px
+    calc(10px * var(--app-density-factor));
+}
+
+.conversation-messages__canvas {
+  padding:
+    calc(44px * var(--app-density-factor))
+    0
+    calc(72px * var(--app-density-factor));
+}
+
+.conversation-message {
+  margin-bottom:
+    calc(30px * var(--app-density-factor));
+}
+
+.conversation-message__body,
+.conversation-message__body .markdown-content {
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size);
+  line-height: var(--app-line-height);
+}
+
+.conversation-message--user .conversation-message__body {
+  padding:
+    calc(10px * var(--app-density-factor))
+    calc(14px * var(--app-density-factor));
+}
+
+.conversation-context__scroll {
+  gap:
+    calc(22px * var(--app-density-factor));
+  padding:
+    calc(18px * var(--app-density-factor));
 }

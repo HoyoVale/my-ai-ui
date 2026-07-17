@@ -44,7 +44,9 @@
     outputReserve,
     contextTokenBudget,
     remaining,
-    usageRatio,
+    availableTokens,
+    currentInputRatio,
+    worstCaseRatio,
     inputUsageRatio,
     sections: [
       {
@@ -59,8 +61,11 @@
 }
 ```
 
-- `usageRatio`：预计总占用占上下文上限
-- `inputUsageRatio`：输入 Token 占可用输入预算
+- `currentInputRatio`：当前输入 Token 占模型上下文上限，作为主进度条
+- `worstCaseRatio`：当前输入加最大输出预留占上下文上限
+- `availableTokens`：上下文上限减去当前输入后的空间
+- `inputUsageRatio`：输入 Token 占扣除输出预留后的可用输入预算
+- `usageRatio`：保留的兼容字段，等于 `worstCaseRatio`
 - `inputShareRatio`：该组成部分占当前输入 Token
 - `budgetShareRatio`：该组成部分占上下文总上限
 

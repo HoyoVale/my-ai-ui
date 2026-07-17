@@ -183,52 +183,9 @@ export function ResponsePanel({
       </SettingsSection>
 
       <SettingsSection
-        title="文字与外观"
-        description="调整回复气泡的阅读体验。"
+        title="窗口外观"
+        description="字体与密度已统一移动到 Appearance。"
       >
-        <SettingRow
-          title="字号"
-          description="回复正文使用的字体大小。"
-        >
-          <Slider
-            value={
-              response.fontSize
-            }
-            min={10}
-            max={28}
-            step={1}
-            unit=" px"
-            onChange={(value) => {
-              onUpdate({
-                fontSize: value
-              });
-            }}
-          />
-        </SettingRow>
-
-        <SettingRow
-          title="行高"
-          description="控制多行文本之间的垂直间距。"
-        >
-          <Slider
-            value={
-              response.lineHeight
-            }
-            min={1.1}
-            max={2.4}
-            step={0.05}
-            formatValue={(value) =>
-              value.toFixed(2)
-            }
-            onChange={(value) => {
-              onUpdate({
-                lineHeight:
-                  value
-              });
-            }}
-          />
-        </SettingRow>
-
         <SettingRow
           title="背景不透明度"
           description="降低后可看到气泡后方内容。"

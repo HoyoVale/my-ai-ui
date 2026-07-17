@@ -415,27 +415,33 @@ const api = Object.freeze({
     );
   },
 
-  getModelCredentialStatus: () => {
+  getModelCredentialStatus: (
+    descriptor = {}
+  ) => {
     return ipcRenderer.invoke(
       CHANNELS
-        .AGENT_GET_CREDENTIAL_STATUS
+        .AGENT_GET_CREDENTIAL_STATUS,
+      descriptor
     );
   },
 
   setModelApiKey: (
-    apiKey
+    descriptor = {}
   ) => {
     return ipcRenderer.invoke(
       CHANNELS
         .AGENT_SET_API_KEY,
-      String(apiKey ?? "")
+      descriptor
     );
   },
 
-  clearModelApiKey: () => {
+  clearModelApiKey: (
+    descriptor = {}
+  ) => {
     return ipcRenderer.invoke(
       CHANNELS
-        .AGENT_CLEAR_API_KEY
+        .AGENT_CLEAR_API_KEY,
+      descriptor
     );
   },
 

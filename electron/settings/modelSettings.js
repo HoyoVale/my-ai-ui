@@ -1,30 +1,17 @@
-const FALLBACK_PROVIDER = {
-  id: "deepseek",
-  type: "deepseek",
-  name: "DeepSeek",
-  baseURL: "https://api.deepseek.com",
-  activeModelId: "deepseek-v4-flash",
-  models: [
-    {
-      id: "deepseek-v4-flash",
-      name: "DeepSeek V4 Flash",
-      modelId: "deepseek-v4-flash",
-      contextTokenBudget: 1000000,
-      temperature: 0.7,
-      maxOutputTokens: 32768,
-      timeoutMs: 120000
-    }
-  ]
-};
+import {
+  PROVIDER_DEFAULTS
+} from "./providerDefaults.js";
+
+const FALLBACK_PROVIDER =
+  PROVIDER_DEFAULTS.deepseek;
 
 export function getActiveProviderConfig(
   modelSettings = {}
 ) {
-  const providerId =
-    String(
-      modelSettings.activeProvider ??
+  const providerId = String(
+    modelSettings.activeProvider ??
       "deepseek"
-    );
+  );
 
   const providers =
     modelSettings.providers ?? {};
@@ -57,12 +44,11 @@ export function getActiveModelConfig(
       ? provider.models
       : [];
 
-  const model =
-    models.find(
-      (item) =>
-        item.id ===
-        provider.activeModelId
-    ) ?? models[0];
+  const model = models.find(
+    (item) =>
+      item.id ===
+      provider.activeModelId
+  ) ?? models[0];
 
   if (!model) {
     throw new Error(
@@ -95,17 +81,20 @@ export function resolveActiveModelSettings(
     providerName:
       provider.name ?? providerId,
     baseURL: provider.baseURL,
+    credentialMode:
+      provider.credentialMode ??
+      "required",
+    environmentKey:
+      provider.environmentKey ?? "",
     modelConfigId: model.id,
     modelName:
       model.name ?? model.modelId,
     model: model.modelId,
     contextTokenBudget:
       model.contextTokenBudget,
-    temperature:
-      model.temperature,
+    temperature: model.temperature,
     maxOutputTokens:
       model.maxOutputTokens,
-    timeoutMs:
-      model.timeoutMs
+    timeoutMs: model.timeoutMs
   };
 }

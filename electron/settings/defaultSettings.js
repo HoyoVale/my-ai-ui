@@ -1,3 +1,7 @@
+import {
+  cloneProviderDefaults
+} from "./providerDefaults.js";
+
 export const DEFAULT_SETTINGS = {
   general: {
     launchAtLogin: false,
@@ -28,16 +32,12 @@ export const DEFAULT_SETTINGS = {
     gap: 12,
     anchorRatio: 0.16,
     preferredSide: "auto",
-
     bubbleMaxWidth: 420,
     contentMaxHeight: 240,
-
     fontSize: 14,
     lineHeight: 1.55,
-
     backgroundOpacity: 0.97,
     borderRadius: 16,
-
     alwaysOnTop: true,
     autoCloseSeconds: 0
   },
@@ -45,7 +45,41 @@ export const DEFAULT_SETTINGS = {
   appearance: {
     theme: "system",
     accentColor: "#10a37f",
-    reducedMotion: false
+    reducedMotion: false,
+    fontFamily: "system",
+    customFontFamily: "",
+    typography: {
+      pet: {
+        fontSize: 13,
+        lineHeight: 1.4,
+        density: "comfortable"
+      },
+      input: {
+        fontSize: 14,
+        lineHeight: 1.45,
+        density: "comfortable"
+      },
+      response: {
+        fontSize: 14,
+        lineHeight: 1.55,
+        density: "comfortable"
+      },
+      conversation: {
+        fontSize: 15,
+        lineHeight: 1.72,
+        density: "comfortable"
+      },
+      memory: {
+        fontSize: 14,
+        lineHeight: 1.55,
+        density: "comfortable"
+      },
+      setting: {
+        fontSize: 14,
+        lineHeight: 1.5,
+        density: "comfortable"
+      }
+    }
   },
 
   personality: {
@@ -57,7 +91,6 @@ export const DEFAULT_SETTINGS = {
     responseLength: "balanced",
     customInstructions: ""
   },
-
 
   conversation: {
     contextTurns: 8,
@@ -74,37 +107,7 @@ export const DEFAULT_SETTINGS = {
 
   model: {
     activeProvider: "deepseek",
-
-    providers: {
-      deepseek: {
-        id: "deepseek",
-        type: "deepseek",
-        name: "DeepSeek",
-        baseURL: "https://api.deepseek.com",
-        activeModelId: "deepseek-v4-flash",
-
-        models: [
-          {
-            id: "deepseek-v4-flash",
-            name: "DeepSeek V4 Flash",
-            modelId: "deepseek-v4-flash",
-            contextTokenBudget: 1000000,
-            temperature: 0.7,
-            maxOutputTokens: 32768,
-            timeoutMs: 120000
-          },
-          {
-            id: "deepseek-v4-pro",
-            name: "DeepSeek V4 Pro",
-            modelId: "deepseek-v4-pro",
-            contextTokenBudget: 1000000,
-            temperature: 0.7,
-            maxOutputTokens: 32768,
-            timeoutMs: 120000
-          }
-        ]
-      }
-    }
+    providers: cloneProviderDefaults()
   }
 };
 

@@ -43,12 +43,9 @@ import {
 } from "../windows/response/index.js";
 
 import {
-  createConfiguredModel
+  createConfiguredModel,
+  getCredentialError
 } from "./modelFactory.js";
-
-import {
-  getModelApiKey
-} from "./credentialStore.js";
 
 import {
   formatAgentError,
@@ -61,6 +58,24 @@ import {
 } from "./e2eAgentDriver.js";
 
 
+
+
+function getActiveCredentialError() {
+  try {
+    const modelSettings =
+      resolveActiveModelSettings(
+        getSettings().model
+      );
+
+    return getCredentialError(
+      modelSettings
+    );
+  } catch (error) {
+    return error instanceof Error
+      ? error.message
+      : String(error);
+  }
+}
 
 function cloneStatus(status) {
   return {
@@ -110,12 +125,14 @@ export class AgentRuntime {
       };
     }
 
-    if (
-      !isE2EMode() &&
-      !getModelApiKey()
-    ) {
+    const credentialError =
+      isE2EMode()
+        ? null
+        : getActiveCredentialError();
+
+    if (credentialError) {
       const errorMessage =
-        "尚未配置 DeepSeek API Key。请先在 Setting → Model 中保存密钥。";
+        credentialError;
 
       startResponseStream();
       appendResponseChunk(
@@ -268,15 +285,16 @@ export class AgentRuntime {
       };
     }
 
-    if (
-      !isE2EMode() &&
-      !getModelApiKey()
-    ) {
+    const credentialError =
+      isE2EMode()
+        ? null
+        : getActiveCredentialError();
+
+    if (credentialError) {
       return {
         ok: false,
         code: "missing-api-key",
-        message:
-          "尚未配置 DeepSeek API Key。"
+        message: credentialError
       };
     }
 

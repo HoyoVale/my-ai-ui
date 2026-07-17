@@ -944,6 +944,14 @@ async function main() {
 
     await setting
       .locator(
+        '[data-testid="model-provider-select"]'
+      )
+      .selectOption("ollama");
+
+    await delay(250);
+
+    await setting
+      .locator(
         '[data-testid="model-add"]'
       )
       .click();
@@ -990,6 +998,39 @@ async function main() {
       sendButton,
       "aria-label",
       "Send"
+    );
+
+    await setting.bringToFront();
+
+    await setting
+      .locator(
+        '[data-testid="setting-tab-appearance"]'
+      )
+      .click();
+
+    await setting
+      .locator(
+        '[data-testid="appearance-font-family"]'
+      )
+      .selectOption("serif");
+
+    await delay(250);
+
+    const settingFontFamily =
+      await setting
+        .locator(".setting-shell")
+        .evaluate((element) => {
+          return element.style
+            .getPropertyValue(
+              "--app-font-family"
+            );
+        });
+
+    assert(
+      settingFontFamily.includes(
+        "Georgia"
+      ),
+      "Expected the global serif font family to apply to Setting."
     );
 
     await pet.evaluate(
@@ -1169,7 +1210,7 @@ async function main() {
     );
 
     console.log(
-      "Playwright Electron E2E passed: replies, response re-open, conversation switch, personality context, multi-model selection, LaTeX rendering, memory metadata, memory injection and memory disable."
+      "Playwright Electron E2E passed: replies, response re-open, conversation switch, personality context, provider and multi-model selection, global typography, LaTeX rendering, memory metadata, memory injection and memory disable."
     );
   } catch (error) {
     if (electronApp) {

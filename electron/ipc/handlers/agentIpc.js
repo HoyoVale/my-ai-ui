@@ -10,9 +10,9 @@ import {
 } from "../../agent/AgentRuntime.js";
 
 import {
-  clearModelApiKey,
-  getModelCredentialStatus,
-  setModelApiKey
+  clearProviderApiKey,
+  getProviderCredentialStatus,
+  setProviderApiKey
 } from "../../agent/credentialStore.js";
 
 import {
@@ -89,10 +89,12 @@ export function registerAgentIpc() {
     IPC_CHANNELS
       .agent
       .GET_CREDENTIAL_STATUS,
-    (event) => {
+    (event, descriptor = {}) => {
       requireSettingSender(event);
 
-      return getModelCredentialStatus();
+      return getProviderCredentialStatus(
+        descriptor
+      );
     }
   );
 
@@ -100,11 +102,13 @@ export function registerAgentIpc() {
     IPC_CHANNELS
       .agent
       .SET_API_KEY,
-    (event, apiKey) => {
+    (event, descriptor = {}) => {
       requireSettingSender(event);
 
-      return setModelApiKey(
-        apiKey
+      return setProviderApiKey(
+        descriptor.providerId,
+        descriptor.apiKey,
+        descriptor.environmentKey
       );
     }
   );
@@ -113,10 +117,13 @@ export function registerAgentIpc() {
     IPC_CHANNELS
       .agent
       .CLEAR_API_KEY,
-    (event) => {
+    (event, descriptor = {}) => {
       requireSettingSender(event);
 
-      return clearModelApiKey();
+      return clearProviderApiKey(
+        descriptor.providerId,
+        descriptor.environmentKey
+      );
     }
   );
 

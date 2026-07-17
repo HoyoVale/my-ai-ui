@@ -22,14 +22,16 @@ const CONTEXT_OPTIONS = [
   32768,
   64000,
   128000,
+  200000,
   256000,
   512000,
-  1000000
+  1000000,
+  2000000
 ].map((value) => ({
   value,
   label:
     value >= 1000000
-      ? "1M"
+      ? `${value / 1000000}M`
       : `${Math.round(value / 1000)}K`
 }));
 
@@ -51,23 +53,50 @@ const OUTPUT_OPTIONS = [
       : `${Math.round(value / 1024)}K`
 }));
 
+const CREDENTIAL_OPTIONS = [
+  {
+    value: "required",
+    label: "必须"
+  },
+  {
+    value: "optional",
+    label: "可选"
+  },
+  {
+    value: "none",
+    label: "不使用"
+  }
+];
+
 function credentialDescription(
+  provider,
   status,
   loading
 ) {
+  if (
+    provider.credentialMode ===
+    "none"
+  ) {
+    return "该提供商不会发送 API Key。";
+  }
+
   if (loading) {
     return "正在读取凭据状态…";
   }
 
   if (!status.configured) {
-    return "尚未保存 API Key。密钥不会广播到其他渲染窗口。";
+    if (
+      provider.credentialMode ===
+      "optional"
+    ) {
+      return "API Key 可选；适用于本地 Ollama、LM Studio 等无需鉴权的服务。";
+    }
+
+    return "尚未保存 API Key。密钥只保存在主进程凭据存储中。";
   }
 
-  if (
-    status.source ===
-    "environment"
-  ) {
-    return "当前使用 .env 中的 DEEPSEEK_API_KEY。";
+  if (status.source === "environment") {
+    return `当前使用环境变量 ${status.environmentKey || provider.environmentKey}。`;
   }
 
   if (status.protected) {
@@ -83,6 +112,37 @@ function createModelId() {
     .slice(2, 7)}`;
 }
 
+function createModelTemplate(
+  provider
+) {
+  const source =
+    provider.models[0];
+
+  return {
+    id: createModelId(),
+    name: "新模型",
+    modelId:
+      provider.id === "ollama"
+        ? "gemma3"
+        : source?.modelId ??
+          "model-id",
+    contextTokenBudget:
+      source?.contextTokenBudget ??
+      64000,
+    temperature:
+      source?.temperature ?? 0.7,
+    maxOutputTokens:
+      Math.min(
+        source?.maxOutputTokens ??
+          8192,
+        source?.contextTokenBudget ??
+          64000
+      ),
+    timeoutMs:
+      source?.timeoutMs ?? 120000
+  };
+}
+
 export function ModelPanel({
   settings,
   onUpdate
@@ -96,19 +156,24 @@ export function ModelPanel({
   const provider =
     modelSettings.providers[
       providerId
-    ];
+    ] ??
+    Object.values(
+      modelSettings.providers
+    )[0];
 
-  const activeModel =
-    useMemo(() => {
+  const activeModel = useMemo(
+    () => {
       return provider.models.find(
         (item) =>
           item.id ===
           provider.activeModelId
       ) ?? provider.models[0];
-    }, [
+    },
+    [
       provider.activeModelId,
       provider.models
-    ]);
+    ]
+  );
 
   const [apiKey, setApiKey] =
     useState("");
@@ -127,7 +192,7 @@ export function ModelPanel({
     loading,
     saveApiKey,
     clearApiKey
-  } = useModelCredentials();
+  } = useModelCredentials(provider);
 
   const updateProvider =
     (patch) => {
@@ -160,23 +225,14 @@ export function ModelPanel({
     };
 
   const handleAddModel = () => {
-    const id = createModelId();
+    const model =
+      createModelTemplate(provider);
 
     updateProvider({
-      activeModelId: id,
+      activeModelId: model.id,
       models: [
         ...provider.models,
-        {
-          id,
-          name: "新模型",
-          modelId:
-            "deepseek-v4-flash",
-          contextTokenBudget:
-            1000000,
-          temperature: 0.7,
-          maxOutputTokens: 32768,
-          timeoutMs: 120000
-        }
+        model
       ]
     });
 
@@ -209,123 +265,117 @@ export function ModelPanel({
   const handleSaveApiKey =
     async () => {
       if (!apiKey.trim()) {
-        setCredentialAction(
-          "empty"
-        );
+        setCredentialAction("empty");
         return;
       }
 
-      setCredentialAction(
-        "saving"
-      );
+      setCredentialAction("saving");
 
       try {
         await saveApiKey(apiKey);
         setApiKey("");
-        setCredentialAction(
-          "saved"
-        );
+        setCredentialAction("saved");
       } catch (error) {
         console.error(
           "保存 API Key 失败：",
           error
         );
-        setCredentialAction(
-          "error"
-        );
+        setCredentialAction("error");
       }
     };
 
   const handleClearApiKey =
     async () => {
-      setCredentialAction(
-        "saving"
-      );
+      setCredentialAction("saving");
 
       try {
         await clearApiKey();
         setApiKey("");
-        setCredentialAction(
-          "cleared"
-        );
+        setCredentialAction("cleared");
       } catch (error) {
         console.error(
           "清除 API Key 失败：",
           error
         );
-        setCredentialAction(
-          "error"
-        );
+        setCredentialAction("error");
       }
     };
 
-  const handleTest =
-    async () => {
-      setTesting(true);
-      setTestResult(null);
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
 
-      try {
-        const result =
-          await window.api
-            ?.testModelConnection?.(
-              modelSettings
-            );
+    try {
+      const result =
+        await window.api
+          ?.testModelConnection?.(
+            modelSettings
+          );
 
-        setTestResult(
-          result ?? {
-            ok: false,
-            message:
-              "未收到测试结果。"
-          }
-        );
-      } catch (error) {
-        setTestResult({
+      setTestResult(
+        result ?? {
           ok: false,
           message:
-            error instanceof Error
-              ? error.message
-              : String(error)
-        });
-      } finally {
-        setTesting(false);
-      }
-    };
+            "未收到测试结果。"
+        }
+      );
+    } catch (error) {
+      setTestResult({
+        ok: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : String(error)
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const credentialHint = {
     empty: "请输入 API Key。",
     saving: "正在保存…",
     saved: "API Key 已保存。",
-    cleared:
-      "已清除本地 API Key。",
-    error:
-      "操作失败，请查看控制台。"
+    cleared: "已清除本地 API Key。",
+    error: "操作失败，请查看控制台。"
   }[credentialAction];
+
+  const providerOptions =
+    Object.values(
+      modelSettings.providers
+    ).map((item) => ({
+      value: item.id,
+      label: item.name
+    }));
 
   return (
     <div className="settings-panel-stack">
       <SettingsSection
         title="当前模型"
-        description="一个提供商可以保存多个模型配置。这里选择的模型会用于下一次请求。"
+        description="先选择提供商，再选择该提供商下实际使用的模型。"
       >
         <SettingRow
           title="提供商"
-          description="当前阶段只启用 DeepSeek，后续提供商会复用同一套模型配置结构。"
+          description="DeepSeek 与 Anthropic 使用原生适配器；OpenAI、Ollama 和兼容服务使用 OpenAI-compatible 适配器。"
         >
           <Select
+            testId="model-provider-select"
             value={providerId}
-            options={[
-              {
-                value: "deepseek",
-                label: "DeepSeek"
-              }
-            ]}
-            onChange={() => {}}
+            options={providerOptions}
+            onChange={(activeProvider) => {
+              onUpdate({
+                activeProvider
+              });
+              setApiKey("");
+              setCredentialAction("idle");
+              setTestResult(null);
+            }}
           />
         </SettingRow>
 
         <SettingRow
           title="使用模型"
-          description={`${provider.models.length} 个已配置模型。`}
+          description="模型参数与上下文容量会随选择一起切换。"
         >
           <div className="settings-model-picker">
             <Select
@@ -374,15 +424,27 @@ export function ModelPanel({
 
       <SettingsSection
         title="提供商配置"
-        description="Base URL 和 API Key 由同一提供商下的所有模型共享。"
+        description="连接地址和凭据由当前提供商下的所有模型共享。"
       >
         <SettingRow
+          title="显示名称"
+          description="用于提供商选择器和错误提示。"
+        >
+          <TextInput
+            value={provider.name}
+            onChange={(name) => {
+              updateProvider({ name });
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow
           title="Base URL"
-          description="官方 OpenAI 兼容地址为 https://api.deepseek.com，也可填写兼容网关。"
+          description="填写 API 前缀；OpenAI-compatible 通常以 /v1 结尾。"
         >
           <TextInput
             value={provider.baseURL}
-            placeholder="https://api.deepseek.com"
+            placeholder="https://api.example.com/v1"
             onChange={(baseURL) => {
               updateProvider({
                 baseURL
@@ -393,93 +455,129 @@ export function ModelPanel({
         </SettingRow>
 
         <SettingRow
-          title="API Key"
-          description={
-            credentialHint ??
-            credentialDescription(
-              status,
-              loading
-            )
-          }
+          title="凭据模式"
+          description="本地 Ollama 等服务可设为可选或不使用。"
         >
-          <div className="settings-credential-control">
-            <TextInput
-              type="password"
-              value={apiKey}
-              placeholder={
-                status.configured
-                  ? "输入新密钥以替换"
-                  : "sk-..."
-              }
-              autoComplete="off"
-              onChange={(value) => {
-                setApiKey(value);
-                setCredentialAction(
-                  "idle"
-                );
-              }}
-            />
+          <Select
+            value={
+              provider.credentialMode
+            }
+            options={CREDENTIAL_OPTIONS}
+            onChange={(credentialMode) => {
+              updateProvider({
+                credentialMode
+              });
+              setTestResult(null);
+            }}
+          />
+        </SettingRow>
 
-            <ActionButton
-              disabled={
-                credentialAction ===
-                "saving"
-              }
-              onClick={() => {
-                void handleSaveApiKey();
-              }}
-            >
-              {status.configured
-                ? "替换"
-                : "保存"}
-            </ActionButton>
+        <SettingRow
+          title="环境变量"
+          description="没有保存本地密钥时，主进程会尝试读取该变量。留空表示不读取。"
+        >
+          <TextInput
+            value={
+              provider.environmentKey
+            }
+            placeholder="PROVIDER_API_KEY"
+            onChange={(environmentKey) => {
+              updateProvider({
+                environmentKey:
+                  environmentKey
+                    .toUpperCase()
+              });
+            }}
+          />
+        </SettingRow>
 
-            {status.configured && (
+        {provider.credentialMode !== "none" && (
+          <SettingRow
+            title="API Key"
+            description={
+              credentialHint ??
+              credentialDescription(
+                provider,
+                status,
+                loading
+              )
+            }
+          >
+            <div className="settings-credential-control">
+              <TextInput
+                type="password"
+                value={apiKey}
+                placeholder={
+                  status.configured
+                    ? "输入新密钥以替换"
+                    : "sk-..."
+                }
+                autoComplete="off"
+                onChange={(value) => {
+                  setApiKey(value);
+                  setCredentialAction("idle");
+                }}
+              />
+
               <ActionButton
-                tone="danger"
                 disabled={
                   credentialAction ===
                   "saving"
                 }
                 onClick={() => {
-                  void handleClearApiKey();
+                  void handleSaveApiKey();
                 }}
               >
-                清除
+                {status.configured
+                  ? "替换"
+                  : "保存"}
               </ActionButton>
-            )}
-          </div>
-        </SettingRow>
+
+              {status.configured && (
+                <ActionButton
+                  tone="danger"
+                  disabled={
+                    credentialAction ===
+                    "saving"
+                  }
+                  onClick={() => {
+                    void handleClearApiKey();
+                  }}
+                >
+                  清除
+                </ActionButton>
+              )}
+            </div>
+          </SettingRow>
+        )}
       </SettingsSection>
 
       <SettingsSection
         title="模型配置"
-        description="上下文上限和生成参数分别保存在当前模型中，切换模型时会一起切换。"
+        description="每个模型独立保存上下文容量与生成参数。"
       >
         <SettingRow
           title="显示名称"
-          description="只用于设置页面识别，不会发送给提供商。"
+          description="只用于本地识别，不会发送给提供商。"
         >
           <TextInput
             testId="model-display-name"
             value={activeModel.name}
-            placeholder="DeepSeek V4 Flash"
+            placeholder="模型名称"
             onChange={(name) => {
-              updateActiveModel({
-                name
-              });
+              updateActiveModel({ name });
             }}
           />
         </SettingRow>
 
         <SettingRow
           title="模型 ID"
-          description="填写 API 请求使用的实际模型名，例如 deepseek-v4-flash 或 deepseek-v4-pro。"
+          description="填写 API 请求实际使用的模型名称。"
         >
           <TextInput
             testId="model-id-input"
             value={activeModel.modelId}
-            placeholder="deepseek-v4-flash"
+            placeholder="model-id"
             onChange={(modelId) => {
               updateActiveModel({
                 modelId
@@ -491,7 +589,7 @@ export function ModelPanel({
 
         <SettingRow
           title="上下文 Token 上限"
-          description="用于上下文预算、输入剩余量和溢出提醒。该值应与实际模型规格一致。"
+          description="Context 面板会使用该容量计算当前输入占用和最坏情况预算。"
         >
           <Select
             testId="model-context-limit"
@@ -518,7 +616,7 @@ export function ModelPanel({
 
         <SettingRow
           title="最大输出 Tokens"
-          description="控制单次回复允许生成的最大长度，并作为上下文预算中的输出预留。"
+          description="作为单次生成上限，同时用于最坏情况请求预算。"
         >
           <Select
             value={
@@ -543,12 +641,10 @@ export function ModelPanel({
 
         <SettingRow
           title="Temperature"
-          description="数值越低越稳定，越高越发散。部分推理模型可能忽略该参数。"
+          description="数值越低越稳定；部分推理模型可能忽略该参数。"
         >
           <Slider
-            value={
-              activeModel.temperature
-            }
+            value={activeModel.temperature}
             min={0}
             max={2}
             step={0.1}
@@ -568,14 +664,12 @@ export function ModelPanel({
           description="超过该时间后自动终止本次请求。"
         >
           <Slider
-            value={
-              Math.round(
-                activeModel.timeoutMs /
-                1000
-              )
-            }
+            value={Math.round(
+              activeModel.timeoutMs /
+              1000
+            )}
             min={15}
-            max={300}
+            max={600}
             step={5}
             unit=" 秒"
             onChange={(seconds) => {
@@ -590,7 +684,7 @@ export function ModelPanel({
 
       <SettingsSection
         title="连接测试"
-        description="使用当前选中的模型发送一个极短请求。"
+        description="使用当前提供商与模型发送一个极短请求。"
       >
         <SettingRow
           title="测试当前模型"
@@ -599,7 +693,7 @@ export function ModelPanel({
               ? testResult.ok
                 ? `连接成功 · ${testResult.latencyMs} ms · ${testResult.text || "已响应"}`
                 : `连接失败 · ${testResult.message}`
-              : `${activeModel.name} · ${activeModel.modelId}`
+              : `${provider.name} · ${activeModel.name} · ${activeModel.modelId}`
           }
         >
           <ActionButton

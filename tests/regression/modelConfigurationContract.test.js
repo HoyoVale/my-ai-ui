@@ -68,3 +68,81 @@ describe(
     );
   }
 );
+
+
+describe(
+  "expanded provider and typography UI contract",
+  () => {
+    it(
+      "exposes OpenAI, Anthropic, Ollama and compatible provider presets",
+      () => {
+        const source =
+          read(
+            "../../electron/settings/providerDefaults.js"
+          );
+
+        for (const providerId of [
+          "openai",
+          "anthropic",
+          "ollama",
+          "compatible"
+        ]) {
+          assert.match(
+            source,
+            new RegExp(`${providerId}:`, "u")
+          );
+        }
+      }
+    );
+
+    it(
+      "uses current input as the primary Context metric",
+      () => {
+        const source =
+          read(
+            "../../src/Conversation/components/ContextInspector.jsx"
+          );
+
+        assert.match(
+          source,
+          /当前输入占用（估算）/u
+        );
+        assert.match(
+          source,
+          /currentInputRatio/u
+        );
+        assert.match(
+          source,
+          /最坏情况请求预算/u
+        );
+      }
+    );
+
+    it(
+      "keeps a global font family and per-window typography controls",
+      () => {
+        const source =
+          read(
+            "../../src/Setting/panels/AppearancePanel.jsx"
+          );
+
+        assert.match(
+          source,
+          /全局字体/u
+        );
+        assert.match(
+          source,
+          /appearance-font-family/u
+        );
+        assert.match(
+          source,
+          /窗口文字与密度/u
+        );
+        assert.match(
+          source,
+          /WINDOW_OPTIONS/u
+        );
+      }
+    );
+  }
+);

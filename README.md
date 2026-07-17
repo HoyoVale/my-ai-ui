@@ -6,14 +6,14 @@
 Input Window
   → Electron IPC
   → AgentRuntime
-  → AI SDK / DeepSeek
+  → Provider Adapter / 当前模型
   → Response Window 流式显示
 ```
 
 ## 已完成
 
 - Setting → Model 配置页
-- DeepSeek Provider、共享 Base URL 与多模型配置
+- DeepSeek、OpenAI、Anthropic、Ollama 与 OpenAI-compatible Provider
 - API Key 本地保存与状态显示
 - Temperature、最大输出 Tokens、请求超时
 - 模型连接测试
@@ -64,7 +64,7 @@ npm run electron
 
 1. 右键桌宠并打开 `Setting`。
 2. 进入 `Model`。
-3. 在 DeepSeek Provider 中添加或选择一个模型配置：
+3. 选择 Provider，并在其中添加或选择一个模型配置：
    - 显示名称
    - 实际 Model ID
    - 上下文 Token 上限
@@ -77,23 +77,30 @@ npm run electron
 也可以在项目根目录 `.env` 中配置开发环境回退：
 
 ```env
-DEEPSEEK_API_KEY=your_api_key
+DEEPSEEK_API_KEY=your_deepseek_key
+OPENAI_API_KEY=your_openai_key
+ANTHROPIC_API_KEY=your_anthropic_key
 ```
 
 Setting 中保存的密钥优先于 `.env`。
 
 ## Provider 与多模型配置
 
-当前阶段只启用 DeepSeek Provider。Provider 保存共享的 Base URL 与 API Key，每个 Provider 可以保存多个模型配置：
+内置 Provider：
 
 ```text
-DeepSeek
-├─ DeepSeek V4 Flash
-├─ DeepSeek V4 Pro
-└─ 自定义兼容模型
+DeepSeek            原生 DeepSeek Chat API
+OpenAI              OpenAI-compatible Chat Completions
+Anthropic           原生 Messages API
+Ollama              本地 OpenAI-compatible API
+OpenAI-compatible   LM Studio、LiteLLM 与自建网关
 ```
 
-每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeModelId` 决定下一次请求实际使用哪个模型。旧版单模型设置会自动迁移为一条模型配置。
+Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 共同决定下一次请求使用的模型。旧版单模型设置会自动迁移到 DeepSeek Provider。
+
+## 全局字体与窗口密度
+
+所有窗口共享一个字体族。Conversation、Response、Input、Memory、Setting 和 Pet menu 分别保存字号与密度，密度会同时调整行高和主要留白。旧版 Input/Response 字体字段会自动迁移。
 
 ## Agent 目录
 

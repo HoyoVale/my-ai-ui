@@ -22,6 +22,10 @@ import {
   useResponseStream
 } from "./hooks/useResponseStream.js";
 
+import {
+  getWindowTypographyStyle
+} from "../shared/typography.js";
+
 import "./Response.css";
 
 export default function Response() {
@@ -78,6 +82,11 @@ export default function Response() {
           .reducedMotion
       }
       style={{
+        ...getWindowTypographyStyle(
+          settings,
+          "response"
+        ),
+
         "--response-max-width":
           `${response.bubbleMaxWidth}px`,
 

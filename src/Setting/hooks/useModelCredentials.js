@@ -1,86 +1,111 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState
 } from "react";
 
 const EMPTY_STATUS = {
+  providerId: "",
   configured: false,
   source: "none",
-  protected: false
+  protected: false,
+  environmentKey: ""
 };
 
-export function useModelCredentials() {
+export function useModelCredentials(
+  provider
+) {
+  const descriptor = useMemo(
+    () => ({
+      providerId:
+        provider?.id ?? "",
+      environmentKey:
+        provider?.environmentKey ?? ""
+    }),
+    [
+      provider?.environmentKey,
+      provider?.id
+    ]
+  );
+
   const [status, setStatus] =
-    useState(
-      EMPTY_STATUS
-    );
+    useState(EMPTY_STATUS);
 
   const [loading, setLoading] =
     useState(true);
 
-  const refresh =
-    useCallback(
-      async () => {
-        setLoading(true);
+  const refresh = useCallback(
+    async () => {
+      if (!descriptor.providerId) {
+        setStatus(EMPTY_STATUS);
+        setLoading(false);
+        return;
+      }
 
-        try {
-          const value =
-            await window.api
-              ?.getModelCredentialStatus?.();
+      setLoading(true);
 
-          if (value) {
-            setStatus(value);
-          }
-        } catch (error) {
-          console.error(
-            "读取模型凭据状态失败：",
-            error
-          );
-        } finally {
-          setLoading(false);
-        }
-      },
-      []
-    );
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const saveApiKey =
-    useCallback(
-      async (apiKey) => {
+      try {
         const value =
           await window.api
-            ?.setModelApiKey?.(
-              apiKey
+            ?.getModelCredentialStatus?.(
+              descriptor
             );
 
         if (value) {
           setStatus(value);
         }
+      } catch (error) {
+        console.error(
+          "读取模型凭据状态失败：",
+          error
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [descriptor]
+  );
 
-        return value;
-      },
-      []
-    );
+  useEffect(() => {
+    setStatus(EMPTY_STATUS);
+    void refresh();
+  }, [refresh]);
 
-  const clearApiKey =
-    useCallback(
-      async () => {
-        const value =
-          await window.api
-            ?.clearModelApiKey?.();
+  const saveApiKey = useCallback(
+    async (apiKey) => {
+      const value =
+        await window.api
+          ?.setModelApiKey?.({
+            ...descriptor,
+            apiKey
+          });
 
-        if (value) {
-          setStatus(value);
-        }
+      if (value) {
+        setStatus(value);
+      }
 
-        return value;
-      },
-      []
-    );
+      return value;
+    },
+    [descriptor]
+  );
+
+  const clearApiKey = useCallback(
+    async () => {
+      const value =
+        await window.api
+          ?.clearModelApiKey?.(
+            descriptor
+          );
+
+      if (value) {
+        setStatus(value);
+      }
+
+      return value;
+    },
+    [descriptor]
+  );
 
   return {
     status,

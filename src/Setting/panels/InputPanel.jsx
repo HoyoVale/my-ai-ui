@@ -99,29 +99,9 @@ export function InputPanel({
       </SettingsSection>
 
       <SettingsSection
-        title="文字与外观"
-        description="调整输入框的可读性和视觉密度。"
+        title="窗口外观"
+        description="字体与密度已统一移动到 Appearance。"
       >
-        <SettingRow
-          title="字号"
-          description="输入文字和占位文本的字号。"
-        >
-          <Slider
-            value={
-              input.fontSize
-            }
-            min={10}
-            max={28}
-            step={1}
-            unit=" px"
-            onChange={(value) => {
-              onUpdate({
-                fontSize: value
-              });
-            }}
-          />
-        </SettingRow>
-
         <SettingRow
           title="背景不透明度"
           description="降低后可看到窗口后方内容。"

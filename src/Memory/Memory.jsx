@@ -32,6 +32,10 @@ import {
   useMemoryLibrary
 } from "./hooks/useMemoryLibrary.js";
 
+import {
+  getWindowTypographyStyle
+} from "../shared/typography.js";
+
 import "./Memory.css";
 
 function searchText(memory) {
@@ -247,6 +251,11 @@ export default function Memory() {
       }
       data-testid="memory-window"
       style={{
+        ...getWindowTypographyStyle(
+          settings,
+          "memory"
+        ),
+
         "--memory-accent":
           settings.appearance
             .accentColor

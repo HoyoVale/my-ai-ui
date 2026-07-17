@@ -301,3 +301,182 @@ describe(
     );
   }
 );
+
+
+describe(
+  "provider expansion settings validation",
+  () => {
+    it(
+      "keeps built-in providers and sanitizes a custom compatible provider",
+      () => {
+        const settings =
+          sanitizeSettings({
+            model: {
+              activeProvider: "custom-gateway",
+              providers: {
+                "custom-gateway": {
+                  id: "custom-gateway",
+                  type: "openai-compatible",
+                  name: "  Team Gateway  ",
+                  baseURL: "https://gateway.example.com/v1/",
+                  credentialMode: "optional",
+                  environmentKey: "team_gateway_key",
+                  activeModelId: "chat",
+                  models: [
+                    {
+                      id: "chat",
+                      name: "Team Chat",
+                      modelId: "team-chat",
+                      contextTokenBudget: 256000,
+                      maxOutputTokens: 16384,
+                      temperature: 0.3,
+                      timeoutMs: 90000
+                    }
+                  ]
+                }
+              }
+            }
+          });
+
+        assert.deepEqual(
+          Object.keys(
+            settings.model.providers
+          ).slice(0, 5),
+          [
+            "deepseek",
+            "openai",
+            "anthropic",
+            "ollama",
+            "compatible"
+          ]
+        );
+
+        assert.equal(
+          settings.model.activeProvider,
+          "custom-gateway"
+        );
+
+        const provider =
+          settings.model.providers[
+            "custom-gateway"
+          ];
+
+        assert.equal(
+          provider.name,
+          "Team Gateway"
+        );
+        assert.equal(
+          provider.baseURL,
+          "https://gateway.example.com/v1"
+        );
+        assert.equal(
+          provider.environmentKey,
+          "TEAM_GATEWAY_KEY"
+        );
+        assert.equal(
+          provider.models[0]
+            .contextTokenBudget,
+          256000
+        );
+      }
+    );
+  }
+);
+
+
+describe(
+  "typography settings validation",
+  () => {
+    it(
+      "uses one global font family with per-window size and density",
+      () => {
+        const settings =
+          sanitizeSettings({
+            appearance: {
+              fontFamily: "custom",
+              customFontFamily:
+                "  Atkinson Hyperlegible  ",
+              typography: {
+                conversation: {
+                  fontSize: 19,
+                  lineHeight: 1.9,
+                  density: "spacious"
+                },
+                memory: {
+                  fontSize: 9,
+                  lineHeight: 9,
+                  density: "invalid"
+                }
+              }
+            }
+          });
+
+        assert.equal(
+          settings.appearance.fontFamily,
+          "custom"
+        );
+        assert.equal(
+          settings.appearance
+            .customFontFamily,
+          "Atkinson Hyperlegible"
+        );
+        assert.deepEqual(
+          settings.appearance.typography
+            .conversation,
+          {
+            fontSize: 19,
+            lineHeight: 1.9,
+            density: "spacious"
+          }
+        );
+        assert.equal(
+          settings.appearance.typography
+            .memory.fontSize,
+          10
+        );
+        assert.equal(
+          settings.appearance.typography
+            .memory.lineHeight,
+          2.4
+        );
+        assert.equal(
+          settings.appearance.typography
+            .memory.density,
+          "comfortable"
+        );
+      }
+    );
+
+    it(
+      "migrates legacy Input and Response typography fields",
+      () => {
+        const settings =
+          sanitizeSettings({
+            input: {
+              fontSize: 18
+            },
+            response: {
+              fontSize: 17,
+              lineHeight: 1.8
+            }
+          });
+
+        assert.equal(
+          settings.appearance.typography
+            .input.fontSize,
+          18
+        );
+        assert.equal(
+          settings.appearance.typography
+            .response.fontSize,
+          17
+        );
+        assert.equal(
+          settings.appearance.typography
+            .response.lineHeight,
+          1.8
+        );
+      }
+    );
+  }
+);

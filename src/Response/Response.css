@@ -55,13 +55,7 @@
   color:
     var(--bubble-text);
 
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "PingFang SC",
-    "Microsoft YaHei",
-    sans-serif;
+  font-family: var(--app-font-family);
 
   -webkit-font-smoothing:
     antialiased;
@@ -576,4 +570,14 @@
 
 .response-bubble .katex {
   font-size: 0.98em;
+}
+
+.response-shell {
+  padding:
+    calc(8px * var(--app-density-factor));
+}
+
+.response-bubble,
+.response-content {
+  font-family: var(--app-font-family);
 }

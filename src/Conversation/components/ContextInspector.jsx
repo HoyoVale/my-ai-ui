@@ -109,11 +109,11 @@ export function ConversationContextInspector({
           >
             <div className="context-budget-card__top">
               <div>
-                <span>预计总占用</span>
+                <span>当前输入占用（估算）</span>
                 <strong>
                   <b data-testid="context-total-tokens">
                     {formatTokens(
-                      budget.totalTokens
+                      budget.inputTokens
                     )}
                   </b>
                   <small>
@@ -126,7 +126,13 @@ export function ConversationContextInspector({
 
               <em>
                 {formatPercent(
-                  budget.usageRatio
+                  budget.currentInputRatio ??
+                  (
+                    budget.contextTokenBudget > 0
+                      ? budget.inputTokens /
+                        budget.contextTokenBudget
+                      : 0
+                  )
                 )}
               </em>
             </div>
@@ -134,12 +140,12 @@ export function ConversationContextInspector({
             <div
               className="context-budget-card__track"
               role="progressbar"
-              aria-label="预计总 Token 占上下文上限"
+              aria-label="当前输入 Token 占上下文上限"
               aria-valuemin="0"
               aria-valuemax="100"
               aria-valuenow={
                 Math.round(
-                  budget.usageRatio *
+                  (budget.currentInputRatio ?? 0) *
                     100
                 )
               }
@@ -149,7 +155,7 @@ export function ConversationContextInspector({
                   width:
                     `${Math.min(
                       100,
-                      budget.usageRatio *
+                      (budget.currentInputRatio ?? 0) *
                         100
                     )}%`
                 }}
@@ -158,20 +164,40 @@ export function ConversationContextInspector({
 
             <div className="context-budget-card__meta">
               <span>
-                输入 {formatTokens(
-                  budget.inputTokens
-                )}
-              </span>
-              <span>
-                输出 {formatTokens(
+                最大输出 {formatTokens(
                   budget.outputReserve
                 )}
               </span>
               <span>
-                剩余 {formatTokens(
-                  budget.remaining
+                可用空间 {formatTokens(
+                  budget.availableTokens ??
+                  Math.max(
+                    0,
+                    budget.contextTokenBudget -
+                    budget.inputTokens
+                  )
                 )}
               </span>
+            </div>
+
+            <div className="context-budget-card__worst">
+              <span>最坏情况请求预算</span>
+              <strong>
+                {formatTokens(
+                  budget.totalTokens
+                )}
+                <small>
+                  / {formatTokens(
+                    budget.contextTokenBudget
+                  )}
+                </small>
+              </strong>
+              <em>
+                {formatPercent(
+                  budget.worstCaseRatio ??
+                  budget.usageRatio
+                )}
+              </em>
             </div>
           </section>
 

@@ -1,4 +1,4 @@
-const PROVIDERS = {
+export const PROVIDER_DEFAULTS = Object.freeze({
   deepseek: {
     id: "deepseek",
     type: "deepseek",
@@ -28,6 +28,7 @@ const PROVIDERS = {
       }
     ]
   },
+
   openai: {
     id: "openai",
     type: "openai-compatible",
@@ -35,19 +36,20 @@ const PROVIDERS = {
     baseURL: "https://api.openai.com/v1",
     credentialMode: "required",
     environmentKey: "OPENAI_API_KEY",
-    activeModelId: "gpt-5-2",
+    activeModelId: "gpt-4-1-mini",
     models: [
       {
-        id: "gpt-5-2",
-        name: "GPT-5.2",
-        modelId: "gpt-5.2",
-        contextTokenBudget: 128000,
+        id: "gpt-4-1-mini",
+        name: "GPT-4.1 mini",
+        modelId: "gpt-4.1-mini",
+        contextTokenBudget: 1000000,
         temperature: 0.7,
-        maxOutputTokens: 16384,
+        maxOutputTokens: 32768,
         timeoutMs: 120000
       }
     ]
   },
+
   anthropic: {
     id: "anthropic",
     type: "anthropic",
@@ -55,12 +57,12 @@ const PROVIDERS = {
     baseURL: "https://api.anthropic.com/v1",
     credentialMode: "required",
     environmentKey: "ANTHROPIC_API_KEY",
-    activeModelId: "claude-sonnet-4-6",
+    activeModelId: "claude-sonnet-4-20250514",
     models: [
       {
-        id: "claude-sonnet-4-6",
-        name: "Claude Sonnet 4.6",
-        modelId: "claude-sonnet-4-6",
+        id: "claude-sonnet-4-20250514",
+        name: "Claude Sonnet 4",
+        modelId: "claude-sonnet-4-20250514",
         contextTokenBudget: 200000,
         temperature: 0.7,
         maxOutputTokens: 32768,
@@ -68,6 +70,7 @@ const PROVIDERS = {
       }
     ]
   },
+
   ollama: {
     id: "ollama",
     type: "openai-compatible",
@@ -88,6 +91,7 @@ const PROVIDERS = {
       }
     ]
   },
+
   compatible: {
     id: "compatible",
     type: "openai-compatible",
@@ -108,81 +112,8 @@ const PROVIDERS = {
       }
     ]
   }
-};
+});
 
-export const FALLBACK_SETTINGS = {
-  general: {
-    launchAtLogin: false,
-    rememberPetPosition: true
-  },
-  pet: {
-    scale: 1,
-    opacity: 1,
-    alwaysOnTop: true,
-    showInTaskbar: false,
-    shadowOpacity: 0.16,
-    position: null
-  },
-  input: {
-    extraWidth: 40,
-    gap: 4,
-    maxLines: 6,
-    fontSize: 14,
-    placeholder: "Type a message...",
-    backgroundOpacity: 1,
-    borderRadius: 10,
-    alwaysOnTop: false
-  },
-  response: {
-    gap: 12,
-    anchorRatio: 0.16,
-    preferredSide: "auto",
-    bubbleMaxWidth: 420,
-    contentMaxHeight: 240,
-    fontSize: 14,
-    lineHeight: 1.55,
-    backgroundOpacity: 0.97,
-    borderRadius: 16,
-    alwaysOnTop: true,
-    autoCloseSeconds: 0
-  },
-  appearance: {
-    theme: "system",
-    accentColor: "#10a37f",
-    reducedMotion: false,
-    fontFamily: "system",
-    customFontFamily: "",
-    typography: {
-      pet: { fontSize: 13, lineHeight: 1.4, density: "comfortable" },
-      input: { fontSize: 14, lineHeight: 1.45, density: "comfortable" },
-      response: { fontSize: 14, lineHeight: 1.55, density: "comfortable" },
-      conversation: { fontSize: 15, lineHeight: 1.72, density: "comfortable" },
-      memory: { fontSize: 14, lineHeight: 1.55, density: "comfortable" },
-      setting: { fontSize: 14, lineHeight: 1.5, density: "comfortable" }
-    }
-  },
-  personality: {
-    enabled: true,
-    name: "Xixi",
-    identity: "运行在用户桌面上的轻量 AI 助手",
-    language: "auto",
-    tone: "natural",
-    responseLength: "balanced",
-    customInstructions: ""
-  },
-  conversation: {
-    contextTurns: 8,
-    maxConversations: 100,
-    autoTitle: true,
-    saveAbortedReplies: true
-  },
-  memory: {
-    enabled: true,
-    maxInjected: 5,
-    minPriority: 0.3
-  },
-  model: {
-    activeProvider: "deepseek",
-    providers: structuredClone(PROVIDERS)
-  }
-};
+export function cloneProviderDefaults() {
+  return structuredClone(PROVIDER_DEFAULTS);
+}

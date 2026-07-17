@@ -142,6 +142,31 @@ export function buildTokenBudget({
       inputTokens
     );
 
+  const availableTokens =
+    Math.max(
+      0,
+      normalizedBudget -
+      inputTokens
+    );
+
+  const currentInputRatio =
+    normalizedBudget > 0
+      ? Math.min(
+          1,
+          inputTokens /
+            normalizedBudget
+        )
+      : 1;
+
+  const worstCaseRatio =
+    normalizedBudget > 0
+      ? Math.min(
+          1,
+          totalTokens /
+            normalizedBudget
+        )
+      : 1;
+
   return {
     estimated: true,
     totalTokens,
@@ -152,20 +177,16 @@ export function buildTokenBudget({
       normalizedBudget,
     inputLimit,
     remaining,
+    availableTokens,
     overflowTokens:
       Math.max(
         0,
         inputTokens -
         inputLimit
       ),
-    usageRatio:
-      normalizedBudget > 0
-        ? Math.min(
-            1,
-            totalTokens /
-              normalizedBudget
-          )
-        : 1,
+    currentInputRatio,
+    worstCaseRatio,
+    usageRatio: worstCaseRatio,
     inputUsageRatio:
       inputLimit > 0
         ? Math.min(

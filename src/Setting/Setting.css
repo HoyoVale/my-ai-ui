@@ -38,16 +38,10 @@
   background:
     var(--setting-bg);
 
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "PingFang SC",
-    "Microsoft YaHei",
-    sans-serif;
+  font-family: var(--app-font-family);
 
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--app-font-size);
+  line-height: var(--app-line-height);
 
   -webkit-font-smoothing:
     antialiased;
@@ -1948,5 +1942,56 @@
   .settings-model-picker .settings-select {
     width: 100%;
     min-width: 0;
+  }
+}
+
+/* Shared typography and per-window density */
+.settings-section__standalone {
+  padding:
+    calc(18px * var(--app-density-factor))
+    calc(20px * var(--app-density-factor));
+}
+
+.settings-row {
+  min-height:
+    calc(70px * var(--app-density-factor));
+  gap:
+    calc(24px * var(--app-density-factor));
+  padding:
+    calc(14px * var(--app-density-factor))
+    calc(20px * var(--app-density-factor));
+}
+
+.settings-row__title {
+  font-size:
+    calc(var(--app-font-size) * 0.93);
+}
+
+.settings-row__description,
+.settings-section__header p {
+  font-size:
+    calc(var(--app-font-size) * 0.82);
+}
+
+.setting-shell input,
+.setting-shell textarea,
+.setting-shell select,
+.setting-shell button {
+  font-family: var(--app-font-family);
+}
+
+.settings-typography-control {
+  min-width: min(420px, 100%);
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 116px;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .settings-typography-control {
+    min-width: 0;
+    width: 100%;
+    grid-template-columns: 1fr;
   }
 }

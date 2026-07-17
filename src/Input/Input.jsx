@@ -23,6 +23,10 @@ import {
   useInputWindowResize
 } from "./hooks/useInputWindowResize.js";
 
+import {
+  getWindowTypographyStyle
+} from "../shared/typography.js";
+
 import "./Input.css";
 
 export default function Input() {
@@ -130,7 +134,12 @@ export default function Input() {
   const lineHeight =
     Math.round(
       inputSettings.fontSize *
-      1.45
+      (
+        settings.appearance
+          .typography
+          .input
+          .lineHeight ?? 1.45
+      )
     );
 
   return (
@@ -147,6 +156,11 @@ export default function Input() {
         }`
       }
       style={{
+        ...getWindowTypographyStyle(
+          settings,
+          "input"
+        ),
+
         "--input-font-size":
           `${inputSettings.fontSize}px`,
 

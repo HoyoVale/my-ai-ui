@@ -26,6 +26,10 @@ import {
   usePetDrag
 } from "./hooks/usePetDrag.js";
 
+import {
+  getWindowTypographyStyle
+} from "../shared/typography.js";
+
 import "./Pet.css";
 
 const MENU_WIDTH = 156;
@@ -170,6 +174,11 @@ export default function Pet() {
         }`
       }
       style={{
+        ...getWindowTypographyStyle(
+          settings,
+          "pet"
+        ),
+
         "--pet-shadow-opacity":
           settings
             .pet

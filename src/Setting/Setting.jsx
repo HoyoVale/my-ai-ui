@@ -30,6 +30,10 @@ import {
   useWindowMaximized
 } from "./hooks/useWindowMaximized.js";
 
+import {
+  getWindowTypographyStyle
+} from "../shared/typography.js";
+
 import "./Setting.css";
 
 export default function Setting() {
@@ -87,6 +91,11 @@ export default function Setting() {
           .join(" ")
       }
       style={{
+        ...getWindowTypographyStyle(
+          settings,
+          "setting"
+        ),
+
         "--accent":
           settings
             .appearance

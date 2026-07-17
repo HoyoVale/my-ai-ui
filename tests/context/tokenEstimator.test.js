@@ -78,8 +78,20 @@ describe(
           0.25
         );
         assert.equal(
-          budget.usageRatio,
+          budget.currentInputRatio,
+          40 / 1024
+        );
+        assert.equal(
+          budget.worstCaseRatio,
           60 / 1024
+        );
+        assert.equal(
+          budget.availableTokens,
+          984
+        );
+        assert.equal(
+          budget.usageRatio,
+          budget.worstCaseRatio
         );
       }
     );
