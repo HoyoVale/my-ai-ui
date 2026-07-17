@@ -94,6 +94,18 @@ export function AboutPanel({
             "正在读取…"}
         </code>
       </div>
+
+      <div className="about-path">
+        <span>
+          会话文件
+        </span>
+
+        <code>
+          {appInfo
+            ?.conversationsPath ??
+            "正在读取…"}
+        </code>
+      </div>
     </div>
   );
 }

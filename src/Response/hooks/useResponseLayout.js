@@ -17,6 +17,9 @@ export function useResponseLayout({
   const stickToBottomRef =
     useRef(true);
 
+  const hasText =
+    Boolean(text);
+
   useLayoutEffect(() => {
     lastSizeRef.current = {
       width: 0,
@@ -30,7 +33,7 @@ export function useResponseLayout({
   useLayoutEffect(() => {
     const shell = shellRef.current;
 
-    if (!shell || !text) {
+    if (!shell || !hasText) {
       return undefined;
     }
 
@@ -95,7 +98,7 @@ export function useResponseLayout({
       }
     };
   }, [
-    Boolean(text),
+    hasText,
     shellRef
   ]);
 

@@ -65,6 +65,13 @@ export const SETTING_GROUPS = [
         title: "模型",
         description:
           "配置模型服务、API 凭据与生成参数。"
+      },
+      {
+        id: "conversation",
+        label: "Conversation",
+        title: "会话",
+        description:
+          "管理会话保存、短期上下文和历史记录。"
       }
     ]
   },

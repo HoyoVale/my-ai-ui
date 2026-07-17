@@ -9,7 +9,13 @@
     "build": "vite build",
     "lint": "oxlint src electron",
     "preview": "vite preview",
-    "electron": "electron ."
+    "electron": "electron .",
+    "test": "node --test --test-reporter=spec",
+    "test:watch": "node --test --watch --test-reporter=spec",
+    "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec",
+    "check": "npm run lint && npm run test && npm run build",
+    "test:electron": "electron tests/electron/preload-smoke.cjs",
+    "check:full": "npm run check && npm run test:electron"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.11",

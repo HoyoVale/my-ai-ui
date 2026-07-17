@@ -78,6 +78,13 @@ export function Icon({
       </>
     ),
 
+    conversation: (
+      <>
+        <path d="M5 5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+        <path d="M7.5 9h9M7.5 12.5h6" />
+      </>
+    ),
+
     model: (
       <>
         <rect

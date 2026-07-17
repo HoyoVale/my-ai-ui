@@ -76,6 +76,29 @@ const IPC_CHANNELS =
         "agent-test-connection"
     }),
 
+    conversation: Object.freeze({
+      GET_STATE:
+        "conversation-get-state",
+
+      LIST:
+        "conversation-list",
+
+      CREATE:
+        "conversation-create",
+
+      SELECT:
+        "conversation-select",
+
+      DELETE:
+        "conversation-delete",
+
+      CLEAR:
+        "conversation-clear",
+
+      CHANGED:
+        "conversation-changed"
+    }),
+
     settings: Object.freeze({
       GET:
         "settings-get",

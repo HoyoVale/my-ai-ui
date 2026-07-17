@@ -3,6 +3,10 @@ import {
 } from "./handlers/agentIpc.js";
 
 import {
+  registerConversationIpc
+} from "./handlers/conversationIpc.js";
+
+import {
   registerInputIpc
 } from "./handlers/inputIpc.js";
 
@@ -36,6 +40,7 @@ export function registerIpcHandlers() {
   registered = true;
 
   registerAgentIpc();
+  registerConversationIpc();
   registerPetIpc();
   registerInputIpc();
   registerResponseIpc();

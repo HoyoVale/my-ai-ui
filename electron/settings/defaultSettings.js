@@ -52,6 +52,13 @@ export const DEFAULT_SETTINGS = {
     enabled: false
   },
 
+  conversation: {
+    contextTurns: 8,
+    maxConversations: 100,
+    autoTitle: true,
+    saveAbortedReplies: true
+  },
+
   model: {
     provider: "deepseek",
     model: "deepseek-chat",

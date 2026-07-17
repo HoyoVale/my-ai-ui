@@ -7,6 +7,11 @@ import IPC_CHANNELS
   from "../../shared/ipcChannels.cjs";
 
 import {
+  conversationManager,
+  getConversationPath
+} from "../../conversation/index.js";
+
+import {
   getSettings,
   getSettingsPath,
   resetSettings,
@@ -81,10 +86,21 @@ export function registerSettingsIpc() {
             }
           : patch;
 
-      return commitSettings(
+      const settings =
         updateSettings(
           normalizedPatch
-        )
+        );
+
+      if (
+        normalizedPatch
+          ?.conversation
+      ) {
+        conversationManager
+          .reconcileSettings();
+      }
+
+      return commitSettings(
+        settings
       );
     }
   );
@@ -102,8 +118,14 @@ export function registerSettingsIpc() {
         );
       }
 
+      const settings =
+        resetSettings();
+
+      conversationManager
+        .reconcileSettings();
+
       return commitSettings(
-        resetSettings()
+        settings
       );
     }
   );
@@ -139,7 +161,10 @@ export function registerSettingsIpc() {
           process.versions.node,
 
         settingsPath:
-          getSettingsPath()
+          getSettingsPath(),
+
+        conversationsPath:
+          getConversationPath()
       };
     }
   );

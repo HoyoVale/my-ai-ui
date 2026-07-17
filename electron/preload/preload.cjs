@@ -76,6 +76,27 @@ const CHANNELS = Object.freeze({
   AGENT_TEST_CONNECTION:
     "agent-test-connection",
 
+  CONVERSATION_GET_STATE:
+    "conversation-get-state",
+
+  CONVERSATION_LIST:
+    "conversation-list",
+
+  CONVERSATION_CREATE:
+    "conversation-create",
+
+  CONVERSATION_SELECT:
+    "conversation-select",
+
+  CONVERSATION_DELETE:
+    "conversation-delete",
+
+  CONVERSATION_CLEAR:
+    "conversation-clear",
+
+  CONVERSATION_CHANGED:
+    "conversation-changed",
+
   SETTINGS_GET:
     "settings-get",
 
@@ -363,6 +384,72 @@ const api = Object.freeze({
       CHANNELS
         .AGENT_TEST_CONNECTION,
       modelSettings
+    );
+  },
+
+  getConversationState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_GET_STATE
+    );
+  },
+
+  listConversations: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_LIST
+    );
+  },
+
+  createConversation: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_CREATE
+    );
+  },
+
+  selectConversation: (
+    conversationId
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_SELECT,
+
+      String(
+        conversationId ?? ""
+      )
+    );
+  },
+
+  deleteConversation: (
+    conversationId
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_DELETE,
+
+      String(
+        conversationId ?? ""
+      )
+    );
+  },
+
+  clearConversations: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_CLEAR
+    );
+  },
+
+  onConversationChanged: (
+    callback
+  ) => {
+    return subscribe(
+      CHANNELS
+        .CONVERSATION_CHANGED,
+
+      callback,
+      (state) => state
     );
   },
 

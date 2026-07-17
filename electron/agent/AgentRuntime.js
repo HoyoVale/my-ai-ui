@@ -13,6 +13,10 @@ import IPC_CHANNELS
   from "../shared/ipcChannels.cjs";
 
 import {
+  conversationManager
+} from "../conversation/index.js";
+
+import {
   getSettings
 } from "../settings/settingsStore.js";
 
@@ -59,6 +63,7 @@ export class AgentRuntime {
     this.status = {
       state: "idle",
       runId: null,
+      conversationId: null,
       startedAt: null,
       lastError: null
     };
@@ -106,6 +111,7 @@ export class AgentRuntime {
       this.setStatus({
         state: "error",
         runId: null,
+        conversationId: null,
         startedAt: null,
         lastError:
           errorMessage
@@ -118,6 +124,51 @@ export class AgentRuntime {
       };
     }
 
+    let conversation;
+    let messages;
+
+    try {
+      conversation =
+        conversationManager
+          .getCurrentConversation();
+
+      conversationManager
+        .appendMessage({
+          conversationId:
+            conversation.id,
+
+          role: "user",
+          content: message
+        });
+
+      messages =
+        conversationManager
+          .buildContext(
+            conversation.id
+          );
+    } catch (error) {
+      const errorMessage =
+        "无法保存当前消息，请检查会话数据目录。";
+
+      console.error(
+        "创建会话消息失败：",
+        error
+      );
+
+      startResponseStream();
+      appendResponseChunk(
+        `⚠ ${errorMessage}`
+      );
+      endResponseStream();
+
+      return {
+        ok: false,
+        code:
+          "conversation-write-failed",
+        message: errorMessage
+      };
+    }
+
     const runId =
       crypto.randomUUID();
 
@@ -126,12 +177,17 @@ export class AgentRuntime {
 
     this.activeRun = {
       runId,
-      abortController
+      conversationId:
+        conversation.id,
+      abortController,
+      assistantText: ""
     };
 
     this.setStatus({
       state: "running",
       runId,
+      conversationId:
+        conversation.id,
       startedAt:
         Date.now(),
       lastError: null
@@ -139,13 +195,17 @@ export class AgentRuntime {
 
     void this.runMessage({
       runId,
-      message,
+      conversationId:
+        conversation.id,
+      messages,
       abortController
     });
 
     return {
       ok: true,
-      runId
+      runId,
+      conversationId:
+        conversation.id
     };
   }
 
@@ -248,7 +308,8 @@ export class AgentRuntime {
 
   async runMessage({
     runId,
-    message,
+    conversationId,
+    messages,
     abortController
   }) {
     let receivedText = false;
@@ -274,7 +335,7 @@ export class AgentRuntime {
           system:
             DEFAULT_SYSTEM_PROMPT,
 
-          prompt: message,
+          messages,
 
           temperature:
             modelSettings
@@ -293,6 +354,7 @@ export class AgentRuntime {
             totalMs:
               modelSettings
                 .timeoutMs,
+
             chunkMs:
               Math.min(
                 45000,
@@ -325,6 +387,11 @@ export class AgentRuntime {
 
         if (textPart) {
           receivedText = true;
+
+          this.activeRun
+            .assistantText +=
+            textPart;
+
           appendResponseChunk(
             textPart
           );
@@ -337,23 +404,97 @@ export class AgentRuntime {
           .aborted &&
         !receivedText
       ) {
+        const fallbackText =
+          "模型没有返回可显示的文字。";
+
+        this.activeRun
+          .assistantText =
+          fallbackText;
+
         appendResponseChunk(
-          "模型没有返回可显示的文字。"
+          fallbackText
         );
       }
 
       endResponseStream();
 
       if (
+        abortController
+          .signal
+          .aborted
+      ) {
+        if (
+          this.isCurrentRun(
+            runId
+          )
+        ) {
+          const assistantText =
+            this.activeRun
+              .assistantText
+              .trim();
+
+          const shouldSave =
+            getSettings()
+              .conversation
+              .saveAbortedReplies;
+
+          if (
+            shouldSave &&
+            assistantText
+          ) {
+            conversationManager
+              .appendMessage({
+                conversationId,
+                role:
+                  "assistant",
+                content:
+                  assistantText,
+                status:
+                  "aborted"
+              });
+          }
+
+          this.activeRun = null;
+
+          this.setStatus({
+            state: "idle",
+            runId: null,
+            conversationId,
+            startedAt: null,
+            lastError: null
+          });
+        }
+
+        return;
+      }
+
+      if (
         this.isCurrentRun(
           runId
         )
       ) {
+        const assistantText =
+          this.activeRun
+            .assistantText
+            .trim();
+
+        if (assistantText) {
+          conversationManager
+            .appendMessage({
+              conversationId,
+              role: "assistant",
+              content:
+                assistantText,
+              status: "complete"
+            });
+        }
+
         this.activeRun = null;
 
         this.setStatus({
           state: "idle",
           runId: null,
+          conversationId,
           startedAt: null,
           lastError: null
         });
@@ -372,11 +513,38 @@ export class AgentRuntime {
             runId
           )
         ) {
+          const assistantText =
+            this.activeRun
+              .assistantText
+              .trim();
+
+          const shouldSave =
+            getSettings()
+              .conversation
+              .saveAbortedReplies;
+
+          if (
+            shouldSave &&
+            assistantText
+          ) {
+            conversationManager
+              .appendMessage({
+                conversationId,
+                role:
+                  "assistant",
+                content:
+                  assistantText,
+                status:
+                  "aborted"
+              });
+          }
+
           this.activeRun = null;
 
           this.setStatus({
             state: "idle",
             runId: null,
+            conversationId,
             startedAt: null,
             lastError: null
           });
@@ -409,6 +577,7 @@ export class AgentRuntime {
         this.setStatus({
           state: "error",
           runId: null,
+          conversationId,
           startedAt: null,
           lastError:
             friendlyMessage
@@ -449,6 +618,7 @@ export class AgentRuntime {
           IPC_CHANNELS
             .agent
             .STATUS_CHANGED,
+
           this.getStatus()
         );
     }

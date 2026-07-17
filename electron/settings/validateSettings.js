@@ -190,6 +190,9 @@ export function sanitizeSettings(
   const personality =
     source.personality ?? {};
 
+  const conversation =
+    source.conversation ?? {};
+
   const model =
     source.model ?? {};
 
@@ -487,6 +490,48 @@ export function sanitizeSettings(
           personality.enabled,
           defaults.personality
             .enabled
+        )
+    },
+
+    conversation: {
+      contextTurns:
+        integerValue(
+          conversation
+            .contextTurns,
+
+          defaults.conversation
+            .contextTurns,
+
+          1,
+          50
+        ),
+
+      maxConversations:
+        integerValue(
+          conversation
+            .maxConversations,
+
+          defaults.conversation
+            .maxConversations,
+
+          10,
+          500
+        ),
+
+      autoTitle:
+        booleanValue(
+          conversation.autoTitle,
+          defaults.conversation
+            .autoTitle
+        ),
+
+      saveAbortedReplies:
+        booleanValue(
+          conversation
+            .saveAbortedReplies,
+
+          defaults.conversation
+            .saveAbortedReplies
         )
     },
 
