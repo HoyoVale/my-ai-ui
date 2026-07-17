@@ -7,7 +7,9 @@ export function ConversationTopbar({
   messageCount,
   sidebarCollapsed,
   isMaximized,
+  contextOpen,
   onToggleSidebar,
+  onToggleContext,
   onCreate,
   onOpenInput,
   onMinimize,
@@ -54,6 +56,25 @@ export function ConversationTopbar({
       </div>
 
       <div className="conversation-topbar__right">
+        <button
+          type="button"
+          className={`conversation-icon-button conversation-icon-button--context${
+            contextOpen
+              ? " is-active"
+              : ""
+          }`}
+          data-testid="conversation-context-toggle"
+          title="查看上下文"
+          aria-label="查看上下文"
+          aria-pressed={contextOpen}
+          onClick={onToggleContext}
+        >
+          <ConversationIcon
+            name="context"
+            size={17}
+          />
+        </button>
+
         <button
           type="button"
           className="conversation-icon-button conversation-icon-button--new"

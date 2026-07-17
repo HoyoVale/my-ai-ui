@@ -609,7 +609,8 @@ export class MemoryManager {
   retrieve({
     query = "",
     limit,
-    minPriority
+    minPriority,
+    trackUsage = true
   } = {}) {
     const settings =
       this.getMemorySettings();
@@ -673,7 +674,10 @@ export class MemoryManager {
           memory
         );
 
-    if (selected.length > 0) {
+    if (
+      trackUsage &&
+      selected.length > 0
+    ) {
       const usedAt =
         this.now();
       const selectedIds =

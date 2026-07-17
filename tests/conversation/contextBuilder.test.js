@@ -140,17 +140,107 @@ describe(
           [
             [
               {
+                id: null,
                 role: "user",
                 content:
                   "question"
               },
               {
+                id: null,
                 role:
                   "assistant",
                 content: "answer"
               }
             ]
           ]
+        );
+      }
+    );
+  }
+);
+
+import {
+  buildConversationSummaryContext,
+  buildPinnedConversationContext,
+  selectShortTermContextMessages
+} from "../../electron/conversation/contextBuilder.js";
+
+describe(
+  "managed short-term context",
+  () => {
+    it(
+      "respects reset boundaries and excluded messages",
+      () => {
+        const messages = [
+          {
+            id: "m1",
+            role: "user",
+            content: "before",
+            status: "complete",
+            includeInContext: true
+          },
+          {
+            id: "m2",
+            role: "assistant",
+            content: "before reply",
+            status: "complete",
+            includeInContext: true
+          },
+          {
+            id: "m3",
+            role: "user",
+            content: "excluded",
+            status: "complete",
+            includeInContext: false
+          },
+          {
+            id: "m4",
+            role: "user",
+            content: "after",
+            status: "complete",
+            includeInContext: true
+          }
+        ];
+
+        assert.deepEqual(
+          selectShortTermContextMessages({
+            messages,
+            maxTurns: 8,
+            contextStartAfterMessageId: "m2"
+          }),
+          [
+            {
+              id: "m4",
+              role: "user",
+              content: "after"
+            }
+          ]
+        );
+      }
+    );
+
+    it(
+      "builds pinned and summary system context separately",
+      () => {
+        assert.match(
+          buildPinnedConversationContext([
+            {
+              id: "m1",
+              role: "user",
+              content: "keep this",
+              status: "complete",
+              includeInContext: true,
+              pinnedToContext: true
+            }
+          ]),
+          /keep this/
+        );
+
+        assert.match(
+          buildConversationSummaryContext(
+            "current objective"
+          ),
+          /current objective/
         );
       }
     );

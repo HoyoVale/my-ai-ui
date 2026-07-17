@@ -573,6 +573,18 @@ export function sanitizeSettings(
           50
         ),
 
+      contextTokenBudget:
+        integerValue(
+          conversation
+            .contextTokenBudget,
+
+          defaults.conversation
+            .contextTokenBudget,
+
+          8192,
+          1000000
+        ),
+
       maxConversations:
         integerValue(
           conversation

@@ -162,6 +162,8 @@ export class ConversationManager {
           .slice(0, 80) ||
         "新会话",
 
+      summary: "",
+      contextStartAfterMessageId: null,
       createdAt: timestamp,
       updatedAt: timestamp,
       messages: []
@@ -310,6 +312,8 @@ export class ConversationManager {
       content:
         normalizedContent,
       status,
+      includeInContext: true,
+      pinnedToContext: false,
       createdAt: timestamp
     };
 
@@ -368,8 +372,158 @@ export class ConversationManager {
       maxTurns:
         this
           .getConversationSettings()
-          .contextTurns
+          .contextTurns,
+
+      contextStartAfterMessageId:
+        conversation
+          .contextStartAfterMessageId
     });
+  }
+
+  updateSummary(
+    conversationId,
+    summary
+  ) {
+    const conversation =
+      this.findMutableConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    conversation.summary =
+      String(summary ?? "")
+        .trim()
+        .slice(0, 12000);
+
+    conversation.updatedAt =
+      this.now();
+
+    this.commit();
+
+    return {
+      ok: true,
+      conversation:
+        this.getConversation(
+          conversationId
+        )
+    };
+  }
+
+  resetContext(
+    conversationId
+  ) {
+    const conversation =
+      this.findMutableConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    conversation
+      .contextStartAfterMessageId =
+      conversation.messages.at(-1)
+        ?.id ?? null;
+
+    conversation.updatedAt =
+      this.now();
+
+    this.commit();
+
+    return {
+      ok: true,
+      contextStartAfterMessageId:
+        conversation
+          .contextStartAfterMessageId
+    };
+  }
+
+  updateMessageContext({
+    conversationId,
+    messageId,
+    includeInContext,
+    pinnedToContext
+  }) {
+    const conversation =
+      this.findMutableConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    const message =
+      conversation.messages.find(
+        (item) =>
+          item.id === messageId
+      );
+
+    if (!message) {
+      return {
+        ok: false,
+        code: "message-not-found",
+        message: "消息不存在。"
+      };
+    }
+
+    if (
+      typeof includeInContext ===
+      "boolean"
+    ) {
+      message.includeInContext =
+        includeInContext;
+
+      if (!includeInContext) {
+        message.pinnedToContext =
+          false;
+      }
+    }
+
+    if (
+      typeof pinnedToContext ===
+      "boolean" &&
+      message.includeInContext !== false
+    ) {
+      message.pinnedToContext =
+        pinnedToContext;
+    }
+
+    conversation.updatedAt =
+      this.now();
+
+    this.commit();
+
+    return {
+      ok: true,
+      message: clone(message)
+    };
+  }
+
+  findMutableConversation(id) {
+    return this
+      .ensureLoaded()
+      .conversations
+      .find(
+        (conversation) =>
+          conversation.id === id
+      ) ?? null;
   }
 
   getConversationSettings() {
@@ -500,7 +654,21 @@ export class ConversationManager {
         lastMessage
           ?.content
           ?.slice(0, 80) ??
-        ""
+        "",
+      hasSummary:
+        Boolean(
+          conversation.summary
+        ),
+      pinnedMessageCount:
+        conversation.messages.filter(
+          (message) =>
+            message.pinnedToContext
+        ).length,
+      contextReset:
+        Boolean(
+          conversation
+            .contextStartAfterMessageId
+        )
     };
   }
 }

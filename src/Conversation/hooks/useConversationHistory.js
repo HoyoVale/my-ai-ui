@@ -11,103 +11,81 @@ const EMPTY_STATE = {
 };
 
 export function useConversationHistory() {
-  const [
-    state,
-    setState
-  ] = useState(
-    EMPTY_STATE
-  );
-
-  const [
-    conversations,
-    setConversations
-  ] = useState([]);
-
-  const [
-    current,
-    setCurrent
-  ] = useState(null);
-
-  const [
-    loading,
-    setLoading
-  ] = useState(true);
-
-  const [
-    busy,
-    setBusy
-  ] = useState(false);
-
-  const [
-    error,
-    setError
-  ] = useState("");
+  const [state, setState] =
+    useState(EMPTY_STATE);
+  const [conversations, setConversations] =
+    useState([]);
+  const [current, setCurrent] =
+    useState(null);
+  const [inspection, setInspection] =
+    useState(null);
+  const [loading, setLoading] =
+    useState(true);
+  const [busy, setBusy] =
+    useState(false);
+  const [error, setError] =
+    useState("");
 
   const refresh =
-    useCallback(
-      async () => {
-        try {
-          const [
-            nextState,
+    useCallback(async () => {
+      try {
+        const [
+          nextState,
+          nextConversations
+        ] = await Promise.all([
+          window.api
+            ?.getConversationState?.(),
+          window.api
+            ?.listConversations?.()
+        ]);
+
+        const normalizedState =
+          nextState ?? EMPTY_STATE;
+        const normalizedList =
+          Array.isArray(
             nextConversations
-          ] =
-            await Promise.all([
-              window.api
-                ?.getConversationState?.(),
+          )
+            ? nextConversations
+            : [];
+        const conversationId =
+          normalizedState
+            .currentConversationId;
 
-              window.api
-                ?.listConversations?.()
-            ]);
-
-          const normalizedState =
-            nextState ??
-            EMPTY_STATE;
-
-          const normalizedList =
-            Array.isArray(
-              nextConversations
-            )
-              ? nextConversations
-              : [];
-
-          const detail =
-            normalizedState
-              .currentConversationId
-              ? await window.api
+        const [detail, contextInspection] =
+          conversationId
+            ? await Promise.all([
+                window.api
                   ?.getConversation?.(
-                    normalizedState
-                      .currentConversationId
+                    conversationId
+                  ),
+                window.api
+                  ?.inspectConversationContext?.(
+                    conversationId
                   )
-              : null;
+              ])
+            : [null, null];
 
-          setState(
-            normalizedState
-          );
-
-          setConversations(
-            normalizedList
-          );
-
-          setCurrent(
-            detail ?? null
-          );
-
-          setError("");
-        } catch (refreshError) {
-          console.error(
-            "读取会话窗口数据失败：",
-            refreshError
-          );
-
-          setError(
-            "无法读取会话记录。"
-          );
-        } finally {
-          setLoading(false);
-        }
-      },
-      []
-    );
+        setState(normalizedState);
+        setConversations(
+          normalizedList
+        );
+        setCurrent(detail ?? null);
+        setInspection(
+          contextInspection ?? null
+        );
+        setError("");
+      } catch (refreshError) {
+        console.error(
+          "读取会话窗口数据失败：",
+          refreshError
+        );
+        setError(
+          "无法读取会话记录。"
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -147,23 +125,19 @@ export function useConversationHistory() {
               result.message ??
               "会话操作失败。"
             );
-
             return result;
           }
 
           await refresh();
-
           return result;
         } catch (actionError) {
           console.error(
             "会话操作失败：",
             actionError
           );
-
           setError(
             "会话操作失败。"
           );
-
           return {
             ok: false,
             message:
@@ -180,6 +154,7 @@ export function useConversationHistory() {
     state,
     conversations,
     current,
+    inspection,
     loading,
     busy,
     error,
@@ -192,9 +167,7 @@ export function useConversationHistory() {
             ?.createConversation?.()
       ),
 
-    select: (
-      conversationId
-    ) =>
+    select: (conversationId) =>
       runAction(
         () =>
           window.api
@@ -203,14 +176,47 @@ export function useConversationHistory() {
             )
       ),
 
-    remove: (
-      conversationId
-    ) =>
+    remove: (conversationId) =>
       runAction(
         () =>
           window.api
             ?.deleteConversation?.(
               conversationId
+            )
+      ),
+
+    saveSummary: (
+      conversationId,
+      summary
+    ) =>
+      runAction(
+        () =>
+          window.api
+            ?.updateConversationSummary?.(
+              conversationId,
+              summary
+            )
+      ),
+
+    resetContext: (
+      conversationId
+    ) =>
+      runAction(
+        () =>
+          window.api
+            ?.resetConversationContext?.(
+              conversationId
+            )
+      ),
+
+    updateMessageContext: (
+      input
+    ) =>
+      runAction(
+        () =>
+          window.api
+            ?.updateMessageContext?.(
+              input
             )
       )
   };

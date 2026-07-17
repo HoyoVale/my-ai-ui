@@ -1,4 +1,4 @@
-const STORE_VERSION = 1;
+const STORE_VERSION = 2;
 
 const MESSAGE_ROLES =
   new Set([
@@ -46,6 +46,16 @@ function timestampValue(
     : fallback;
 }
 
+function booleanValue(
+  value,
+  fallback
+) {
+  return typeof value ===
+    "boolean"
+    ? value
+    : fallback;
+}
+
 export function createEmptyConversationData() {
   return {
     version: STORE_VERSION,
@@ -56,7 +66,8 @@ export function createEmptyConversationData() {
 
 export function sanitizeMessage(
   source,
-  fallbackTimestamp = 0
+  fallbackTimestamp = 0,
+  fallbackId = null
 ) {
   if (
     !source ||
@@ -91,17 +102,32 @@ export function sanitizeMessage(
       ? source.status
       : "complete";
 
+  const includeInContext =
+    booleanValue(
+      source.includeInContext,
+      true
+    );
+
   return {
     id:
       stringValue(
         source.id,
         "",
         100
-      ) || null,
+      ) || fallbackId,
 
     role,
     content,
     status,
+
+    includeInContext,
+
+    pinnedToContext:
+      includeInContext &&
+      booleanValue(
+        source.pinnedToContext,
+        false
+      ),
 
     createdAt:
       timestampValue(
@@ -144,14 +170,30 @@ export function sanitizeConversation(
       source.messages
     )
       ? source.messages
-          .map((message) =>
+          .map((message, index) =>
             sanitizeMessage(
               message,
-              createdAt
+              createdAt,
+              `${id}-message-${index + 1}`
             )
           )
           .filter(Boolean)
       : [];
+
+  const messageIds =
+    new Set(
+      messages.map(
+        (message) =>
+          message.id
+      )
+    );
+
+  const requestedBoundary =
+    stringValue(
+      source.contextStartAfterMessageId,
+      "",
+      100
+    );
 
   const updatedAt =
     Math.max(
@@ -175,6 +217,20 @@ export function sanitizeConversation(
         "新会话",
         80
       ).trim() || "新会话",
+
+    summary:
+      stringValue(
+        source.summary,
+        "",
+        12000
+      ).trim(),
+
+    contextStartAfterMessageId:
+      messageIds.has(
+        requestedBoundary
+      )
+        ? requestedBoundary
+        : null,
 
     createdAt,
     updatedAt,

@@ -1,4 +1,4 @@
-function isContextMessage(
+function isCompleteMessage(
   message
 ) {
   return (
@@ -7,12 +7,41 @@ function isContextMessage(
       message.role === "user" ||
       message.role === "assistant"
     ) &&
-    message.status ===
-      "complete" &&
-    typeof message.content ===
-      "string" &&
+    message.status === "complete" &&
+    typeof message.content === "string" &&
     message.content.trim()
   );
+}
+
+function isRecentContextMessage(
+  message
+) {
+  return (
+    isCompleteMessage(message) &&
+    message.includeInContext !== false
+  );
+}
+
+export function getMessagesAfterContextBoundary({
+  messages = [],
+  contextStartAfterMessageId = null
+} = {}) {
+  if (!contextStartAfterMessageId) {
+    return messages;
+  }
+
+  const boundaryIndex =
+    messages.findIndex(
+      (message) =>
+        message.id ===
+        contextStartAfterMessageId
+    );
+
+  return boundaryIndex >= 0
+    ? messages.slice(
+        boundaryIndex + 1
+      )
+    : messages;
 }
 
 export function groupConversationTurns(
@@ -26,7 +55,7 @@ export function groupConversationTurns(
     of messages
   ) {
     if (
-      !isContextMessage(
+      !isRecentContextMessage(
         message
       )
     ) {
@@ -34,6 +63,7 @@ export function groupConversationTurns(
     }
 
     const normalized = {
+      id: message.id ?? null,
       role: message.role,
       content:
         message.content.trim()
@@ -66,9 +96,10 @@ export function groupConversationTurns(
   return turns;
 }
 
-export function buildShortTermContext({
+export function selectShortTermContextMessages({
   messages = [],
-  maxTurns = 8
+  maxTurns = 8,
+  contextStartAfterMessageId = null
 } = {}) {
   const normalizedMaxTurns =
     Math.max(
@@ -82,9 +113,15 @@ export function buildShortTermContext({
       )
     );
 
+  const afterBoundary =
+    getMessagesAfterContextBoundary({
+      messages,
+      contextStartAfterMessageId
+    });
+
   const turns =
     groupConversationTurns(
-      messages
+      afterBoundary
     );
 
   return turns
@@ -92,4 +129,71 @@ export function buildShortTermContext({
       -normalizedMaxTurns
     )
     .flat();
+}
+
+export function buildShortTermContext(
+  options = {}
+) {
+  return selectShortTermContextMessages(
+    options
+  ).map((message) => ({
+    role: message.role,
+    content: message.content
+  }));
+}
+
+export function selectPinnedContextMessages(
+  messages = []
+) {
+  return messages.filter(
+    (message) =>
+      isCompleteMessage(message) &&
+      message.includeInContext !== false &&
+      message.pinnedToContext === true
+  );
+}
+
+export function buildPinnedConversationContext(
+  messages = []
+) {
+  const pinned =
+    selectPinnedContextMessages(
+      messages
+    );
+
+  if (pinned.length === 0) {
+    return "";
+  }
+
+  const lines =
+    pinned.map((message) => {
+      const speaker =
+        message.role === "assistant"
+          ? "助手"
+          : "用户";
+
+      return `- ${speaker}：${message.content.trim()}`;
+    });
+
+  return [
+    "以下消息已由用户固定到当前会话上下文，应持续参考：",
+    ...lines
+  ].join("\n");
+}
+
+export function buildConversationSummaryContext(
+  summary
+) {
+  const normalized =
+    String(summary ?? "")
+      .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  return [
+    "以下是用户手动维护的当前会话摘要：",
+    normalized
+  ].join("\n");
 }

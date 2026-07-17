@@ -76,7 +76,7 @@ describe(
         assert.deepEqual(
           store.load(),
           {
-            version: 1,
+            version: 2,
             currentConversationId:
               null,
             conversations: []
@@ -152,6 +152,73 @@ describe(
       }
     );
 
+
+    it(
+      "migrates v1 conversations to managed context defaults",
+      () => {
+        const {
+          filePath,
+          store
+        } = createStore();
+
+        fs.writeFileSync(
+          filePath,
+          JSON.stringify({
+            version: 1,
+            currentConversationId: "legacy",
+            conversations: [
+              {
+                id: "legacy",
+                title: "Legacy",
+                createdAt: 1,
+                updatedAt: 2,
+                messages: [
+                  {
+                    id: "legacy-message",
+                    role: "user",
+                    content: "hello",
+                    status: "complete",
+                    createdAt: 2
+                  }
+                ]
+              }
+            ]
+          }),
+          "utf8"
+        );
+
+        const loaded =
+          store.load();
+
+        assert.equal(
+          loaded.version,
+          2
+        );
+        assert.equal(
+          loaded.conversations[0]
+            .summary,
+          ""
+        );
+        assert.equal(
+          loaded.conversations[0]
+            .contextStartAfterMessageId,
+          null
+        );
+        assert.equal(
+          loaded.conversations[0]
+            .messages[0]
+            .includeInContext,
+          true
+        );
+        assert.equal(
+          loaded.conversations[0]
+            .messages[0]
+            .pinnedToContext,
+          false
+        );
+      }
+    );
+
     it(
       "recovers from invalid JSON",
       () => {
@@ -184,7 +251,7 @@ describe(
           assert.deepEqual(
             store.load(),
             {
-              version: 1,
+              version: 2,
               currentConversationId:
                 null,
               conversations: []

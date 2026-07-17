@@ -20,6 +20,7 @@ describe(
           sanitizeSettings({
             conversation: {
               contextTurns: 999,
+              contextTokenBudget: 9999999,
               maxConversations: 1,
               autoTitle: "yes",
               saveAbortedReplies:
@@ -32,6 +33,13 @@ describe(
             .conversation
             .contextTurns,
           50
+        );
+
+        assert.equal(
+          settings
+            .conversation
+            .contextTokenBudget,
+          1000000
         );
 
         assert.equal(

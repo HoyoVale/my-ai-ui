@@ -87,6 +87,13 @@ describe(
         assert.equal(
           channels
             .conversation
+            .INSPECT_CONTEXT,
+          "conversation-inspect-context"
+        );
+
+        assert.equal(
+          channels
+            .conversation
             .CHANGED,
           "conversation-changed"
         );

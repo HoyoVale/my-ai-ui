@@ -4,6 +4,10 @@ import {
 } from "react";
 
 import {
+  ConversationContextInspector
+} from "./components/ContextInspector.jsx";
+
+import {
   ConversationMessageList
 } from "./components/MessageList.jsx";
 
@@ -37,7 +41,6 @@ export default function Conversation() {
   const settings =
     useAppSettings();
 
-
   const theme =
     useResolvedTheme(
       settings
@@ -57,9 +60,12 @@ export default function Conversation() {
   ] = useState(false);
 
   const [
-    query,
-    setQuery
-  ] = useState("");
+    contextOpen,
+    setContextOpen
+  ] = useState(false);
+
+  const [query, setQuery] =
+    useState("");
 
   const filteredConversations =
     useMemo(
@@ -121,6 +127,9 @@ export default function Conversation() {
           sidebarCollapsed
             ? "is-sidebar-collapsed"
             : "",
+          contextOpen
+            ? "is-context-open"
+            : "",
           isMaximized
             ? "is-maximized"
             : ""
@@ -129,6 +138,7 @@ export default function Conversation() {
           .join(" ");
       },
       [
+        contextOpen,
         isMaximized,
         settings
           .appearance
@@ -143,6 +153,25 @@ export default function Conversation() {
       ?.openInput?.();
   };
 
+  const resetContext = async () => {
+    if (!history.current) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "清除当前短期上下文？历史消息仍会保留，固定消息和会话摘要不受影响。"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await history.resetContext(
+      history.current.id
+    );
+  };
+
   return (
     <div
       className={rootClassName}
@@ -152,13 +181,10 @@ export default function Conversation() {
           settings
             .appearance
             .accentColor,
-
         "--conversation-sidebar-width":
           "288px",
-
         "--conversation-message-max-width":
           "780px",
-
         "--conversation-font-size":
           "15px"
       }}
@@ -173,11 +199,16 @@ export default function Conversation() {
         sidebarCollapsed={
           sidebarCollapsed
         }
-        isMaximized={
-          isMaximized
-        }
+        contextOpen={contextOpen}
+        isMaximized={isMaximized}
         onToggleSidebar={() => {
           setSidebarCollapsed(
+            (current) =>
+              !current
+          );
+        }}
+        onToggleContext={() => {
+          setContextOpen(
             (current) =>
               !current
           );
@@ -257,8 +288,49 @@ export default function Conversation() {
                 : "Xixi"
             }
             onOpenInput={openInput}
+            onUpdateMessageContext={(
+              messageId,
+              patch
+            ) => {
+              if (!history.current) {
+                return;
+              }
+
+              void history
+                .updateMessageContext({
+                  conversationId:
+                    history.current.id,
+                  messageId,
+                  ...patch
+                });
+            }}
           />
         </main>
+
+        <ConversationContextInspector
+          open={contextOpen}
+          conversation={history.current}
+          inspection={
+            history.inspection
+          }
+          busy={history.busy}
+          onClose={() => {
+            setContextOpen(false);
+          }}
+          onSaveSummary={(summary) => {
+            if (!history.current) {
+              return;
+            }
+
+            return history.saveSummary(
+              history.current.id,
+              summary
+            );
+          }}
+          onResetContext={
+            resetContext
+          }
+        />
       </div>
     </div>
   );

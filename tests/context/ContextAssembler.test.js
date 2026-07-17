@@ -166,3 +166,92 @@ describe(
     );
   }
 );
+
+describe(
+  "ContextAssembler budget and managed context",
+  () => {
+    it(
+      "includes summary and pinned messages in system context with a token breakdown",
+      () => {
+        const result =
+          assembleAgentContext({
+            settings: {
+              ...SETTINGS,
+              conversation: {
+                contextTurns: 2,
+                contextTokenBudget: 64000
+              },
+              model: {
+                maxOutputTokens: 2048
+              }
+            },
+            conversation: {
+              summary:
+                "manual summary",
+              contextStartAfterMessageId:
+                "old-answer",
+              messages: [
+                {
+                  id: "pinned",
+                  role: "user",
+                  content: "pinned rule",
+                  status: "complete",
+                  includeInContext: true,
+                  pinnedToContext: true
+                },
+                {
+                  id: "old-answer",
+                  role: "assistant",
+                  content: "old",
+                  status: "complete",
+                  includeInContext: true
+                },
+                {
+                  id: "latest",
+                  role: "user",
+                  content: "latest",
+                  status: "complete",
+                  includeInContext: true
+                }
+              ]
+            },
+            memories: []
+          });
+
+        assert.match(
+          result.system,
+          /manual summary/
+        );
+        assert.match(
+          result.system,
+          /pinned rule/
+        );
+        assert.deepEqual(
+          result.messages,
+          [
+            {
+              role: "user",
+              content: "latest"
+            }
+          ]
+        );
+        assert.equal(
+          result.budget
+            .sections
+            .some(
+              (section) =>
+                section.id ===
+                  "summary" &&
+                section.tokens > 0
+            ),
+          true
+        );
+        assert.equal(
+          result.metadata
+            .pinnedMessageCount,
+          1
+        );
+      }
+    );
+  }
+);

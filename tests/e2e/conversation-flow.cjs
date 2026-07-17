@@ -614,6 +614,112 @@ async function main() {
 
     await conversation
       .locator(
+        '[data-testid="conversation-context-toggle"]'
+      )
+      .click();
+
+    await conversation
+      .locator(
+        '[data-testid="conversation-context-inspector"]'
+      )
+      .waitFor();
+
+    await conversation
+      .locator(
+        '[data-testid="conversation-summary-input"]'
+      )
+      .fill(
+        "E2E 手动会话摘要"
+      );
+
+    await conversation
+      .locator(
+        '[data-testid="conversation-summary-save"]'
+      )
+      .click();
+
+    const firstUserMessage =
+      conversation
+        .locator(
+          '[data-testid="conversation-message"][data-role="user"]'
+        )
+        .first();
+
+    await firstUserMessage.hover();
+    await firstUserMessage
+      .locator(
+        '[data-testid="message-pin-toggle"]'
+      )
+      .click();
+
+    await waitForAttribute(
+      firstUserMessage,
+      "data-context-pinned",
+      "true"
+    );
+
+    const secondUserMessage =
+      conversation
+        .locator(
+          '[data-testid="conversation-message"][data-role="user"]'
+        )
+        .nth(1);
+
+    await secondUserMessage.hover();
+    await secondUserMessage
+      .locator(
+        '[data-testid="message-context-toggle"]'
+      )
+      .click();
+
+    await waitForAttribute(
+      secondUserMessage,
+      "data-context-included",
+      "false"
+    );
+
+    await waitForText(
+      conversation.locator(
+        '[data-testid="context-pinned-count"]'
+      ),
+      "1"
+    );
+
+    assert.equal(
+      await conversation
+        .locator(
+          '[data-testid="context-total-tokens"]'
+        )
+        .textContent()
+        .then(
+          (text) =>
+            Boolean(text?.trim())
+        ),
+      true
+    );
+
+    conversation.once(
+      "dialog",
+      (dialog) => {
+        void dialog.accept();
+      }
+    );
+
+    await conversation
+      .locator(
+        '[data-testid="conversation-context-reset"]'
+      )
+      .click();
+
+    await waitForText(
+      conversation.locator(
+        '[data-testid="context-recent-count"]'
+      ),
+      "0"
+    );
+
+    await conversation
+      .locator(
         '[data-testid="conversation-new"]'
       )
       .click();

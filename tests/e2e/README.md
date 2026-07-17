@@ -19,3 +19,14 @@ npm run test:e2e
 9. 验证四条完整消息仍然存在。
 
 测试不会读取真实 API Key，也不会调用 DeepSeek。
+
+## Short-term context path
+
+The E2E flow also verifies:
+
+- opening the Conversation context inspector
+- saving a manual conversation summary
+- pinning a message to the current conversation
+- excluding another message from context
+- reading the Token budget
+- resetting recent context while preserving history

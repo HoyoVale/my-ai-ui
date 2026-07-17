@@ -57,6 +57,7 @@ export const FALLBACK_SETTINGS = {
 
   conversation: {
     contextTurns: 8,
+    contextTokenBudget: 64000,
     maxConversations: 100,
     autoTitle: true,
     saveAbortedReplies: true

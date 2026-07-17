@@ -1,5 +1,8 @@
 import {
-  buildShortTermContext
+  buildConversationSummaryContext,
+  buildPinnedConversationContext,
+  selectPinnedContextMessages,
+  selectShortTermContextMessages
 } from "../conversation/contextBuilder.js";
 
 import {
@@ -15,6 +18,12 @@ import {
   getPersonalitySummary
 } from "./personalityContextBuilder.js";
 
+import {
+  buildTokenBudget,
+  estimateMessageTokens,
+  estimateTextTokens
+} from "./tokenEstimator.js";
+
 export function assembleAgentContext({
   settings,
   conversation,
@@ -23,16 +32,47 @@ export function assembleAgentContext({
   const normalizedSettings =
     settings ?? {};
 
-  const messages =
-    buildShortTermContext({
-      messages:
-        conversation?.messages ??
-        [],
+  const sourceMessages =
+    conversation?.messages ?? [];
+
+  const pinnedMessages =
+    selectPinnedContextMessages(
+      sourceMessages
+    );
+
+  const pinnedIds =
+    new Set(
+      pinnedMessages.map(
+        (message) =>
+          message.id
+      )
+    );
+
+  const selectedMessages =
+    selectShortTermContextMessages({
+      messages: sourceMessages,
       maxTurns:
         normalizedSettings
           .conversation
-          ?.contextTurns ?? 8
-    });
+          ?.contextTurns ?? 8,
+      contextStartAfterMessageId:
+        conversation
+          ?.contextStartAfterMessageId ??
+        null
+    }).filter(
+      (message) =>
+        !pinnedIds.has(
+          message.id
+        )
+    );
+
+  const messages =
+    selectedMessages.map(
+      (message) => ({
+        role: message.role,
+        content: message.content
+      })
+    );
 
   const personalityContext =
     buildPersonalityContext(
@@ -49,17 +89,95 @@ export function assembleAgentContext({
           memories
         );
 
-  const system = [
+  const summaryContext =
+    buildConversationSummaryContext(
+      conversation?.summary
+    );
+
+  const pinnedContext =
+    buildPinnedConversationContext(
+      sourceMessages
+    );
+
+  const systemSections = [
     BASE_SYSTEM_CONTEXT,
     personalityContext,
-    memoryContext
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    memoryContext,
+    summaryContext,
+    pinnedContext
+  ].filter(Boolean);
+
+  const system =
+    systemSections.join("\n\n");
+
+  const budget =
+    buildTokenBudget({
+      contextTokenBudget:
+        normalizedSettings
+          .conversation
+          ?.contextTokenBudget ??
+        64000,
+      outputReserve:
+        normalizedSettings
+          .model
+          ?.maxOutputTokens ??
+        2048,
+      sections: [
+        {
+          id: "base",
+          label: "基础提示词",
+          tokens:
+            estimateTextTokens(
+              BASE_SYSTEM_CONTEXT
+            )
+        },
+        {
+          id: "personality",
+          label: "Personality",
+          tokens:
+            estimateTextTokens(
+              personalityContext
+            )
+        },
+        {
+          id: "memory",
+          label: "长期记忆",
+          tokens:
+            estimateTextTokens(
+              memoryContext
+            )
+        },
+        {
+          id: "summary",
+          label: "会话摘要",
+          tokens:
+            estimateTextTokens(
+              summaryContext
+            )
+        },
+        {
+          id: "pinned",
+          label: "固定消息",
+          tokens:
+            estimateTextTokens(
+              pinnedContext
+            )
+        },
+        {
+          id: "messages",
+          label: "最近对话",
+          tokens:
+            estimateMessageTokens(
+              messages
+            )
+        }
+      ]
+    });
 
   return {
     system,
     messages,
+    budget,
     metadata: {
       personality:
         getPersonalitySummary(
@@ -75,7 +193,29 @@ export function assembleAgentContext({
       contextTurns:
         normalizedSettings
           .conversation
-          ?.contextTurns ?? 8
+          ?.contextTurns ?? 8,
+      summaryIncluded:
+        Boolean(summaryContext),
+      pinnedMessageCount:
+        pinnedMessages.length,
+      recentMessageIds:
+        selectedMessages
+          .map(
+            (message) =>
+              message.id
+          )
+          .filter(Boolean),
+      pinnedMessageIds:
+        pinnedMessages
+          .map(
+            (message) =>
+              message.id
+          )
+          .filter(Boolean),
+      contextStartAfterMessageId:
+        conversation
+          ?.contextStartAfterMessageId ??
+        null
     }
   };
 }

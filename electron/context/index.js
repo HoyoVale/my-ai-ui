@@ -3,6 +3,6 @@ export {
 } from "./ContextAssembler.js";
 
 export {
-  buildPersonalityContext,
-  getPersonalitySummary
-} from "./personalityContextBuilder.js";
+  estimateMessageTokens,
+  estimateTextTokens
+} from "./tokenEstimator.js";

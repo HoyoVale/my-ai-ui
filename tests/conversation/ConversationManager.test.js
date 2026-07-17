@@ -230,3 +230,126 @@ describe(
     );
   }
 );
+
+  // Additional managed-context behavior is tested in a separate suite
+
+describe(
+  "ConversationManager context controls",
+  () => {
+    it(
+      "updates summaries, message flags and reset boundary without deleting history",
+      () => {
+        const manager =
+          createManager();
+
+        const conversation =
+          manager.create();
+
+        const first =
+          manager.appendMessage({
+            conversationId:
+              conversation.id,
+            role: "user",
+            content: "first"
+          });
+
+        manager.appendMessage({
+          conversationId:
+            conversation.id,
+          role: "assistant",
+          content: "reply"
+        });
+
+        manager.updateSummary(
+          conversation.id,
+          "manual summary"
+        );
+
+        manager.updateMessageContext({
+          conversationId:
+            conversation.id,
+          messageId: first.id,
+          pinnedToContext: true
+        });
+
+        const reset =
+          manager.resetContext(
+            conversation.id
+          );
+
+        const saved =
+          manager.getConversation(
+            conversation.id
+          );
+
+        assert.equal(
+          saved.summary,
+          "manual summary"
+        );
+        assert.equal(
+          saved.messages[0]
+            .pinnedToContext,
+          true
+        );
+        assert.equal(
+          reset.ok,
+          true
+        );
+        assert.equal(
+          saved.messages.length,
+          2
+        );
+        assert.equal(
+          manager.buildContext(
+            conversation.id
+          ).length,
+          0
+        );
+      }
+    );
+
+    it(
+      "excluding a message also removes its pin",
+      () => {
+        const manager =
+          createManager();
+        const conversation =
+          manager.create();
+        const message =
+          manager.appendMessage({
+            conversationId:
+              conversation.id,
+            role: "user",
+            content: "message"
+          });
+
+        manager.updateMessageContext({
+          conversationId:
+            conversation.id,
+          messageId: message.id,
+          pinnedToContext: true
+        });
+        manager.updateMessageContext({
+          conversationId:
+            conversation.id,
+          messageId: message.id,
+          includeInContext: false
+        });
+
+        const saved =
+          manager.getConversation(
+            conversation.id
+          ).messages[0];
+
+        assert.equal(
+          saved.includeInContext,
+          false
+        );
+        assert.equal(
+          saved.pinnedToContext,
+          false
+        );
+      }
+    );
+  }
+);

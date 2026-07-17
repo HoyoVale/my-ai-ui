@@ -103,6 +103,18 @@ const CHANNELS = Object.freeze({
   CONVERSATION_CLEAR:
     "conversation-clear",
 
+  CONVERSATION_UPDATE_SUMMARY:
+    "conversation-update-summary",
+
+  CONVERSATION_RESET_CONTEXT:
+    "conversation-reset-context",
+
+  CONVERSATION_UPDATE_MESSAGE_CONTEXT:
+    "conversation-update-message-context",
+
+  CONVERSATION_INSPECT_CONTEXT:
+    "conversation-inspect-context",
+
   CONVERSATION_CHANGED:
     "conversation-changed",
 
@@ -497,6 +509,58 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS
         .CONVERSATION_CLEAR
+    );
+  },
+
+  updateConversationSummary: (
+    conversationId,
+    summary
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_UPDATE_SUMMARY,
+      {
+        conversationId:
+          String(
+            conversationId ?? ""
+          ),
+        summary:
+          String(summary ?? "")
+      }
+    );
+  },
+
+  resetConversationContext: (
+    conversationId
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_RESET_CONTEXT,
+      String(
+        conversationId ?? ""
+      )
+    );
+  },
+
+  updateMessageContext: (
+    input
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_UPDATE_MESSAGE_CONTEXT,
+      input
+    );
+  },
+
+  inspectConversationContext: (
+    conversationId
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_INSPECT_CONTEXT,
+      String(
+        conversationId ?? ""
+      )
     );
   },
 

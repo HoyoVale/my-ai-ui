@@ -104,6 +104,18 @@ const IPC_CHANNELS =
       CLEAR:
         "conversation-clear",
 
+      UPDATE_SUMMARY:
+        "conversation-update-summary",
+
+      RESET_CONTEXT:
+        "conversation-reset-context",
+
+      UPDATE_MESSAGE_CONTEXT:
+        "conversation-update-message-context",
+
+      INSPECT_CONTEXT:
+        "conversation-inspect-context",
+
       CHANGED:
         "conversation-changed"
     }),

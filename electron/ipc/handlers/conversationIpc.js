@@ -21,6 +21,10 @@ import {
   openConversationWindow
 } from "../../windows/conversation/conversationWindow.js";
 
+import {
+  inspectConversationContext
+} from "../../context/contextInspector.js";
+
 function isAgentBusy() {
   const state =
     agentRuntime
@@ -162,6 +166,93 @@ export function registerConversationIpc() {
       }
 
       return result;
+    }
+  );
+
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .UPDATE_SUMMARY,
+    (_event, input = {}) => {
+      const busy =
+        rejectWhenBusy();
+
+      if (busy) {
+        return busy;
+      }
+
+      return conversationManager
+        .updateSummary(
+          String(
+            input.conversationId ?? ""
+          ),
+          input.summary
+        );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .RESET_CONTEXT,
+    (_event, conversationId) => {
+      const busy =
+        rejectWhenBusy();
+
+      if (busy) {
+        return busy;
+      }
+
+      return conversationManager
+        .resetContext(
+          String(
+            conversationId ?? ""
+          )
+        );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .UPDATE_MESSAGE_CONTEXT,
+    (_event, input = {}) => {
+      const busy =
+        rejectWhenBusy();
+
+      if (busy) {
+        return busy;
+      }
+
+      return conversationManager
+        .updateMessageContext({
+          conversationId:
+            String(
+              input.conversationId ?? ""
+            ),
+          messageId:
+            String(
+              input.messageId ?? ""
+            ),
+          includeInContext:
+            input.includeInContext,
+          pinnedToContext:
+            input.pinnedToContext
+        });
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .INSPECT_CONTEXT,
+    (_event, conversationId) => {
+      return inspectConversationContext(
+        String(
+          conversationId ?? ""
+        )
+      );
     }
   );
 

@@ -32,7 +32,8 @@ export function ConversationMessageList({
   loading,
   conversation,
   assistantName = "Xixi",
-  onOpenInput
+  onOpenInput,
+  onUpdateMessageContext
 }) {
   const endRef =
     useRef(null);
@@ -118,13 +119,35 @@ export function ConversationMessageList({
             const copied =
               copiedId === message.id;
 
+            const included =
+              message.includeInContext !==
+                false;
+
+            const pinned =
+              message.pinnedToContext ===
+                true;
+
             return (
               <article
-                className={
-                  `conversation-message conversation-message--${message.role}`
-                }
+                className={[
+                  "conversation-message",
+                  `conversation-message--${message.role}`,
+                  included
+                    ? ""
+                    : "is-context-excluded",
+                  pinned
+                    ? "is-context-pinned"
+                    : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 data-testid="conversation-message"
+                data-message-id={message.id}
                 data-role={message.role}
+                data-context-included={
+                  included
+                }
+                data-context-pinned={pinned}
                 key={message.id}
               >
                 {isAssistant && (
@@ -144,11 +167,29 @@ export function ConversationMessageList({
                         : "你"}
                     </strong>
 
-                    <time>
-                      {formatTime(
-                        message.createdAt
+                    <div className="conversation-message__badges">
+                      {pinned && (
+                        <span>
+                          <ConversationIcon
+                            name="pin"
+                            size={11}
+                          />
+                          已固定
+                        </span>
                       )}
-                    </time>
+
+                      {!included && (
+                        <span>
+                          不加入上下文
+                        </span>
+                      )}
+
+                      <time>
+                        {formatTime(
+                          message.createdAt
+                        )}
+                      </time>
+                    </div>
                   </div>
 
                   <div className="conversation-message__body">
@@ -163,39 +204,70 @@ export function ConversationMessageList({
                       </small>
                     )}
 
-                    <button
-                      type="button"
-                      className="conversation-message__copy"
-                      title={
-                        copied
-                          ? "已复制"
-                          : "复制消息"
-                      }
-                      aria-label={
-                        copied
-                          ? "已复制"
-                          : "复制消息"
-                      }
-                      onClick={() => {
-                        void copyMessage(
-                          message
-                        );
-                      }}
-                    >
-                      <ConversationIcon
-                        name={
+                    <div className="conversation-message__action-group">
+                      <MessageAction
+                        label={
+                          included
+                            ? "不加入上下文"
+                            : "重新加入上下文"
+                        }
+                        testId="message-context-toggle"
+                        active={!included}
+                        onClick={() => {
+                          onUpdateMessageContext?.(
+                            message.id,
+                            {
+                              includeInContext:
+                                !included
+                            }
+                          );
+                        }}
+                        icon={
+                          included
+                            ? "eyeOff"
+                            : "eye"
+                        }
+                      />
+
+                      <MessageAction
+                        label={
+                          pinned
+                            ? "取消固定"
+                            : "固定到本会话"
+                        }
+                        testId="message-pin-toggle"
+                        active={pinned}
+                        disabled={!included}
+                        onClick={() => {
+                          onUpdateMessageContext?.(
+                            message.id,
+                            {
+                              pinnedToContext:
+                                !pinned
+                            }
+                          );
+                        }}
+                        icon="pin"
+                      />
+
+                      <MessageAction
+                        label={
+                          copied
+                            ? "已复制"
+                            : "复制"
+                        }
+                        onClick={() => {
+                          void copyMessage(
+                            message
+                          );
+                        }}
+                        icon={
                           copied
                             ? "check"
                             : "copy"
                         }
-                        size={14}
                       />
-                      <span>
-                        {copied
-                          ? "已复制"
-                          : "复制"}
-                      </span>
-                    </button>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -206,6 +278,40 @@ export function ConversationMessageList({
         <div ref={endRef} />
       </div>
     </div>
+  );
+}
+
+function MessageAction({
+  label,
+  icon,
+  active = false,
+  disabled = false,
+  testId,
+  onClick
+}) {
+  return (
+    <button
+      type="button"
+      className={
+        `conversation-message__copy${
+          active
+            ? " is-active"
+            : ""
+        }`
+      }
+      data-testid={testId}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <ConversationIcon
+        name={icon}
+        size={14}
+      />
+      <span>{label}</span>
+    </button>
   );
 }
 

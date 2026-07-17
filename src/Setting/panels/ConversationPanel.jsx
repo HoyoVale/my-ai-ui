@@ -2,6 +2,7 @@ import {
   ActionButton,
   SettingRow,
   SettingsSection,
+  Select,
   Slider,
   Toggle
 } from "../components/Controls.jsx";
@@ -62,6 +63,48 @@ export function ConversationPanel({
             ) => {
               onUpdate({
                 contextTurns
+              });
+            }}
+          />
+        </SettingRow>
+
+
+        <SettingRow
+          title="上下文 Token 上限"
+          description="用于预算显示和溢出提醒。Token 数为本地估算，实际用量以模型返回为准。"
+        >
+          <Select
+            value={
+              settings
+                .contextTokenBudget
+            }
+            options={[
+              {
+                value: 32000,
+                label: "32K"
+              },
+              {
+                value: 64000,
+                label: "64K"
+              },
+              {
+                value: 128000,
+                label: "128K"
+              },
+              {
+                value: 256000,
+                label: "256K"
+              },
+              {
+                value: 1000000,
+                label: "1M"
+              }
+            ]}
+            onChange={(
+              contextTokenBudget
+            ) => {
+              onUpdate({
+                contextTokenBudget
               });
             }}
           />
