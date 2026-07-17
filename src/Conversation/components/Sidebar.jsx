@@ -41,6 +41,93 @@ function formatUpdatedAt(
     .format(date);
 }
 
+function groupLabel(
+  timestamp
+) {
+  const value =
+    Number(timestamp);
+
+  if (!value) {
+    return "更早";
+  }
+
+  const now =
+    new Date();
+  const date =
+    new Date(value);
+
+  const today =
+    new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    ).getTime();
+
+  const day =
+    new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    ).getTime();
+
+  const difference =
+    Math.floor(
+      (today - day) /
+      86400000
+    );
+
+  if (difference <= 0) {
+    return "今天";
+  }
+
+  if (difference === 1) {
+    return "昨天";
+  }
+
+  if (difference <= 7) {
+    return "最近 7 天";
+  }
+
+  return "更早";
+}
+
+function groupConversations(
+  conversations
+) {
+  const groups = [];
+
+  for (
+    const conversation
+    of conversations
+  ) {
+    const label =
+      groupLabel(
+        conversation.updatedAt
+      );
+
+    const group =
+      groups.at(-1);
+
+    if (
+      !group ||
+      group.label !== label
+    ) {
+      groups.push({
+        label,
+        conversations: [
+          conversation
+        ]
+      });
+    } else {
+      group.conversations.push(
+        conversation
+      );
+    }
+  }
+
+  return groups;
+}
+
 export function ConversationSidebar({
   conversations,
   totalConversations,
@@ -53,6 +140,11 @@ export function ConversationSidebar({
   onSelect,
   onDelete
 }) {
+  const groups =
+    groupConversations(
+      conversations
+    );
+
   return (
     <aside className="conversation-sidebar">
       <div className="conversation-sidebar__top">
@@ -65,7 +157,7 @@ export function ConversationSidebar({
         >
           <ConversationIcon
             name="plus"
-            size={17}
+            size={16}
           />
           新建会话
         </button>
@@ -73,7 +165,7 @@ export function ConversationSidebar({
         <label className="conversation-search">
           <ConversationIcon
             name="search"
-            size={16}
+            size={15}
           />
           <input
             type="search"
@@ -89,9 +181,11 @@ export function ConversationSidebar({
         </label>
       </div>
 
-      <div className="conversation-sidebar__heading">
-        <span>历史记录</span>
-        <small>{totalConversations}</small>
+      <div className="conversation-sidebar__summary">
+        <span>会话</span>
+        <small>
+          {totalConversations}
+        </small>
       </div>
 
       <div className="conversation-sidebar__list">
@@ -108,85 +202,94 @@ export function ConversationSidebar({
             </strong>
             <span>
               {query
-                ? "尝试使用其他关键词。"
-                : "发送消息后会自动保存在这里。"}
+                ? "换个关键词试试。"
+                : "发送消息后会自动保存。"}
             </span>
           </div>
         ) : (
-          conversations.map(
-            (conversation) => {
-              const isCurrent =
-                conversation.id ===
-                currentConversationId;
-
-              return (
-                <div
-                  className={
-                    `conversation-history-item${
-                      isCurrent
-                        ? " is-current"
-                        : ""
-                    }`
-                  }
-                  data-testid="conversation-history-item"
-                  data-conversation-id={
-                    conversation.id
-                  }
-                  key={conversation.id}
-                >
-                  <button
-                    type="button"
-                    className="conversation-history-item__main"
-                    disabled={busy}
-                    onClick={() => {
-                      onSelect(
-                        conversation.id
-                      );
-                    }}
-                  >
-                    <span className="conversation-history-item__title-row">
-                      <strong>
-                        {conversation.title}
-                      </strong>
-                      <time>
-                        {formatUpdatedAt(
-                          conversation.updatedAt
-                        )}
-                      </time>
-                    </span>
-
-                    {showPreview &&
-                      conversation.preview && (
-                      <small>
-                        {conversation.preview}
-                      </small>
-                    )}
-
-                    <span className="conversation-history-item__count">
-                      {conversation.messageCount} 条消息
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="conversation-history-item__delete"
-                    aria-label={`删除 ${conversation.title}`}
-                    title="删除会话"
-                    disabled={busy}
-                    onClick={() => {
-                      onDelete(
-                        conversation.id
-                      );
-                    }}
-                  >
-                    <ConversationIcon
-                      name="trash"
-                      size={15}
-                    />
-                  </button>
+          groups.map(
+            (group) => (
+              <section
+                className="conversation-history-group"
+                key={group.label}
+              >
+                <div className="conversation-history-group__label">
+                  {group.label}
                 </div>
-              );
-            }
+
+                {group.conversations.map(
+                  (conversation) => {
+                    const isCurrent =
+                      conversation.id ===
+                        currentConversationId;
+
+                    return (
+                      <div
+                        className={
+                          `conversation-history-item${
+                            isCurrent
+                              ? " is-current"
+                              : ""
+                          }`
+                        }
+                        data-testid="conversation-history-item"
+                        data-conversation-id={
+                          conversation.id
+                        }
+                        key={conversation.id}
+                      >
+                        <button
+                          type="button"
+                          className="conversation-history-item__main"
+                          disabled={busy}
+                          onClick={() => {
+                            onSelect(
+                              conversation.id
+                            );
+                          }}
+                        >
+                          <span className="conversation-history-item__title-row">
+                            <strong>
+                              {conversation.title}
+                            </strong>
+                            <time>
+                              {formatUpdatedAt(
+                                conversation.updatedAt
+                              )}
+                            </time>
+                          </span>
+
+                          {showPreview &&
+                            conversation.preview && (
+                            <small>
+                              {conversation.preview}
+                            </small>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="conversation-history-item__delete"
+                          aria-label={`删除 ${conversation.title}`}
+                          title="删除会话"
+                          disabled={busy}
+                          onClick={() => {
+                            onDelete(
+                              conversation.id
+                            );
+                          }}
+                        >
+                          <ConversationIcon
+                            name="trash"
+                            size={14}
+                          />
+                        </button>
+                      </div>
+                    );
+                  }
+                )}
+              </section>
+            )
           )
         )}
       </div>

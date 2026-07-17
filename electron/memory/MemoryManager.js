@@ -1,16 +1,18 @@
 import crypto from "node:crypto";
 
 import {
-  MEMORY_CATEGORIES,
   createMemoryKey,
-  normalizeMemoryContent
+  normalizeMemoryContent,
+  normalizeMemoryDescription,
+  normalizeMemoryTags,
+  normalizeMemoryTitle
 } from "./memorySchema.js";
 
 function clone(value) {
   return structuredClone(value);
 }
 
-function clampImportance(
+function clampPriority(
   value,
   fallback = 0.5
 ) {
@@ -24,17 +26,6 @@ function clampImportance(
     Math.max(numeric, 0),
     1
   );
-}
-
-function normalizeCategory(
-  value,
-  fallback = "other"
-) {
-  return MEMORY_CATEGORIES.includes(
-    value
-  )
-    ? value
-    : fallback;
 }
 
 function tokenize(value) {
@@ -58,6 +49,18 @@ function tokenize(value) {
   ]);
 }
 
+function searchableText(memory) {
+  return [
+    memory.title,
+    memory.content,
+    memory.description,
+    ...(memory.tags ?? [])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+}
+
 function relevanceScore(
   memory,
   query
@@ -71,36 +74,51 @@ function relevanceScore(
     return 0;
   }
 
-  const normalizedContent =
-    memory.content
-      .toLocaleLowerCase();
+  const normalizedMemory =
+    searchableText(memory);
 
   let score = 0;
 
   if (
-    normalizedContent.includes(
+    normalizedMemory.includes(
       normalizedQuery
-    ) ||
-    normalizedQuery.includes(
-      normalizedContent
     )
   ) {
-    score += 20;
+    score += 24;
+  }
+
+  if (
+    normalizedQuery.includes(
+      memory.content
+        .toLocaleLowerCase()
+    )
+  ) {
+    score += 18;
   }
 
   const queryTokens =
     tokenize(normalizedQuery);
 
-  const contentTokens =
-    tokenize(normalizedContent);
+  const memoryTokens =
+    tokenize(normalizedMemory);
 
   for (const token of queryTokens) {
-    if (contentTokens.has(token)) {
+    if (memoryTokens.has(token)) {
       score += 8;
     }
   }
 
   return score;
+}
+
+function mergeTags(
+  left,
+  right
+) {
+  return normalizeMemoryTags([
+    ...(left ?? []),
+    ...(right ?? [])
+  ]);
 }
 
 export class MemoryManager {
@@ -127,7 +145,7 @@ export class MemoryManager {
             memory: {
               enabled: true,
               maxInjected: 5,
-              minImportance: 0.3
+              minPriority: 0.3
             }
           });
     this.now = now;
@@ -158,25 +176,16 @@ export class MemoryManager {
           (memory) =>
             memory.enabled
         ).length,
-      categories:
-        Object.fromEntries(
-          MEMORY_CATEGORIES.map(
-            (category) => [
-              category,
-              memories.filter(
-                (memory) =>
-                  memory.category ===
-                  category
-              ).length
-            ]
-          )
-        )
+      disabledMemories:
+        memories.filter(
+          (memory) =>
+            !memory.enabled
+        ).length
     };
   }
 
   list({
     query = "",
-    category = "all",
     enabled = "all"
   } = {}) {
     const normalizedQuery =
@@ -187,14 +196,6 @@ export class MemoryManager {
     return this.ensureLoaded()
       .memories
       .filter((memory) => {
-        if (
-          category !== "all" &&
-          memory.category !==
-            category
-        ) {
-          return false;
-        }
-
         if (
           enabled === true &&
           !memory.enabled
@@ -211,8 +212,7 @@ export class MemoryManager {
 
         return (
           !normalizedQuery ||
-          memory.content
-            .toLocaleLowerCase()
+          searchableText(memory)
             .includes(
               normalizedQuery
             )
@@ -236,9 +236,11 @@ export class MemoryManager {
   }
 
   create({
-    category = "other",
+    title = "",
     content,
-    importance = 0.5,
+    description = "",
+    tags = [],
+    priority = 0.5,
     enabled = true,
     sourceConversationId = null
   }) {
@@ -256,16 +258,25 @@ export class MemoryManager {
       };
     }
 
+    const normalizedTitle =
+      normalizeMemoryTitle(
+        title,
+        normalizedContent
+      );
+
+    const normalizedDescription =
+      normalizeMemoryDescription(
+        description
+      );
+
+    const normalizedTags =
+      normalizeMemoryTags(tags);
+
     const data =
       this.ensureLoaded();
 
-    const normalizedCategory =
-      normalizeCategory(category);
-
     const key =
       createMemoryKey({
-        category:
-          normalizedCategory,
         content:
           normalizedContent
       });
@@ -282,12 +293,22 @@ export class MemoryManager {
       this.now();
 
     if (duplicate) {
+      duplicate.title =
+        normalizedTitle;
       duplicate.content =
         normalizedContent;
-      duplicate.importance =
-        clampImportance(
-          importance,
-          duplicate.importance
+      duplicate.description =
+        normalizedDescription ||
+        duplicate.description;
+      duplicate.tags =
+        mergeTags(
+          duplicate.tags,
+          normalizedTags
+        );
+      duplicate.priority =
+        clampPriority(
+          priority,
+          duplicate.priority
         );
       duplicate.enabled =
         Boolean(enabled);
@@ -314,13 +335,17 @@ export class MemoryManager {
 
     const memory = {
       id: this.createId(),
-      category:
-        normalizedCategory,
+      title:
+        normalizedTitle,
       content:
         normalizedContent,
-      importance:
-        clampImportance(
-          importance
+      description:
+        normalizedDescription,
+      tags:
+        normalizedTags,
+      priority:
+        clampPriority(
+          priority
         ),
       enabled:
         Boolean(enabled),
@@ -366,15 +391,6 @@ export class MemoryManager {
       };
     }
 
-    const nextCategory =
-      patch.category ===
-        undefined
-        ? memory.category
-        : normalizeCategory(
-            patch.category,
-            memory.category
-          );
-
     const nextContent =
       patch.content ===
         undefined
@@ -392,10 +408,31 @@ export class MemoryManager {
       };
     }
 
+    const nextTitle =
+      patch.title === undefined
+        ? memory.title
+        : normalizeMemoryTitle(
+            patch.title,
+            nextContent
+          );
+
+    const nextDescription =
+      patch.description ===
+        undefined
+        ? memory.description
+        : normalizeMemoryDescription(
+            patch.description
+          );
+
+    const nextTags =
+      patch.tags === undefined
+        ? memory.tags
+        : normalizeMemoryTags(
+            patch.tags
+          );
+
     const nextKey =
       createMemoryKey({
-        category:
-          nextCategory,
         content:
           nextContent
       });
@@ -412,16 +449,27 @@ export class MemoryManager {
       this.now();
 
     if (duplicate) {
-      duplicate.importance =
-        patch.importance ===
+      duplicate.title =
+        nextTitle ||
+        duplicate.title;
+      duplicate.description =
+        nextDescription ||
+        duplicate.description;
+      duplicate.tags =
+        mergeTags(
+          duplicate.tags,
+          nextTags
+        );
+      duplicate.priority =
+        patch.priority ===
           undefined
           ? Math.max(
-              duplicate.importance,
-              memory.importance
+              duplicate.priority,
+              memory.priority
             )
-          : clampImportance(
-              patch.importance,
-              duplicate.importance
+          : clampPriority(
+              patch.priority,
+              duplicate.priority
             );
       duplicate.enabled =
         patch.enabled ===
@@ -462,19 +510,23 @@ export class MemoryManager {
       };
     }
 
-    memory.category =
-      nextCategory;
+    memory.title =
+      nextTitle;
     memory.content =
       nextContent;
+    memory.description =
+      nextDescription;
+    memory.tags =
+      nextTags;
 
     if (
-      patch.importance !==
+      patch.priority !==
       undefined
     ) {
-      memory.importance =
-        clampImportance(
-          patch.importance,
-          memory.importance
+      memory.priority =
+        clampPriority(
+          patch.priority,
+          memory.priority
         );
     }
 
@@ -557,7 +609,7 @@ export class MemoryManager {
   retrieve({
     query = "",
     limit,
-    minImportance
+    minPriority
   } = {}) {
     const settings =
       this.getMemorySettings();
@@ -582,43 +634,77 @@ export class MemoryManager {
       );
 
     const resolvedMinimum =
-      clampImportance(
-        minImportance,
-        settings.minImportance
+      clampPriority(
+        minPriority,
+        settings.minPriority
       );
 
     if (resolvedLimit === 0) {
       return [];
     }
 
-    return this.ensureLoaded()
-      .memories
-      .filter(
-        (memory) =>
-          memory.enabled &&
-          memory.importance >=
-            resolvedMinimum
-      )
-      .map((memory) => ({
-        memory,
-        score:
-          relevanceScore(
-            memory,
-            query
-          ) +
-          memory.importance * 10
-      }))
-      .sort(
-        (left, right) =>
-          right.score -
-            left.score ||
-          right.memory.updatedAt -
-            left.memory.updatedAt
-      )
-      .slice(0, resolvedLimit)
-      .map(({ memory }) =>
-        clone(memory)
+    const selected =
+      this.ensureLoaded()
+        .memories
+        .filter(
+          (memory) =>
+            memory.enabled &&
+            memory.priority >=
+              resolvedMinimum
+        )
+        .map((memory) => ({
+          memory,
+          score:
+            relevanceScore(
+              memory,
+              query
+            ) +
+            memory.priority * 10
+        }))
+        .sort(
+          (left, right) =>
+            right.score -
+              left.score ||
+            right.memory.updatedAt -
+              left.memory.updatedAt
+        )
+        .slice(0, resolvedLimit)
+        .map(({ memory }) =>
+          memory
+        );
+
+    if (selected.length > 0) {
+      const usedAt =
+        this.now();
+      const selectedIds =
+        new Set(
+          selected.map(
+            (memory) =>
+              memory.id
+          )
+        );
+
+      for (
+        const memory
+        of this.ensureLoaded()
+          .memories
+      ) {
+        if (
+          selectedIds.has(
+            memory.id
+          )
+        ) {
+          memory.lastUsedAt =
+            usedAt;
+        }
+      }
+
+      this.store.save(
+        this.data
       );
+    }
+
+    return selected.map(clone);
   }
 
   getMemorySettings() {
@@ -634,10 +720,14 @@ export class MemoryManager {
         settings
           ?.memory
           ?.maxInjected ?? 5,
-      minImportance:
+      minPriority:
         settings
           ?.memory
-          ?.minImportance ?? 0.3
+          ?.minPriority ??
+        settings
+          ?.memory
+          ?.minImportance ??
+        0.3
     };
   }
 

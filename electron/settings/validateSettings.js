@@ -190,8 +190,6 @@ export function sanitizeSettings(
   const personality =
     source.personality ?? {};
 
-  const conversationWindow =
-    source.conversationWindow ?? {};
 
   const conversation =
     source.conversation ?? {};
@@ -496,70 +494,71 @@ export function sanitizeSettings(
           personality.enabled,
           defaults.personality
             .enabled
-        )
+        ),
+
+      name:
+        nonEmptyStringValue(
+          personality.name,
+          defaults.personality.name,
+          60
+        ),
+
+      identity:
+        nonEmptyStringValue(
+          personality.identity,
+          defaults.personality
+            .identity,
+          180
+        ),
+
+      language:
+        enumValue(
+          personality.language,
+          [
+            "auto",
+            "zh-CN",
+            "en-US"
+          ],
+          defaults.personality
+            .language
+        ),
+
+      tone:
+        enumValue(
+          personality.tone,
+          [
+            "natural",
+            "friendly",
+            "professional",
+            "direct"
+          ],
+          defaults.personality
+            .tone
+        ),
+
+      responseLength:
+        enumValue(
+          personality
+            .responseLength,
+          [
+            "concise",
+            "balanced",
+            "detailed"
+          ],
+          defaults.personality
+            .responseLength
+        ),
+
+      customInstructions:
+        stringValue(
+          personality
+            .customInstructions,
+          defaults.personality
+            .customInstructions,
+          4000
+        ).trim()
     },
 
-    conversationWindow: {
-      sidebarWidth:
-        integerValue(
-          conversationWindow
-            .sidebarWidth,
-          defaults
-            .conversationWindow
-            .sidebarWidth,
-          220,
-          420
-        ),
-
-      messageMaxWidth:
-        integerValue(
-          conversationWindow
-            .messageMaxWidth,
-          defaults
-            .conversationWindow
-            .messageMaxWidth,
-          520,
-          1200
-        ),
-
-      fontSize:
-        integerValue(
-          conversationWindow
-            .fontSize,
-          defaults
-            .conversationWindow
-            .fontSize,
-          12,
-          22
-        ),
-
-      compactList:
-        booleanValue(
-          conversationWindow
-            .compactList,
-          defaults
-            .conversationWindow
-            .compactList
-        ),
-
-      showPreview:
-        booleanValue(
-          conversationWindow
-            .showPreview,
-          defaults
-            .conversationWindow
-            .showPreview
-        ),
-
-      alwaysOnTop:
-        booleanValue(
-          conversationWindow
-            .alwaysOnTop,
-          defaults
-            .conversationWindow
-            .alwaysOnTop
-        )
-    },
 
     conversation: {
       contextTurns:
@@ -619,11 +618,12 @@ export function sanitizeSettings(
           20
         ),
 
-      minImportance:
+      minPriority:
         numberValue(
+          memory.minPriority ??
           memory.minImportance,
           defaults.memory
-            .minImportance,
+            .minPriority,
           0,
           1
         )

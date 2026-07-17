@@ -68,5 +68,37 @@ describe(
         );
       }
     );
+
+
+    it(
+      "uses assembled personality metadata in the deterministic personality path",
+      () => {
+        const result =
+          buildE2EResponse(
+            [
+              {
+                role: "user",
+                content:
+                  "personality-key"
+              }
+            ],
+            [],
+            {
+              personality: {
+                enabled: true,
+                name: "Nova",
+                tone: "professional",
+                responseLength:
+                  "detailed"
+              }
+            }
+          );
+
+        assert.equal(
+          result,
+          "E2E_PERSONALITY:Nova:professional:detailed"
+        );
+      }
+    );
   }
 );

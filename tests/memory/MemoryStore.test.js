@@ -63,7 +63,7 @@ describe(
   "MemoryStore",
   () => {
     it(
-      "creates and reloads a memory file",
+      "creates and reloads a v3 memory file",
       () => {
         const {
           store,
@@ -74,8 +74,11 @@ describe(
           store.load();
 
         assert.deepEqual(
-          empty.memories,
-          []
+          empty,
+          {
+            version: 3,
+            memories: []
+          }
         );
         assert.equal(
           fs.existsSync(filePath),
@@ -86,11 +89,13 @@ describe(
           memories: [
             {
               id: "memory-1",
-              category:
-                "profile",
+              title: "用户名称",
               content:
                 "用户叫 Hoyo",
-              importance: 0.8,
+              description:
+                "称呼用户时使用",
+              tags: ["profile"],
+              priority: 0.8,
               enabled: true,
               createdAt: 1,
               updatedAt: 1
@@ -100,11 +105,148 @@ describe(
 
         store.clearCache();
 
-        assert.equal(
+        const reloaded =
           store.load()
-            .memories[0]
-            .content,
-          "用户叫 Hoyo"
+            .memories[0];
+
+        assert.equal(
+          reloaded.title,
+          "用户名称"
+        );
+        assert.equal(
+          reloaded.priority,
+          0.8
+        );
+        assert.equal(
+          "scope" in reloaded,
+          false
+        );
+      }
+    );
+
+    it(
+      "migrates a v2 file, removes scopes and creates a versioned backup",
+      () => {
+        const {
+          store,
+          filePath
+        } = createStore();
+
+        fs.writeFileSync(
+          filePath,
+          JSON.stringify({
+            version: 2,
+            memories: [
+              {
+                id: "legacy",
+                title: "旧记忆",
+                content:
+                  "用户喜欢简洁界面",
+                scope: "project",
+                priority: 0.7,
+                enabled: true,
+                createdAt: 1,
+                updatedAt: 2
+              }
+            ]
+          }),
+          "utf8"
+        );
+
+        const data =
+          store.load();
+
+        assert.equal(
+          data.version,
+          3
+        );
+        assert.equal(
+          "scope" in
+            data.memories[0],
+          false
+        );
+
+        const saved =
+          JSON.parse(
+            fs.readFileSync(
+              filePath,
+              "utf8"
+            )
+          );
+
+        assert.equal(
+          saved.version,
+          3
+        );
+
+        const backupPath =
+          path.join(
+            path.dirname(
+              filePath
+            ),
+            "memories.v2.backup.json"
+          );
+
+        assert.equal(
+          fs.existsSync(
+            backupPath
+          ),
+          true
+        );
+      }
+    );
+
+    it(
+      "migrates and backs up a legacy v1 file",
+      () => {
+        const {
+          store,
+          filePath
+        } = createStore();
+
+        fs.writeFileSync(
+          filePath,
+          JSON.stringify({
+            version: 1,
+            memories: [
+              {
+                id: "legacy",
+                category:
+                  "preference",
+                content:
+                  "用户喜欢简洁界面",
+                importance: 0.7
+              }
+            ]
+          }),
+          "utf8"
+        );
+
+        const data =
+          store.load();
+
+        assert.equal(
+          data.version,
+          3
+        );
+        assert.equal(
+          data.memories[0]
+            .priority,
+          0.7
+        );
+        assert.match(
+          data.memories[0]
+            .description,
+          /旧版/
+        );
+        assert.equal(
+          fs.existsSync(
+            path.join(
+              path.dirname(filePath),
+              "memories.v1.backup.json"
+            )
+          ),
+          true
         );
       }
     );

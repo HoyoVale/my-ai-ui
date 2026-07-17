@@ -45,13 +45,6 @@ export const SETTING_GROUPS = [
         description:
           "调整回复气泡的位置、尺寸、样式和关闭行为。"
       },
-      {
-        id: "conversationWindow",
-        label: "Conversation",
-        title: "会话窗口",
-        description:
-          "调整会话记录窗口的布局、阅读样式和窗口行为。"
-      }
     ]
   },
 
@@ -64,7 +57,7 @@ export const SETTING_GROUPS = [
         label: "Personality",
         title: "个性",
         description:
-          "角色人格与行为设定将在后续接入。"
+          "配置助手身份、语言、语气和稳定行为说明。"
       },
       {
         id: "model",

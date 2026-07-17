@@ -1,6 +1,7 @@
 import {
   useEffect,
-  useRef
+  useRef,
+  useState
 } from "react";
 
 import {
@@ -30,10 +31,14 @@ function formatTime(
 export function ConversationMessageList({
   loading,
   conversation,
+  assistantName = "Xixi",
   onOpenInput
 }) {
   const endRef =
     useRef(null);
+
+  const [copiedId, setCopiedId] =
+    useState(null);
 
   useEffect(() => {
     endRef.current
@@ -44,6 +49,26 @@ export function ConversationMessageList({
     conversation?.id,
     conversation?.messages.length
   ]);
+
+  const copyMessage =
+    async (message) => {
+      try {
+        await navigator.clipboard
+          .writeText(
+            message.content
+          );
+        setCopiedId(message.id);
+        setTimeout(() => {
+          setCopiedId((current) =>
+            current === message.id
+              ? null
+              : current
+          );
+        }, 1400);
+      } catch {
+        // 剪贴板权限不可用时保持界面安静。
+      }
+    };
 
   if (loading) {
     return (
@@ -85,54 +110,97 @@ export function ConversationMessageList({
     >
       <div className="conversation-messages__canvas">
         {conversation.messages.map(
-          (message) => (
-            <article
-              className={
-                `conversation-message conversation-message--${message.role}`
-              }
-              data-testid="conversation-message"
-              data-role={message.role}
-              key={message.id}
-            >
-              {message.role ===
-                "assistant" && (
-                <div className="conversation-message__avatar">
-                  <ConversationIcon
-                    name="spark"
-                    size={16}
-                  />
-                </div>
-              )}
+          (message) => {
+            const isAssistant =
+              message.role ===
+                "assistant";
 
-              <div className="conversation-message__content">
-                <div className="conversation-message__meta">
-                  <strong>
-                    {message.role ===
-                    "user"
-                      ? "你"
-                      : "助手"}
-                  </strong>
+            const copied =
+              copiedId === message.id;
 
-                  <time>
-                    {formatTime(
-                      message.createdAt
-                    )}
-                  </time>
-                </div>
-
-                <div className="conversation-message__body">
-                  {message.content}
-                </div>
-
-                {message.status ===
-                  "aborted" && (
-                  <small className="conversation-message__status">
-                    回复已中止
-                  </small>
+            return (
+              <article
+                className={
+                  `conversation-message conversation-message--${message.role}`
+                }
+                data-testid="conversation-message"
+                data-role={message.role}
+                key={message.id}
+              >
+                {isAssistant && (
+                  <div className="conversation-message__avatar">
+                    <ConversationIcon
+                      name="spark"
+                      size={16}
+                    />
+                  </div>
                 )}
-              </div>
-            </article>
-          )
+
+                <div className="conversation-message__content">
+                  <div className="conversation-message__meta">
+                    <strong>
+                      {isAssistant
+                        ? assistantName
+                        : "你"}
+                    </strong>
+
+                    <time>
+                      {formatTime(
+                        message.createdAt
+                      )}
+                    </time>
+                  </div>
+
+                  <div className="conversation-message__body">
+                    {message.content}
+                  </div>
+
+                  <div className="conversation-message__actions">
+                    {message.status ===
+                      "aborted" && (
+                      <small className="conversation-message__status">
+                        回复已中止
+                      </small>
+                    )}
+
+                    <button
+                      type="button"
+                      className="conversation-message__copy"
+                      title={
+                        copied
+                          ? "已复制"
+                          : "复制消息"
+                      }
+                      aria-label={
+                        copied
+                          ? "已复制"
+                          : "复制消息"
+                      }
+                      onClick={() => {
+                        void copyMessage(
+                          message
+                        );
+                      }}
+                    >
+                      <ConversationIcon
+                        name={
+                          copied
+                            ? "check"
+                            : "copy"
+                        }
+                        size={14}
+                      />
+                      <span>
+                        {copied
+                          ? "已复制"
+                          : "复制"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          }
         )}
 
         <div ref={endRef} />

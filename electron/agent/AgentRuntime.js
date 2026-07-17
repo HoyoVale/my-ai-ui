@@ -25,8 +25,8 @@ import {
 } from "../memory/index.js";
 
 import {
-  buildMemoryContext
-} from "../memory/memoryContextBuilder.js";
+  assembleAgentContext
+} from "../context/index.js";
 
 import {
   sanitizeSettings
@@ -56,12 +56,7 @@ import {
   streamE2EResponse
 } from "./e2eAgentDriver.js";
 
-const DEFAULT_SYSTEM_PROMPT = `
-你是 Xixi，一个运行在用户桌面上的轻量 AI 助手。
-请使用用户当前使用的语言回答。
-回答应当清晰、自然、直接；除非用户要求，否则不要写得过长。
-当前阶段你只负责普通对话，不调用工具，也不声称自己完成了尚未执行的操作。
-`.trim();
+
 
 function cloneStatus(status) {
   return {
@@ -141,8 +136,8 @@ export class AgentRuntime {
     }
 
     let conversation;
-    let messages;
     let memories;
+    let context;
 
     try {
       conversation =
@@ -158,15 +153,23 @@ export class AgentRuntime {
           content: message
         });
 
-      messages =
+      conversation =
         conversationManager
-          .buildContext(
+          .getConversation(
             conversation.id
           );
 
       memories =
         memoryManager.retrieve({
           query: message
+        });
+
+      context =
+        assembleAgentContext({
+          settings:
+            getSettings(),
+          conversation,
+          memories
         });
     } catch (error) {
       const errorMessage =
@@ -219,7 +222,7 @@ export class AgentRuntime {
       runId,
       conversationId:
         conversation.id,
-      messages,
+      context,
       memories,
       abortController
     };
@@ -298,7 +301,11 @@ export class AgentRuntime {
             ),
 
           system:
-            DEFAULT_SYSTEM_PROMPT,
+            assembleAgentContext({
+              settings,
+              conversation: null,
+              memories: []
+            }).system,
 
           prompt:
             "只回复：连接成功",
@@ -343,7 +350,7 @@ export class AgentRuntime {
   async runE2EMessage({
     runId,
     conversationId,
-    messages,
+    context,
     memories,
     abortController
   }) {
@@ -351,8 +358,11 @@ export class AgentRuntime {
       startResponseStream();
 
       await streamE2EResponse({
-        messages,
+        messages:
+          context.messages,
         memories,
+        contextMetadata:
+          context.metadata,
         signal:
           abortController.signal,
 
@@ -450,8 +460,7 @@ export class AgentRuntime {
   async runMessage({
     runId,
     conversationId,
-    messages,
-    memories,
+    context,
     abortController
   }) {
     let receivedText = false;
@@ -468,19 +477,6 @@ export class AgentRuntime {
           modelSettings
         );
 
-      const memoryContext =
-        buildMemoryContext(
-          memories
-        );
-
-      const systemPrompt =
-        [
-          DEFAULT_SYSTEM_PROMPT,
-          memoryContext
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-
       startResponseStream();
 
       const result =
@@ -488,9 +484,10 @@ export class AgentRuntime {
           model,
 
           system:
-            systemPrompt,
+            context.system,
 
-          messages,
+          messages:
+            context.messages,
 
           temperature:
             modelSettings

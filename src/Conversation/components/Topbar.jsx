@@ -8,6 +8,7 @@ export function ConversationTopbar({
   sidebarCollapsed,
   isMaximized,
   onToggleSidebar,
+  onCreate,
   onOpenInput,
   onMinimize,
   onMaximize,
@@ -44,15 +45,28 @@ export function ConversationTopbar({
             {title}
           </strong>
 
-          <span>
+          <span className="conversation-topbar__status">
             {messageCount > 0
               ? `${messageCount} 条消息`
-              : "新会话"}
+              : "尚未开始"}
           </span>
         </div>
       </div>
 
       <div className="conversation-topbar__right">
+        <button
+          type="button"
+          className="conversation-icon-button conversation-icon-button--new"
+          title="新建会话"
+          aria-label="新建会话"
+          onClick={onCreate}
+        >
+          <ConversationIcon
+            name="plus"
+            size={17}
+          />
+        </button>
+
         <button
           type="button"
           className="conversation-continue"
@@ -62,7 +76,7 @@ export function ConversationTopbar({
           继续对话
           <ConversationIcon
             name="arrow"
-            size={15}
+            size={14}
           />
         </button>
 

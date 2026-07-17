@@ -1782,3 +1782,146 @@
     justify-self: start;
   }
 }
+
+/* ============================================================
+   Personality
+   ============================================================ */
+
+.settings-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 132px;
+  padding: 12px 13px;
+  border: 1px solid var(--setting-border-strong);
+  border-radius: 10px;
+  outline: none;
+  color: var(--setting-text);
+  background: var(--setting-surface-soft);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.65;
+  transition:
+    border-color 130ms ease,
+    box-shadow 130ms ease,
+    background 130ms ease;
+}
+
+.settings-textarea:focus {
+  border-color:
+    color-mix(
+      in srgb,
+      var(--accent) 65%,
+      var(--setting-border)
+    );
+  background: var(--setting-surface);
+  box-shadow:
+    0 0 0 3px
+    color-mix(
+      in srgb,
+      var(--accent) 12%,
+      transparent
+    );
+}
+
+.settings-textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.personality-preview {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 18px 20px;
+  border: 1px solid var(--setting-border);
+  border-radius: 15px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(
+        in srgb,
+        var(--accent) 8%,
+        var(--setting-surface)
+      ),
+      var(--setting-surface)
+    );
+}
+
+.personality-preview__avatar {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #ffffff;
+  background: var(--accent);
+  font-size: 17px;
+  font-weight: 700;
+  box-shadow:
+    0 8px 22px
+    color-mix(
+      in srgb,
+      var(--accent) 24%,
+      transparent
+    );
+}
+
+.personality-preview__copy {
+  min-width: 0;
+}
+
+.personality-preview__copy > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.personality-preview__copy strong {
+  color: var(--setting-text);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.personality-preview__copy span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--accent);
+  background:
+    color-mix(
+      in srgb,
+      var(--accent) 10%,
+      transparent
+    );
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.personality-preview__copy p {
+  margin: 3px 0 0;
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}
+
+.personality-preview__copy small {
+  display: block;
+  margin-top: 5px;
+  color: var(--setting-text-faint);
+  font-size: 10.5px;
+}
+
+.personality-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.personality-instructions__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--setting-text-faint);
+  font-size: 10.5px;
+}

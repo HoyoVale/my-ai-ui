@@ -676,7 +676,7 @@ async function main() {
 
     await setting
       .locator(
-        '[data-testid="setting-tab-conversationWindow"]'
+        '[data-testid="setting-tab-personality"]'
       )
       .click();
 
@@ -684,15 +684,64 @@ async function main() {
       setting.locator(
         ".setting-page__header"
       ),
-      "会话窗口"
+      "个性"
     );
 
-    await waitForText(
-      setting.locator(
-        ".setting-page__body"
-      ),
-      "侧栏宽度"
+    await setting
+      .locator(
+        '[data-testid="personality-name"]'
+      )
+      .fill("Nova");
+
+    await setting
+      .locator(
+        '[data-testid="personality-tone"]'
+      )
+      .selectOption(
+        "professional"
+      );
+
+    await setting
+      .locator(
+        '[data-testid="personality-length"]'
+      )
+      .getByRole(
+        "button",
+        {
+          name: "详细"
+        }
+      )
+      .click();
+
+    await delay(350);
+
+    await pet.evaluate(
+      async () => {
+        await window.api
+          ?.createConversation?.();
+      }
     );
+
+    await input.bringToFront();
+
+    await inputField.fill(
+      "personality-key"
+    );
+
+    await sendButton.click();
+
+    await waitForText(
+      responseText,
+      "E2E_PERSONALITY:Nova:professional:detailed"
+    );
+
+    await waitForAttribute(
+      sendButton,
+      "aria-label",
+      "Send"
+    );
+
+    await setting.bringToFront();
 
     await setting
       .locator(
@@ -722,9 +771,17 @@ async function main() {
 
     await memory
       .locator(
-        '[data-testid="memory-new"]'
+        '[data-testid="memory-new-topbar"]'
       )
       .click();
+
+    await memory
+      .locator(
+        '[data-testid="memory-title"]'
+      )
+      .fill(
+        "E2E 测试暗号"
+      );
 
     await memory
       .locator(
@@ -733,6 +790,23 @@ async function main() {
       .fill(
         "memory-key 对应紫色彗星"
       );
+
+    await memory
+      .locator(
+        '[data-testid="memory-description"]'
+      )
+      .fill(
+        "用于验证长期记忆检索"
+      );
+
+    await memory
+      .locator(
+        '[data-testid="memory-tags"]'
+      )
+      .fill(
+        "e2e, memory-key"
+      );
+
 
     await memory
       .locator(
@@ -815,7 +889,7 @@ async function main() {
     );
 
     console.log(
-      "Playwright Electron E2E passed: replies, response re-open, conversation switch, settings, memory injection and memory disable."
+      "Playwright Electron E2E passed: replies, response re-open, conversation switch, personality context, settings, memory metadata, memory injection and memory disable."
     );
   } catch (error) {
     if (electronApp) {

@@ -1,0 +1,168 @@
+import {
+  describe,
+  it
+} from "node:test";
+
+import assert
+  from "node:assert/strict";
+
+import {
+  assembleAgentContext
+} from "../../electron/context/ContextAssembler.js";
+
+const SETTINGS = {
+  personality: {
+    enabled: true,
+    name: "Nova",
+    identity: "桌面研究助手",
+    language: "zh-CN",
+    tone: "professional",
+    responseLength:
+      "balanced",
+    customInstructions:
+      "优先保持结构清楚。"
+  },
+  conversation: {
+    contextTurns: 1
+  },
+  memory: {
+    enabled: true
+  }
+};
+
+describe(
+  "ContextAssembler",
+  () => {
+    it(
+      "assembles base rules, personality and memory in a stable order",
+      () => {
+        const result =
+          assembleAgentContext({
+            settings: SETTINGS,
+            conversation: {
+              messages: [
+                {
+                  role: "user",
+                  content: "old",
+                  status: "complete"
+                },
+                {
+                  role: "assistant",
+                  content: "old reply",
+                  status: "complete"
+                },
+                {
+                  role: "user",
+                  content: "latest",
+                  status: "complete"
+                }
+              ]
+            },
+            memories: [
+              {
+                title: "环境",
+                content:
+                  "用户使用 Windows。"
+              }
+            ]
+          });
+
+        const baseIndex =
+          result.system.indexOf(
+            "运行在用户桌面"
+          );
+        const personalityIndex =
+          result.system.indexOf(
+            "名称：Nova"
+          );
+        const memoryIndex =
+          result.system.indexOf(
+            "用户使用 Windows"
+          );
+
+        assert.equal(
+          baseIndex >= 0,
+          true
+        );
+        assert.equal(
+          personalityIndex >
+            baseIndex,
+          true
+        );
+        assert.equal(
+          memoryIndex >
+            personalityIndex,
+          true
+        );
+
+        assert.deepEqual(
+          result.messages,
+          [
+            {
+              role: "user",
+              content: "latest"
+            }
+          ]
+        );
+
+        assert.equal(
+          result.metadata
+            .memoryCount,
+          1
+        );
+        assert.equal(
+          result.metadata
+            .personality
+            .name,
+          "Nova"
+        );
+      }
+    );
+
+    it(
+      "omits disabled personality and memory context",
+      () => {
+        const result =
+          assembleAgentContext({
+            settings: {
+              ...SETTINGS,
+              personality: {
+                ...SETTINGS.personality,
+                enabled: false
+              },
+              memory: {
+                enabled: false
+              }
+            },
+            conversation: {
+              messages: []
+            },
+            memories: [
+              {
+                title: "secret",
+                content: "hidden"
+              }
+            ]
+          });
+
+        assert.equal(
+          result.system.includes(
+            "名称：Nova"
+          ),
+          false
+        );
+        assert.equal(
+          result.system.includes(
+            "hidden"
+          ),
+          false
+        );
+        assert.equal(
+          result.metadata
+            .memoryCount,
+          0
+        );
+      }
+    );
+  }
+);

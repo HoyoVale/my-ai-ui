@@ -90,12 +90,7 @@ export function openConversationWindow() {
       maximizable: true,
       fullscreenable: true,
 
-      alwaysOnTop:
-        Boolean(
-          settings
-            .conversationWindow
-            .alwaysOnTop
-        )
+      alwaysOnTop: false
     });
 
   conversationWindow.on(
@@ -161,14 +156,6 @@ export function applyConversationWindowSettings(
       )
     );
 
-  conversationWindow
-    .setAlwaysOnTop(
-      Boolean(
-        settings
-          .conversationWindow
-          .alwaysOnTop
-      )
-    );
 }
 
 export function getConversationWindow() {

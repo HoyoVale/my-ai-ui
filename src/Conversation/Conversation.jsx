@@ -37,8 +37,6 @@ export default function Conversation() {
   const settings =
     useAppSettings();
 
-  const conversationWindow =
-    settings.conversationWindow;
 
   const theme =
     useResolvedTheme(
@@ -120,10 +118,6 @@ export default function Conversation() {
             .reducedMotion
             ? "reduce-motion"
             : "",
-          conversationWindow
-            .compactList
-            ? "is-compact-list"
-            : "",
           sidebarCollapsed
             ? "is-sidebar-collapsed"
             : "",
@@ -135,8 +129,6 @@ export default function Conversation() {
           .join(" ");
       },
       [
-        conversationWindow
-          .compactList,
         isMaximized,
         settings
           .appearance
@@ -162,13 +154,13 @@ export default function Conversation() {
             .accentColor,
 
         "--conversation-sidebar-width":
-          `${conversationWindow.sidebarWidth}px`,
+          "288px",
 
         "--conversation-message-max-width":
-          `${conversationWindow.messageMaxWidth}px`,
+          "780px",
 
         "--conversation-font-size":
-          `${conversationWindow.fontSize}px`
+          "15px"
       }}
     >
       <ConversationTopbar
@@ -189,6 +181,9 @@ export default function Conversation() {
             (current) =>
               !current
           );
+        }}
+        onCreate={() => {
+          void history.create();
         }}
         onOpenInput={openInput}
         onMinimize={() => {
@@ -221,10 +216,7 @@ export default function Conversation() {
           }
           busy={history.busy}
           query={query}
-          showPreview={
-            conversationWindow
-              .showPreview
-          }
+          showPreview={true}
           onQueryChange={setQuery}
           onCreate={() => {
             void history.create();
@@ -256,6 +248,13 @@ export default function Conversation() {
             loading={history.loading}
             conversation={
               history.current
+            }
+            assistantName={
+              settings.personality
+                .enabled
+                ? settings.personality
+                    .name
+                : "Xixi"
             }
             onOpenInput={openInput}
           />

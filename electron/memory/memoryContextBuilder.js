@@ -1,11 +1,3 @@
-const CATEGORY_LABELS = {
-  profile: "用户资料",
-  preference: "用户偏好",
-  project: "长期项目",
-  constraint: "固定约束",
-  other: "其他"
-};
-
 export function buildMemoryContext(
   memories
 ) {
@@ -19,12 +11,23 @@ export function buildMemoryContext(
   const lines =
     memories.map(
       (memory) => {
-        const label =
-          CATEGORY_LABELS[
-            memory.category
-          ] ?? "其他";
+        const title =
+          String(
+            memory.title ?? ""
+          ).trim();
 
-        return `- [${label}] ${memory.content}`;
+        const content =
+          String(
+            memory.content ?? ""
+          ).trim();
+
+        const body =
+          title &&
+          title !== content
+            ? `${title}：${content}`
+            : content;
+
+        return `- ${body}`;
       }
     );
 

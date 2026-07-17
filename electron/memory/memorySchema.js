@@ -1,15 +1,12 @@
-const STORE_VERSION = 1;
+const STORE_VERSION = 3;
 
-export const MEMORY_CATEGORIES = Object.freeze([
-  "profile",
-  "preference",
-  "project",
-  "constraint",
-  "other"
-]);
-
-const CATEGORY_SET =
-  new Set(MEMORY_CATEGORIES);
+const LEGACY_CATEGORY_LABELS = {
+  profile: "资料",
+  preference: "偏好",
+  project: "项目",
+  constraint: "约束",
+  other: "其他"
+};
 
 function stringValue(
   value,
@@ -32,7 +29,7 @@ function timestampValue(
     : fallback;
 }
 
-function importanceValue(
+function priorityValue(
   value,
   fallback = 0.5
 ) {
@@ -60,11 +57,121 @@ export function normalizeMemoryContent(
     .trim();
 }
 
+export function normalizeMemoryTitle(
+  value,
+  content = ""
+) {
+  const explicit =
+    stringValue(
+      value,
+      "",
+      120
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (explicit) {
+    return explicit;
+  }
+
+  const normalizedContent =
+    normalizeMemoryContent(
+      content
+    );
+
+  if (!normalizedContent) {
+    return "";
+  }
+
+  const firstSentence =
+    normalizedContent
+      .split(/[。！？\n]/u)[0]
+      .trim();
+
+  const source =
+    firstSentence ||
+    normalizedContent;
+
+  return source.length > 48
+    ? `${source.slice(0, 48)}…`
+    : source;
+}
+
+export function normalizeMemoryDescription(
+  value
+) {
+  return stringValue(
+    value,
+    "",
+    500
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function normalizeMemoryTags(
+  value
+) {
+  const source =
+    Array.isArray(value)
+      ? value
+      : typeof value === "string"
+        ? value.split(/[,，]/u)
+        : [];
+
+  const tags = [];
+  const seen = new Set();
+
+  for (const item of source) {
+    const tag =
+      stringValue(
+        item,
+        "",
+        40
+      )
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const key =
+      tag.toLocaleLowerCase();
+
+    if (
+      !tag ||
+      seen.has(key)
+    ) {
+      continue;
+    }
+
+    seen.add(key);
+    tags.push(tag);
+
+    if (tags.length >= 12) {
+      break;
+    }
+  }
+
+  return tags;
+}
+
+function legacyDescription(
+  category
+) {
+  const label =
+    LEGACY_CATEGORY_LABELS[
+      category
+    ];
+
+  return label
+    ? `由旧版“${label}”分类迁移。`
+    : "";
+}
+
 export function createMemoryKey({
-  category,
   content
 }) {
-  return `${category}:${normalizeMemoryContent(content).toLocaleLowerCase()}`;
+  return normalizeMemoryContent(
+    content
+  ).toLocaleLowerCase();
 }
 
 export function createEmptyMemoryData() {
@@ -101,12 +208,11 @@ export function sanitizeMemory(
     return null;
   }
 
-  const category =
-    CATEGORY_SET.has(
-      source.category
-    )
+  const legacyCategory =
+    typeof source.category ===
+      "string"
       ? source.category
-      : "other";
+      : "";
 
   const createdAt =
     timestampValue(
@@ -123,25 +229,28 @@ export function sanitizeMemory(
       )
     );
 
-  const lastUsedAt =
-    timestampValue(
-      source.lastUsedAt,
-      0
-    );
-
-  const sourceConversationId =
-    stringValue(
-      source.sourceConversationId,
-      "",
-      100
-    ).trim() || null;
-
   return {
     id,
-    category,
+    title:
+      normalizeMemoryTitle(
+        source.title,
+        content
+      ),
     content,
-    importance:
-      importanceValue(
+    description:
+      normalizeMemoryDescription(
+        source.description ||
+        legacyDescription(
+          legacyCategory
+        )
+      ),
+    tags:
+      normalizeMemoryTags(
+        source.tags
+      ),
+    priority:
+      priorityValue(
+        source.priority ??
         source.importance,
         0.5
       ),
@@ -150,11 +259,72 @@ export function sanitizeMemory(
         "boolean"
         ? source.enabled
         : true,
-    sourceConversationId,
+    sourceConversationId:
+      stringValue(
+        source.sourceConversationId,
+        "",
+        100
+      ).trim() || null,
     createdAt,
     updatedAt,
-    lastUsedAt
+    lastUsedAt:
+      timestampValue(
+        source.lastUsedAt,
+        0
+      )
   };
+}
+
+function mergeDuplicateMemory(
+  target,
+  incoming
+) {
+  const incomingIsNewer =
+    incoming.updatedAt >=
+    target.updatedAt;
+
+  if (incomingIsNewer) {
+    target.title =
+      incoming.title ||
+      target.title;
+    target.description =
+      incoming.description ||
+      target.description;
+    target.sourceConversationId =
+      incoming.sourceConversationId ||
+      target.sourceConversationId;
+  }
+
+  target.tags =
+    normalizeMemoryTags([
+      ...target.tags,
+      ...incoming.tags
+    ]);
+  target.priority =
+    Math.max(
+      target.priority,
+      incoming.priority
+    );
+  target.enabled =
+    target.enabled ||
+    incoming.enabled;
+  target.createdAt =
+    Math.min(
+      target.createdAt ||
+        incoming.createdAt,
+      incoming.createdAt ||
+        target.createdAt
+    );
+  target.updatedAt =
+    Math.max(
+      target.updatedAt,
+      incoming.updatedAt
+    );
+  target.lastUsedAt =
+    Math.max(
+      target.lastUsedAt,
+      incoming.lastUsedAt
+    );
 }
 
 export function sanitizeMemoryData(
@@ -182,29 +352,38 @@ export function sanitizeMemoryData(
       : [];
 
   const unique = [];
-  const seenIds = new Set();
-  const seenKeys = new Set();
+  const byId = new Set();
+  const byKey = new Map();
 
   for (const memory of memories) {
-    const key =
-      createMemoryKey(memory);
-
-    if (
-      seenIds.has(memory.id) ||
-      seenKeys.has(key)
-    ) {
+    if (byId.has(memory.id)) {
       continue;
     }
 
-    seenIds.add(memory.id);
-    seenKeys.add(key);
+    byId.add(memory.id);
+
+    const key =
+      createMemoryKey(memory);
+
+    const duplicate =
+      byKey.get(key);
+
+    if (duplicate) {
+      mergeDuplicateMemory(
+        duplicate,
+        memory
+      );
+      continue;
+    }
+
+    byKey.set(key, memory);
     unique.push(memory);
   }
 
   unique.sort(
     (left, right) =>
-      right.importance -
-        left.importance ||
+      right.priority -
+        left.priority ||
       right.updatedAt -
         left.updatedAt
   );

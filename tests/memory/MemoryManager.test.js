@@ -11,11 +11,12 @@ import {
 } from "../../electron/memory/MemoryManager.js";
 
 class MemoryTestStore {
-  constructor() {
-    this.data = {
-      version: 1,
-      memories: []
-    };
+  constructor(data = null) {
+    this.data =
+      data ?? {
+        version: 3,
+        memories: []
+      };
   }
 
   load() {
@@ -32,19 +33,19 @@ class MemoryTestStore {
 }
 
 function createManager(
-  memorySettings = {}
+  memorySettings = {},
+  store = new MemoryTestStore()
 ) {
   let now = 100;
   let id = 0;
 
   return new MemoryManager({
-    store:
-      new MemoryTestStore(),
+    store,
     getSettings: () => ({
       memory: {
         enabled: true,
         maxInjected: 5,
-        minImportance: 0,
+        minPriority: 0,
         ...memorySettings
       }
     }),
@@ -60,30 +61,75 @@ function createManager(
 }
 
 describe(
-  "MemoryManager",
+  "MemoryManager v3",
   () => {
     it(
-      "deduplicates and updates matching content",
+      "creates title, description, tags and priority",
+      () => {
+        const manager =
+          createManager();
+
+        const result =
+          manager.create({
+            title: "Xixi 技术栈",
+            content:
+              "使用 Electron",
+            description:
+              "讨论架构时使用",
+            tags:
+              "Electron, Xixi",
+            priority: 0.8
+          });
+
+        assert.equal(
+          result.ok,
+          true
+        );
+        assert.equal(
+          result.memory.title,
+          "Xixi 技术栈"
+        );
+        assert.equal(
+          result.memory.priority,
+          0.8
+        );
+        assert.equal(
+          "scope" in
+            result.memory,
+          false
+        );
+        assert.deepEqual(
+          result.memory.tags,
+          [
+            "Electron",
+            "Xixi"
+          ]
+        );
+      }
+    );
+
+    it(
+      "deduplicates matching content globally",
       () => {
         const manager =
           createManager();
 
         const first =
           manager.create({
-            category:
-              "preference",
+            title: "界面偏好",
             content:
               "喜欢简洁界面",
-            importance: 0.4
+            priority: 0.4
           });
 
         const second =
           manager.create({
-            category:
-              "preference",
+            title:
+              "简洁 UI 偏好",
             content:
               "  喜欢简洁界面  ",
-            importance: 0.9
+            tags: ["UI"],
+            priority: 0.9
           });
 
         assert.equal(
@@ -100,29 +146,79 @@ describe(
         );
         assert.equal(
           manager.list()[0]
-            .importance,
+            .priority,
           0.9
+        );
+        assert.equal(
+          manager.list()[0]
+            .title,
+          "简洁 UI 偏好"
         );
       }
     );
 
     it(
-      "sorts retrieval by relevance and importance",
+      "filters by enabled state and searchable metadata",
       () => {
         const manager =
           createManager();
 
         manager.create({
-          category: "project",
+          title: "开发环境",
+          content:
+            "使用 Windows",
+          tags: ["PowerShell"]
+        });
+
+        manager.create({
+          title: "Preload 规则",
+          content:
+            "保持单文件",
+          description:
+            "Electron 安全边界",
+          enabled: false
+        });
+
+        assert.equal(
+          manager.list({
+            enabled: false
+          }).length,
+          1
+        );
+        assert.equal(
+          manager.list({
+            enabled: true
+          }).length,
+          1
+        );
+        assert.equal(
+          manager.list({
+            query: "PowerShell"
+          })[0].title,
+          "开发环境"
+        );
+      }
+    );
+
+    it(
+      "sorts retrieval by relevance and priority",
+      () => {
+        const manager =
+          createManager();
+
+        manager.create({
+          title: "测试暗号",
           content:
             "memory-key 对应紫色彗星",
-          importance: 0.6
+          description:
+            "测试长期记忆",
+          priority: 0.6
         });
         manager.create({
-          category: "profile",
+          title: "所在地区",
           content:
             "用户在新加坡",
-          importance: 1
+          priority: 1
         });
 
         const result =
@@ -145,18 +241,13 @@ describe(
         const manager =
           createManager();
 
-        const result =
-          manager.create({
-            content:
-              "memory-key 不可用",
-            enabled: false,
-            importance: 1
-          });
+        manager.create({
+          content:
+            "memory-key 不可用",
+          enabled: false,
+          priority: 1
+        });
 
-        assert.equal(
-          result.ok,
-          true
-        );
         assert.deepEqual(
           manager.retrieve({
             query: "memory-key"
@@ -167,29 +258,29 @@ describe(
     );
 
     it(
-      "respects injection limit and importance threshold",
+      "respects injection limit and priority threshold",
       () => {
         const manager =
           createManager({
             maxInjected: 2,
-            minImportance: 0.5
+            minPriority: 0.5
           });
 
         manager.create({
           content: "A",
-          importance: 0.9
+          priority: 0.9
         });
         manager.create({
           content: "B",
-          importance: 0.8
+          priority: 0.8
         });
         manager.create({
           content: "C",
-          importance: 0.7
+          priority: 0.7
         });
         manager.create({
           content: "D",
-          importance: 0.2
+          priority: 0.2
         });
 
         const result =
@@ -219,12 +310,37 @@ describe(
 
         manager.create({
           content: "A",
-          importance: 1
+          priority: 1
         });
 
         assert.deepEqual(
           manager.retrieve(),
           []
+        );
+      }
+    );
+
+    it(
+      "reports only meaningful memory counts",
+      () => {
+        const manager =
+          createManager();
+
+        manager.create({
+          content: "A"
+        });
+        manager.create({
+          content: "B",
+          enabled: false
+        });
+
+        assert.deepEqual(
+          manager.getState(),
+          {
+            totalMemories: 2,
+            enabledMemories: 1,
+            disabledMemories: 1
+          }
         );
       }
     );

@@ -61,63 +61,22 @@ describe(
 
 
 describe(
-  "conversation window settings validation",
+  "removed conversation window settings",
   () => {
     it(
-      "clamps layout and preserves booleans",
+      "ignores legacy conversationWindow configuration",
       () => {
         const settings =
           sanitizeSettings({
             conversationWindow: {
               sidebarWidth: 999,
-              messageMaxWidth: 10,
-              fontSize: 40,
-              compactList: true,
-              showPreview: false,
               alwaysOnTop: true
             }
           });
 
         assert.equal(
-          settings
-            .conversationWindow
-            .sidebarWidth,
-          420
-        );
-
-        assert.equal(
-          settings
-            .conversationWindow
-            .messageMaxWidth,
-          520
-        );
-
-        assert.equal(
-          settings
-            .conversationWindow
-            .fontSize,
-          22
-        );
-
-        assert.equal(
-          settings
-            .conversationWindow
-            .compactList,
-          true
-        );
-
-        assert.equal(
-          settings
-            .conversationWindow
-            .showPreview,
+          "conversationWindow" in settings,
           false
-        );
-
-        assert.equal(
-          settings
-            .conversationWindow
-            .alwaysOnTop,
-          true
         );
       }
     );
@@ -136,7 +95,7 @@ describe(
             memory: {
               enabled: false,
               maxInjected: 999,
-              minImportance: -4
+              minPriority: -4
             }
           });
 
@@ -149,8 +108,80 @@ describe(
           20
         );
         assert.equal(
-          settings.memory.minImportance,
+          settings.memory.minPriority,
           0
+        );
+      }
+    );
+
+    it(
+      "migrates legacy minImportance to minPriority",
+      () => {
+        const settings =
+          sanitizeSettings({
+            memory: {
+              minImportance: 0.65
+            }
+          });
+
+        assert.equal(
+          settings.memory.minPriority,
+          0.65
+        );
+        assert.equal(
+          "minImportance" in
+            settings.memory,
+          false
+        );
+      }
+    );
+  }
+);
+
+
+describe(
+  "personality settings validation",
+  () => {
+    it(
+      "sanitizes personality identity and response preferences",
+      () => {
+        const settings =
+          sanitizeSettings({
+            personality: {
+              enabled: true,
+              name: "  Nova  ",
+              identity: "  桌面研究助手  ",
+              language: "invalid",
+              tone: "professional",
+              responseLength: "detailed",
+              customInstructions:
+                "  先给结论。  "
+            }
+          });
+
+        assert.equal(
+          settings.personality.name,
+          "Nova"
+        );
+        assert.equal(
+          settings.personality.identity,
+          "桌面研究助手"
+        );
+        assert.equal(
+          settings.personality.language,
+          "auto"
+        );
+        assert.equal(
+          settings.personality.tone,
+          "professional"
+        );
+        assert.equal(
+          settings.personality.responseLength,
+          "detailed"
+        );
+        assert.equal(
+          settings.personality.customInstructions,
+          "先给结论。"
         );
       }
     );

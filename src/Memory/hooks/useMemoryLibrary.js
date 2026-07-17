@@ -7,7 +7,7 @@ import {
 const EMPTY_STATE = {
   totalMemories: 0,
   enabledMemories: 0,
-  categories: {}
+  disabledMemories: 0
 };
 
 export function useMemoryLibrary() {

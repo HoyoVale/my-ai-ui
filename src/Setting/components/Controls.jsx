@@ -59,7 +59,8 @@ export function Toggle({
   checked,
   disabled = false,
   onChange,
-  label
+  label,
+  testId
 }) {
   return (
     <button
@@ -74,6 +75,7 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      data-testid={testId}
       disabled={disabled}
       onClick={() => {
         onChange?.(!checked);
@@ -125,11 +127,13 @@ export function Slider({
 export function Select({
   value,
   options,
-  onChange
+  onChange,
+  testId
 }) {
   return (
     <select
       className="settings-select"
+      data-testid={testId}
       value={value}
       onChange={(event) => {
         const selected =
@@ -163,11 +167,13 @@ export function TextInput({
   type = "text",
   disabled = false,
   autoComplete,
-  onChange
+  onChange,
+  testId
 }) {
   return (
     <input
       className="settings-text-input"
+      data-testid={testId}
       type={type}
       value={value}
       placeholder={placeholder}
@@ -182,13 +188,44 @@ export function TextInput({
   );
 }
 
+export function TextArea({
+  value,
+  placeholder,
+  disabled = false,
+  rows = 5,
+  maxLength,
+  onChange,
+  testId
+}) {
+  return (
+    <textarea
+      className="settings-textarea"
+      data-testid={testId}
+      value={value}
+      placeholder={placeholder}
+      disabled={disabled}
+      rows={rows}
+      maxLength={maxLength}
+      onChange={(event) => {
+        onChange?.(
+          event.target.value
+        );
+      }}
+    />
+  );
+}
+
 export function Segmented({
   value,
   options,
-  onChange
+  onChange,
+  testId
 }) {
   return (
-    <div className="settings-segmented">
+    <div
+      className="settings-segmented"
+      data-testid={testId}
+    >
       {options.map((option) => (
         <button
           key={option.value}

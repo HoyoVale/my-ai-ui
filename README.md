@@ -335,9 +335,9 @@ npm run test:electron:ci
 memories.json
 ```
 
-当前版本只支持用户手动创建和维护记忆，不会自动分析或保存聊天内容。
+当前版本只支持用户手动创建和维护记忆，不会自动分析或保存聊天内容。所有长期记忆都表示跨会话可用的信息，不再区分“全局”或“当前项目”。
 
-Setting 中新增：
+Setting 中：
 
 ```text
 AI → Memory
@@ -347,26 +347,36 @@ AI → Memory
 
 - 是否启用长期记忆
 - 每次最多注入 1–20 条
-- 最低重要度阈值
+- 最低优先级阈值
 - 打开独立记忆管理窗口
 - 清空全部记忆
 
 独立 Memory 窗口支持：
 
-- 添加、编辑和删除记忆
-- 启用或停用单条记忆
-- 设置类别与重要度
-- 搜索和类别筛选
-- 重复内容自动合并
+- 标题、正文和描述
+- 自由标签
+- 优先级
+- 启用或停用
+- 搜索与状态筛选
+- 重复正文自动合并
+
+旧版 `category/importance/scope` 数据会自动迁移为：
+
+```text
+title / description / tags / priority
+```
+
+迁移后自动写回 `memories.json` v3，并保留对应版本的备份文件。
 
 Agent 请求链路：
 
 ```text
 当前用户消息
-→ 检索已启用且达到阈值的记忆
-→ 按相关性与重要度排序
+→ 搜索标题、正文、描述和标签
+→ 过滤已停用或低优先级记忆
+→ 按相关性与优先级排序
 → 限制注入数量
-→ 追加到 System Prompt
+→ 只将标题和正文追加到 System Prompt
 → 组合短期会话上下文
 → 调用模型
 ```
@@ -385,6 +395,36 @@ src/Memory/
 ├─ Memory.jsx
 ├─ Memory.css
 ├─ components/
-├─ constants/
 └─ hooks/
 ```
+
+详细说明见：
+
+```text
+docs/MEMORY.md
+```
+
+## Personality 与统一上下文组装
+
+Setting → AI → Personality 现在可以配置：
+
+- 是否启用自定义人格
+- 助手名称与身份描述
+- 默认语言
+- 回复语气
+- 回答篇幅
+- 补充行为说明
+
+所有模型请求统一经过 `electron/context/ContextAssembler.js`：
+
+```text
+基础系统规则
+→ Personality
+→ 相关长期记忆
+→ 当前会话最近 N 轮
+→ 模型请求
+```
+
+Personality 只定义助手是谁、如何回答；用户事实仍应保存在长期记忆中，会话内容仍由短期上下文管理。
+
+Conversation 与 Memory 窗口继续采用统一的轻量桌面布局，并增加了时间分组、消息复制、未保存提示、切换前确认和更紧凑的信息层级。

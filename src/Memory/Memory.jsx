@@ -34,6 +34,18 @@ import {
 
 import "./Memory.css";
 
+function searchText(memory) {
+  return [
+    memory.title,
+    memory.content,
+    memory.description,
+    ...(memory.tags ?? [])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+}
+
 export default function Memory() {
   const settings =
     useAppSettings();
@@ -52,8 +64,10 @@ export default function Memory() {
     useState(false);
   const [query, setQuery] =
     useState("");
-  const [category, setCategory] =
+  const [filter, setFilter] =
     useState("all");
+  const [editorDirty, setEditorDirty] =
+    useState(false);
 
   const filteredMemories =
     useMemo(() => {
@@ -64,21 +78,31 @@ export default function Memory() {
 
       return library.memories.filter(
         (memory) => {
+          const matchesFilter =
+            filter === "all" ||
+            (
+              filter === "enabled" &&
+              memory.enabled
+            ) ||
+            (
+              filter === "disabled" &&
+              !memory.enabled
+            );
+
           return (
-            (category === "all" ||
-              memory.category ===
-                category) &&
-            (!normalized ||
-              memory.content
-                .toLocaleLowerCase()
+            matchesFilter &&
+            (
+              !normalized ||
+              searchText(memory)
                 .includes(
                   normalized
-                ))
+                )
+            )
           );
         }
       );
     }, [
-      category,
+      filter,
       library.memories,
       query
     ]);
@@ -114,9 +138,23 @@ export default function Memory() {
     selectedId
   ]);
 
+  const canLeaveEditor = () => {
+    return (
+      !editorDirty ||
+      window.confirm(
+        "当前修改尚未保存，确定放弃吗？"
+      )
+    );
+  };
+
   const startCreate = () => {
+    if (!canLeaveEditor()) {
+      return;
+    }
+
     setSelectedId(null);
     setCreating(true);
+    setEditorDirty(false);
     library.clearError();
   };
 
@@ -127,6 +165,7 @@ export default function Memory() {
 
       if (result?.ok) {
         setCreating(false);
+        setEditorDirty(false);
         setSelectedId(
           result.memory?.id ??
           null
@@ -148,6 +187,7 @@ export default function Memory() {
         result?.ok &&
         result.memory?.id
       ) {
+        setEditorDirty(false);
         setSelectedId(
           result.memory.id
         );
@@ -164,10 +204,20 @@ export default function Memory() {
       if (result?.ok) {
         setSelectedId(null);
         setCreating(false);
+        setEditorDirty(false);
       }
 
       return result;
     };
+
+  const closeWindow = () => {
+    if (!canLeaveEditor()) {
+      return;
+    }
+
+    window.api
+      ?.closeWindow?.();
+  };
 
   return (
     <div
@@ -198,7 +248,6 @@ export default function Memory() {
       <MemoryTopbar
         state={library.state}
         isMaximized={isMaximized}
-        onNew={startCreate}
         onMinimize={() => {
           window.api
             ?.minimizeWindow?.();
@@ -207,10 +256,7 @@ export default function Memory() {
           window.api
             ?.maximizeWindow?.();
         }}
-        onClose={() => {
-          window.api
-            ?.closeWindow?.();
-        }}
+        onClose={closeWindow}
       />
 
       <div className="memory-layout">
@@ -218,18 +264,22 @@ export default function Memory() {
           memories={filteredMemories}
           selectedId={selectedId}
           query={query}
-          category={category}
+          filter={filter}
+          state={library.state}
           loading={library.loading}
+          onNew={startCreate}
           onQueryChange={setQuery}
-          onCategoryChange={
-            setCategory
-          }
+          onFilterChange={setFilter}
           onSelect={(id) => {
+            if (!canLeaveEditor()) {
+              return;
+            }
+
             setSelectedId(id);
             setCreating(false);
+            setEditorDirty(false);
             library.clearError();
           }}
-          onNew={startCreate}
         />
 
         <section className="memory-main">
@@ -243,11 +293,19 @@ export default function Memory() {
             memory={selectedMemory}
             creating={creating}
             busy={library.busy}
+            onDirtyChange={
+              setEditorDirty
+            }
             onCreate={createMemory}
             onUpdate={updateMemory}
             onDelete={deleteMemory}
             onCancelCreate={() => {
+              if (!canLeaveEditor()) {
+                return;
+              }
+
               setCreating(false);
+              setEditorDirty(false);
             }}
           />
         </section>

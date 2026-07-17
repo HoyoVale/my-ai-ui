@@ -49,17 +49,15 @@ export const DEFAULT_SETTINGS = {
   },
 
   personality: {
-    enabled: false
+    enabled: true,
+    name: "Xixi",
+    identity: "运行在用户桌面上的轻量 AI 助手",
+    language: "auto",
+    tone: "natural",
+    responseLength: "balanced",
+    customInstructions: ""
   },
 
-  conversationWindow: {
-    sidebarWidth: 288,
-    messageMaxWidth: 780,
-    fontSize: 15,
-    compactList: false,
-    showPreview: true,
-    alwaysOnTop: false
-  },
 
   conversation: {
     contextTurns: 8,
@@ -71,7 +69,7 @@ export const DEFAULT_SETTINGS = {
   memory: {
     enabled: true,
     maxInjected: 5,
-    minImportance: 0.3
+    minPriority: 0.3
   },
 
   model: {

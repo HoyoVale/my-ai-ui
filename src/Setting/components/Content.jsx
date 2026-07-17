@@ -14,9 +14,6 @@ import {
   ConversationPanel
 } from "../panels/ConversationPanel.jsx";
 
-import {
-  ConversationWindowPanel
-} from "../panels/ConversationWindowPanel.jsx";
 
 import {
   GeneralPanel
@@ -39,8 +36,8 @@ import {
 } from "../panels/PetPanel.jsx";
 
 import {
-  PlaceholderPanel
-} from "../panels/PlaceholderPanel.jsx";
+  PersonalityPanel
+} from "../panels/PersonalityPanel.jsx";
 
 import {
   ResponsePanel
@@ -122,22 +119,16 @@ export function SettingsContent({
       />
     ),
 
-    conversationWindow: (
-      <ConversationWindowPanel
+
+    personality: (
+      <PersonalityPanel
         settings={settings}
         onUpdate={(patch) => {
           onUpdateSection(
-            "conversationWindow",
+            "personality",
             patch
           );
         }}
-      />
-    ),
-
-    personality: (
-      <PlaceholderPanel
-        title="Personality"
-        description="后续接入角色提示词、语气和行为规则。"
       />
     ),
 

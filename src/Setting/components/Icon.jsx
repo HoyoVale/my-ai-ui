@@ -78,18 +78,6 @@ export function Icon({
       </>
     ),
 
-    conversationWindow: (
-      <>
-        <rect
-          x="3.5"
-          y="4"
-          width="17"
-          height="16"
-          rx="2.5"
-        />
-        <path d="M9 4v16M12 9h5M12 13h4" />
-      </>
-    ),
 
     conversation: (
       <>

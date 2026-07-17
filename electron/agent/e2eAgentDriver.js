@@ -49,7 +49,8 @@ function wait(
 
 export function buildE2EResponse(
   messages,
-  memories = []
+  memories = [],
+  contextMetadata = {}
 ) {
   const userMessages =
     messages.filter(
@@ -72,6 +73,20 @@ export function buildE2EResponse(
       : "E2E_MEMORY_NONE";
   }
 
+  if (
+    latest.includes(
+      "personality-key"
+    )
+  ) {
+    const personality =
+      contextMetadata
+        .personality ?? {};
+
+    return personality.enabled
+      ? `E2E_PERSONALITY:${personality.name}:${personality.tone}:${personality.responseLength}`
+      : "E2E_PERSONALITY_DISABLED";
+  }
+
   return (
     `E2E_REPLY_${userMessages.length}:` +
     latest
@@ -81,13 +96,15 @@ export function buildE2EResponse(
 export async function streamE2EResponse({
   messages,
   memories = [],
+  contextMetadata = {},
   signal,
   onChunk
 }) {
   const text =
     buildE2EResponse(
       messages,
-      memories
+      memories,
+      contextMetadata
     );
 
   const chunkSize =

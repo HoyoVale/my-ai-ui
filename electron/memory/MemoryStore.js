@@ -10,6 +10,34 @@ function clone(value) {
   return structuredClone(value);
 }
 
+function isLegacyData(source) {
+  if (
+    !source ||
+    typeof source !== "object"
+  ) {
+    return false;
+  }
+
+  if (source.version !== 3) {
+    return true;
+  }
+
+  return Array.isArray(
+    source.memories
+  ) &&
+    source.memories.some(
+      (memory) =>
+        memory &&
+        typeof memory ===
+          "object" &&
+        (
+          "category" in memory ||
+          "importance" in memory ||
+          "scope" in memory
+        )
+    );
+}
+
 export class MemoryStore {
   constructor({
     getFilePath,
@@ -35,6 +63,34 @@ export class MemoryStore {
     return this.getFilePath();
   }
 
+  getLegacyBackupPath(
+    version
+  ) {
+    const filePath =
+      this.getPath();
+
+    const extension =
+      path.extname(filePath);
+
+    const baseName =
+      path.basename(
+        filePath,
+        extension
+      );
+
+    const versionLabel =
+      Number.isFinite(
+        Number(version)
+      )
+        ? `v${Number(version)}`
+        : "pre-v3";
+
+    return path.join(
+      path.dirname(filePath),
+      `${baseName}.${versionLabel}.backup${extension || ".json"}`
+    );
+  }
+
   load() {
     if (this.cache) {
       return clone(this.cache);
@@ -51,9 +107,19 @@ export class MemoryStore {
             "utf8"
           );
 
+      const source =
+        JSON.parse(text);
+
+      if (isLegacyData(source)) {
+        this.backupLegacyFile(
+          text,
+          source?.version
+        );
+      }
+
       this.cache =
         sanitizeMemoryData(
-          JSON.parse(text)
+          source
         );
     } catch (error) {
       if (
@@ -85,6 +151,45 @@ export class MemoryStore {
 
   clearCache() {
     this.cache = null;
+  }
+
+  backupLegacyFile(
+    text,
+    version
+  ) {
+    const backupPath =
+      this.getLegacyBackupPath(
+        version
+      );
+
+    try {
+      this.fileSystem.mkdirSync(
+        path.dirname(
+          backupPath
+        ),
+        {
+          recursive: true
+        }
+      );
+
+      this.fileSystem.writeFileSync(
+        backupPath,
+        text,
+        {
+          encoding: "utf8",
+          flag: "wx"
+        }
+      );
+    } catch (error) {
+      if (
+        error?.code !== "EEXIST"
+      ) {
+        console.warn(
+          "备份旧版记忆文件失败：",
+          error
+        );
+      }
+    }
   }
 
   write(data) {

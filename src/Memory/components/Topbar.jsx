@@ -5,7 +5,6 @@ import {
 export function MemoryTopbar({
   state,
   isMaximized,
-  onNew,
   onMinimize,
   onMaximize,
   onClose
@@ -17,26 +16,23 @@ export function MemoryTopbar({
           name="brain"
           size={17}
         />
-        <strong>长期记忆</strong>
-        <span>
-          {state.enabledMemories}/
-          {state.totalMemories} 已启用
-        </span>
+        <div>
+          <strong>长期记忆</strong>
+          <span>
+            手动维护、跨会话使用
+          </span>
+        </div>
       </div>
 
       <div className="memory-topbar__right">
-        <button
-          type="button"
-          className="memory-primary memory-primary--small"
-          data-testid="memory-new-topbar"
-          onClick={onNew}
-        >
-          <MemoryIcon
-            name="plus"
-            size={15}
-          />
-          新建记忆
-        </button>
+        <div className="memory-topbar__summary">
+          <strong>
+            {state.enabledMemories}
+          </strong>
+          <span>
+            / {state.totalMemories} 已启用
+          </span>
+        </div>
 
         <div className="memory-window-controls">
           <button

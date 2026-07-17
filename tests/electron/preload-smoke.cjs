@@ -137,7 +137,7 @@ app.whenReady().then(
       () => ({
         totalMemories: 0,
         enabledMemories: 0,
-        categories: {}
+        disabledMemories: 0
       })
     );
 

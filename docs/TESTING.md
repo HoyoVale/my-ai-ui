@@ -61,7 +61,7 @@ Vite 端口 4173
 - 打开独立会话窗口
 - 新建与切换会话
 - 完整历史消息仍然存在
-- 手动添加长期记忆
+- 手动添加 v3 长期记忆（标题、描述、标签和优先级）
 - 在新会话中验证记忆注入
 - 停用记忆后验证不再注入
 
@@ -76,3 +76,14 @@ Electron E2E
 ```
 
 每个 Job 都分别在 Ubuntu 与 Windows 运行。E2E 失败截图会上传为 Actions artifact。
+
+## Personality 与 ContextAssembler
+
+新增测试覆盖：
+
+- Personality 设置清理与枚举回退
+- 人格提示词生成
+- 基础规则、人格和长期记忆的固定组装顺序
+- Personality 或 Memory 关闭后不加入系统上下文
+- E2E 测试模型读取 ContextAssembler 元数据
+- Playwright 从 Setting 修改人格，再在新会话中验证生效

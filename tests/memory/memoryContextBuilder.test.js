@@ -11,28 +11,38 @@ import {
 } from "../../electron/memory/memoryContextBuilder.js";
 
 describe(
-  "memory context builder",
+  "memory context builder v3",
   () => {
     it(
-      "renders structured memories for the system prompt",
+      "renders title and content without management metadata",
       () => {
         const result =
           buildMemoryContext([
             {
-              category:
-                "preference",
+              title: "界面偏好",
               content:
-                "用户喜欢简洁界面"
+                "用户喜欢简洁界面",
+              description:
+                "仅用于管理",
+              tags: ["UI"]
             }
           ]);
 
         assert.match(
           result,
-          /用户偏好/
+          /界面偏好/
         );
         assert.match(
           result,
           /用户喜欢简洁界面/
+        );
+        assert.doesNotMatch(
+          result,
+          /仅用于管理/
+        );
+        assert.doesNotMatch(
+          result,
+          /当前项目|全局/
         );
       }
     );

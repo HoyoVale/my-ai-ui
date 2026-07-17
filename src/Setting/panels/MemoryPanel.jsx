@@ -79,13 +79,13 @@ export function MemoryPanel({
         </SettingRow>
 
         <SettingRow
-          title="最低重要度"
-          description="低于该阈值的记忆不会参与检索。"
+          title="最低优先级"
+          description="优先级低于该阈值的记忆不会参与检索。"
           disabled={!memory.enabled}
         >
           <Slider
             value={
-              memory.minImportance
+              memory.minPriority
             }
             min={0}
             max={1}
@@ -95,9 +95,9 @@ export function MemoryPanel({
                 value * 100
               )}%`
             }
-            onChange={(minImportance) => {
+            onChange={(minPriority) => {
               onUpdate({
-                minImportance
+                minPriority
               });
             }}
           />
