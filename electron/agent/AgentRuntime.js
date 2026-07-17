@@ -43,6 +43,11 @@ import {
   isAbortError
 } from "./agentErrors.js";
 
+import {
+  isE2EMode,
+  streamE2EResponse
+} from "./e2eAgentDriver.js";
+
 const DEFAULT_SYSTEM_PROMPT = `
 你是 Xixi，一个运行在用户桌面上的轻量 AI 助手。
 请使用用户当前使用的语言回答。
@@ -98,7 +103,10 @@ export class AgentRuntime {
       };
     }
 
-    if (!getModelApiKey()) {
+    if (
+      !isE2EMode() &&
+      !getModelApiKey()
+    ) {
       const errorMessage =
         "尚未配置 DeepSeek API Key。请先在 Setting → Model 中保存密钥。";
 
@@ -193,13 +201,23 @@ export class AgentRuntime {
       lastError: null
     });
 
-    void this.runMessage({
+    const runArguments = {
       runId,
       conversationId:
         conversation.id,
       messages,
       abortController
-    });
+    };
+
+    if (isE2EMode()) {
+      void this.runE2EMessage(
+        runArguments
+      );
+    } else {
+      void this.runMessage(
+        runArguments
+      );
+    }
 
     return {
       ok: true,
@@ -303,6 +321,112 @@ export class AgentRuntime {
             error
           )
       };
+    }
+  }
+
+
+  async runE2EMessage({
+    runId,
+    conversationId,
+    messages,
+    abortController
+  }) {
+    try {
+      startResponseStream();
+
+      await streamE2EResponse({
+        messages,
+        signal:
+          abortController.signal,
+
+        onChunk: (
+          textPart
+        ) => {
+          if (
+            !this.isCurrentRun(
+              runId
+            )
+          ) {
+            return;
+          }
+
+          this.activeRun
+            .assistantText +=
+            textPart;
+
+          appendResponseChunk(
+            textPart
+          );
+        }
+      });
+
+      endResponseStream();
+
+      if (
+        abortController
+          .signal
+          .aborted ||
+        !this.isCurrentRun(
+          runId
+        )
+      ) {
+        return;
+      }
+
+      const assistantText =
+        this.activeRun
+          .assistantText
+          .trim();
+
+      if (assistantText) {
+        conversationManager
+          .appendMessage({
+            conversationId,
+            role: "assistant",
+            content:
+              assistantText,
+            status: "complete"
+          });
+      }
+
+      this.activeRun = null;
+
+      this.setStatus({
+        state: "idle",
+        runId: null,
+        conversationId,
+        startedAt: null,
+        lastError: null
+      });
+    } catch (error) {
+      endResponseStream();
+
+      if (
+        abortController
+          .signal
+          .aborted ||
+        isAbortError(error)
+      ) {
+        if (
+          this.isCurrentRun(
+            runId
+          )
+        ) {
+          this.activeRun = null;
+
+          this.setStatus({
+            state: "idle",
+            runId: null,
+            conversationId,
+            startedAt: null,
+            lastError: null
+          });
+        }
+
+        return;
+      }
+
+      throw error;
     }
   }
 

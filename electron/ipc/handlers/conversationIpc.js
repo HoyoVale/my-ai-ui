@@ -17,6 +17,10 @@ import {
   clearResponseWindow
 } from "../../windows/response/index.js";
 
+import {
+  openConversationWindow
+} from "../../windows/conversation/conversationWindow.js";
+
 function isAgentBusy() {
   const state =
     agentRuntime
@@ -43,6 +47,15 @@ function rejectWhenBusy() {
 }
 
 export function registerConversationIpc() {
+  ipcMain.on(
+    IPC_CHANNELS
+      .navigation
+      .OPEN_CONVERSATION,
+    () => {
+      openConversationWindow();
+    }
+  );
+
   ipcMain.handle(
     IPC_CHANNELS
       .conversation
@@ -50,6 +63,18 @@ export function registerConversationIpc() {
     () => {
       return conversationManager
         .getState();
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .GET,
+    (_event, id) => {
+      return conversationManager
+        .getConversation(
+          String(id ?? "")
+        );
     }
   );
 

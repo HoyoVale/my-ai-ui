@@ -8,7 +8,10 @@ const IPC_CHANNELS =
         "open-response",
 
       OPEN_SETTING:
-        "open-setting"
+        "open-setting",
+
+      OPEN_CONVERSATION:
+        "open-conversation"
     }),
 
     pet: Object.freeze({
@@ -79,6 +82,9 @@ const IPC_CHANNELS =
     conversation: Object.freeze({
       GET_STATE:
         "conversation-get-state",
+
+      GET:
+        "conversation-get",
 
       LIST:
         "conversation-list",

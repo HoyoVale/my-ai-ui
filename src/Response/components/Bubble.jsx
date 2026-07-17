@@ -30,6 +30,7 @@ export function ResponseBubble({
       style={style}
     >
       <article
+        data-testid="response-bubble"
         className={
           `response-bubble${
             streaming
@@ -41,6 +42,7 @@ export function ResponseBubble({
       >
         <button
           className="response-bubble__close"
+          data-testid="response-close"
           type="button"
           title="关闭"
           aria-label="关闭回复"
@@ -67,7 +69,10 @@ export function ResponseBubble({
           className="response-bubble__content"
           onScroll={onScroll}
         >
-          <span className="response-bubble__text">
+          <span
+            className="response-bubble__text"
+            data-testid="response-text"
+          >
             {text}
           </span>
 

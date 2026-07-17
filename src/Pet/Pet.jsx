@@ -29,7 +29,7 @@ import {
 import "./Pet.css";
 
 const MENU_WIDTH = 156;
-const MENU_HEIGHT = 138;
+const MENU_HEIGHT = 180;
 const MENU_EDGE_GAP = 8;
 
 export default function Pet() {
@@ -205,6 +205,12 @@ export default function Pet() {
           runMenuAction(
             window.api
               ?.openResponse
+          );
+        }}
+        onOpenConversation={() => {
+          runMenuAction(
+            window.api
+              ?.openConversation
           );
         }}
         onOpenSetting={() => {

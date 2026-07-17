@@ -1,36 +1,20 @@
 # 自动化测试分层
 
-## 第一层：纯逻辑与回归测试
-
-命令：
+## 1. 纯逻辑与回归
 
 ```powershell
 npm test
 ```
 
-使用 Node.js 自带的 `node:test`，不增加测试框架依赖。
+使用 Node `node:test`，覆盖会话、上下文、设置、IPC 契约和历史 Bug。
 
-覆盖：
-
-- 设置校验
-- 会话存储
-- 会话管理
-- 短期上下文裁剪
-- Input 高度回归
-- Response 再次唤出契约
-- IPC 频道契约
-
-这层应当保持快速，适合每次修改后运行。
-
-## 第二层：构建检查
-
-命令：
+## 2. Core 检查
 
 ```powershell
 npm run check
 ```
 
-执行：
+依次执行：
 
 ```text
 oxlint
@@ -38,34 +22,54 @@ node --test
 vite build
 ```
 
-任何一项失败都应阻止合并代码。
+## 3. Electron preload 冒烟
 
-## 第三层：Electron preload 冒烟测试
-
-命令：
+本地 Windows：
 
 ```powershell
 npm run test:electron
 ```
 
-测试会启动一个隐藏 BrowserWindow，确认：
+Linux CI：
 
-- preload 成功执行
-- `window.api` 已注入
-- 关键方法存在
-- send / invoke IPC 可以往返
+```powershell
+npm run test:electron:ci
+```
 
-这层专门防止 preload 拆分、频道改名或 contextBridge 修改后导致全部窗口通信失效。
+Linux CI 版本仅在测试进程中添加 `--no-sandbox`，解决 GitHub Runner 的 SUID sandbox 权限问题。正式应用不关闭 sandbox。
 
-## 第四层：Electron UI E2E（后续）
+## 4. Playwright Electron E2E
 
-后续引入 Playwright Electron 测试，覆盖：
+```powershell
+npm run test:e2e
+```
 
-- Pet 拖动
-- 右键菜单
-- Input 输入、发送、停止
-- Response 首次与再次唤出
-- Setting 修改后实时生效
-- 会话切换与短期上下文
+测试使用 Playwright `_electron.launch()` 启动真实 Electron 应用，并使用临时：
 
-UI E2E 比纯逻辑测试慢，应只保留关键用户路径。
+```text
+userData
+Vite 端口 4173
+确定性 E2E Agent
+```
+
+当前验证：
+
+- 桌宠右键菜单打开 Input
+- 连续发送两条消息
+- 第二条回复包含两轮短期上下文
+- Response 关闭后再次唤出
+- 打开独立会话窗口
+- 新建与切换会话
+- 完整历史消息仍然存在
+
+## 5. GitHub Actions
+
+CI 分为三个独立 Job：
+
+```text
+Core
+Electron smoke
+Electron E2E
+```
+
+每个 Job 都分别在 Ubuntu 与 Windows 运行。E2E 失败截图会上传为 Actions artifact。

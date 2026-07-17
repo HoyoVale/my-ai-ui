@@ -4,6 +4,8 @@ import {
   nativeTheme
 } from "electron";
 
+import path from "node:path";
+
 import {
   registerIpcHandlers
 } from "./ipc/registerIpcHandlers.js";
@@ -20,6 +22,19 @@ import {
 import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
+
+const e2eUserData =
+  process.env
+    .XIXI_E2E_USER_DATA;
+
+if (e2eUserData) {
+  app.setPath(
+    "userData",
+    path.resolve(
+      e2eUserData
+    )
+  );
+}
 
 registerIpcHandlers();
 

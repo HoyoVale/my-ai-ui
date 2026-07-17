@@ -266,3 +266,61 @@ npm run check
 ```
 
 当前自动化测试重点覆盖纯逻辑、持久化和通信契约。真实 Electron 窗口点击、拖动和视觉布局的 Playwright E2E 测试应作为下一层测试继续加入。
+
+## 独立会话窗口
+
+桌宠右键菜单新增“会话记录”，会打开独立的 `/conversation` 窗口：
+
+- 左侧：历史会话、新建、切换、删除
+- 右侧：当前会话完整消息
+- “继续对话”：打开 Input 窗口
+- 会话更新通过 `conversation-changed` IPC 实时同步
+
+## Playwright Electron E2E
+
+安装依赖后运行：
+
+```powershell
+npm run test:e2e
+```
+
+测试使用 `XIXI_E2E=1` 内置确定性模型，不读取真实 API Key，也不访问 DeepSeek。
+
+覆盖路径：
+
+```text
+打开 Input
+→ 发送第一条消息
+→ 关闭 Response
+→ 发送第二条消息
+→ 验证 Response 再次显示
+→ 打开会话窗口
+→ 新建会话
+→ 切换回原会话
+→ 验证完整消息
+```
+
+失败截图保存在：
+
+```text
+test-results/
+```
+
+## Linux Electron sandbox
+
+GitHub Actions 的 Linux Runner 不会为 npm 安装的 `chrome-sandbox` 配置 root 所有权和 `4755` 权限。
+
+测试环境使用：
+
+```powershell
+npm run test:electron:ci
+```
+
+它只为测试进程传入：
+
+```text
+--no-sandbox
+```
+
+正式应用仍保留 Electron sandbox。
+

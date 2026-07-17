@@ -1,17 +1,48 @@
-import { HashRouter, Routes, Route } from "react-router-dom";
-import Response from "./Response/Response.jsx";
-import Input from "./Input/Input.jsx";
-import Pet from "./Pet/Pet.jsx";
-import Setting from "./Setting/Setting.jsx"
+import {
+  HashRouter,
+  Route,
+  Routes
+} from "react-router-dom";
+
+import Conversation
+  from "./Conversation/Conversation.jsx";
+import Input
+  from "./Input/Input.jsx";
+import Pet
+  from "./Pet/Pet.jsx";
+import Response
+  from "./Response/Response.jsx";
+import Setting
+  from "./Setting/Setting.jsx";
 
 function App() {
   return (
     <HashRouter>
       <Routes>
-        <Route path="/input" element={<Input />} />
-        <Route path="/response" element={<Response />} />
-        <Route path="/" element={<Pet />} />
-        <Route path="/setting" element={<Setting />} />
+        <Route
+          path="/"
+          element={<Pet />}
+        />
+
+        <Route
+          path="/input"
+          element={<Input />}
+        />
+
+        <Route
+          path="/response"
+          element={<Response />}
+        />
+
+        <Route
+          path="/setting"
+          element={<Setting />}
+        />
+
+        <Route
+          path="/conversation"
+          element={<Conversation />}
+        />
       </Routes>
     </HashRouter>
   );

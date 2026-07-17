@@ -24,6 +24,7 @@ export function InputComposer({
       <textarea
         ref={textareaRef}
         className="input-bar__field"
+        data-testid="input-textarea"
         rows={1}
         placeholder={placeholder}
         value={value}
@@ -38,6 +39,7 @@ export function InputComposer({
       />
 
       <button
+        data-testid="input-send"
         className={
           `input-bar__send${
             isRunning

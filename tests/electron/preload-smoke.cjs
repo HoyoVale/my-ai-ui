@@ -54,12 +54,25 @@ app.whenReady().then(
     let dragStartReceived =
       false;
 
+    let openConversationReceived =
+      false;
+
     ipcMain.on(
       CHANNELS
         .navigation
         .OPEN_INPUT,
       () => {
         openInputReceived =
+          true;
+      }
+    );
+
+    ipcMain.on(
+      CHANNELS
+        .navigation
+        .OPEN_CONVERSATION,
+      () => {
+        openConversationReceived =
           true;
       }
     );
@@ -90,6 +103,17 @@ app.whenReady().then(
         .GET,
       () => ({
         general: {}
+      })
+    );
+
+    ipcMain.handle(
+      CHANNELS
+        .conversation
+        .GET,
+      () => ({
+        id: "conversation-1",
+        title: "Smoke",
+        messages: []
       })
     );
 
@@ -136,11 +160,13 @@ app.whenReady().then(
           (async () => {
             const requiredMethods = [
               "openInput",
+              "openConversation",
               "startPetDrag",
               "sendAgentMessage",
               "getAgentStatus",
               "getSettings",
               "getConversationState",
+              "getConversation",
               "createConversation",
               "onConversationChanged"
             ];
@@ -162,6 +188,8 @@ app.whenReady().then(
               y: 20
             });
 
+            window.api.openConversation();
+
             return {
               apiType:
                 typeof window.api,
@@ -178,7 +206,13 @@ app.whenReady().then(
 
               conversationState:
                 await window.api
-                  .getConversationState()
+                  .getConversationState(),
+
+              conversation:
+                await window.api
+                  .getConversation(
+                    "conversation-1"
+                  )
             };
           })()
         `);
@@ -234,12 +268,24 @@ app.whenReady().then(
     );
 
     assert.equal(
+      result
+        .conversation
+        .title,
+      "Smoke"
+    );
+
+    assert.equal(
       openInputReceived,
       true
     );
 
     assert.equal(
       dragStartReceived,
+      true
+    );
+
+    assert.equal(
+      openConversationReceived,
       true
     );
 

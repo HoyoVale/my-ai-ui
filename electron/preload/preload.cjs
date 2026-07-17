@@ -19,6 +19,9 @@ const CHANNELS = Object.freeze({
   OPEN_SETTING:
     "open-setting",
 
+  OPEN_CONVERSATION:
+    "open-conversation",
+
   PET_DRAG_START:
     "pet-drag-start",
 
@@ -78,6 +81,9 @@ const CHANNELS = Object.freeze({
 
   CONVERSATION_GET_STATE:
     "conversation-get-state",
+
+  CONVERSATION_GET:
+    "conversation-get",
 
   CONVERSATION_LIST:
     "conversation-list",
@@ -189,6 +195,13 @@ const api = Object.freeze({
   openSetting: () => {
     ipcRenderer.send(
       CHANNELS.OPEN_SETTING
+    );
+  },
+
+  openConversation: () => {
+    ipcRenderer.send(
+      CHANNELS
+        .OPEN_CONVERSATION
     );
   },
 
@@ -391,6 +404,19 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS
         .CONVERSATION_GET_STATE
+    );
+  },
+
+  getConversation: (
+    conversationId
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_GET,
+
+      String(
+        conversationId ?? ""
+      )
     );
   },
 

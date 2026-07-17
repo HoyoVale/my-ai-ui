@@ -186,14 +186,26 @@ export function ConversationPanel({
             </small>
           </div>
 
-          <ActionButton
-            disabled={isWorking}
-            onClick={() => {
-              void create();
-            }}
-          >
-            新建会话
-          </ActionButton>
+          <div className="conversation-current__actions">
+            <ActionButton
+              disabled={isWorking}
+              onClick={() => {
+                window.api
+                  ?.openConversation?.();
+              }}
+            >
+              打开会话记录
+            </ActionButton>
+
+            <ActionButton
+              disabled={isWorking}
+              onClick={() => {
+                void create();
+              }}
+            >
+              新建会话
+            </ActionButton>
+          </div>
         </div>
 
         {error && (

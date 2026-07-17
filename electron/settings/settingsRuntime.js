@@ -7,6 +7,10 @@ import IPC_CHANNELS
   from "../shared/ipcChannels.cjs";
 
 import {
+  applyConversationWindowSettings
+} from "../windows/conversation/conversationWindow.js";
+
+import {
   applyInputWindowSettings
 } from "../windows/input/inputWindow.js";
 
@@ -54,6 +58,10 @@ export function applySettingsToOpenWindows(
   );
 
   applyPetWindowSettings(
+    settings
+  );
+
+  applyConversationWindowSettings(
     settings
   );
 

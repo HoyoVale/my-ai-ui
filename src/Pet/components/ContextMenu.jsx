@@ -5,6 +5,7 @@ export function PetContextMenu({
   onClose,
   onOpenInput,
   onOpenResponse,
+  onOpenConversation,
   onOpenSetting
 }) {
   if (!open) {
@@ -36,18 +37,28 @@ export function PetContextMenu({
         <MenuItem
           icon="✦"
           label="输入消息"
+          testId="pet-menu-input"
           onClick={onOpenInput}
         />
 
         <MenuItem
           icon="◌"
           label="测试回复"
+          testId="pet-menu-response"
           onClick={onOpenResponse}
+        />
+
+        <MenuItem
+          icon="☰"
+          label="会话记录"
+          testId="pet-menu-conversation"
+          onClick={onOpenConversation}
         />
 
         <MenuItem
           icon="⚙"
           label="设置"
+          testId="pet-menu-setting"
           onClick={onOpenSetting}
         />
       </nav>
@@ -58,12 +69,14 @@ export function PetContextMenu({
 function MenuItem({
   icon,
   label,
+  testId,
   onClick
 }) {
   return (
     <button
       className="pet-menu__item"
       type="button"
+      data-testid={testId}
       onClick={onClick}
     >
       <span
