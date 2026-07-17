@@ -70,11 +70,10 @@ export function openConversationWindow() {
 
   conversationWindow =
     createBaseWindow({
-      width: 1120,
-      height: 760,
-
-      minWidth: 780,
-      minHeight: 540,
+      width: 1040,
+      height: 720,
+      minWidth: 760,
+      minHeight: 520,
 
       show: false,
 

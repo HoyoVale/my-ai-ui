@@ -521,6 +521,14 @@
   justify-content: flex-end;
 }
 
+.conversation-message--assistant .conversation-message__actions {
+  justify-content: flex-start;
+}
+
+.conversation-message--assistant .conversation-message__action-group {
+  order: -1;
+}
+
 .conversation-message__status-group,
 .conversation-message__action-group {
   display: flex;
@@ -891,6 +899,24 @@
 
 .markdown-content.is-compact p {
   margin-bottom: 8px;
+}
+
+.markdown-content .katex-display {
+  max-width: 100%;
+  margin: 16px 0;
+  padding: 4px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: left;
+}
+
+.markdown-content .katex-display > .katex {
+  min-width: max-content;
+  text-align: left;
+}
+
+.markdown-content .katex {
+  font-size: 1.02em;
 }
 
 .conversation-context {

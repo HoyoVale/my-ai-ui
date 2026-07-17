@@ -91,3 +91,24 @@ describe(
     );
   }
 );
+
+
+describe(
+  "assistant action alignment",
+  () => {
+    it(
+      "left-aligns assistant message actions",
+      () => {
+        const source =
+          read(
+            "../../src/Conversation/Conversation.css"
+          );
+
+        assert.match(
+          source,
+          /conversation-message--assistant[\s\S]*conversation-message__actions[\s\S]*justify-content:\s*flex-start/u
+        );
+      }
+    );
+  }
+);

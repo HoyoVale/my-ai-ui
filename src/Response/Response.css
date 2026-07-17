@@ -566,3 +566,14 @@
 .response-bubble .markdown-table-card td:last-child {
   border-right: 0;
 }
+
+.response-bubble .katex-display {
+  max-width: 100%;
+  margin: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.response-bubble .katex {
+  font-size: 0.98em;
+}

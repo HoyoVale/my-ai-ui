@@ -110,6 +110,56 @@ describe(
     );
 
     it(
+      "reports the active model metadata",
+      () => {
+        const result =
+          buildE2EResponse(
+            [
+              {
+                role: "user",
+                content: "model-key"
+              }
+            ],
+            [],
+            {
+              activeModel: {
+                modelName: "E2E Model",
+                modelId: "e2e-model",
+                contextTokenBudget: 128000
+              }
+            }
+          );
+
+        assert.equal(
+          result,
+          "E2E_MODEL:E2E Model:e2e-model:128000"
+        );
+      }
+    );
+
+    it(
+      "returns inline and display LaTeX for renderer coverage",
+      () => {
+        const result =
+          buildE2EResponse([
+            {
+              role: "user",
+              content: "latex-key"
+            }
+          ]);
+
+        assert.match(
+          result,
+          /\$E = mc\^2\$/u
+        );
+        assert.match(
+          result,
+          /\$\$[\s\S]*\\frac\{1\}\{3\}[\s\S]*\$\$/u
+        );
+      }
+    );
+
+    it(
       "marks deterministic regeneration runs",
       () => {
         const result =

@@ -36,10 +36,9 @@ describe(
         );
 
         assert.equal(
-          settings
-            .conversation
-            .contextTokenBudget,
-          1000000
+          "contextTokenBudget" in
+            settings.conversation,
+          false
         );
 
         assert.equal(
@@ -190,6 +189,113 @@ describe(
         assert.equal(
           settings.personality.customInstructions,
           "先给结论。"
+        );
+      }
+    );
+  }
+);
+
+
+describe(
+  "multi-model settings validation",
+  () => {
+    it(
+      "keeps multiple DeepSeek models and selects the requested one",
+      () => {
+        const settings =
+          sanitizeSettings({
+            model: {
+              activeProvider: "deepseek",
+              providers: {
+                deepseek: {
+                  id: "deepseek",
+                  type: "deepseek",
+                  name: "DeepSeek",
+                  baseURL: "https://api.deepseek.com",
+                  activeModelId: "pro",
+                  models: [
+                    {
+                      id: "flash",
+                      name: "Flash",
+                      modelId: "deepseek-v4-flash",
+                      contextTokenBudget: 64000,
+                      maxOutputTokens: 4096,
+                      temperature: 0.4,
+                      timeoutMs: 60000
+                    },
+                    {
+                      id: "pro",
+                      name: "Pro",
+                      modelId: "deepseek-v4-pro",
+                      contextTokenBudget: 1000000,
+                      maxOutputTokens: 32768,
+                      temperature: 0.8,
+                      timeoutMs: 120000
+                    }
+                  ]
+                }
+              }
+            }
+          });
+
+        const provider =
+          settings.model.providers.deepseek;
+
+        assert.equal(
+          provider.models.length,
+          2
+        );
+        assert.equal(
+          provider.activeModelId,
+          "pro"
+        );
+        assert.equal(
+          provider.models[1]
+            .contextTokenBudget,
+          1000000
+        );
+      }
+    );
+
+    it(
+      "migrates legacy flat model and conversation token budget",
+      () => {
+        const settings =
+          sanitizeSettings({
+            conversation: {
+              contextTokenBudget: 128000
+            },
+            model: {
+              provider: "deepseek",
+              model: "legacy-model",
+              baseURL: "https://example.com/v1",
+              temperature: 0.2,
+              maxOutputTokens: 8192,
+              timeoutMs: 45000
+            }
+          });
+
+        const provider =
+          settings.model.providers.deepseek;
+        const model =
+          provider.models[0];
+
+        assert.equal(
+          model.modelId,
+          "legacy-model"
+        );
+        assert.equal(
+          model.contextTokenBudget,
+          128000
+        );
+        assert.equal(
+          provider.baseURL,
+          "https://example.com/v1"
+        );
+        assert.equal(
+          "contextTokenBudget" in
+            settings.conversation,
+          false
         );
       }
     );

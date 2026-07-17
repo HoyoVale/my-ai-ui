@@ -339,6 +339,7 @@ export function ActionButton({
   children,
   tone = "normal",
   disabled = false,
+  testId,
   onClick
 }) {
   return (
@@ -347,6 +348,7 @@ export function ActionButton({
       className={
         `settings-action settings-action--${tone}`
       }
+      data-testid={testId}
       disabled={disabled}
       onClick={onClick}
     >

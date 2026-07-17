@@ -85,6 +85,37 @@ export function buildE2EResponse(
 
   if (
     latest.includes(
+      "model-key"
+    )
+  ) {
+    const activeModel =
+      contextMetadata
+        .activeModel ?? {};
+
+    return [
+      "E2E_MODEL",
+      activeModel.modelName ?? "",
+      activeModel.modelId ?? "",
+      activeModel.contextTokenBudget ?? 0
+    ].join(":");
+  }
+
+  if (
+    latest.includes(
+      "latex-key"
+    )
+  ) {
+    return [
+      "Inline: $E = mc^2$",
+      "",
+      "$$",
+      "\\int_0^1 x^2 \\, dx = \\frac{1}{3}",
+      "$$"
+    ].join("\n");
+  }
+
+  if (
+    latest.includes(
       "personality-key"
     )
   ) {

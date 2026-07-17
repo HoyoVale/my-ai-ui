@@ -1,4 +1,5 @@
 import {
+  useMemo,
   useState
 } from "react";
 
@@ -15,12 +16,40 @@ import {
   useModelCredentials
 } from "../hooks/useModelCredentials.js";
 
-const PROVIDERS = [
-  {
-    value: "deepseek",
-    label: "DeepSeek"
-  }
-];
+const CONTEXT_OPTIONS = [
+  8192,
+  16384,
+  32768,
+  64000,
+  128000,
+  256000,
+  512000,
+  1000000
+].map((value) => ({
+  value,
+  label:
+    value >= 1000000
+      ? "1M"
+      : `${Math.round(value / 1000)}K`
+}));
+
+const OUTPUT_OPTIONS = [
+  2048,
+  4096,
+  8192,
+  16384,
+  32768,
+  65536,
+  131072,
+  262144,
+  384000
+].map((value) => ({
+  value,
+  label:
+    value >= 100000
+      ? `${Math.round(value / 1000)}K`
+      : `${Math.round(value / 1024)}K`
+}));
 
 function credentialDescription(
   status,
@@ -48,12 +77,38 @@ function credentialDescription(
   return "API Key 已保存，但当前系统未提供安全存储。";
 }
 
+function createModelId() {
+  return `model-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 7)}`;
+}
+
 export function ModelPanel({
   settings,
   onUpdate
 }) {
-  const model =
+  const modelSettings =
     settings.model;
+
+  const providerId =
+    modelSettings.activeProvider;
+
+  const provider =
+    modelSettings.providers[
+      providerId
+    ];
+
+  const activeModel =
+    useMemo(() => {
+      return provider.models.find(
+        (item) =>
+          item.id ===
+          provider.activeModelId
+      ) ?? provider.models[0];
+    }, [
+      provider.activeModelId,
+      provider.models
+    ]);
 
   const [apiKey, setApiKey] =
     useState("");
@@ -74,6 +129,83 @@ export function ModelPanel({
     clearApiKey
   } = useModelCredentials();
 
+  const updateProvider =
+    (patch) => {
+      onUpdate({
+        providers: {
+          ...modelSettings.providers,
+          [providerId]: {
+            ...provider,
+            ...patch
+          }
+        }
+      });
+    };
+
+  const updateActiveModel =
+    (patch) => {
+      updateProvider({
+        models:
+          provider.models.map(
+            (item) =>
+              item.id ===
+              activeModel.id
+                ? {
+                    ...item,
+                    ...patch
+                  }
+                : item
+          )
+      });
+    };
+
+  const handleAddModel = () => {
+    const id = createModelId();
+
+    updateProvider({
+      activeModelId: id,
+      models: [
+        ...provider.models,
+        {
+          id,
+          name: "新模型",
+          modelId:
+            "deepseek-v4-flash",
+          contextTokenBudget:
+            1000000,
+          temperature: 0.7,
+          maxOutputTokens: 32768,
+          timeoutMs: 120000
+        }
+      ]
+    });
+
+    setTestResult(null);
+  };
+
+  const handleDeleteModel = () => {
+    if (
+      provider.models.length <= 1
+    ) {
+      return;
+    }
+
+    const remaining =
+      provider.models.filter(
+        (item) =>
+          item.id !==
+          activeModel.id
+      );
+
+    updateProvider({
+      models: remaining,
+      activeModelId:
+        remaining[0].id
+    });
+
+    setTestResult(null);
+  };
+
   const handleSaveApiKey =
     async () => {
       if (!apiKey.trim()) {
@@ -88,10 +220,7 @@ export function ModelPanel({
       );
 
       try {
-        await saveApiKey(
-          apiKey
-        );
-
+        await saveApiKey(apiKey);
         setApiKey("");
         setCredentialAction(
           "saved"
@@ -101,7 +230,6 @@ export function ModelPanel({
           "保存 API Key 失败：",
           error
         );
-
         setCredentialAction(
           "error"
         );
@@ -125,7 +253,6 @@ export function ModelPanel({
           "清除 API Key 失败：",
           error
         );
-
         setCredentialAction(
           "error"
         );
@@ -141,7 +268,7 @@ export function ModelPanel({
         const result =
           await window.api
             ?.testModelConnection?.(
-              model
+              modelSettings
             );
 
         setTestResult(
@@ -165,12 +292,9 @@ export function ModelPanel({
     };
 
   const credentialHint = {
-    empty:
-      "请输入 API Key。",
-    saving:
-      "正在保存…",
-    saved:
-      "API Key 已保存。",
+    empty: "请输入 API Key。",
+    saving: "正在保存…",
+    saved: "API Key 已保存。",
     cleared:
       "已清除本地 API Key。",
     error:
@@ -180,69 +304,102 @@ export function ModelPanel({
   return (
     <div className="settings-panel-stack">
       <SettingsSection
-        title="模型服务"
-        description="第一阶段仅接入 DeepSeek；后续可在同一层增加其他 Provider。"
+        title="当前模型"
+        description="一个提供商可以保存多个模型配置。这里选择的模型会用于下一次请求。"
       >
         <SettingRow
-          title="供应商"
-          description="模型请求只在 Electron 主进程中执行。"
+          title="提供商"
+          description="当前阶段只启用 DeepSeek，后续提供商会复用同一套模型配置结构。"
         >
           <Select
-            value={model.provider}
-            options={PROVIDERS}
-            onChange={(provider) => {
-              onUpdate({
-                provider
-              });
-            }}
+            value={providerId}
+            options={[
+              {
+                value: "deepseek",
+                label: "DeepSeek"
+              }
+            ]}
+            onChange={() => {}}
           />
         </SettingRow>
 
         <SettingRow
-          title="Base URL"
-          description="官方地址为 https://api.deepseek.com，也可填写兼容网关地址。"
+          title="使用模型"
+          description={`${provider.models.length} 个已配置模型。`}
         >
-          <TextInput
-            value={model.baseURL}
-            placeholder="https://api.deepseek.com"
-            onChange={(baseURL) => {
-              onUpdate({
-                baseURL
-              });
-            }}
-          />
-        </SettingRow>
+          <div className="settings-model-picker">
+            <Select
+              testId="model-active-select"
+              value={
+                provider.activeModelId
+              }
+              options={
+                provider.models.map(
+                  (item) => ({
+                    value: item.id,
+                    label:
+                      item.name ||
+                      item.modelId
+                  })
+                )
+              }
+              onChange={(activeModelId) => {
+                updateProvider({
+                  activeModelId
+                });
+                setTestResult(null);
+              }}
+            />
 
-        <SettingRow
-          title="模型 ID"
-          description="常用值：deepseek-chat、deepseek-reasoner；也支持网关提供的自定义 ID。"
-        >
-          <TextInput
-            value={model.model}
-            placeholder="deepseek-chat"
-            onChange={(modelId) => {
-              onUpdate({
-                model: modelId
-              });
-            }}
-          />
+            <ActionButton
+              testId="model-add"
+              onClick={handleAddModel}
+            >
+              添加模型
+            </ActionButton>
+
+            <ActionButton
+              testId="model-delete"
+              tone="danger"
+              disabled={
+                provider.models.length <= 1
+              }
+              onClick={handleDeleteModel}
+            >
+              删除
+            </ActionButton>
+          </div>
         </SettingRow>
       </SettingsSection>
 
       <SettingsSection
-        title="API 凭据"
-        description={
-          credentialDescription(
-            status,
-            loading
-          )
-        }
+        title="提供商配置"
+        description="Base URL 和 API Key 由同一提供商下的所有模型共享。"
       >
+        <SettingRow
+          title="Base URL"
+          description="官方 OpenAI 兼容地址为 https://api.deepseek.com，也可填写兼容网关。"
+        >
+          <TextInput
+            value={provider.baseURL}
+            placeholder="https://api.deepseek.com"
+            onChange={(baseURL) => {
+              updateProvider({
+                baseURL
+              });
+              setTestResult(null);
+            }}
+          />
+        </SettingRow>
+
         <SettingRow
           title="API Key"
           description={
             credentialHint ??
-            "输入后点击保存；设置 JSON 中不会出现明文密钥。"
+            credentialDescription(
+              status,
+              loading
+            )
           }
         >
           <div className="settings-credential-control">
@@ -296,24 +453,64 @@ export function ModelPanel({
       </SettingsSection>
 
       <SettingsSection
-        title="生成参数"
-        description="这些参数从下一次消息开始生效。"
+        title="模型配置"
+        description="上下文上限和生成参数分别保存在当前模型中，切换模型时会一起切换。"
       >
         <SettingRow
-          title="Temperature"
-          description="数值越低越稳定，越高越发散。"
+          title="显示名称"
+          description="只用于设置页面识别，不会发送给提供商。"
         >
-          <Slider
-            value={model.temperature}
-            min={0}
-            max={2}
-            step={0.1}
-            formatValue={(value) =>
-              Number(value).toFixed(1)
+          <TextInput
+            testId="model-display-name"
+            value={activeModel.name}
+            placeholder="DeepSeek V4 Flash"
+            onChange={(name) => {
+              updateActiveModel({
+                name
+              });
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="模型 ID"
+          description="填写 API 请求使用的实际模型名，例如 deepseek-v4-flash 或 deepseek-v4-pro。"
+        >
+          <TextInput
+            testId="model-id-input"
+            value={activeModel.modelId}
+            placeholder="deepseek-v4-flash"
+            onChange={(modelId) => {
+              updateActiveModel({
+                modelId
+              });
+              setTestResult(null);
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="上下文 Token 上限"
+          description="用于上下文预算、输入剩余量和溢出提醒。该值应与实际模型规格一致。"
+        >
+          <Select
+            testId="model-context-limit"
+            value={
+              activeModel
+                .contextTokenBudget
             }
-            onChange={(temperature) => {
-              onUpdate({
-                temperature
+            options={CONTEXT_OPTIONS}
+            onChange={(
+              contextTokenBudget
+            ) => {
+              updateActiveModel({
+                contextTokenBudget,
+                maxOutputTokens:
+                  Math.min(
+                    activeModel
+                      .maxOutputTokens,
+                    contextTokenBudget
+                  )
               });
             }}
           />
@@ -321,16 +518,46 @@ export function ModelPanel({
 
         <SettingRow
           title="最大输出 Tokens"
-          description="控制单次回复允许生成的最大长度。"
+          description="控制单次回复允许生成的最大长度，并作为上下文预算中的输出预留。"
+        >
+          <Select
+            value={
+              activeModel
+                .maxOutputTokens
+            }
+            options={
+              OUTPUT_OPTIONS.filter(
+                (item) =>
+                  item.value <=
+                  activeModel
+                    .contextTokenBudget
+              )
+            }
+            onChange={(maxOutputTokens) => {
+              updateActiveModel({
+                maxOutputTokens
+              });
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="Temperature"
+          description="数值越低越稳定，越高越发散。部分推理模型可能忽略该参数。"
         >
           <Slider
-            value={model.maxOutputTokens}
-            min={128}
-            max={16384}
-            step={128}
-            onChange={(maxOutputTokens) => {
-              onUpdate({
-                maxOutputTokens
+            value={
+              activeModel.temperature
+            }
+            min={0}
+            max={2}
+            step={0.1}
+            formatValue={(value) =>
+              Number(value).toFixed(1)
+            }
+            onChange={(temperature) => {
+              updateActiveModel({
+                temperature
               });
             }}
           />
@@ -343,7 +570,7 @@ export function ModelPanel({
           <Slider
             value={
               Math.round(
-                model.timeoutMs /
+                activeModel.timeoutMs /
                 1000
               )
             }
@@ -352,7 +579,7 @@ export function ModelPanel({
             step={5}
             unit=" 秒"
             onChange={(seconds) => {
-              onUpdate({
+              updateActiveModel({
                 timeoutMs:
                   seconds * 1000
               });
@@ -363,16 +590,16 @@ export function ModelPanel({
 
       <SettingsSection
         title="连接测试"
-        description="发送一个极短请求，用于检查密钥、地址和模型名称。"
+        description="使用当前选中的模型发送一个极短请求。"
       >
         <SettingRow
-          title="测试当前配置"
+          title="测试当前模型"
           description={
             testResult
               ? testResult.ok
                 ? `连接成功 · ${testResult.latencyMs} ms · ${testResult.text || "已响应"}`
                 : `连接失败 · ${testResult.message}`
-              : "测试会产生极少量模型用量。"
+              : `${activeModel.name} · ${activeModel.modelId}`
           }
         >
           <ActionButton

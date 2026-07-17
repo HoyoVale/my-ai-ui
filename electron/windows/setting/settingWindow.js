@@ -71,11 +71,10 @@ export function openSettingWindow() {
 
   settingWindow =
     createBaseWindow({
-      width: 1120,
-      height: 760,
-
+      width: 1040,
+      height: 720,
       minWidth: 760,
-      minHeight: 560,
+      minHeight: 520,
 
       show: false,
 

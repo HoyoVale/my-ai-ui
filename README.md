@@ -13,7 +13,7 @@ Input Window
 ## 已完成
 
 - Setting → Model 配置页
-- DeepSeek Provider、Base URL、Model ID
+- DeepSeek Provider、共享 Base URL 与多模型配置
 - API Key 本地保存与状态显示
 - Temperature、最大输出 Tokens、请求超时
 - 模型连接测试
@@ -34,7 +34,6 @@ Input Window
 
 暂未加入：
 
-- 会话摘要压缩
 - 自动提取记忆
 - 向量检索
 - 工具调用
@@ -65,12 +64,14 @@ npm run electron
 
 1. 右键桌宠并打开 `Setting`。
 2. 进入 `Model`。
-3. 保持或修改：
-   - Provider：DeepSeek
-   - Base URL：`https://api.deepseek.com`
-   - Model ID：`deepseek-chat`
-4. 输入 API Key 并点击保存。
-5. 点击“测试连接”。
+3. 在 DeepSeek Provider 中添加或选择一个模型配置：
+   - 显示名称
+   - 实际 Model ID
+   - 上下文 Token 上限
+   - 最大输出 Tokens
+   - Temperature 与超时
+4. Base URL 与 API Key 由同一 Provider 下的模型共享。
+5. 在“使用模型”中选择当前模型并点击“测试连接”。
 6. 打开 Input 窗口发送消息。
 
 也可以在项目根目录 `.env` 中配置开发环境回退：
@@ -80,6 +81,19 @@ DEEPSEEK_API_KEY=your_api_key
 ```
 
 Setting 中保存的密钥优先于 `.env`。
+
+## Provider 与多模型配置
+
+当前阶段只启用 DeepSeek Provider。Provider 保存共享的 Base URL 与 API Key，每个 Provider 可以保存多个模型配置：
+
+```text
+DeepSeek
+├─ DeepSeek V4 Flash
+├─ DeepSeek V4 Pro
+└─ 自定义兼容模型
+```
+
+每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeModelId` 决定下一次请求实际使用哪个模型。旧版单模型设置会自动迁移为一条模型配置。
 
 ## Agent 目录
 
@@ -157,7 +171,6 @@ Conversation
 可以配置：
 
 - 最近上下文轮数：1–50 轮
-- 上下文 Token 显示上限：32K–1M
 - 最多保留会话：10–500 个
 - 自动使用第一条用户消息生成标题
 - 是否保存被中止的部分回复
@@ -165,7 +178,6 @@ Conversation
 Conversation 窗口可以：
 
 - 新建、切换和删除会话
-- 手动编辑当前会话摘要
 - 将单条消息加入或排除上下文
 - 将消息固定到当前会话
 - 清除当前短期上下文但保留历史记录
@@ -176,7 +188,7 @@ Conversation 窗口可以：
 ```text
 读取当前会话
 → 保存用户消息
-→ 组装 Personality、长期记忆、会话摘要、固定消息和最近 N 轮
+→ 组装 Personality、长期记忆、固定消息和最近 N 轮
 → 调用模型
 → 流式显示回复
 → 保存完整助手回复
@@ -248,10 +260,10 @@ Oxlint
 - ConversationStore 创建、保存、重载和损坏恢复
 - ConversationManager 新建、标题生成、裁剪和淘汰
 - 短期上下文最近轮次、重置边界与消息排除
-- 固定消息和手动会话摘要
-- Token 总量与提示词、人格、记忆、摘要、固定消息、最近对话分项预算
+- 固定消息、上下文边界与消息排除
+- Token 总量与提示词、人格、记忆、固定消息、最近对话分项预算
 - 中止回复不进入下一次上下文
-- Conversation 设置范围与 Token 上限校验
+- Conversation 设置范围与模型级 Token 上限校验
 - Input 空内容一行高度回归
 - Response 关闭后下一条回复重新唤出契约
 - 主进程与 preload IPC 频道一致性
@@ -426,7 +438,6 @@ Setting → AI → Personality 现在可以配置：
 基础系统规则
 → Personality
 → 相关长期记忆
-→ 手动会话摘要
 → 固定到本会话的消息
 → 当前会话最近 N 轮
 → 模型请求
@@ -439,4 +450,5 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 ### Conversation / Response 阅读体验
 
 - Conversation 支持会话重命名、用户消息时间、按角色区分的悬停操作与 Markdown/GFM 渲染。
-- Response 流式气泡同样使用 Markdown/GFM，支持代码块、表格与独立复制。
+- Conversation 与 Response 共用 Markdown + LaTeX 渲染器，支持 `$...$` 行内公式和 `$$...$$` 块级公式。
+- Response 流式气泡支持代码块、表格、公式与独立复制。

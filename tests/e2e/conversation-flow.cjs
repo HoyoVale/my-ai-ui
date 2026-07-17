@@ -931,6 +931,100 @@ async function main() {
 
     await setting
       .locator(
+        '[data-testid="setting-tab-model"]'
+      )
+      .click();
+
+    await waitForText(
+      setting.locator(
+        ".setting-page__header"
+      ),
+      "模型"
+    );
+
+    await setting
+      .locator(
+        '[data-testid="model-add"]'
+      )
+      .click();
+
+    await setting
+      .locator(
+        '[data-testid="model-display-name"]'
+      )
+      .fill("E2E Model");
+
+    await setting
+      .locator(
+        '[data-testid="model-id-input"]'
+      )
+      .fill("e2e-model");
+
+    await setting
+      .locator(
+        '[data-testid="model-context-limit"]'
+      )
+      .selectOption("128000");
+
+    await delay(350);
+
+    await pet.evaluate(
+      async () => {
+        await window.api
+          ?.createConversation?.();
+      }
+    );
+
+    await input.bringToFront();
+    await inputField.fill(
+      "model-key"
+    );
+    await sendButton.click();
+
+    await waitForText(
+      responseText,
+      "E2E_MODEL:E2E Model:e2e-model:128000"
+    );
+
+    await waitForAttribute(
+      sendButton,
+      "aria-label",
+      "Send"
+    );
+
+    await pet.evaluate(
+      async () => {
+        await window.api
+          ?.createConversation?.();
+      }
+    );
+
+    await inputField.fill(
+      "latex-key"
+    );
+    await sendButton.click();
+
+    await response
+      .locator(".katex")
+      .first()
+      .waitFor();
+
+    await waitForAttribute(
+      sendButton,
+      "aria-label",
+      "Send"
+    );
+
+    await conversation.bringToFront();
+    await conversation
+      .locator(".katex")
+      .first()
+      .waitFor();
+
+    await setting.bringToFront();
+
+    await setting
+      .locator(
         '[data-testid="setting-tab-memory"]'
       )
       .click();
@@ -1075,7 +1169,7 @@ async function main() {
     );
 
     console.log(
-      "Playwright Electron E2E passed: replies, response re-open, conversation switch, personality context, settings, memory metadata, memory injection and memory disable."
+      "Playwright Electron E2E passed: replies, response re-open, conversation switch, personality context, multi-model selection, LaTeX rendering, memory metadata, memory injection and memory disable."
     );
   } catch (error) {
     if (electronApp) {

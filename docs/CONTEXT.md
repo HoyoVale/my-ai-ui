@@ -63,3 +63,8 @@
 - `inputUsageRatio`：输入 Token 占可用输入预算
 - `inputShareRatio`：该组成部分占当前输入 Token
 - `budgetShareRatio`：该组成部分占上下文总上限
+
+
+## 模型级预算
+
+上下文上限与输出预留来自当前选中的模型配置，而不是 Conversation 设置。切换模型后，ContextAssembler 会同步使用该模型的 `contextTokenBudget` 与 `maxOutputTokens`。

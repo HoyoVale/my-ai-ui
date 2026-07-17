@@ -23,6 +23,11 @@ import {
   estimateTextTokens
 } from "./tokenEstimator.js";
 
+import {
+  resolveActiveModelSettings
+} from "../settings/modelSettings.js";
+
+
 export function assembleAgentContext({
   settings,
   conversation,
@@ -30,6 +35,11 @@ export function assembleAgentContext({
 } = {}) {
   const normalizedSettings =
     settings ?? {};
+
+  const activeModel =
+    resolveActiveModelSettings(
+      normalizedSettings.model
+    );
 
   const sourceMessages =
     conversation?.messages ?? [];
@@ -107,15 +117,11 @@ export function assembleAgentContext({
   const budget =
     buildTokenBudget({
       contextTokenBudget:
-        normalizedSettings
-          .conversation
-          ?.contextTokenBudget ??
-        64000,
+        activeModel
+          .contextTokenBudget,
       outputReserve:
-        normalizedSettings
-          .model
-          ?.maxOutputTokens ??
-        2048,
+        activeModel
+          .maxOutputTokens,
       sections: [
         {
           id: "base",
@@ -165,6 +171,21 @@ export function assembleAgentContext({
     messages,
     budget,
     metadata: {
+      activeModel: {
+        providerId:
+          activeModel.providerId,
+        providerName:
+          activeModel.providerName,
+        modelConfigId:
+          activeModel.modelConfigId,
+        modelName:
+          activeModel.modelName,
+        modelId:
+          activeModel.model,
+        contextTokenBudget:
+          activeModel.contextTokenBudget
+      },
+
       personality:
         getPersonalitySummary(
           normalizedSettings

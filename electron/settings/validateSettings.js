@@ -166,6 +166,213 @@ function positionValue(
   };
 }
 
+function sanitizeModelList(
+  sourceModels,
+  fallbackModels,
+  legacyContextTokenBudget
+) {
+  const candidates =
+    Array.isArray(sourceModels) &&
+    sourceModels.length > 0
+      ? sourceModels
+      : fallbackModels;
+
+  const usedIds = new Set();
+
+  return candidates.map(
+    (sourceModel, index) => {
+      const fallback =
+        fallbackModels[index] ??
+        fallbackModels[0];
+
+      let id =
+        nonEmptyStringValue(
+          sourceModel?.id,
+          sourceModel?.modelId ??
+          fallback?.id ??
+          `model-${index + 1}`,
+          120
+        );
+
+      if (usedIds.has(id)) {
+        id = `${id}-${index + 1}`;
+      }
+
+      usedIds.add(id);
+
+      const contextTokenBudget =
+        integerValue(
+          sourceModel
+            ?.contextTokenBudget ??
+          legacyContextTokenBudget,
+          fallback
+            ?.contextTokenBudget ??
+          64000,
+          8192,
+          1000000
+        );
+
+      return {
+        id,
+
+        name:
+          nonEmptyStringValue(
+            sourceModel?.name,
+            sourceModel?.modelId ??
+            fallback?.name ??
+            `模型 ${index + 1}`,
+            120
+          ),
+
+        modelId:
+          nonEmptyStringValue(
+            sourceModel?.modelId ??
+            sourceModel?.model,
+            fallback?.modelId ??
+            "deepseek-v4-flash",
+            160
+          ),
+
+        contextTokenBudget,
+
+        temperature:
+          numberValue(
+            sourceModel?.temperature,
+            fallback?.temperature ??
+            0.7,
+            0,
+            2
+          ),
+
+        maxOutputTokens:
+          integerValue(
+            sourceModel
+              ?.maxOutputTokens,
+            Math.min(
+              fallback
+                ?.maxOutputTokens ??
+              2048,
+              contextTokenBudget
+            ),
+            128,
+            Math.min(
+              384000,
+              contextTokenBudget
+            )
+          ),
+
+        timeoutMs:
+          integerValue(
+            sourceModel?.timeoutMs,
+            fallback?.timeoutMs ??
+            120000,
+            15000,
+            300000
+          )
+      };
+    }
+  );
+}
+
+function sanitizeModelSettings(
+  model,
+  defaults,
+  legacyContextTokenBudget
+) {
+  const defaultProvider =
+    defaults.providers.deepseek;
+
+  const hasLegacyShape =
+    typeof model.model === "string" ||
+    typeof model.baseURL === "string" ||
+    typeof model.provider === "string" ||
+    model.temperature !== undefined ||
+    model.maxOutputTokens !== undefined ||
+    model.timeoutMs !== undefined;
+
+  const providerSource =
+    hasLegacyShape
+      ? {
+          id: "deepseek",
+          type:
+            model.provider ??
+            "deepseek",
+          name: "DeepSeek",
+          baseURL:
+            model.baseURL,
+          activeModelId:
+            "migrated-model",
+          models: [
+            {
+              id: "migrated-model",
+              name:
+                model.model ??
+                "DeepSeek",
+              modelId:
+                model.model,
+              contextTokenBudget:
+                legacyContextTokenBudget,
+              temperature:
+                model.temperature,
+              maxOutputTokens:
+                model.maxOutputTokens,
+              timeoutMs:
+                model.timeoutMs
+            }
+          ]
+        }
+      : model.providers
+          ?.deepseek ??
+        defaultProvider;
+
+  const models =
+    sanitizeModelList(
+      providerSource.models,
+      defaultProvider.models,
+      legacyContextTokenBudget
+    );
+
+  const requestedActiveModelId =
+    nonEmptyStringValue(
+      providerSource.activeModelId,
+      models[0].id,
+      120
+    );
+
+  const activeModelId =
+    models.some(
+      (item) =>
+        item.id ===
+        requestedActiveModelId
+    )
+      ? requestedActiveModelId
+      : models[0].id;
+
+  return {
+    activeProvider: "deepseek",
+
+    providers: {
+      deepseek: {
+        id: "deepseek",
+        type: "deepseek",
+        name:
+          nonEmptyStringValue(
+            providerSource.name,
+            "DeepSeek",
+            80
+          ),
+        baseURL:
+          urlValue(
+            providerSource.baseURL,
+            defaultProvider.baseURL
+          ),
+        activeModelId,
+        models
+      }
+    }
+  };
+}
+
 export function sanitizeSettings(
   source = {}
 ) {
@@ -573,18 +780,6 @@ export function sanitizeSettings(
           50
         ),
 
-      contextTokenBudget:
-        integerValue(
-          conversation
-            .contextTokenBudget,
-
-          defaults.conversation
-            .contextTokenBudget,
-
-          8192,
-          1000000
-        ),
-
       maxConversations:
         integerValue(
           conversation
@@ -641,53 +836,12 @@ export function sanitizeSettings(
         )
     },
 
-    model: {
-      provider:
-        enumValue(
-          model.provider,
-          [
-            "deepseek"
-          ],
-          defaults.model.provider
-        ),
-
-      model:
-        nonEmptyStringValue(
-          model.model,
-          defaults.model.model,
-          120
-        ),
-
-      baseURL:
-        urlValue(
-          model.baseURL,
-          defaults.model.baseURL
-        ),
-
-      temperature:
-        numberValue(
-          model.temperature,
-          defaults.model.temperature,
-          0,
-          2
-        ),
-
-      maxOutputTokens:
-        integerValue(
-          model.maxOutputTokens,
-          defaults.model
-            .maxOutputTokens,
-          128,
-          16384
-        ),
-
-      timeoutMs:
-        integerValue(
-          model.timeoutMs,
-          defaults.model.timeoutMs,
-          15000,
-          300000
-        )
-    }
+    model:
+      sanitizeModelSettings(
+        model,
+        defaults.model,
+        conversation
+          .contextTokenBudget
+      )
   };
 }

@@ -63,6 +63,8 @@ Vite 端口 4173
 - 完整历史消息仍然存在
 - 手动添加 v3 长期记忆（标题、描述、标签和优先级）
 - 在新会话中验证记忆注入
+- 配置并切换同一 Provider 下的模型
+- 验证 Conversation 与 Response 的 LaTeX 渲染
 - 停用记忆后验证不再注入
 
 ## 5. GitHub Actions

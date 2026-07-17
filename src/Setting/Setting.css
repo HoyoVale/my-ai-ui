@@ -1925,3 +1925,28 @@
   color: var(--setting-text-faint);
   font-size: 10.5px;
 }
+
+.settings-model-picker {
+  width: min(100%, 560px);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-model-picker .settings-select {
+  min-width: 220px;
+  flex: 1;
+}
+
+@media (max-width: 760px) {
+  .settings-model-picker {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-model-picker .settings-select {
+    width: 100%;
+    min-width: 0;
+  }
+}

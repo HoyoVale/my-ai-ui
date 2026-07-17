@@ -33,6 +33,10 @@ import {
 } from "../settings/validateSettings.js";
 
 import {
+  resolveActiveModelSettings
+} from "../settings/modelSettings.js";
+
+import {
   appendResponseChunk,
   endResponseStream,
   startResponseStream
@@ -477,15 +481,22 @@ export class AgentRuntime {
     const settings =
       getSettings();
 
-    const modelSettings =
+    const sanitized =
       sanitizeSettings({
         ...settings,
+        model:
+          modelOverride &&
+          Object.keys(
+            modelOverride
+          ).length > 0
+            ? modelOverride
+            : settings.model
+      });
 
-        model: {
-          ...settings.model,
-          ...modelOverride
-        }
-      }).model;
+    const modelSettings =
+      resolveActiveModelSettings(
+        sanitized.model
+      );
 
     const startedAt =
       Date.now();
@@ -500,7 +511,7 @@ export class AgentRuntime {
 
           system:
             assembleAgentContext({
-              settings,
+              settings: sanitized,
               conversation: null,
               memories: []
             }).system,
@@ -666,7 +677,9 @@ export class AgentRuntime {
         getSettings();
 
       const modelSettings =
-        settings.model;
+        resolveActiveModelSettings(
+          settings.model
+        );
 
       const model =
         createConfiguredModel(

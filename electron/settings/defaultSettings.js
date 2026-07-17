@@ -61,7 +61,6 @@ export const DEFAULT_SETTINGS = {
 
   conversation: {
     contextTurns: 8,
-    contextTokenBudget: 64000,
     maxConversations: 100,
     autoTitle: true,
     saveAbortedReplies: true
@@ -74,12 +73,38 @@ export const DEFAULT_SETTINGS = {
   },
 
   model: {
-    provider: "deepseek",
-    model: "deepseek-chat",
-    baseURL: "https://api.deepseek.com",
-    temperature: 0.7,
-    maxOutputTokens: 2048,
-    timeoutMs: 120000
+    activeProvider: "deepseek",
+
+    providers: {
+      deepseek: {
+        id: "deepseek",
+        type: "deepseek",
+        name: "DeepSeek",
+        baseURL: "https://api.deepseek.com",
+        activeModelId: "deepseek-v4-flash",
+
+        models: [
+          {
+            id: "deepseek-v4-flash",
+            name: "DeepSeek V4 Flash",
+            modelId: "deepseek-v4-flash",
+            contextTokenBudget: 1000000,
+            temperature: 0.7,
+            maxOutputTokens: 32768,
+            timeoutMs: 120000
+          },
+          {
+            id: "deepseek-v4-pro",
+            name: "DeepSeek V4 Pro",
+            modelId: "deepseek-v4-pro",
+            contextTokenBudget: 1000000,
+            temperature: 0.7,
+            maxOutputTokens: 32768,
+            timeoutMs: 120000
+          }
+        ]
+      }
+    }
   }
 };
 

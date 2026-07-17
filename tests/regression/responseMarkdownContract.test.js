@@ -41,6 +41,29 @@ describe(
     );
 
     it(
+      "uses the shared renderer with Markdown and LaTeX support",
+      () => {
+        const source =
+          read(
+            "../../src/Conversation/components/MarkdownContent.jsx"
+          );
+
+        assert.match(
+          source,
+          /remarkMath/u
+        );
+        assert.match(
+          source,
+          /katex\.renderToString/u
+        );
+        assert.match(
+          source,
+          /katex\/dist\/katex\.min\.css/u
+        );
+      }
+    );
+
+    it(
       "styles code blocks and tables inside the response bubble",
       () => {
         const source =

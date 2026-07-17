@@ -9,6 +9,14 @@ import ReactMarkdown
 import remarkGfm
   from "remark-gfm";
 
+import remarkMath
+  from "remark-math";
+
+import katex
+  from "katex";
+
+import "katex/dist/katex.min.css";
+
 import {
   ConversationIcon
 } from "./Icon.jsx";
@@ -74,6 +82,49 @@ function InlineCopyButton({
           : label}
       </span>
     </button>
+  );
+}
+
+function MarkdownMath({
+  expression,
+  displayMode
+}) {
+  let html = "";
+
+  try {
+    html = katex.renderToString(
+      String(expression ?? ""),
+      {
+        displayMode,
+        throwOnError: false,
+        strict: "ignore",
+        trust: false,
+        output: "htmlAndMathml"
+      }
+    );
+  } catch {
+    return (
+      <code className="markdown-math-error">
+        {String(expression ?? "")}
+      </code>
+    );
+  }
+
+  const Tag = displayMode
+    ? "div"
+    : "span";
+
+  return (
+    <Tag
+      className={
+        displayMode
+          ? "markdown-math markdown-math--display"
+          : "markdown-math markdown-math--inline"
+      }
+      dangerouslySetInnerHTML={{
+        __html: html
+      }}
+    />
   );
 }
 
@@ -143,7 +194,8 @@ export function MarkdownContent({
     >
       <ReactMarkdown
         remarkPlugins={[
-          remarkGfm
+          remarkGfm,
+          remarkMath
         ]}
         components={{
           pre: ({ children }) =>
@@ -158,11 +210,38 @@ export function MarkdownContent({
               String(children)
                 .replace(/\n$/u, "");
 
+            const classes =
+              String(
+                className ?? ""
+              );
+
+            const isInlineMath =
+              classes.includes(
+                "math-inline"
+              );
+
+            const isDisplayMath =
+              classes.includes(
+                "math-display"
+              );
+
+            if (
+              isInlineMath ||
+              isDisplayMath
+            ) {
+              return (
+                <MarkdownMath
+                  expression={code}
+                  displayMode={
+                    isDisplayMath
+                  }
+                />
+              );
+            }
+
             const languageMatch =
               /language-([^\s]+)/u
-                .exec(
-                  className ?? ""
-                );
+                .exec(classes);
 
             const isBlock =
               Boolean(
