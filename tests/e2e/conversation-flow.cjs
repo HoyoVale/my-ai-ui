@@ -583,7 +583,7 @@ async function main() {
 
     await waitForText(
       conversation.locator(
-        '[data-testid="conversation-current-title"]'
+        '.conversation-history-item.is-current'
       ),
       "first message"
     );
@@ -610,6 +610,42 @@ async function main() {
           )
       ),
       true
+    );
+
+    await conversation
+      .locator(
+        ".markdown-code-block"
+      )
+      .waitFor();
+
+    await conversation
+      .locator(
+        ".markdown-table-card"
+      )
+      .waitFor();
+
+    const latestAssistant =
+      conversation
+        .locator(
+          '[data-testid="conversation-message"][data-role="assistant"]'
+        )
+        .last();
+
+    await latestAssistant.hover();
+    await latestAssistant
+      .locator(
+        '[data-testid="message-regenerate"]'
+      )
+      .click();
+
+    await waitForText(
+      responseText,
+      "E2E_REGENERATED_2:second message"
+    );
+
+    await waitForText(
+      latestAssistant,
+      "E2E_REGENERATED_2:second message"
     );
 
     await conversation
@@ -729,7 +765,7 @@ async function main() {
 
     await waitForText(
       conversation.locator(
-        '[data-testid="conversation-current-title"]'
+        '.conversation-history-item.is-current'
       ),
       "新会话"
     );
@@ -758,7 +794,7 @@ async function main() {
 
     await waitForText(
       conversation.locator(
-        '[data-testid="conversation-current-title"]'
+        '.conversation-history-item.is-current'
       ),
       "first message"
     );
@@ -927,7 +963,7 @@ async function main() {
       memory.locator(
         '[data-testid="memory-list-item"]'
       ).first(),
-      "memory-key 对应紫色彗星"
+      "用于验证长期记忆检索"
     );
 
     await pet.evaluate(

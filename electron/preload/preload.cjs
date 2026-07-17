@@ -110,6 +110,9 @@ const CHANNELS = Object.freeze({
   CONVERSATION_UPDATE_MESSAGE_CONTEXT:
     "conversation-update-message-context",
 
+  CONVERSATION_REGENERATE_MESSAGE:
+    "conversation-regenerate-message",
+
   CONVERSATION_INSPECT_CONTEXT:
     "conversation-inspect-context",
 
@@ -528,6 +531,16 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS
         .CONVERSATION_UPDATE_MESSAGE_CONTEXT,
+      input
+    );
+  },
+
+  regenerateConversationMessage: (
+    input
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_REGENERATE_MESSAGE,
       input
     );
   },

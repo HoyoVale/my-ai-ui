@@ -1,4 +1,4 @@
-const STORE_VERSION = 3;
+const STORE_VERSION = 4;
 
 const MESSAGE_ROLES =
   new Set([
@@ -56,6 +56,90 @@ function booleanValue(
     : fallback;
 }
 
+function jsonValue(
+  value
+) {
+  if (
+    value === undefined
+  ) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(
+      JSON.stringify(value)
+    );
+  } catch {
+    return String(value)
+      .slice(0, 200000);
+  }
+}
+
+function sanitizeToolCall(
+  source,
+  index
+) {
+  if (
+    !source ||
+    typeof source !== "object"
+  ) {
+    return null;
+  }
+
+  const name =
+    stringValue(
+      source.name,
+      "",
+      120
+    ).trim();
+
+  if (!name) {
+    return null;
+  }
+
+  const toolCall = {
+    id:
+      stringValue(
+        source.id,
+        `tool-${index + 1}`,
+        120
+      ) ||
+      `tool-${index + 1}`,
+    name,
+    status:
+      stringValue(
+        source.status,
+        "complete",
+        40
+      ) || "complete"
+  };
+
+  const input =
+    jsonValue(source.input);
+  const output =
+    jsonValue(source.output);
+  const durationMs =
+    timestampValue(
+      source.durationMs,
+      0
+    );
+
+  if (input !== undefined) {
+    toolCall.input = input;
+  }
+
+  if (output !== undefined) {
+    toolCall.output = output;
+  }
+
+  if (durationMs > 0) {
+    toolCall.durationMs =
+      durationMs;
+  }
+
+  return toolCall;
+}
+
 export function createEmptyConversationData() {
   return {
     version: STORE_VERSION,
@@ -108,7 +192,7 @@ export function sanitizeMessage(
       true
     );
 
-  return {
+  const message = {
     id:
       stringValue(
         source.id,
@@ -135,6 +219,50 @@ export function sanitizeMessage(
         fallbackTimestamp
       )
   };
+
+  if (role === "assistant") {
+    const durationMs =
+      timestampValue(
+        source.durationMs,
+        0
+      );
+
+    const reasoningSummary =
+      stringValue(
+        source.reasoningSummary,
+        "",
+        100000
+      ).trim();
+
+    const toolCalls =
+      Array.isArray(
+        source.toolCalls
+      )
+        ? source.toolCalls
+            .map(
+              sanitizeToolCall
+            )
+            .filter(Boolean)
+            .slice(0, 100)
+        : [];
+
+    if (durationMs > 0) {
+      message.durationMs =
+        durationMs;
+    }
+
+    if (reasoningSummary) {
+      message.reasoningSummary =
+        reasoningSummary;
+    }
+
+    if (toolCalls.length > 0) {
+      message.toolCalls =
+        toolCalls;
+    }
+  }
+
+  return message;
 }
 
 export function sanitizeConversation(
@@ -217,7 +345,6 @@ export function sanitizeConversation(
         "新会话",
         80
       ).trim() || "新会话",
-
 
     contextStartAfterMessageId:
       messageIds.has(

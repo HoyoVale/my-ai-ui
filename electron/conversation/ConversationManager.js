@@ -274,7 +274,10 @@ export class ConversationManager {
     conversationId,
     role,
     content,
-    status = "complete"
+    status = "complete",
+    durationMs = 0,
+    reasoningSummary = "",
+    toolCalls = []
   }) {
     const data =
       this.ensureLoaded();
@@ -316,6 +319,15 @@ export class ConversationManager {
       createdAt: timestamp
     };
 
+    this.applyAssistantMetadata(
+      message,
+      {
+        durationMs,
+        reasoningSummary,
+        toolCalls
+      }
+    );
+
     conversation.messages.push(
       message
     );
@@ -350,6 +362,226 @@ export class ConversationManager {
     return clone(
       message
     );
+  }
+
+  prepareRegeneration({
+    conversationId,
+    messageId
+  }) {
+    const conversation =
+      this.getConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    const targetIndex =
+      conversation.messages.findIndex(
+        (message) =>
+          message.id === messageId
+      );
+
+    const target =
+      conversation.messages[
+        targetIndex
+      ];
+
+    if (
+      !target ||
+      target.role !== "assistant"
+    ) {
+      return {
+        ok: false,
+        code: "assistant-message-not-found",
+        message: "找不到可重新生成的回复。"
+      };
+    }
+
+    if (
+      targetIndex !==
+      conversation.messages.length - 1
+    ) {
+      return {
+        ok: false,
+        code: "not-latest-assistant-message",
+        message: "当前仅支持重新生成最后一条助手回复。"
+      };
+    }
+
+    const userMessage =
+      conversation.messages[
+        targetIndex - 1
+      ];
+
+    if (
+      !userMessage ||
+      userMessage.role !== "user"
+    ) {
+      return {
+        ok: false,
+        code: "user-message-not-found",
+        message: "找不到对应的用户消息。"
+      };
+    }
+
+    const contextConversation =
+      clone(conversation);
+
+    contextConversation.messages.splice(
+      targetIndex,
+      1
+    );
+
+    return {
+      ok: true,
+      conversation:
+        contextConversation,
+      userMessage:
+        clone(userMessage),
+      targetMessage:
+        clone(target)
+    };
+  }
+
+  replaceAssistantMessage({
+    conversationId,
+    messageId,
+    content,
+    status = "complete",
+    durationMs = 0,
+    reasoningSummary = "",
+    toolCalls = []
+  }) {
+    const conversation =
+      this.findMutableConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    const message =
+      conversation.messages.find(
+        (item) =>
+          item.id === messageId
+      );
+
+    if (
+      !message ||
+      message.role !== "assistant"
+    ) {
+      return {
+        ok: false,
+        code: "assistant-message-not-found",
+        message: "助手回复不存在。"
+      };
+    }
+
+    const normalizedContent =
+      String(content ?? "")
+        .trim();
+
+    if (!normalizedContent) {
+      return {
+        ok: false,
+        code: "empty-message",
+        message: "回复内容为空。"
+      };
+    }
+
+    message.content =
+      normalizedContent;
+    message.status = status;
+    message.createdAt =
+      this.now();
+
+    delete message.durationMs;
+    delete message.reasoningSummary;
+    delete message.toolCalls;
+
+    this.applyAssistantMetadata(
+      message,
+      {
+        durationMs,
+        reasoningSummary,
+        toolCalls
+      }
+    );
+
+    conversation.updatedAt =
+      message.createdAt;
+
+    this.ensureLoaded()
+      .conversations
+      .sort(
+        (left, right) =>
+          right.updatedAt -
+          left.updatedAt
+      );
+
+    this.commit();
+
+    return {
+      ok: true,
+      message: clone(message)
+    };
+  }
+
+  applyAssistantMetadata(
+    message,
+    {
+      durationMs = 0,
+      reasoningSummary = "",
+      toolCalls = []
+    } = {}
+  ) {
+    if (
+      message.role !== "assistant"
+    ) {
+      return;
+    }
+
+    const normalizedDuration =
+      Math.max(
+        0,
+        Math.round(
+          Number(durationMs) || 0
+        )
+      );
+
+    const normalizedReasoning =
+      String(
+        reasoningSummary ?? ""
+      ).trim();
+
+    if (normalizedDuration > 0) {
+      message.durationMs =
+        normalizedDuration;
+    }
+
+    if (normalizedReasoning) {
+      message.reasoningSummary =
+        normalizedReasoning;
+    }
+
+    if (
+      Array.isArray(toolCalls) &&
+      toolCalls.length > 0
+    ) {
+      message.toolCalls =
+        clone(toolCalls);
+    }
   }
 
   buildContext(

@@ -50,14 +50,10 @@ export function ConversationIcon({
       </>
     ),
 
-    arrow: (
-      <path d="m9 5 7 7-7 7" />
-    ),
-
-    spark: (
+    compose: (
       <>
-        <path d="M12 3.5 13.6 8l4.4 1.6-4.4 1.6L12 15.5l-1.6-4.3L6 9.6 10.4 8 12 3.5Z" />
-        <path d="m18.5 14 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" />
+        <path d="M5 19h14" />
+        <path d="m7 15 9.5-9.5 2 2L9 17l-3 1Z" />
       </>
     ),
 
@@ -101,11 +97,32 @@ export function ConversationIcon({
       </>
     ),
 
-    reset: (
+    refresh: (
       <>
-        <path d="M4 7v5h5" />
-        <path d="M5.2 15.5A8 8 0 1 0 6 7" />
+        <path d="M20 7v5h-5" />
+        <path d="M18.7 15.5A8 8 0 1 1 18 7" />
       </>
+    ),
+
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
+      </>
+    ),
+
+    chevron: (
+      <path d="m8 10 4 4 4-4" />
+    ),
+
+    tool: (
+      <>
+        <path d="M14.5 6.5a4 4 0 0 0 3.8 5.3l-7.5 7.5a2 2 0 0 1-2.8-2.8l7.5-7.5a4 4 0 0 0 5.3-3.8L18 8l-2-2 2.8-2.8a4 4 0 0 0-4.3 3.3Z" />
+      </>
+    ),
+
+    close: (
+      <path d="m6 6 12 12M18 6 6 18" />
     )
   };
 

@@ -1,0 +1,215 @@
+import {
+  useRef,
+  useState
+} from "react";
+
+import ReactMarkdown
+  from "react-markdown";
+
+import remarkGfm
+  from "remark-gfm";
+
+import {
+  ConversationIcon
+} from "./Icon.jsx";
+
+async function copyText(
+  text
+) {
+  await navigator.clipboard
+    .writeText(
+      String(text ?? "")
+    );
+}
+
+function InlineCopyButton({
+  getText,
+  label = "复制"
+}) {
+  const [copied, setCopied] =
+    useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await copyText(
+        getText()
+      );
+      setCopied(true);
+      setTimeout(
+        () => setCopied(false),
+        1400
+      );
+    } catch {
+      // 剪贴板不可用时不打断阅读。
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className="markdown-copy-button"
+      title={
+        copied
+          ? "已复制"
+          : label
+      }
+      aria-label={
+        copied
+          ? "已复制"
+          : label
+      }
+      onClick={handleCopy}
+    >
+      <ConversationIcon
+        name={
+          copied
+            ? "check"
+            : "copy"
+        }
+        size={13}
+      />
+      <span>
+        {copied
+          ? "已复制"
+          : label}
+      </span>
+    </button>
+  );
+}
+
+function MarkdownCodeBlock({
+  code,
+  language
+}) {
+  return (
+    <div className="markdown-code-block">
+      <div className="markdown-code-block__topbar">
+        <span>
+          {language || "代码"}
+        </span>
+        <InlineCopyButton
+          getText={() => code}
+          label="复制代码"
+        />
+      </div>
+      <pre>
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function MarkdownTable({
+  children
+}) {
+  const tableRef =
+    useRef(null);
+
+  return (
+    <div className="markdown-table-card">
+      <div className="markdown-table-card__topbar">
+        <span>表格</span>
+        <InlineCopyButton
+          getText={() =>
+            tableRef.current
+              ?.innerText ?? ""
+          }
+          label="复制表格"
+        />
+      </div>
+      <div
+        className="markdown-table-card__scroll"
+        ref={tableRef}
+      >
+        <table>{children}</table>
+      </div>
+    </div>
+  );
+}
+
+export function MarkdownContent({
+  content,
+  compact = false
+}) {
+  return (
+    <div
+      className={
+        `markdown-content${
+          compact
+            ? " is-compact"
+            : ""
+        }`
+      }
+    >
+      <ReactMarkdown
+        remarkPlugins={[
+          remarkGfm
+        ]}
+        components={{
+          pre: ({ children }) =>
+            children,
+
+          code: ({
+            className,
+            children,
+            ...props
+          }) => {
+            const code =
+              String(children)
+                .replace(/\n$/u, "");
+
+            const languageMatch =
+              /language-([^\s]+)/u
+                .exec(
+                  className ?? ""
+                );
+
+            const isBlock =
+              Boolean(
+                languageMatch
+              ) ||
+              code.includes("\n");
+
+            if (isBlock) {
+              return (
+                <MarkdownCodeBlock
+                  code={code}
+                  language={
+                    languageMatch?.[1]
+                  }
+                />
+              );
+            }
+
+            return (
+              <code
+                className={className}
+                {...props}
+              >
+                {children}
+              </code>
+            );
+          },
+
+          table: ({ children }) => (
+            <MarkdownTable>
+              {children}
+            </MarkdownTable>
+          ),
+
+          a: ({ children, ...props }) => (
+            <a
+              {...props}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {children}
+            </a>
+          )
+        }}
+      >
+        {String(content ?? "")}
+      </ReactMarkdown>
+    </div>
+  );
+}

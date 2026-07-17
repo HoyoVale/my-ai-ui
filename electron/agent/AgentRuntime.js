@@ -200,12 +200,19 @@ export class AgentRuntime {
     const abortController =
       new AbortController();
 
+    const startedAt =
+      Date.now();
+
     this.activeRun = {
       runId,
       conversationId:
         conversation.id,
       abortController,
-      assistantText: ""
+      assistantText: "",
+      startedAt,
+      replaceMessageId: null,
+      reasoningSummary: "",
+      toolCalls: []
     };
 
     this.setStatus({
@@ -213,8 +220,7 @@ export class AgentRuntime {
       runId,
       conversationId:
         conversation.id,
-      startedAt:
-        Date.now(),
+      startedAt,
       lastError: null
     });
 
@@ -243,6 +249,198 @@ export class AgentRuntime {
       conversationId:
         conversation.id
     };
+  }
+
+  regenerateMessage({
+    conversationId,
+    messageId
+  } = {}) {
+    if (this.activeRun) {
+      return {
+        ok: false,
+        code: "busy",
+        message:
+          "当前回复尚未结束，请先停止生成。"
+      };
+    }
+
+    if (
+      !isE2EMode() &&
+      !getModelApiKey()
+    ) {
+      return {
+        ok: false,
+        code: "missing-api-key",
+        message:
+          "尚未配置 DeepSeek API Key。"
+      };
+    }
+
+    let plan;
+    let memories;
+    let context;
+
+    try {
+      plan =
+        conversationManager
+          .prepareRegeneration({
+            conversationId:
+              String(
+                conversationId ?? ""
+              ),
+            messageId:
+              String(
+                messageId ?? ""
+              )
+          });
+
+      if (!plan.ok) {
+        return plan;
+      }
+
+      memories =
+        memoryManager.retrieve({
+          query:
+            plan.userMessage
+              .content
+        });
+
+      context =
+        assembleAgentContext({
+          settings:
+            getSettings(),
+          conversation:
+            plan.conversation,
+          memories
+        });
+
+      context.metadata = {
+        ...context.metadata,
+        regeneration: true
+      };
+    } catch (error) {
+      console.error(
+        "准备重新生成失败：",
+        error
+      );
+
+      return {
+        ok: false,
+        code:
+          "regeneration-prepare-failed",
+        message:
+          "无法准备重新生成。"
+      };
+    }
+
+    const runId =
+      crypto.randomUUID();
+
+    const abortController =
+      new AbortController();
+
+    const startedAt =
+      Date.now();
+
+    this.activeRun = {
+      runId,
+      conversationId:
+        plan.conversation.id,
+      abortController,
+      assistantText: "",
+      startedAt,
+      replaceMessageId:
+        plan.targetMessage.id,
+      reasoningSummary: "",
+      toolCalls: []
+    };
+
+    this.setStatus({
+      state: "running",
+      runId,
+      conversationId:
+        plan.conversation.id,
+      startedAt,
+      lastError: null
+    });
+
+    const runArguments = {
+      runId,
+      conversationId:
+        plan.conversation.id,
+      context,
+      memories,
+      abortController
+    };
+
+    if (isE2EMode()) {
+      void this.runE2EMessage(
+        runArguments
+      );
+    } else {
+      void this.runMessage(
+        runArguments
+      );
+    }
+
+    return {
+      ok: true,
+      runId,
+      conversationId:
+        plan.conversation.id,
+      messageId:
+        plan.targetMessage.id
+    };
+  }
+
+  persistAssistantResponse({
+    conversationId,
+    content,
+    status = "complete"
+  }) {
+    if (!this.activeRun) {
+      return null;
+    }
+
+    const metadata = {
+      durationMs:
+        Math.max(
+          1,
+          Date.now() -
+          this.activeRun.startedAt
+        ),
+      reasoningSummary:
+        this.activeRun
+          .reasoningSummary,
+      toolCalls:
+        this.activeRun
+          .toolCalls
+    };
+
+    if (
+      this.activeRun
+        .replaceMessageId
+    ) {
+      return conversationManager
+        .replaceAssistantMessage({
+          conversationId,
+          messageId:
+            this.activeRun
+              .replaceMessageId,
+          content,
+          status,
+          ...metadata
+        });
+    }
+
+    return conversationManager
+      .appendMessage({
+        conversationId,
+        role: "assistant",
+        content,
+        status,
+        ...metadata
+      });
   }
 
   stop() {
@@ -406,14 +604,12 @@ export class AgentRuntime {
           .trim();
 
       if (assistantText) {
-        conversationManager
-          .appendMessage({
-            conversationId,
-            role: "assistant",
-            content:
-              assistantText,
-            status: "complete"
-          });
+        this.persistAssistantResponse({
+          conversationId,
+          content:
+            assistantText,
+          status: "complete"
+        });
       }
 
       this.activeRun = null;
@@ -592,18 +788,16 @@ export class AgentRuntime {
 
           if (
             shouldSave &&
-            assistantText
+            assistantText &&
+            !this.activeRun
+              .replaceMessageId
           ) {
-            conversationManager
-              .appendMessage({
-                conversationId,
-                role:
-                  "assistant",
-                content:
-                  assistantText,
-                status:
-                  "aborted"
-              });
+            this.persistAssistantResponse({
+              conversationId,
+              content:
+                assistantText,
+              status: "aborted"
+            });
           }
 
           this.activeRun = null;
@@ -631,14 +825,12 @@ export class AgentRuntime {
             .trim();
 
         if (assistantText) {
-          conversationManager
-            .appendMessage({
-              conversationId,
-              role: "assistant",
-              content:
-                assistantText,
-              status: "complete"
-            });
+          this.persistAssistantResponse({
+            conversationId,
+            content:
+              assistantText,
+            status: "complete"
+          });
         }
 
         this.activeRun = null;
@@ -677,18 +869,16 @@ export class AgentRuntime {
 
           if (
             shouldSave &&
-            assistantText
+            assistantText &&
+            !this.activeRun
+              .replaceMessageId
           ) {
-            conversationManager
-              .appendMessage({
-                conversationId,
-                role:
-                  "assistant",
-                content:
-                  assistantText,
-                status:
-                  "aborted"
-              });
+            this.persistAssistantResponse({
+              conversationId,
+              content:
+                assistantText,
+              status: "aborted"
+            });
           }
 
           this.activeRun = null;

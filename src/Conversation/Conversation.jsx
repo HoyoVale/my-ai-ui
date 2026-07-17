@@ -84,18 +84,12 @@ export default function Conversation() {
           .conversations
           .filter(
             (conversation) => {
-              return [
-                conversation.title,
-                conversation.preview
-              ]
-                .filter(Boolean)
-                .some(
-                  (value) =>
-                    String(value)
-                      .toLowerCase()
-                      .includes(
-                        normalized
-                      )
+              return String(
+                conversation.title ?? ""
+              )
+                .toLowerCase()
+                .includes(
+                  normalized
                 );
             }
           );
@@ -105,11 +99,6 @@ export default function Conversation() {
         query
       ]
     );
-
-  const currentTitle =
-    history.current
-      ?.title ??
-    "会话记录";
 
   const rootClassName =
     useMemo(
@@ -160,7 +149,7 @@ export default function Conversation() {
 
     const confirmed =
       window.confirm(
-        "清除当前短期上下文？历史消息仍会保留，固定消息不受影响。"
+        "重置当前短期上下文？历史消息仍会保留，固定消息不受影响。"
       );
 
     if (!confirmed) {
@@ -180,22 +169,10 @@ export default function Conversation() {
         "--conversation-accent":
           settings
             .appearance
-            .accentColor,
-        "--conversation-sidebar-width":
-          "288px",
-        "--conversation-message-max-width":
-          "780px",
-        "--conversation-font-size":
-          "15px"
+            .accentColor
       }}
     >
       <ConversationTopbar
-        title={currentTitle}
-        messageCount={
-          history.current
-            ?.messages
-            .length ?? 0
-        }
         sidebarCollapsed={
           sidebarCollapsed
         }
@@ -236,22 +213,13 @@ export default function Conversation() {
           conversations={
             filteredConversations
           }
-          totalConversations={
-            history
-              .conversations
-              .length
-          }
           currentConversationId={
             history.state
               .currentConversationId
           }
           busy={history.busy}
           query={query}
-          showPreview={true}
           onQueryChange={setQuery}
-          onCreate={() => {
-            void history.create();
-          }}
           onSelect={(
             conversationId
           ) => {
@@ -280,14 +248,21 @@ export default function Conversation() {
             conversation={
               history.current
             }
-            assistantName={
-              settings.personality
-                .enabled
-                ? settings.personality
-                    .name
-                : "Xixi"
-            }
+            busy={history.busy}
             onOpenInput={openInput}
+            onRegenerate={(
+              messageId
+            ) => {
+              if (!history.current) {
+                return;
+              }
+
+              void history.regenerate({
+                conversationId:
+                  history.current.id,
+                messageId
+              });
+            }}
             onUpdateMessageContext={(
               messageId,
               patch

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState
 } from "react";
@@ -8,32 +9,65 @@ import {
   ConversationIcon
 } from "./Icon.jsx";
 
-function formatTime(
-  timestamp
+import {
+  MarkdownContent
+} from "./MarkdownContent.jsx";
+
+function formatDuration(
+  milliseconds
 ) {
-  if (!timestamp) {
+  const numeric =
+    Math.max(
+      0,
+      Number(milliseconds) || 0
+    );
+
+  if (numeric < 1000) {
+    return `${Math.max(1, Math.round(numeric))} 毫秒`;
+  }
+
+  const seconds =
+    numeric / 1000;
+
+  return seconds < 10
+    ? `${seconds.toFixed(1)} 秒`
+    : `${Math.round(seconds)} 秒`;
+}
+
+function stringifyToolValue(
+  value
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return "";
   }
 
-  return new Intl
-    .DateTimeFormat(
-      "zh-CN",
-      {
-        hour: "2-digit",
-        minute: "2-digit"
-      }
-    )
-    .format(
-      new Date(timestamp)
+  if (
+    typeof value === "string"
+  ) {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(
+      value,
+      null,
+      2
     );
+  } catch {
+    return String(value);
+  }
 }
 
 export function ConversationMessageList({
   loading,
   conversation,
-  assistantName = "Xixi",
+  busy = false,
   onOpenInput,
-  onUpdateMessageContext
+  onUpdateMessageContext,
+  onRegenerate
 }) {
   const endRef =
     useRef(null);
@@ -50,6 +84,18 @@ export function ConversationMessageList({
     conversation?.id,
     conversation?.messages.length
   ]);
+
+  const lastAssistantId =
+    useMemo(() => {
+      return conversation
+        ?.messages
+        ?.findLast?.(
+          (message) =>
+            message.role ===
+              "assistant"
+        )
+        ?.id ?? null;
+    }, [conversation]);
 
   const copyMessage =
     async (message) => {
@@ -84,7 +130,7 @@ export function ConversationMessageList({
     return (
       <EmptyState
         title="选择一个会话"
-        description="从左侧打开历史记录，或新建一个会话。"
+        description="从左侧打开历史记录，或创建一个新会话。"
         onOpenInput={onOpenInput}
       />
     );
@@ -97,7 +143,7 @@ export function ConversationMessageList({
     return (
       <EmptyState
         title="开始新的对话"
-        description="这里会展示你和助手的完整消息记录。"
+        description="打开输入框，第一条消息会自动保存在这里。"
         onOpenInput={onOpenInput}
         testId="conversation-empty"
       />
@@ -144,67 +190,81 @@ export function ConversationMessageList({
                 data-testid="conversation-message"
                 data-message-id={message.id}
                 data-role={message.role}
-                data-context-included={
-                  included
-                }
+                data-context-included={included}
                 data-context-pinned={pinned}
                 key={message.id}
               >
-                {isAssistant && (
-                  <div className="conversation-message__avatar">
-                    <ConversationIcon
-                      name="spark"
-                      size={16}
+                <div className="conversation-message__content">
+                  {isAssistant && (
+                    <AssistantActivity
+                      message={message}
+                    />
+                  )}
+
+                  <div className="conversation-message__body">
+                    <MarkdownContent
+                      content={message.content}
+                      compact={!isAssistant}
                     />
                   </div>
-                )}
 
-                <div className="conversation-message__content">
-                  <div className="conversation-message__meta">
-                    <strong>
-                      {isAssistant
-                        ? assistantName
-                        : "你"}
-                    </strong>
-
-                    <div className="conversation-message__badges">
+                  <div className="conversation-message__actions">
+                    <div className="conversation-message__status-group">
                       {pinned && (
-                        <span>
-                          <ConversationIcon
-                            name="pin"
-                            size={11}
-                          />
+                        <span className="conversation-message__status-chip">
                           已固定
                         </span>
                       )}
 
                       {!included && (
-                        <span>
+                        <span className="conversation-message__status-chip">
                           不加入上下文
                         </span>
                       )}
 
-                      <time>
-                        {formatTime(
-                          message.createdAt
-                        )}
-                      </time>
+                      {message.status ===
+                        "aborted" && (
+                        <span className="conversation-message__status-chip">
+                          回复已中止
+                        </span>
+                      )}
                     </div>
-                  </div>
-
-                  <div className="conversation-message__body">
-                    {message.content}
-                  </div>
-
-                  <div className="conversation-message__actions">
-                    {message.status ===
-                      "aborted" && (
-                      <small className="conversation-message__status">
-                        回复已中止
-                      </small>
-                    )}
 
                     <div className="conversation-message__action-group">
+                      <MessageAction
+                        label={
+                          copied
+                            ? "已复制"
+                            : "复制"
+                        }
+                        onClick={() => {
+                          void copyMessage(
+                            message
+                          );
+                        }}
+                        icon={
+                          copied
+                            ? "check"
+                            : "copy"
+                        }
+                      />
+
+                      {isAssistant &&
+                        message.id ===
+                          lastAssistantId && (
+                        <MessageAction
+                          label="重新生成"
+                          testId="message-regenerate"
+                          disabled={busy}
+                          onClick={() => {
+                            void onRegenerate?.(
+                              message.id
+                            );
+                          }}
+                          icon="refresh"
+                        />
+                      )}
+
                       <MessageAction
                         label={
                           included
@@ -249,24 +309,6 @@ export function ConversationMessageList({
                         }}
                         icon="pin"
                       />
-
-                      <MessageAction
-                        label={
-                          copied
-                            ? "已复制"
-                            : "复制"
-                        }
-                        onClick={() => {
-                          void copyMessage(
-                            message
-                          );
-                        }}
-                        icon={
-                          copied
-                            ? "check"
-                            : "copy"
-                        }
-                      />
                     </div>
                   </div>
                 </div>
@@ -278,6 +320,145 @@ export function ConversationMessageList({
         <div ref={endRef} />
       </div>
     </div>
+  );
+}
+
+function AssistantActivity({
+  message
+}) {
+  const reasoning =
+    String(
+      message.reasoningSummary ?? ""
+    ).trim();
+
+  const toolCalls =
+    Array.isArray(
+      message.toolCalls
+    )
+      ? message.toolCalls
+      : [];
+
+  const duration =
+    Number(message.durationMs) || 0;
+
+  if (
+    !duration &&
+    !reasoning &&
+    toolCalls.length === 0
+  ) {
+    return null;
+  }
+
+  return (
+    <details className="conversation-activity">
+      <summary>
+        <ConversationIcon
+          name="clock"
+          size={14}
+        />
+        <span>
+          {duration
+            ? `思考了 ${formatDuration(duration)}`
+            : "思考与工具"}
+        </span>
+        <ConversationIcon
+          name="chevron"
+          size={13}
+        />
+      </summary>
+
+      <div className="conversation-activity__content">
+        {reasoning ? (
+          <section className="conversation-reasoning">
+            <strong>思考摘要</strong>
+            <MarkdownContent
+              content={reasoning}
+              compact
+            />
+          </section>
+        ) : (
+          <p className="conversation-activity__empty">
+            当前回复没有可展示的思考摘要。
+          </p>
+        )}
+
+        {toolCalls.map(
+          (toolCall, index) => (
+            <details
+              className="conversation-tool-call"
+              key={
+                toolCall.id ??
+                `${toolCall.name}-${index}`
+              }
+            >
+              <summary>
+                <ConversationIcon
+                  name="tool"
+                  size={14}
+                />
+                <span>
+                  {toolCall.name ||
+                    "工具调用"}
+                </span>
+                <em>
+                  {toolCall.status ||
+                    "完成"}
+                </em>
+              </summary>
+
+              <div className="conversation-tool-call__content">
+                {toolCall.input !==
+                  undefined && (
+                  <ToolCallSection
+                    title="输入"
+                    value={toolCall.input}
+                  />
+                )}
+
+                {toolCall.output !==
+                  undefined && (
+                  <ToolCallSection
+                    title="输出"
+                    value={toolCall.output}
+                  />
+                )}
+              </div>
+            </details>
+          )
+        )}
+      </div>
+    </details>
+  );
+}
+
+function ToolCallSection({
+  title,
+  value
+}) {
+  const text =
+    stringifyToolValue(value);
+
+  return (
+    <section>
+      <div>
+        <strong>{title}</strong>
+        <button
+          type="button"
+          title={`复制${title}`}
+          aria-label={`复制${title}`}
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(text);
+          }}
+        >
+          <ConversationIcon
+            name="copy"
+            size={13}
+          />
+        </button>
+      </div>
+      <pre>{text}</pre>
+    </section>
   );
 }
 
@@ -293,7 +474,7 @@ function MessageAction({
     <button
       type="button"
       className={
-        `conversation-message__copy${
+        `conversation-message-action${
           active
             ? " is-active"
             : ""
@@ -326,13 +507,6 @@ function EmptyState({
       className="conversation-state conversation-state--empty"
       data-testid={testId}
     >
-      <div className="conversation-state__icon">
-        <ConversationIcon
-          name="spark"
-          size={24}
-        />
-      </div>
-
       <strong>{title}</strong>
       <span>{description}</span>
 

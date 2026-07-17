@@ -202,6 +202,7 @@ app.whenReady().then(
               "createConversation",
               "resetConversationContext",
               "updateMessageContext",
+              "regenerateConversationMessage",
               "inspectConversationContext",
               "onConversationChanged",
               "getMemoryState",

@@ -5,61 +5,33 @@ import {
 const FILTERS = [
   {
     value: "all",
-    label: "全部",
-    countKey: "totalMemories"
+    label: "全部"
   },
   {
     value: "enabled",
-    label: "启用",
-    countKey: "enabledMemories"
+    label: "启用"
   },
   {
     value: "disabled",
-    label: "停用",
-    countKey: "disabledMemories"
+    label: "停用"
   }
 ];
-
-function priorityLabel(
-  priority
-) {
-  if (priority >= 0.8) {
-    return "高";
-  }
-
-  if (priority >= 0.45) {
-    return "中";
-  }
-
-  return "低";
-}
 
 export function MemorySidebar({
   memories,
   selectedId,
   query,
   filter,
-  state,
   loading,
-  onNew,
   onQueryChange,
   onFilterChange,
   onSelect
 }) {
   return (
     <aside className="memory-sidebar">
-      <button
-        type="button"
-        className="memory-new-button"
-        data-testid="memory-new-topbar"
-        onClick={onNew}
-      >
-        <MemoryIcon
-          name="plus"
-          size={16}
-        />
-        新建记忆
-      </button>
+      <div className="memory-sidebar__heading">
+        Memory
+      </div>
 
       <label className="memory-search">
         <MemoryIcon
@@ -68,7 +40,7 @@ export function MemorySidebar({
         />
         <input
           value={query}
-          placeholder="搜索标题、正文或标签"
+          placeholder="搜索描述或标签"
           aria-label="搜索记忆"
           onChange={(event) => {
             onQueryChange(
@@ -102,21 +74,11 @@ export function MemorySidebar({
                 );
               }}
             >
-              <span>{option.label}</span>
-              <small>
-                {state[
-                  option.countKey
-                ] ?? 0}
-              </small>
+              {option.label}
             </button>
           )
         )}
       </nav>
-
-      <div className="memory-list-heading">
-        <span>记忆</span>
-        <span>{memories.length}</span>
-      </div>
 
       <div className="memory-list">
         {loading && (
@@ -128,10 +90,6 @@ export function MemorySidebar({
         {!loading &&
           memories.length === 0 && (
             <div className="memory-list-state memory-list-state--empty">
-              <MemoryIcon
-                name="brain"
-                size={20}
-              />
               <span>
                 没有匹配的记忆
               </span>
@@ -159,10 +117,7 @@ export function MemorySidebar({
               onSelect(memory.id);
             }}
           >
-            <span className="memory-list-item__title-row">
-              <strong>
-                {memory.title}
-              </strong>
+            <span className="memory-list-item__description-row">
               <span
                 className={
                   `memory-status-dot${
@@ -177,27 +132,24 @@ export function MemorySidebar({
                     : "已停用"
                 }
               />
-            </span>
 
-            <span className="memory-list-item__preview">
-              {memory.content}
-            </span>
-
-            <span className="memory-list-item__footer">
-              <span>
-                {priorityLabel(
-                  memory.priority
-                )}优先级
+              <span className="memory-list-item__description">
+                {memory.description ||
+                  "未添加适用说明"}
               </span>
-              {memory.tags.length > 0 && (
-                <span className="memory-list-item__tag">
-                  {memory.tags[0]}
-                  {memory.tags.length > 1
-                    ? ` +${memory.tags.length - 1}`
-                    : ""}
-                </span>
-              )}
             </span>
+
+            {memory.tags.length > 0 && (
+              <span className="memory-list-item__tags">
+                {memory.tags
+                  .slice(0, 3)
+                  .map((tag) => (
+                    <span key={tag}>
+                      {tag}
+                    </span>
+                  ))}
+              </span>
+            )}
           </button>
         ))}
       </div>

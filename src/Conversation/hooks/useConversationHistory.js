@@ -205,6 +205,17 @@ export function useConversationHistory() {
             ?.updateMessageContext?.(
               input
             )
+      ),
+
+    regenerate: (
+      input
+    ) =>
+      runAction(
+        () =>
+          window.api
+            ?.regenerateConversationMessage?.(
+              input
+            )
       )
   };
 }

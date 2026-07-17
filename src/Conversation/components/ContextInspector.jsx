@@ -76,10 +76,7 @@ export function ConversationContextInspector({
       data-testid="conversation-context-inspector"
     >
       <header className="conversation-context__header">
-        <div>
-          <strong>上下文</strong>
-          <span>下一次请求的预计组成</span>
-        </div>
+        <strong>Context</strong>
 
         <button
           type="button"
@@ -88,7 +85,10 @@ export function ConversationContextInspector({
           title="关闭"
           onClick={onClose}
         >
-          ×
+          <ConversationIcon
+            name="close"
+            size={15}
+          />
         </button>
       </header>
 
@@ -99,11 +99,13 @@ export function ConversationContextInspector({
       ) : (
         <div className="conversation-context__scroll">
           <section
-            className={`context-budget-card${
-              budget.overflowTokens > 0
-                ? " is-overflow"
-                : ""
-            }`}
+            className={
+              `context-budget-card${
+                budget.overflowTokens > 0
+                  ? " is-overflow"
+                  : ""
+              }`
+            }
           >
             <div className="context-budget-card__top">
               <div>
@@ -117,16 +119,16 @@ export function ConversationContextInspector({
                   <small>
                     / {formatTokens(
                       budget.contextTokenBudget
-                    )} tokens
+                    )}
                   </small>
                 </strong>
               </div>
 
-              <div className="context-budget-card__ratio">
+              <em>
                 {formatPercent(
                   budget.usageRatio
                 )}
-              </div>
+              </em>
             </div>
 
             <div
@@ -161,33 +163,25 @@ export function ConversationContextInspector({
                 )}
               </span>
               <span>
-                输出预留 {formatTokens(
+                输出 {formatTokens(
                   budget.outputReserve
                 )}
               </span>
               <span>
-                输入剩余 {formatTokens(
+                剩余 {formatTokens(
                   budget.remaining
                 )}
               </span>
             </div>
-
-            <p>
-              总进度条表示“预计总占用 ÷ 上下文上限”。Token 为本地估算值。
-            </p>
           </section>
 
           <section className="context-section">
             <div className="context-section__title">
               <strong>输入组成</strong>
               <span>
-                {budget.overflowTokens > 0
-                  ? `超出约 ${formatTokens(
-                      budget.overflowTokens
-                    )}`
-                  : `共 ${formatTokens(
-                      budget.inputTokens
-                    )} tokens`}
+                {formatTokens(
+                  budget.inputTokens
+                )} tokens
               </span>
             </div>
 
@@ -211,13 +205,14 @@ export function ConversationContextInspector({
                       key={section.id}
                     >
                       <div className="context-breakdown__label">
-                        <span>{section.label}</span>
-
+                        <span>
+                          {section.label}
+                        </span>
                         <div className="context-breakdown__value">
                           <strong>
                             {formatTokens(
                               section.tokens
-                            )} tokens
+                            )}
                           </strong>
                           <em>
                             {formatPercent(
@@ -254,57 +249,41 @@ export function ConversationContextInspector({
                 }
               )}
             </div>
-
-            <p className="context-breakdown__note">
-              每条长条表示该部分占当前输入 Token 的比例，右侧同时显示准确 Token 数与百分比。
-            </p>
           </section>
 
-          <section className="context-section">
-            <div className="context-section__title">
-              <strong>当前策略</strong>
+          <section className="context-section context-facts">
+            <div>
+              <span>最近消息</span>
+              <strong data-testid="context-recent-count">
+                {inspection
+                  .metadata
+                  .messageCount}
+              </strong>
             </div>
-
-            <div className="context-facts">
-              <div>
-                <span>最近消息</span>
-                <strong data-testid="context-recent-count">
-                  {inspection
-                    .metadata
-                    .messageCount}
-                </strong>
-              </div>
-              <div>
-                <span>固定消息</span>
-                <strong data-testid="context-pinned-count">
-                  {inspection
-                    .metadata
-                    .pinnedMessageCount}
-                </strong>
-              </div>
-              <div>
-                <span>长期记忆</span>
-                <strong data-testid="context-memory-count">
-                  {inspection
-                    .metadata
-                    .memoryCount}
-                </strong>
-              </div>
+            <div>
+              <span>固定消息</span>
+              <strong data-testid="context-pinned-count">
+                {inspection
+                  .metadata
+                  .pinnedMessageCount}
+              </strong>
+            </div>
+            <div>
+              <span>长期记忆</span>
+              <strong data-testid="context-memory-count">
+                {inspection
+                  .metadata
+                  .memoryCount}
+              </strong>
             </div>
           </section>
 
           <section className="context-reset-card">
             <div>
-              <ConversationIcon
-                name="reset"
-                size={17}
-              />
-              <div>
-                <strong>从这里开始新上下文</strong>
-                <span>
-                  保留历史记录，但下一次请求不再携带当前消息之前的普通对话。固定消息仍然有效。
-                </span>
-              </div>
+              <strong>重置短期上下文</strong>
+              <span>
+                保留历史与固定消息，从下一条消息重新开始。
+              </span>
             </div>
 
             <button
@@ -315,7 +294,7 @@ export function ConversationContextInspector({
                 void onResetContext?.();
               }}
             >
-              清除当前上下文
+              重置
             </button>
           </section>
         </div>

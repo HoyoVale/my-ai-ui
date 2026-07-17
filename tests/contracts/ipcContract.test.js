@@ -94,6 +94,13 @@ describe(
         assert.equal(
           channels
             .conversation
+            .REGENERATE_MESSAGE,
+          "conversation-regenerate-message"
+        );
+
+        assert.equal(
+          channels
+            .conversation
             .CHANGED,
           "conversation-changed"
         );

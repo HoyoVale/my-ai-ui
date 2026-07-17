@@ -224,6 +224,25 @@ export function registerConversationIpc() {
   ipcMain.handle(
     IPC_CHANNELS
       .conversation
+      .REGENERATE_MESSAGE,
+    (_event, input = {}) => {
+      return agentRuntime
+        .regenerateMessage({
+          conversationId:
+            String(
+              input.conversationId ?? ""
+            ),
+          messageId:
+            String(
+              input.messageId ?? ""
+            )
+        });
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
       .INSPECT_CONTEXT,
     (_event, conversationId) => {
       return inspectConversationContext(

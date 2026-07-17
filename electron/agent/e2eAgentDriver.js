@@ -64,6 +64,16 @@ export function buildE2EResponse(
     "";
 
   if (
+    contextMetadata
+      .regeneration === true
+  ) {
+    return (
+      `E2E_REGENERATED_${userMessages.length}:` +
+      latest
+    );
+  }
+
+  if (
     latest.includes(
       "memory-key"
     )
@@ -85,6 +95,20 @@ export function buildE2EResponse(
     return personality.enabled
       ? `E2E_PERSONALITY:${personality.name}:${personality.tone}:${personality.responseLength}`
       : "E2E_PERSONALITY_DISABLED";
+  }
+
+  if (latest === "second message") {
+    return [
+      `E2E_REPLY_${userMessages.length}:${latest}`,
+      "",
+      "```js",
+      "console.log(\"markdown\");",
+      "```",
+      "",
+      "| 项目 | 状态 |",
+      "| --- | --- |",
+      "| Markdown | ready |"
+    ].join("\n");
   }
 
   return (

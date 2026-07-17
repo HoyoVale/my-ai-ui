@@ -36,10 +36,10 @@ import "./Memory.css";
 
 function searchText(memory) {
   return [
-    memory.title,
-    memory.content,
     memory.description,
-    ...(memory.tags ?? [])
+    ...(memory.tags ?? []),
+    memory.title,
+    memory.content
   ]
     .filter(Boolean)
     .join(" ")
@@ -68,6 +68,10 @@ export default function Memory() {
     useState("all");
   const [editorDirty, setEditorDirty] =
     useState(false);
+  const [
+    sidebarCollapsed,
+    setSidebarCollapsed
+  ] = useState(false);
 
   const filteredMemories =
     useMemo(() => {
@@ -230,6 +234,9 @@ export default function Memory() {
           isMaximized
             ? "is-maximized"
             : "",
+          sidebarCollapsed
+            ? "is-sidebar-collapsed"
+            : "",
           settings.appearance
             .reducedMotion
             ? "reduce-motion"
@@ -246,8 +253,17 @@ export default function Memory() {
       }}
     >
       <MemoryTopbar
-        state={library.state}
+        sidebarCollapsed={
+          sidebarCollapsed
+        }
         isMaximized={isMaximized}
+        onToggleSidebar={() => {
+          setSidebarCollapsed(
+            (current) =>
+              !current
+          );
+        }}
+        onCreate={startCreate}
         onMinimize={() => {
           window.api
             ?.minimizeWindow?.();
@@ -265,9 +281,7 @@ export default function Memory() {
           selectedId={selectedId}
           query={query}
           filter={filter}
-          state={library.state}
           loading={library.loading}
-          onNew={startCreate}
           onQueryChange={setQuery}
           onFilterChange={setFilter}
           onSelect={(id) => {

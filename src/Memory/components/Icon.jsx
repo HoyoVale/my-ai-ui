@@ -15,20 +15,29 @@ export function MemoryIcon({
   };
 
   const icons = {
+    sidebar: (
+      <>
+        <rect
+          x="3.5"
+          y="4"
+          width="17"
+          height="16"
+          rx="2.5"
+        />
+        <path d="M9 4v16" />
+      </>
+    ),
     plus: (
       <path d="M12 5v14M5 12h14" />
     ),
     search: (
       <>
-        <circle cx="10.5" cy="10.5" r="6.5" />
+        <circle
+          cx="10.5"
+          cy="10.5"
+          r="6.5"
+        />
         <path d="m15.5 15.5 4 4" />
-      </>
-    ),
-    brain: (
-      <>
-        <path d="M9.5 4.5A3 3 0 0 0 6.7 8a3.2 3.2 0 0 0-.7 5.9A3 3 0 0 0 9.5 19" />
-        <path d="M14.5 4.5A3 3 0 0 1 17.3 8a3.2 3.2 0 0 1 .7 5.9 3 3 0 0 1-3.5 5.1" />
-        <path d="M9.5 4.5v15M14.5 4.5v15M9.5 9h2M12.5 15h2" />
       </>
     ),
     trash: (

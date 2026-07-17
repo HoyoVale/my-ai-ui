@@ -111,6 +111,9 @@ const IPC_CHANNELS =
       UPDATE_MESSAGE_CONTEXT:
         "conversation-update-message-context",
 
+      REGENERATE_MESSAGE:
+        "conversation-regenerate-message",
+
       INSPECT_CONTEXT:
         "conversation-inspect-context",
 

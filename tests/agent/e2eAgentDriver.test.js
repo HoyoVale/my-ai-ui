@@ -35,9 +35,17 @@ describe(
             }
           ]);
 
-        assert.equal(
+        assert.match(
           result,
-          "E2E_REPLY_2:second message"
+          /^E2E_REPLY_2:second message/u
+        );
+        assert.match(
+          result,
+          /```js/u
+        );
+        assert.match(
+          result,
+          /\| 项目 \| 状态 \|/u
         );
       }
     );
@@ -100,5 +108,30 @@ describe(
         );
       }
     );
+
+    it(
+      "marks deterministic regeneration runs",
+      () => {
+        const result =
+          buildE2EResponse(
+            [
+              {
+                role: "user",
+                content: "second message"
+              }
+            ],
+            [],
+            {
+              regeneration: true
+            }
+          );
+
+        assert.equal(
+          result,
+          "E2E_REGENERATED_1:second message"
+        );
+      }
+    );
+
   }
 );

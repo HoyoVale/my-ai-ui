@@ -345,3 +345,184 @@ describe(
     );
   }
 );
+
+describe(
+  "ConversationManager regeneration",
+  () => {
+    it(
+      "stores assistant generation metadata",
+      () => {
+        const manager =
+          createManager();
+        const conversation =
+          manager.create();
+
+        manager.appendMessage({
+          conversationId:
+            conversation.id,
+          role: "assistant",
+          content: "reply",
+          durationMs: 1250,
+          reasoningSummary:
+            "Checked the request.",
+          toolCalls: [
+            {
+              id: "tool-1",
+              name: "read_file",
+              status: "complete",
+              input: {
+                path: "README.md"
+              },
+              output: "ok"
+            }
+          ]
+        });
+
+        const message =
+          manager.getConversation(
+            conversation.id
+          ).messages[0];
+
+        assert.equal(
+          message.durationMs,
+          1250
+        );
+        assert.equal(
+          message.reasoningSummary,
+          "Checked the request."
+        );
+        assert.equal(
+          message.toolCalls[0].name,
+          "read_file"
+        );
+      }
+    );
+
+    it(
+      "prepares and replaces the latest assistant reply without duplicating the user message",
+      () => {
+        const manager =
+          createManager();
+        const conversation =
+          manager.create();
+
+        manager.appendMessage({
+          conversationId:
+            conversation.id,
+          role: "user",
+          content: "question"
+        });
+
+        const assistant =
+          manager.appendMessage({
+            conversationId:
+              conversation.id,
+            role: "assistant",
+            content: "old reply"
+          });
+
+        const plan =
+          manager.prepareRegeneration({
+            conversationId:
+              conversation.id,
+            messageId:
+              assistant.id
+          });
+
+        assert.equal(
+          plan.ok,
+          true
+        );
+        assert.equal(
+          plan.conversation
+            .messages.length,
+          1
+        );
+        assert.equal(
+          plan.userMessage.content,
+          "question"
+        );
+
+        const replaced =
+          manager.replaceAssistantMessage({
+            conversationId:
+              conversation.id,
+            messageId:
+              assistant.id,
+            content: "new reply",
+            durationMs: 800
+          });
+
+        assert.equal(
+          replaced.ok,
+          true
+        );
+
+        const saved =
+          manager.getConversation(
+            conversation.id
+          );
+
+        assert.equal(
+          saved.messages.length,
+          2
+        );
+        assert.equal(
+          saved.messages[1].content,
+          "new reply"
+        );
+        assert.equal(
+          saved.messages[1].durationMs,
+          800
+        );
+      }
+    );
+
+    it(
+      "rejects regeneration for an assistant reply that is no longer the latest message",
+      () => {
+        const manager =
+          createManager();
+        const conversation =
+          manager.create();
+
+        manager.appendMessage({
+          conversationId:
+            conversation.id,
+          role: "user",
+          content: "first"
+        });
+        const oldAssistant =
+          manager.appendMessage({
+            conversationId:
+              conversation.id,
+            role: "assistant",
+            content: "reply"
+          });
+        manager.appendMessage({
+          conversationId:
+            conversation.id,
+          role: "user",
+          content: "second"
+        });
+
+        const result =
+          manager.prepareRegeneration({
+            conversationId:
+              conversation.id,
+            messageId:
+              oldAssistant.id
+          });
+
+        assert.equal(
+          result.ok,
+          false
+        );
+        assert.equal(
+          result.code,
+          "not-latest-assistant-message"
+        );
+      }
+    );
+  }
+);

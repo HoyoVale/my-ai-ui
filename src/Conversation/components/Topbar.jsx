@@ -3,8 +3,6 @@ import {
 } from "./Icon.jsx";
 
 export function ConversationTopbar({
-  title,
-  messageCount,
   sidebarCollapsed,
   isMaximized,
   contextOpen,
@@ -39,33 +37,21 @@ export function ConversationTopbar({
             size={17}
           />
         </button>
-
-        <div className="conversation-topbar__title">
-          <strong
-            data-testid="conversation-current-title"
-          >
-            {title}
-          </strong>
-
-          <span className="conversation-topbar__status">
-            {messageCount > 0
-              ? `${messageCount} 条消息`
-              : "尚未开始"}
-          </span>
-        </div>
       </div>
 
       <div className="conversation-topbar__right">
         <button
           type="button"
-          className={`conversation-icon-button conversation-icon-button--context${
-            contextOpen
-              ? " is-active"
-              : ""
-          }`}
+          className={
+            `conversation-icon-button${
+              contextOpen
+                ? " is-active"
+                : ""
+            }`
+          }
           data-testid="conversation-context-toggle"
-          title="查看上下文"
-          aria-label="查看上下文"
+          title="上下文"
+          aria-label="上下文"
           aria-pressed={contextOpen}
           onClick={onToggleContext}
         >
@@ -77,7 +63,8 @@ export function ConversationTopbar({
 
         <button
           type="button"
-          className="conversation-icon-button conversation-icon-button--new"
+          className="conversation-icon-button"
+          data-testid="conversation-new"
           title="新建会话"
           aria-label="新建会话"
           onClick={onCreate}
@@ -90,14 +77,15 @@ export function ConversationTopbar({
 
         <button
           type="button"
-          className="conversation-continue"
+          className="conversation-icon-button"
           data-testid="conversation-open-input"
+          title="继续对话"
+          aria-label="继续对话"
           onClick={onOpenInput}
         >
-          继续对话
           <ConversationIcon
-            name="arrow"
-            size={14}
+            name="compose"
+            size={17}
           />
         </button>
 
