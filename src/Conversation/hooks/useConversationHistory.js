@@ -176,6 +176,15 @@ export function useConversationHistory() {
             )
       ),
 
+    rename: (input) =>
+      runAction(
+        () =>
+          window.api
+            ?.renameConversation?.(
+              input
+            )
+      ),
+
     remove: (conversationId) =>
       runAction(
         () =>

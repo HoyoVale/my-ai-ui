@@ -1,3 +1,7 @@
+import {
+  MarkdownContent
+} from "../../Conversation/components/MarkdownContent.jsx";
+
 export function ResponseBubble({
   shellRef,
   contentRef,
@@ -69,12 +73,15 @@ export function ResponseBubble({
           className="response-bubble__content"
           onScroll={onScroll}
         >
-          <span
+          <div
             className="response-bubble__text"
             data-testid="response-text"
           >
-            {text}
-          </span>
+            <MarkdownContent
+              content={text}
+              compact
+            />
+          </div>
 
           {streaming && (
             <span

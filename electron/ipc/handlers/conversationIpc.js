@@ -146,6 +146,32 @@ export function registerConversationIpc() {
   ipcMain.handle(
     IPC_CHANNELS
       .conversation
+      .RENAME,
+    (_event, input = {}) => {
+      const busy =
+        rejectWhenBusy();
+
+      if (busy) {
+        return busy;
+      }
+
+      return conversationManager
+        .rename({
+          conversationId:
+            String(
+              input.conversationId ?? ""
+            ),
+          title:
+            String(
+              input.title ?? ""
+            )
+        });
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
       .DELETE,
     (_event, id) => {
       const busy =

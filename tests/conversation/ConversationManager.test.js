@@ -105,6 +105,52 @@ describe(
     );
 
     it(
+      "renames a conversation and rejects an empty title",
+      () => {
+        const manager =
+          createManager();
+
+        const conversation =
+          manager.create();
+
+        const renamed =
+          manager.rename({
+            conversationId:
+              conversation.id,
+            title:
+              "  新的 会话名称  "
+          });
+
+        assert.equal(
+          renamed.ok,
+          true
+        );
+        assert.equal(
+          manager.getConversation(
+            conversation.id
+          ).title,
+          "新的 会话名称"
+        );
+
+        const rejected =
+          manager.rename({
+            conversationId:
+              conversation.id,
+            title: "   "
+          });
+
+        assert.equal(
+          rejected.ok,
+          false
+        );
+        assert.equal(
+          rejected.code,
+          "empty-title"
+        );
+      }
+    );
+
+    it(
       "builds context from the active conversation only",
       () => {
         const manager =

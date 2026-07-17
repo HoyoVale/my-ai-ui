@@ -227,6 +227,15 @@ export default function Conversation() {
               conversationId
             );
           }}
+          onRename={(
+            conversationId,
+            title
+          ) => {
+            return history.rename({
+              conversationId,
+              title
+            });
+          }}
           onDelete={(
             conversationId
           ) => {

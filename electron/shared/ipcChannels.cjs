@@ -98,6 +98,9 @@ const IPC_CHANNELS =
       SELECT:
         "conversation-select",
 
+      RENAME:
+        "conversation-rename",
+
       DELETE:
         "conversation-delete",
 

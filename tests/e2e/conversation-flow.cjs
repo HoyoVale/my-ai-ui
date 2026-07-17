@@ -561,6 +561,18 @@ async function main() {
       "Send"
     );
 
+    await response
+      .locator(
+        ".response-bubble .markdown-code-block"
+      )
+      .waitFor();
+
+    await response
+      .locator(
+        ".response-bubble .markdown-table-card"
+      )
+      .waitFor();
+
     await pet
       .locator(
         '[data-testid="pet-sprite"]'
@@ -593,6 +605,35 @@ async function main() {
         '[data-testid="conversation-message"]'
       ),
       4
+    );
+
+    const currentHistoryItem =
+      conversation.locator(
+        '.conversation-history-item.is-current'
+      );
+
+    await currentHistoryItem.hover();
+    await currentHistoryItem
+      .locator(
+        '[data-testid="conversation-rename"]'
+      )
+      .click();
+
+    const renameInput =
+      currentHistoryItem.locator(
+        '[data-testid="conversation-rename-input"]'
+      );
+
+    await renameInput.fill(
+      "E2E renamed session"
+    );
+    await renameInput.press(
+      "Enter"
+    );
+
+    await waitForText(
+      currentHistoryItem,
+      "E2E renamed session"
     );
 
     const messages =
@@ -661,42 +702,42 @@ async function main() {
       .waitFor();
 
 
-    const firstUserMessage =
+    const firstAssistantMessage =
       conversation
         .locator(
-          '[data-testid="conversation-message"][data-role="user"]'
+          '[data-testid="conversation-message"][data-role="assistant"]'
         )
         .first();
 
-    await firstUserMessage.hover();
-    await firstUserMessage
+    await firstAssistantMessage.hover();
+    await firstAssistantMessage
       .locator(
         '[data-testid="message-pin-toggle"]'
       )
       .click();
 
     await waitForAttribute(
-      firstUserMessage,
+      firstAssistantMessage,
       "data-context-pinned",
       "true"
     );
 
-    const secondUserMessage =
+    const secondAssistantMessage =
       conversation
         .locator(
-          '[data-testid="conversation-message"][data-role="user"]'
+          '[data-testid="conversation-message"][data-role="assistant"]'
         )
         .nth(1);
 
-    await secondUserMessage.hover();
-    await secondUserMessage
+    await secondAssistantMessage.hover();
+    await secondAssistantMessage
       .locator(
         '[data-testid="message-context-toggle"]'
       )
       .click();
 
     await waitForAttribute(
-      secondUserMessage,
+      secondAssistantMessage,
       "data-context-included",
       "false"
     );
@@ -783,7 +824,7 @@ async function main() {
         )
         .filter({
           hasText:
-            "first message"
+            "E2E renamed session"
         })
         .first();
 
@@ -796,7 +837,7 @@ async function main() {
       conversation.locator(
         '.conversation-history-item.is-current'
       ),
-      "first message"
+      "E2E renamed session"
     );
 
     await waitForCount(

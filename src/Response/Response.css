@@ -27,6 +27,25 @@
   --bubble-hover:
     rgb(0 0 0 / 0.07);
 
+  --conversation-accent:
+    var(--accent);
+  --conversation-text:
+    var(--bubble-text);
+  --conversation-soft:
+    var(--bubble-dim);
+  --conversation-faint:
+    var(--bubble-dim);
+  --conversation-border:
+    var(--bubble-border);
+  --conversation-border-strong:
+    var(--bubble-border);
+  --conversation-hover:
+    var(--bubble-hover);
+  --conversation-soft-surface:
+    rgb(0 0 0 / 0.045);
+  --conversation-surface:
+    var(--bubble-bg);
+
   display: inline-flex;
 
   width: max-content;
@@ -70,6 +89,9 @@
 
   --bubble-hover:
     rgb(255 255 255 / 0.09);
+
+  --conversation-soft-surface:
+    rgb(255 255 255 / 0.06);
 }
 
 .response-bubble {
@@ -210,7 +232,7 @@
   line-height:
     var(--response-line-height);
 
-  white-space: pre-wrap;
+  white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
 
@@ -229,7 +251,8 @@
 }
 
 .response-bubble__text {
-  white-space: inherit;
+  display: block;
+  min-width: 0;
 }
 
 .response-bubble__cursor {
@@ -377,4 +400,169 @@
   100% {
     opacity: 0;
   }
+}
+
+/* Response 使用与 Conversation 一致的安全 Markdown 渲染。 */
+.response-bubble .markdown-content {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.response-bubble .markdown-content > :first-child {
+  margin-top: 0;
+}
+
+.response-bubble .markdown-content > :last-child {
+  margin-bottom: 0;
+}
+
+.response-bubble .markdown-content p,
+.response-bubble .markdown-content ul,
+.response-bubble .markdown-content ol,
+.response-bubble .markdown-content blockquote {
+  margin: 0 0 10px;
+}
+
+.response-bubble .markdown-content h1,
+.response-bubble .markdown-content h2,
+.response-bubble .markdown-content h3,
+.response-bubble .markdown-content h4 {
+  margin: 16px 0 7px;
+  line-height: 1.3;
+}
+
+.response-bubble .markdown-content h1 {
+  font-size: 1.28em;
+}
+
+.response-bubble .markdown-content h2 {
+  font-size: 1.16em;
+}
+
+.response-bubble .markdown-content h3,
+.response-bubble .markdown-content h4 {
+  font-size: 1.05em;
+}
+
+.response-bubble .markdown-content ul,
+.response-bubble .markdown-content ol {
+  padding-left: 20px;
+}
+
+.response-bubble .markdown-content li + li {
+  margin-top: 3px;
+}
+
+.response-bubble .markdown-content a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+.response-bubble .markdown-content :not(pre) > code {
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: var(--conversation-soft-surface);
+  font: 0.88em/1.45
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+.response-bubble .markdown-content blockquote {
+  padding: 7px 10px;
+  border-left: 3px solid var(--bubble-border);
+  border-radius: 0 8px 8px 0;
+  color: var(--bubble-dim);
+  background: var(--conversation-soft-surface);
+}
+
+.response-bubble .markdown-code-block,
+.response-bubble .markdown-table-card {
+  max-width: 100%;
+  margin: 10px 0;
+  overflow: hidden;
+  border: 1px solid var(--bubble-border);
+  border-radius: 10px;
+  background: var(--conversation-soft-surface);
+}
+
+.response-bubble .markdown-code-block__topbar,
+.response-bubble .markdown-table-card__topbar {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 7px 0 10px;
+  border-bottom: 1px solid var(--bubble-border);
+  color: var(--bubble-dim);
+  font-size: 0.72em;
+}
+
+.response-bubble .markdown-code-block pre {
+  max-height: 260px;
+  margin: 0;
+  padding: 11px;
+  overflow: auto;
+}
+
+.response-bubble .markdown-code-block code {
+  font: 0.82em/1.55
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+  white-space: pre;
+}
+
+.response-bubble .markdown-copy-button {
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--bubble-dim);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.response-bubble .markdown-copy-button:hover {
+  color: var(--bubble-text);
+  background: var(--bubble-hover);
+}
+
+.response-bubble .markdown-table-card__scroll {
+  overflow-x: auto;
+}
+
+.response-bubble .markdown-table-card table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.84em;
+}
+
+.response-bubble .markdown-table-card th,
+.response-bubble .markdown-table-card td {
+  padding: 7px 9px;
+  border-right: 1px solid var(--bubble-border);
+  border-bottom: 1px solid var(--bubble-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.response-bubble .markdown-table-card th {
+  font-weight: 650;
+  background: var(--conversation-soft-surface);
+}
+
+.response-bubble .markdown-table-card tr:last-child td {
+  border-bottom: 0;
+}
+
+.response-bubble .markdown-table-card th:last-child,
+.response-bubble .markdown-table-card td:last-child {
+  border-right: 0;
 }

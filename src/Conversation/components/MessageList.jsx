@@ -13,6 +13,60 @@ import {
   MarkdownContent
 } from "./MarkdownContent.jsx";
 
+const TIME_FORMATTER =
+  new Intl.DateTimeFormat(
+    "zh-CN",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }
+  );
+
+const FULL_TIME_FORMATTER =
+  new Intl.DateTimeFormat(
+    "zh-CN",
+    {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }
+  );
+
+function formatMessageTime(
+  timestamp
+) {
+  const date =
+    new Date(
+      Number(timestamp) || 0
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return {
+      short: "",
+      full: ""
+    };
+  }
+
+  return {
+    short:
+      TIME_FORMATTER.format(
+        date
+      ),
+    full:
+      FULL_TIME_FORMATTER.format(
+        date
+      )
+  };
+}
+
 function formatDuration(
   milliseconds
 ) {
@@ -173,6 +227,11 @@ export function ConversationMessageList({
               message.pinnedToContext ===
                 true;
 
+            const messageTime =
+              formatMessageTime(
+                message.createdAt
+              );
+
             return (
               <article
                 className={[
@@ -195,6 +254,23 @@ export function ConversationMessageList({
                 key={message.id}
               >
                 <div className="conversation-message__content">
+                  {!isAssistant &&
+                    messageTime.short && (
+                    <time
+                      className="conversation-message__time"
+                      dateTime={
+                        new Date(
+                          Number(
+                            message.createdAt
+                          ) || 0
+                        ).toISOString()
+                      }
+                      title={messageTime.full}
+                    >
+                      {messageTime.short}
+                    </time>
+                  )}
+
                   {isAssistant && (
                     <AssistantActivity
                       message={message}
@@ -210,15 +286,17 @@ export function ConversationMessageList({
 
                   <div className="conversation-message__actions">
                     <div className="conversation-message__status-group">
-                      {pinned && (
+                      {isAssistant &&
+                        pinned && (
                         <span className="conversation-message__status-chip">
                           已固定
                         </span>
                       )}
 
-                      {!included && (
+                      {isAssistant &&
+                        !included && (
                         <span className="conversation-message__status-chip">
-                          不加入上下文
+                          已排除上下文
                         </span>
                       )}
 
@@ -249,66 +327,69 @@ export function ConversationMessageList({
                         }
                       />
 
-                      {isAssistant &&
-                        message.id ===
-                          lastAssistantId && (
-                        <MessageAction
-                          label="重新生成"
-                          testId="message-regenerate"
-                          disabled={busy}
-                          onClick={() => {
-                            void onRegenerate?.(
-                              message.id
-                            );
-                          }}
-                          icon="refresh"
-                        />
+                      {isAssistant && (
+                        <>
+                          {message.id ===
+                            lastAssistantId && (
+                            <MessageAction
+                              label="重新生成"
+                              testId="message-regenerate"
+                              disabled={busy}
+                              onClick={() => {
+                                void onRegenerate?.(
+                                  message.id
+                                );
+                              }}
+                              icon="refresh"
+                            />
+                          )}
+
+                          <MessageAction
+                            label={
+                              pinned
+                                ? "取消固定"
+                                : "固定到本会话"
+                            }
+                            testId="message-pin-toggle"
+                            active={pinned}
+                            disabled={!included}
+                            onClick={() => {
+                              onUpdateMessageContext?.(
+                                message.id,
+                                {
+                                  pinnedToContext:
+                                    !pinned
+                                }
+                              );
+                            }}
+                            icon="pin"
+                          />
+
+                          <MessageAction
+                            label={
+                              included
+                                ? "排除上下文"
+                                : "加入上下文"
+                            }
+                            testId="message-context-toggle"
+                            active={!included}
+                            onClick={() => {
+                              onUpdateMessageContext?.(
+                                message.id,
+                                {
+                                  includeInContext:
+                                    !included
+                                }
+                              );
+                            }}
+                            icon={
+                              included
+                                ? "eyeOff"
+                                : "eye"
+                            }
+                          />
+                        </>
                       )}
-
-                      <MessageAction
-                        label={
-                          included
-                            ? "不加入上下文"
-                            : "重新加入上下文"
-                        }
-                        testId="message-context-toggle"
-                        active={!included}
-                        onClick={() => {
-                          onUpdateMessageContext?.(
-                            message.id,
-                            {
-                              includeInContext:
-                                !included
-                            }
-                          );
-                        }}
-                        icon={
-                          included
-                            ? "eyeOff"
-                            : "eye"
-                        }
-                      />
-
-                      <MessageAction
-                        label={
-                          pinned
-                            ? "取消固定"
-                            : "固定到本会话"
-                        }
-                        testId="message-pin-toggle"
-                        active={pinned}
-                        disabled={!included}
-                        onClick={() => {
-                          onUpdateMessageContext?.(
-                            message.id,
-                            {
-                              pinnedToContext:
-                                !pinned
-                            }
-                          );
-                        }}
-                        icon="pin"
-                      />
                     </div>
                   </div>
                 </div>

@@ -94,6 +94,13 @@ describe(
         assert.equal(
           channels
             .conversation
+            .RENAME,
+          "conversation-rename"
+        );
+
+        assert.equal(
+          channels
+            .conversation
             .REGENERATE_MESSAGE,
           "conversation-regenerate-message"
         );

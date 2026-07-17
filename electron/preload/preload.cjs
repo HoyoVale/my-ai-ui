@@ -97,6 +97,9 @@ const CHANNELS = Object.freeze({
   CONVERSATION_SELECT:
     "conversation-select",
 
+  CONVERSATION_RENAME:
+    "conversation-rename",
+
   CONVERSATION_DELETE:
     "conversation-delete",
 
@@ -490,6 +493,25 @@ const api = Object.freeze({
       String(
         conversationId ?? ""
       )
+    );
+  },
+
+  renameConversation: (
+    input
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_RENAME,
+      {
+        conversationId:
+          String(
+            input?.conversationId ?? ""
+          ),
+        title:
+          String(
+            input?.title ?? ""
+          )
+      }
     );
   },
 

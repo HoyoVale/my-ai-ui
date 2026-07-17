@@ -183,6 +183,51 @@ export class ConversationManager {
     );
   }
 
+  rename({
+    conversationId,
+    title
+  }) {
+    const conversation =
+      this.findMutableConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    const normalizedTitle =
+      String(title ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80);
+
+    if (!normalizedTitle) {
+      return {
+        ok: false,
+        code: "empty-title",
+        message: "会话名称不能为空。"
+      };
+    }
+
+    conversation.title =
+      normalizedTitle;
+
+    this.commit();
+
+    return {
+      ok: true,
+      conversation:
+        this.getConversation(
+          conversationId
+        )
+    };
+  }
+
   select(id) {
     const data =
       this.ensureLoaded();

@@ -34,6 +34,7 @@ Input Window
 
 暂未加入：
 
+- 会话摘要压缩
 - 自动提取记忆
 - 向量检索
 - 工具调用
@@ -164,21 +165,18 @@ Conversation
 Conversation 窗口可以：
 
 - 新建、切换和删除会话
+- 手动编辑当前会话摘要
 - 将单条消息加入或排除上下文
 - 将消息固定到当前会话
 - 清除当前短期上下文但保留历史记录
 - 查看总 Token 与各组成部分的预计占用
-- 使用 Markdown、代码块和 GFM 表格阅读助手回复
-- 复制完整回复、代码块或表格
-- 重新生成最后一条助手回复
-- 展开回复耗时、思考摘要与工具调用记录
 
 每次发送消息时，AgentRuntime 会：
 
 ```text
 读取当前会话
 → 保存用户消息
-→ 组装 Personality、长期记忆、固定消息和最近 N 轮
+→ 组装 Personality、长期记忆、会话摘要、固定消息和最近 N 轮
 → 调用模型
 → 流式显示回复
 → 保存完整助手回复
@@ -436,4 +434,9 @@ Setting → AI → Personality 现在可以配置：
 
 Personality 只定义助手是谁、如何回答；用户事实仍应保存在长期记忆中，会话内容仍由短期上下文管理。
 
-Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversation 新增上下文检查器，显示预计总 Token、输出预留，以及基础提示词、Personality、长期记忆、摘要、固定消息和最近对话的分项占用。详细说明见 `docs/SHORT_TERM_CONTEXT.md`。
+Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversation 新增上下文检查器，显示预计总 Token、输出预留，以及基础提示词、Personality、长期记忆、固定消息和最近对话的分项占用。详细说明见 `docs/SHORT_TERM_CONTEXT.md`。
+
+### Conversation / Response 阅读体验
+
+- Conversation 支持会话重命名、用户消息时间、按角色区分的悬停操作与 Markdown/GFM 渲染。
+- Response 流式气泡同样使用 Markdown/GFM，支持代码块、表格与独立复制。
