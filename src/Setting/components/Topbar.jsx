@@ -48,11 +48,6 @@ export function SettingsTopbar({
             size={17}
           />
         </button>
-
-        <span className="setting-topbar__name">
-          Xixi
-        </span>
-
         <span
           className={
             `setting-save-status setting-save-status--${status}`

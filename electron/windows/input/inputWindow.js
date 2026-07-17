@@ -309,6 +309,11 @@ export function openInputWindow() {
       backgroundColor:
         "#00000000",
 
+      /*
+       * 关闭原生矩形阴影，避免大圆角时在透明四角露出灰层。
+       */
+      hasShadow: false,
+
       resizable: false,
       minimizable: false,
       maximizable: false,

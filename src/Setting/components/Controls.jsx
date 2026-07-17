@@ -213,34 +213,82 @@ export function ColorSwatches({
   options,
   onChange
 }) {
+  const normalizedValue =
+    /^#[0-9a-f]{6}$/i.test(value)
+      ? value
+      : "#10a37f";
+
+  const isPreset =
+    options.some(
+      (option) =>
+        option.value.toLowerCase() ===
+        normalizedValue.toLowerCase()
+    );
+
   return (
-    <div className="settings-swatches">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
+    <div className="settings-color-picker">
+      <div className="settings-swatches">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={
+              `settings-swatch${
+                normalizedValue
+                  .toLowerCase() ===
+                option.value
+                  .toLowerCase()
+                  ? " is-active"
+                  : ""
+              }`
+            }
+            style={{
+              "--swatch-color":
+                option.value
+            }}
+            title={option.label}
+            aria-label={option.label}
+            onClick={() => {
+              onChange?.(
+                option.value
+              );
+            }}
+          >
+            <span />
+          </button>
+        ))}
+      </div>
+
+      <div className="settings-custom-color-row">
+        <label
           className={
-            `settings-swatch${
-              value === option.value
+            `settings-custom-color${
+              !isPreset
                 ? " is-active"
                 : ""
             }`
           }
-          style={{
-            "--swatch-color":
-              option.value
-          }}
-          title={option.label}
-          aria-label={option.label}
-          onClick={() => {
-            onChange?.(
-              option.value
-            );
-          }}
+          title="打开系统调色盘"
         >
-          <span />
-        </button>
-      ))}
+          <input
+            type="color"
+            value={normalizedValue}
+            onChange={(event) => {
+              onChange?.(
+                event.target.value
+              );
+            }}
+          />
+
+          <span className="settings-custom-color__label">
+            自定义颜色
+          </span>
+        </label>
+
+        <output className="settings-color-value">
+          {normalizedValue.toUpperCase()}
+        </output>
+      </div>
     </div>
   );
 }

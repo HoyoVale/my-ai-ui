@@ -174,15 +174,15 @@ export function sanitizeSettings(
         numberValue(
           pet.scale,
           defaults.pet.scale,
-          0.7,
-          1.4
+          0.4,
+          2
         ),
 
       opacity:
         numberValue(
           pet.opacity,
           defaults.pet.opacity,
-          0.4,
+          0.1,
           1
         ),
 
@@ -206,7 +206,7 @@ export function sanitizeSettings(
           defaults.pet
             .shadowOpacity,
           0,
-          0.45
+          1
         ),
 
       position:
@@ -222,7 +222,7 @@ export function sanitizeSettings(
           defaults.input
             .extraWidth,
           0,
-          240
+          600
         ),
 
       gap:
@@ -230,23 +230,23 @@ export function sanitizeSettings(
           input.gap,
           defaults.input.gap,
           0,
-          40
+          120
         ),
 
       maxLines:
         integerValue(
           input.maxLines,
           defaults.input.maxLines,
-          2,
-          10
+          1,
+          20
         ),
 
       fontSize:
         integerValue(
           input.fontSize,
           defaults.input.fontSize,
-          12,
-          18
+          10,
+          28
         ),
 
       placeholder:
@@ -265,7 +265,7 @@ export function sanitizeSettings(
           defaults.input
             .backgroundOpacity,
 
-          0.7,
+          0.2,
           1
         ),
 
@@ -274,8 +274,8 @@ export function sanitizeSettings(
           input.borderRadius,
           defaults.input
             .borderRadius,
-          6,
-          20
+          0,
+          48
         ),
 
       alwaysOnTop:
@@ -291,8 +291,8 @@ export function sanitizeSettings(
         integerValue(
           response.gap,
           defaults.response.gap,
-          4,
-          40
+          0,
+          160
         ),
 
       anchorRatio:
@@ -301,7 +301,7 @@ export function sanitizeSettings(
           defaults.response
             .anchorRatio,
           0,
-          0.8
+          1
         ),
 
       preferredSide:
@@ -324,8 +324,8 @@ export function sanitizeSettings(
           defaults.response
             .bubbleMaxWidth,
 
-          240,
-          620
+          180,
+          1000
         ),
 
       contentMaxHeight:
@@ -336,8 +336,8 @@ export function sanitizeSettings(
           defaults.response
             .contentMaxHeight,
 
-          120,
-          520
+          80,
+          900
         ),
 
       fontSize:
@@ -345,8 +345,8 @@ export function sanitizeSettings(
           response.fontSize,
           defaults.response
             .fontSize,
-          12,
-          18
+          10,
+          28
         ),
 
       lineHeight:
@@ -354,8 +354,8 @@ export function sanitizeSettings(
           response.lineHeight,
           defaults.response
             .lineHeight,
-          1.35,
-          1.9
+          1.1,
+          2.4
         ),
 
       backgroundOpacity:
@@ -366,7 +366,7 @@ export function sanitizeSettings(
           defaults.response
             .backgroundOpacity,
 
-          0.75,
+          0.2,
           1
         ),
 
@@ -375,8 +375,8 @@ export function sanitizeSettings(
           response.borderRadius,
           defaults.response
             .borderRadius,
-          8,
-          28
+          0,
+          48
         ),
 
       alwaysOnTop:
@@ -395,9 +395,12 @@ export function sanitizeSettings(
 
           [
             0,
+            3,
             5,
             10,
-            20
+            20,
+            30,
+            60
           ],
 
           defaults.response

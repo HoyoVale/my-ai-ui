@@ -31,6 +31,10 @@ const ACCENT_OPTIONS = [
     label: "蓝色"
   },
   {
+    value: "#6366f1",
+    label: "靛蓝"
+  },
+  {
     value: "#7c5ce6",
     label: "紫色"
   },
@@ -39,8 +43,16 @@ const ACCENT_OPTIONS = [
     label: "玫红"
   },
   {
+    value: "#e05252",
+    label: "红色"
+  },
+  {
     value: "#e08a35",
     label: "橙色"
+  },
+  {
+    value: "#16a394",
+    label: "青绿色"
   }
 ];
 
@@ -76,7 +88,7 @@ export function AppearancePanel({
 
       <SettingsSection
         title="强调色"
-        description="用于选中状态、流式光标和主要操作。"
+        description="选择预设颜色，或打开系统调色盘自定义主题色。"
       >
         <div className="settings-section__standalone">
           <ColorSwatches

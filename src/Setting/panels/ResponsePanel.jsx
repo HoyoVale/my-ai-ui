@@ -27,6 +27,10 @@ const AUTO_CLOSE_OPTIONS = [
     label: "手动关闭"
   },
   {
+    value: 3,
+    label: "3 秒后"
+  },
+  {
     value: 5,
     label: "5 秒后"
   },
@@ -37,6 +41,14 @@ const AUTO_CLOSE_OPTIONS = [
   {
     value: 20,
     label: "20 秒后"
+  },
+  {
+    value: 30,
+    label: "30 秒后"
+  },
+  {
+    value: 60,
+    label: "60 秒后"
   }
 ];
 
@@ -82,8 +94,8 @@ export function ResponsePanel({
             value={
               response.gap
             }
-            min={4}
-            max={40}
+            min={0}
+            max={160}
             step={1}
             unit=" px"
             onChange={(value) => {
@@ -104,7 +116,7 @@ export function ResponsePanel({
                 .anchorRatio
             }
             min={0}
-            max={0.8}
+            max={1}
             step={0.02}
             formatValue={(value) =>
               `${Math.round(
@@ -134,8 +146,8 @@ export function ResponsePanel({
               response
                 .bubbleMaxWidth
             }
-            min={240}
-            max={620}
+            min={180}
+            max={1000}
             step={10}
             unit=" px"
             onChange={(value) => {
@@ -156,8 +168,8 @@ export function ResponsePanel({
               response
                 .contentMaxHeight
             }
-            min={120}
-            max={520}
+            min={80}
+            max={900}
             step={10}
             unit=" px"
             onChange={(value) => {
@@ -182,8 +194,8 @@ export function ResponsePanel({
             value={
               response.fontSize
             }
-            min={12}
-            max={18}
+            min={10}
+            max={28}
             step={1}
             unit=" px"
             onChange={(value) => {
@@ -202,8 +214,8 @@ export function ResponsePanel({
             value={
               response.lineHeight
             }
-            min={1.35}
-            max={1.9}
+            min={1.1}
+            max={2.4}
             step={0.05}
             formatValue={(value) =>
               value.toFixed(2)
@@ -226,7 +238,7 @@ export function ResponsePanel({
               response
                 .backgroundOpacity
             }
-            min={0.75}
+            min={0.2}
             max={1}
             step={0.01}
             formatValue={(value) =>
@@ -252,8 +264,8 @@ export function ResponsePanel({
               response
                 .borderRadius
             }
-            min={8}
-            max={28}
+            min={0}
+            max={48}
             step={1}
             unit=" px"
             onChange={(value) => {

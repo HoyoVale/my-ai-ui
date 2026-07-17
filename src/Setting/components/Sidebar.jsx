@@ -72,11 +72,6 @@ export function SettingsSidebar({
             </div>
           )
         )}
-      </nav>
-
-      <div className="setting-sidebar__version">
-        Xixi · v0.1.0
-      </div>
-    </aside>
+      </nav>    </aside>
   );
 }

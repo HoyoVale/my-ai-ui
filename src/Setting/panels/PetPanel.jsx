@@ -26,8 +26,8 @@ export function PetPanel({
             value={
               pet.scale
             }
-            min={0.7}
-            max={1.4}
+            min={0.4}
+            max={2}
             step={0.05}
             formatValue={(value) =>
               `${Math.round(
@@ -50,7 +50,7 @@ export function PetPanel({
             value={
               pet.opacity
             }
-            min={0.4}
+            min={0.1}
             max={1}
             step={0.05}
             formatValue={(value) =>
@@ -75,7 +75,7 @@ export function PetPanel({
               pet.shadowOpacity
             }
             min={0}
-            max={0.45}
+            max={0.8}
             step={0.01}
             formatValue={(value) =>
               `${Math.round(

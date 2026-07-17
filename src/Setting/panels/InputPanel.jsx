@@ -28,7 +28,7 @@ export function InputPanel({
               input.extraWidth
             }
             min={0}
-            max={240}
+            max={600}
             step={10}
             unit=" px"
             onChange={(value) => {
@@ -48,7 +48,7 @@ export function InputPanel({
               input.gap
             }
             min={0}
-            max={40}
+            max={120}
             step={1}
             unit=" px"
             onChange={(value) => {
@@ -67,8 +67,8 @@ export function InputPanel({
             value={
               input.maxLines
             }
-            min={2}
-            max={10}
+            min={1}
+            max={20}
             step={1}
             unit=" 行"
             onChange={(value) => {
@@ -110,8 +110,8 @@ export function InputPanel({
             value={
               input.fontSize
             }
-            min={12}
-            max={18}
+            min={10}
+            max={28}
             step={1}
             unit=" px"
             onChange={(value) => {
@@ -131,7 +131,7 @@ export function InputPanel({
               input
                 .backgroundOpacity
             }
-            min={0.7}
+            min={0.2}
             max={1}
             step={0.01}
             formatValue={(value) =>
@@ -156,8 +156,8 @@ export function InputPanel({
             value={
               input.borderRadius
             }
-            min={6}
-            max={20}
+            min={0}
+            max={48}
             step={1}
             unit=" px"
             onChange={(value) => {

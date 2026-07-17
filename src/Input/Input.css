@@ -38,8 +38,24 @@
 
   overflow: hidden;
 
+  /*
+   * Electron 透明窗口在大圆角下必须同时裁切整个绘制层，
+   * 否则矩形阴影或 backdrop 层可能从四角露出。
+   */
+  clip-path:
+    inset(
+      0 round
+      var(--input-radius)
+    );
+
+  contain: paint;
+  isolation: isolate;
+
   background:
     var(--input-bg);
+
+  background-clip:
+    padding-box;
 
   border:
     1px solid
@@ -49,10 +65,8 @@
     var(--input-radius);
 
   box-shadow:
-    0 4px 24px
-      rgb(0 0 0 / 0.10),
-    0 1px 4px
-      rgb(0 0 0 / 0.06);
+    inset 0 0 0 1px
+      rgb(255 255 255 / 0.08);
 
   color:
     var(--input-text);
@@ -67,11 +81,6 @@
 
   box-sizing: border-box;
 
-  backdrop-filter:
-    blur(16px);
-
-  -webkit-backdrop-filter:
-    blur(16px);
 }
 
 .input-bar.theme-dark {
@@ -94,10 +103,8 @@
     rgb(255 255 255 / 0.09);
 
   box-shadow:
-    0 4px 24px
-      rgb(0 0 0 / 0.26),
-    0 1px 4px
-      rgb(0 0 0 / 0.2);
+    inset 0 0 0 1px
+      rgb(255 255 255 / 0.04);
 }
 
 .input-bar__field {
