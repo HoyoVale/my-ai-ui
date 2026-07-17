@@ -6,6 +6,7 @@ export function PetContextMenu({
   onOpenInput,
   onOpenResponse,
   onOpenConversation,
+  onOpenMemory,
   onOpenSetting
 }) {
   if (!open) {
@@ -53,6 +54,13 @@ export function PetContextMenu({
           label="会话记录"
           testId="pet-menu-conversation"
           onClick={onOpenConversation}
+        />
+
+        <MenuItem
+          icon="◈"
+          label="记忆管理"
+          testId="pet-menu-memory"
+          onClick={onOpenMemory}
         />
 
         <MenuItem

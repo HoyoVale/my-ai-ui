@@ -123,3 +123,36 @@ describe(
     );
   }
 );
+
+
+describe(
+  "memory settings validation",
+  () => {
+    it(
+      "clamps memory retrieval settings",
+      () => {
+        const settings =
+          sanitizeSettings({
+            memory: {
+              enabled: false,
+              maxInjected: 999,
+              minImportance: -4
+            }
+          });
+
+        assert.equal(
+          settings.memory.enabled,
+          false
+        );
+        assert.equal(
+          settings.memory.maxInjected,
+          20
+        );
+        assert.equal(
+          settings.memory.minImportance,
+          0
+        );
+      }
+    );
+  }
+);

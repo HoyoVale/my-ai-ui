@@ -31,6 +31,10 @@ import {
 } from "../panels/ModelPanel.jsx";
 
 import {
+  MemoryPanel
+} from "../panels/MemoryPanel.jsx";
+
+import {
   PetPanel
 } from "../panels/PetPanel.jsx";
 
@@ -158,6 +162,18 @@ export function SettingsContent({
         onUpdate={(patch) => {
           onUpdateSection(
             "conversation",
+            patch
+          );
+        }}
+      />
+    ),
+
+    memory: (
+      <MemoryPanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "memory",
             patch
           );
         }}

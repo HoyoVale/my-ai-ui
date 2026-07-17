@@ -57,6 +57,9 @@ app.whenReady().then(
     let openConversationReceived =
       false;
 
+    let openMemoryReceived =
+      false;
+
     ipcMain.on(
       CHANNELS
         .navigation
@@ -73,6 +76,16 @@ app.whenReady().then(
         .OPEN_CONVERSATION,
       () => {
         openConversationReceived =
+          true;
+      }
+    );
+
+    ipcMain.on(
+      CHANNELS
+        .navigation
+        .OPEN_MEMORY,
+      () => {
+        openMemoryReceived =
           true;
       }
     );
@@ -119,6 +132,24 @@ app.whenReady().then(
 
     ipcMain.handle(
       CHANNELS
+        .memory
+        .GET_STATE,
+      () => ({
+        totalMemories: 0,
+        enabledMemories: 0,
+        categories: {}
+      })
+    );
+
+    ipcMain.handle(
+      CHANNELS
+        .memory
+        .LIST,
+      () => []
+    );
+
+    ipcMain.handle(
+      CHANNELS
         .conversation
         .GET_STATE,
       () => ({
@@ -161,6 +192,7 @@ app.whenReady().then(
             const requiredMethods = [
               "openInput",
               "openConversation",
+              "openMemory",
               "startPetDrag",
               "sendAgentMessage",
               "getAgentStatus",
@@ -168,7 +200,13 @@ app.whenReady().then(
               "getConversationState",
               "getConversation",
               "createConversation",
-              "onConversationChanged"
+              "onConversationChanged",
+              "getMemoryState",
+              "listMemories",
+              "createMemory",
+              "updateMemory",
+              "deleteMemory",
+              "onMemoryChanged"
             ];
 
             const methodTypes =
@@ -189,6 +227,7 @@ app.whenReady().then(
             });
 
             window.api.openConversation();
+            window.api.openMemory();
 
             return {
               apiType:
@@ -212,7 +251,15 @@ app.whenReady().then(
                 await window.api
                   .getConversation(
                     "conversation-1"
-                  )
+                  ),
+
+              memoryState:
+                await window.api
+                  .getMemoryState(),
+
+              memories:
+                await window.api
+                  .listMemories()
             };
           })()
         `);
@@ -287,6 +334,22 @@ app.whenReady().then(
     assert.equal(
       openConversationReceived,
       true
+    );
+
+    assert.equal(
+      openMemoryReceived,
+      true
+    );
+
+    assert.equal(
+      result.memoryState
+        .totalMemories,
+      0
+    );
+
+    assert.deepEqual(
+      result.memories,
+      []
     );
 
     completed = true;

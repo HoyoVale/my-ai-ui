@@ -79,6 +79,13 @@ export const SETTING_GROUPS = [
         title: "会话与上下文",
         description:
           "管理会话保存、短期上下文和历史数据。"
+      },
+      {
+        id: "memory",
+        label: "Memory",
+        title: "长期记忆",
+        description:
+          "管理长期记忆的启用、检索阈值和数据。"
       }
     ]
   },

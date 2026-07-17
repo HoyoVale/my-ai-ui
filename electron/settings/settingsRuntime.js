@@ -15,6 +15,10 @@ import {
 } from "../windows/input/inputWindow.js";
 
 import {
+  applyMemoryWindowSettings
+} from "../windows/memory/memoryWindow.js";
+
+import {
   applyPetWindowSettings
 } from "../windows/pet/petWindow.js";
 
@@ -66,6 +70,10 @@ export function applySettingsToOpenWindows(
   );
 
   applyInputWindowSettings(
+    settings
+  );
+
+  applyMemoryWindowSettings(
     settings
   );
 

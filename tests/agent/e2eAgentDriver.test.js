@@ -41,5 +41,32 @@ describe(
         );
       }
     );
+
+
+    it(
+      "uses injected memory in the deterministic memory path",
+      () => {
+        const result =
+          buildE2EResponse(
+            [
+              {
+                role: "user",
+                content: "memory-key"
+              }
+            ],
+            [
+              {
+                content:
+                  "memory-key 对应紫色彗星"
+              }
+            ]
+          );
+
+        assert.equal(
+          result,
+          "E2E_MEMORY:memory-key 对应紫色彗星"
+        );
+      }
+    );
   }
 );

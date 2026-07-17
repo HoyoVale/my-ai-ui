@@ -8,6 +8,8 @@ import Conversation
   from "./Conversation/Conversation.jsx";
 import Input
   from "./Input/Input.jsx";
+import Memory
+  from "./Memory/Memory.jsx";
 import Pet
   from "./Pet/Pet.jsx";
 import Response
@@ -42,6 +44,11 @@ function App() {
         <Route
           path="/conversation"
           element={<Conversation />}
+        />
+
+        <Route
+          path="/memory"
+          element={<Memory />}
         />
       </Routes>
     </HashRouter>

@@ -35,7 +35,8 @@ Input Window
 暂未加入：
 
 - 会话摘要压缩
-- 长期记忆
+- 自动提取记忆
+- 向量检索
 - 工具调用
 - MCP
 - 多 Agent
@@ -193,7 +194,7 @@ electron/conversation/
 
 ## 自动化测试
 
-项目不新增测试依赖，使用 Node.js 22 自带的 `node:test`。
+纯逻辑测试使用 Node.js 22 自带的 `node:test`；完整 Electron 用户路径使用 Playwright。
 
 运行全部测试：
 
@@ -324,3 +325,66 @@ npm run test:electron:ci
 
 正式应用仍保留 Electron sandbox。
 
+
+
+## 长期记忆
+
+长期记忆保存在 Electron 用户数据目录：
+
+```text
+memories.json
+```
+
+当前版本只支持用户手动创建和维护记忆，不会自动分析或保存聊天内容。
+
+Setting 中新增：
+
+```text
+AI → Memory
+```
+
+可以配置：
+
+- 是否启用长期记忆
+- 每次最多注入 1–20 条
+- 最低重要度阈值
+- 打开独立记忆管理窗口
+- 清空全部记忆
+
+独立 Memory 窗口支持：
+
+- 添加、编辑和删除记忆
+- 启用或停用单条记忆
+- 设置类别与重要度
+- 搜索和类别筛选
+- 重复内容自动合并
+
+Agent 请求链路：
+
+```text
+当前用户消息
+→ 检索已启用且达到阈值的记忆
+→ 按相关性与重要度排序
+→ 限制注入数量
+→ 追加到 System Prompt
+→ 组合短期会话上下文
+→ 调用模型
+```
+
+主要目录：
+
+```text
+electron/memory/
+├─ MemoryManager.js
+├─ MemoryStore.js
+├─ memoryContextBuilder.js
+├─ memorySchema.js
+└─ index.js
+
+src/Memory/
+├─ Memory.jsx
+├─ Memory.css
+├─ components/
+├─ constants/
+└─ hooks/
+```

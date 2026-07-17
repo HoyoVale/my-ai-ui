@@ -11,6 +11,10 @@ import {
 } from "./handlers/inputIpc.js";
 
 import {
+  registerMemoryIpc
+} from "./handlers/memoryIpc.js";
+
+import {
   registerPetIpc
 } from "./handlers/petIpc.js";
 
@@ -43,6 +47,7 @@ export function registerIpcHandlers() {
   registerConversationIpc();
   registerPetIpc();
   registerInputIpc();
+  registerMemoryIpc();
   registerResponseIpc();
   registerSettingIpc();
   registerSettingsIpc();

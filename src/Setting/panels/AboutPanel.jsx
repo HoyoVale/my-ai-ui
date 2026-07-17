@@ -106,6 +106,18 @@ export function AboutPanel({
             "正在读取…"}
         </code>
       </div>
+
+      <div className="about-path">
+        <span>
+          记忆文件
+        </span>
+
+        <code>
+          {appInfo
+            ?.memoriesPath ??
+            "正在读取…"}
+        </code>
+      </div>
     </div>
   );
 }

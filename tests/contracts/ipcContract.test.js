@@ -92,5 +92,19 @@ describe(
         );
       }
     );
+
+    it(
+      "exposes memory channels",
+      () => {
+        assert.equal(
+          channels.memory.GET_STATE,
+          "memory-get-state"
+        );
+        assert.equal(
+          channels.memory.CHANGED,
+          "memory-changed"
+        );
+      }
+    );
   }
 );

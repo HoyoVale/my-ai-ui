@@ -64,6 +64,12 @@ export const FALLBACK_SETTINGS = {
     saveAbortedReplies: true
   },
 
+  memory: {
+    enabled: true,
+    maxInjected: 5,
+    minImportance: 0.3
+  },
+
   model: {
     provider: "deepseek",
     model: "deepseek-chat",

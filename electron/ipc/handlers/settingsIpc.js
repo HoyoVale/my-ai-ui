@@ -12,6 +12,11 @@ import {
 } from "../../conversation/index.js";
 
 import {
+  getMemoryPath,
+  memoryManager
+} from "../../memory/index.js";
+
+import {
   getSettings,
   getSettingsPath,
   resetSettings,
@@ -99,6 +104,14 @@ export function registerSettingsIpc() {
           .reconcileSettings();
       }
 
+      if (
+        normalizedPatch
+          ?.memory
+      ) {
+        memoryManager
+          .reconcileSettings();
+      }
+
       return commitSettings(
         settings
       );
@@ -122,6 +135,9 @@ export function registerSettingsIpc() {
         resetSettings();
 
       conversationManager
+        .reconcileSettings();
+
+      memoryManager
         .reconcileSettings();
 
       return commitSettings(
@@ -164,7 +180,10 @@ export function registerSettingsIpc() {
           getSettingsPath(),
 
         conversationsPath:
-          getConversationPath()
+          getConversationPath(),
+
+        memoriesPath:
+          getMemoryPath()
       };
     }
   );

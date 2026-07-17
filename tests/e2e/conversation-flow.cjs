@@ -694,8 +694,128 @@ async function main() {
       "侧栏宽度"
     );
 
+    await setting
+      .locator(
+        '[data-testid="setting-tab-memory"]'
+      )
+      .click();
+
+    await waitForText(
+      setting.locator(
+        ".setting-page__header"
+      ),
+      "长期记忆"
+    );
+
+    await pet.evaluate(
+      () => {
+        window.api
+          ?.openMemory?.();
+      }
+    );
+
+    const memory =
+      await waitForWindow(
+        electronApp,
+        "/memory"
+      );
+
+    await memory
+      .locator(
+        '[data-testid="memory-new"]'
+      )
+      .click();
+
+    await memory
+      .locator(
+        '[data-testid="memory-content"]'
+      )
+      .fill(
+        "memory-key 对应紫色彗星"
+      );
+
+    await memory
+      .locator(
+        '[data-testid="memory-save"]'
+      )
+      .click();
+
+    await waitForText(
+      memory.locator(
+        '[data-testid="memory-list-item"]'
+      ).first(),
+      "memory-key 对应紫色彗星"
+    );
+
+    await pet.evaluate(
+      async () => {
+        await window.api
+          ?.createConversation?.();
+      }
+    );
+
+    await inputField.fill(
+      "memory-key"
+    );
+
+    await sendButton.click();
+
+    await waitForText(
+      responseText,
+      "E2E_MEMORY:memory-key 对应紫色彗星"
+    );
+
+    await waitForAttribute(
+      sendButton,
+      "aria-label",
+      "Send"
+    );
+
+    await memory
+      .locator(
+        '[data-testid="memory-enabled"]'
+      )
+      .click();
+
+    await memory
+      .locator(
+        '[data-testid="memory-save"]'
+      )
+      .click();
+
+    await waitForText(
+      memory.locator(
+        ".memory-save-status"
+      ),
+      "已保存"
+    );
+
+    await pet.evaluate(
+      async () => {
+        await window.api
+          ?.createConversation?.();
+      }
+    );
+
+    await inputField.fill(
+      "memory-key"
+    );
+
+    await sendButton.click();
+
+    await waitForText(
+      responseText,
+      "E2E_MEMORY_NONE"
+    );
+
+    await waitForAttribute(
+      sendButton,
+      "aria-label",
+      "Send"
+    );
+
     console.log(
-      "Playwright Electron E2E passed: two replies, response re-open, conversation switch, conversation settings."
+      "Playwright Electron E2E passed: replies, response re-open, conversation switch, settings, memory injection and memory disable."
     );
   } catch (error) {
     if (electronApp) {

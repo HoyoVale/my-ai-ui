@@ -21,6 +21,14 @@ import {
 } from "../settings/settingsStore.js";
 
 import {
+  memoryManager
+} from "../memory/index.js";
+
+import {
+  buildMemoryContext
+} from "../memory/memoryContextBuilder.js";
+
+import {
   sanitizeSettings
 } from "../settings/validateSettings.js";
 
@@ -134,6 +142,7 @@ export class AgentRuntime {
 
     let conversation;
     let messages;
+    let memories;
 
     try {
       conversation =
@@ -154,12 +163,17 @@ export class AgentRuntime {
           .buildContext(
             conversation.id
           );
+
+      memories =
+        memoryManager.retrieve({
+          query: message
+        });
     } catch (error) {
       const errorMessage =
-        "无法保存当前消息，请检查会话数据目录。";
+        "无法准备当前消息或长期记忆，请检查应用数据目录。";
 
       console.error(
-        "创建会话消息失败：",
+        "准备会话消息或长期记忆失败：",
         error
       );
 
@@ -206,6 +220,7 @@ export class AgentRuntime {
       conversationId:
         conversation.id,
       messages,
+      memories,
       abortController
     };
 
@@ -329,6 +344,7 @@ export class AgentRuntime {
     runId,
     conversationId,
     messages,
+    memories,
     abortController
   }) {
     try {
@@ -336,6 +352,7 @@ export class AgentRuntime {
 
       await streamE2EResponse({
         messages,
+        memories,
         signal:
           abortController.signal,
 
@@ -434,6 +451,7 @@ export class AgentRuntime {
     runId,
     conversationId,
     messages,
+    memories,
     abortController
   }) {
     let receivedText = false;
@@ -450,6 +468,19 @@ export class AgentRuntime {
           modelSettings
         );
 
+      const memoryContext =
+        buildMemoryContext(
+          memories
+        );
+
+      const systemPrompt =
+        [
+          DEFAULT_SYSTEM_PROMPT,
+          memoryContext
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+
       startResponseStream();
 
       const result =
@@ -457,7 +488,7 @@ export class AgentRuntime {
           model,
 
           system:
-            DEFAULT_SYSTEM_PROMPT,
+            systemPrompt,
 
           messages,
 

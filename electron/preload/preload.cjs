@@ -22,6 +22,9 @@ const CHANNELS = Object.freeze({
   OPEN_CONVERSATION:
     "open-conversation",
 
+  OPEN_MEMORY:
+    "open-memory",
+
   PET_DRAG_START:
     "pet-drag-start",
 
@@ -102,6 +105,30 @@ const CHANNELS = Object.freeze({
 
   CONVERSATION_CHANGED:
     "conversation-changed",
+
+  MEMORY_GET_STATE:
+    "memory-get-state",
+
+  MEMORY_GET:
+    "memory-get",
+
+  MEMORY_LIST:
+    "memory-list",
+
+  MEMORY_CREATE:
+    "memory-create",
+
+  MEMORY_UPDATE:
+    "memory-update",
+
+  MEMORY_DELETE:
+    "memory-delete",
+
+  MEMORY_CLEAR:
+    "memory-clear",
+
+  MEMORY_CHANGED:
+    "memory-changed",
 
   SETTINGS_GET:
     "settings-get",
@@ -202,6 +229,12 @@ const api = Object.freeze({
     ipcRenderer.send(
       CHANNELS
         .OPEN_CONVERSATION
+    );
+  },
+
+  openMemory: () => {
+    ipcRenderer.send(
+      CHANNELS.OPEN_MEMORY
     );
   },
 
@@ -474,6 +507,62 @@ const api = Object.freeze({
       CHANNELS
         .CONVERSATION_CHANGED,
 
+      callback,
+      (state) => state
+    );
+  },
+
+  getMemoryState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.MEMORY_GET_STATE
+    );
+  },
+
+  getMemory: (memoryId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MEMORY_GET,
+      String(memoryId ?? "")
+    );
+  },
+
+  listMemories: (filters = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MEMORY_LIST,
+      filters
+    );
+  },
+
+  createMemory: (input) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MEMORY_CREATE,
+      input
+    );
+  },
+
+  updateMemory: (memoryId, patch) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MEMORY_UPDATE,
+      String(memoryId ?? ""),
+      patch
+    );
+  },
+
+  deleteMemory: (memoryId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MEMORY_DELETE,
+      String(memoryId ?? "")
+    );
+  },
+
+  clearMemories: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.MEMORY_CLEAR
+    );
+  },
+
+  onMemoryChanged: (callback) => {
+    return subscribe(
+      CHANNELS.MEMORY_CHANGED,
       callback,
       (state) => state
     );

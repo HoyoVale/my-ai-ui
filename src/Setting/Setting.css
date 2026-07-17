@@ -1734,3 +1734,51 @@
     flex-direction: column;
   }
 }
+
+.memory-setting-summary {
+  display: grid;
+  grid-template-columns:
+    minmax(110px, 1fr)
+    minmax(110px, 1fr)
+    auto;
+  gap: 12px;
+  align-items: stretch;
+  padding: 16px;
+}
+
+.memory-setting-summary > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--setting-border);
+  border-radius: 12px;
+  background: var(--setting-surface-soft);
+}
+
+.memory-setting-summary strong {
+  color: var(--setting-text);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.memory-setting-summary span {
+  color: var(--setting-text-soft);
+  font-size: 11px;
+}
+
+.memory-setting-summary .settings-action {
+  align-self: center;
+}
+
+@media (max-width: 760px) {
+  .memory-setting-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .memory-setting-summary .settings-action {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}

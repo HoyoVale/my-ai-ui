@@ -48,7 +48,8 @@ function wait(
 }
 
 export function buildE2EResponse(
-  messages
+  messages,
+  memories = []
 ) {
   const userMessages =
     messages.filter(
@@ -61,6 +62,16 @@ export function buildE2EResponse(
       ?.content ??
     "";
 
+  if (
+    latest.includes(
+      "memory-key"
+    )
+  ) {
+    return memories.length > 0
+      ? `E2E_MEMORY:${memories[0].content}`
+      : "E2E_MEMORY_NONE";
+  }
+
   return (
     `E2E_REPLY_${userMessages.length}:` +
     latest
@@ -69,12 +80,14 @@ export function buildE2EResponse(
 
 export async function streamE2EResponse({
   messages,
+  memories = [],
   signal,
   onChunk
 }) {
   const text =
     buildE2EResponse(
-      messages
+      messages,
+      memories
     );
 
   const chunkSize =

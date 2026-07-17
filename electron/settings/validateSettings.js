@@ -196,6 +196,9 @@ export function sanitizeSettings(
   const conversation =
     source.conversation ?? {};
 
+  const memory =
+    source.memory ?? {};
+
   const model =
     source.model ?? {};
 
@@ -597,6 +600,32 @@ export function sanitizeSettings(
 
           defaults.conversation
             .saveAbortedReplies
+        )
+    },
+
+    memory: {
+      enabled:
+        booleanValue(
+          memory.enabled,
+          defaults.memory.enabled
+        ),
+
+      maxInjected:
+        integerValue(
+          memory.maxInjected,
+          defaults.memory
+            .maxInjected,
+          1,
+          20
+        ),
+
+      minImportance:
+        numberValue(
+          memory.minImportance,
+          defaults.memory
+            .minImportance,
+          0,
+          1
         )
     },
 

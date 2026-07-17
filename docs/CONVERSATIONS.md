@@ -51,7 +51,6 @@ conversations.json
 
 - Token 精确计数
 - 旧消息自动摘要
-- 长期记忆
 - 向量检索
 - 多模态消息
 - 工具消息

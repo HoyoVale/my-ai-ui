@@ -11,7 +11,10 @@ const IPC_CHANNELS =
         "open-setting",
 
       OPEN_CONVERSATION:
-        "open-conversation"
+        "open-conversation",
+
+      OPEN_MEMORY:
+        "open-memory"
     }),
 
     pet: Object.freeze({
@@ -103,6 +106,32 @@ const IPC_CHANNELS =
 
       CHANGED:
         "conversation-changed"
+    }),
+
+    memory: Object.freeze({
+      GET_STATE:
+        "memory-get-state",
+
+      GET:
+        "memory-get",
+
+      LIST:
+        "memory-list",
+
+      CREATE:
+        "memory-create",
+
+      UPDATE:
+        "memory-update",
+
+      DELETE:
+        "memory-delete",
+
+      CLEAR:
+        "memory-clear",
+
+      CHANGED:
+        "memory-changed"
     }),
 
     settings: Object.freeze({
