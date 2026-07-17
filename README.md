@@ -1,4 +1,4 @@
-# Xixi Electron Desktop Agent
+# Electron Desktop Agent
 
 当前版本已经完成第一阶段基础 Agent 通信：
 
