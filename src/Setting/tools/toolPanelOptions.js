@@ -105,7 +105,7 @@ export const TOOLSET_OPTIONS = [
     id: "agent.internal",
     title: "Agent 内部",
     description:
-      "维护任务计划，并在信息不足时向用户确认。",
+      "维护任务计划、进度和大型结果引用。",
     risk: "Safe",
     tools: [
       {
@@ -119,12 +119,6 @@ export const TOOLSET_OPTIONS = [
         title: "更新任务计划",
         description:
           "创建或更新当前 Agent Run 的结构化任务步骤和状态。"
-      },
-      {
-        name: "ask_user",
-        title: "询问用户",
-        description:
-          "在缺少必要信息时暂停工具循环，并显示结构化问题。"
       },
       {
         name: "read_tool_result",

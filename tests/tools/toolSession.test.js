@@ -120,51 +120,14 @@ describe(
       }
     );
 
-    it(
-      "stores a structured user question for the next turn",
-      async () => {
-        const questions = [];
-        const session =
-          createAgentToolSession({
-            onQuestion: (question) => {
-              questions.push(question);
-            }
-          });
+    it("does not expose the retired ask_user tool", () => {
+      const session = createAgentToolSession();
 
-        await session.tools.ask_user
-          .execute(
-            {
-              question:
-                "Which folder should I inspect?",
-              options: [
-                {
-                  id: "src",
-                  label: "src"
-                },
-                {
-                  id: "tests",
-                  label: "tests"
-                }
-              ]
-            },
-            {
-              toolCallId:
-                "call-question"
-            }
-          );
-
-        assert.equal(
-          session
-            .getPendingQuestion()
-            .question,
-          "Which folder should I inspect?"
-        );
-        assert.equal(questions.length, 1);
-        assert.equal(
-          questions[0].question,
-          "Which folder should I inspect?"
-        );
-      }
-    );
+      assert.equal("ask_user" in session.tools, false);
+      assert.equal(
+        session.registryManifest.some((tool) => tool.name === "ask_user"),
+        false
+      );
+    });
   }
 );

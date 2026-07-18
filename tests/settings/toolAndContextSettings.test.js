@@ -83,8 +83,9 @@ describe(
               },
               runtime: {
                 maxSteps: 999,
+                maxSegments: 999,
+                maxNoProgressSegments: 999,
                 maxFinalizationAttempts: 999,
-                maxAskUserCalls: 999,
                 maxToolCalls: 999,
                 runTimeoutMs: 1,
                 defaultTimeoutMs: 50,
@@ -128,6 +129,14 @@ describe(
           12
         );
         assert.equal(
+          settings.tools.runtime.maxSegments,
+          12
+        );
+        assert.equal(
+          settings.tools.runtime.maxNoProgressSegments,
+          4
+        );
+        assert.equal(
           settings.tools.mode,
           "coding"
         );
@@ -139,11 +148,6 @@ describe(
           settings.tools.runtime
             .maxFinalizationAttempts,
           3
-        );
-        assert.equal(
-          settings.tools.runtime
-            .maxAskUserCalls,
-          10
         );
         assert.equal(
           settings.tools.runtime.maxToolCalls,

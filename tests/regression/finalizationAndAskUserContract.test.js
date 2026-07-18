@@ -13,7 +13,7 @@ function read(relativePath) {
   );
 }
 
-describe("finalization and ask_user runtime contract", () => {
+describe("finalization and retired ask_user compatibility", () => {
   it("runs a separate no-tool finalization phase after ordinary execution", () => {
     const runtime = read(
       "../../electron/agent/AgentRuntime.js"
@@ -28,29 +28,18 @@ describe("finalization and ask_user runtime contract", () => {
     assert.match(finalization, /Do not call tools/u);
   });
 
-  it("stops only when a real pending question exists and does not treat every rejected ask_user call as a pause", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+  it("does not register ask_user while retaining legacy question recovery", () => {
+    const runtime = read("../../electron/agent/AgentRuntime.js");
     const tools = read(
-      "../../electron/tools/agent/agentTools.js"
+      "../../electron/agent/orchestration/agentTools.js"
     );
+    const catalog = read("../../electron/tools/toolCatalog.js");
 
     assert.match(
       runtime,
-      /getPendingQuestion\(\)/u
+      /getPendingQuestion\(/u
     );
-    assert.doesNotMatch(
-      runtime,
-      /hasToolCall\(\s*"ask_user"/u
-    );
-    assert.match(
-      tools,
-      /ASK_USER_MUST_ADVANCE/u
-    );
-    assert.match(
-      tools,
-      /ASK_USER_ALREADY_ANSWERED/u
-    );
+    assert.doesNotMatch(tools, /name:\s*"ask_user"/u);
+    assert.doesNotMatch(catalog, /name:\s*"ask_user"/u);
   });
 });

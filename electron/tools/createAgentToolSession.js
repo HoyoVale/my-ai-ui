@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   ToolExecutor
 } from "./core/ToolExecutor.js";
@@ -11,9 +13,26 @@ import {
 } from "./core/ToolRegistry.js";
 
 import {
+  ToolPolicyEngine
+} from "./core/ToolPolicyEngine.js";
+
+import {
+  ToolRuntime
+} from "./core/ToolRuntime.js";
+
+import {
+  ToolEventStore
+} from "./core/ToolEventStore.js";
+
+import {
+  createAiSdkToolSet,
+  supportsStrictToolSchemas
+} from "./adapters/aiSdkToolAdapter.js";
+
+import {
   RunPlanStore,
   createAgentToolDefinitions
-} from "./agent/agentTools.js";
+} from "../agent/orchestration/agentTools.js";
 
 import {
   createDateTimeToolDefinitions
@@ -34,36 +53,30 @@ import {
 export function createAgentToolSession({
   activeModel = null,
   getAgentStatus = null,
+  getSegmentId = null,
   abortSignal = null,
   onRecord = null,
   onPlanChange = null,
-  onQuestion = null,
   activityStore = null,
   settings = {},
   initialPlan = [],
-  answeredQuestions = [],
-  initialQuestionCount = 0,
-  resultStoreDirectory = ""
+  resultStoreDirectory = "",
+  taskId = "",
+  segmentId = ""
 } = {}) {
   const planStore =
     new RunPlanStore(
       initialPlan,
       {
-        onChange: onPlanChange,
-        onQuestion,
-        answeredQuestions,
-        initialQuestionCount,
-        maxQuestions:
-          settings.tools
-            ?.runtime
-            ?.maxAskUserCalls ??
-          3
+        onChange: onPlanChange
       }
     );
   const resultStore =
     new ToolResultStore({
       storageDirectory:
-        resultStoreDirectory
+        resultStoreDirectory,
+      taskId,
+      segmentId: getSegmentId ? "" : segmentId
     });
   const toolSettings =
     settings.tools ?? {};
@@ -75,6 +88,7 @@ export function createAgentToolSession({
       createDateTimeToolDefinitions(),
       {
         source: "builtin.datetime",
+        toolset: "core.runtime",
         sideEffect: "none",
         riskLevel: "none"
       }
@@ -83,10 +97,12 @@ export function createAgentToolSession({
       createRuntimeToolDefinitions({
         activeModel,
         getAgentStatus,
+        getPlan: () => planStore.get(),
         settings
       }),
       {
         source: "builtin.runtime",
+        toolset: "core.runtime",
         sideEffect: "none",
         riskLevel: "none"
       }
@@ -97,16 +113,20 @@ export function createAgentToolSession({
       ),
       {
         source: "builtin.workspace",
+        toolset: "workspace.read",
         sideEffect: "read",
         riskLevel: "low"
       }
     )
     .registerMany(
       createAgentToolDefinitions({
-        resultStore
+        resultStore,
+        planStore,
+        activityStore
       }),
       {
         source: "builtin.agent",
+        toolset: "agent.internal",
         sideEffect: "none",
         riskLevel: "none"
       }
@@ -116,7 +136,8 @@ export function createAgentToolSession({
 
   const enabledNames = new Set(
     resolveEnabledToolCatalog(
-      toolSettings
+      toolSettings,
+      registry.manifest()
     ).map((item) => item.name)
   );
 
@@ -132,11 +153,46 @@ export function createAgentToolSession({
     new ToolExecutor({
       context: {
         abortSignal,
-        planStore,
-        activityStore,
-        getActiveBatch: () =>
-          activityStore?.getActiveBatch?.() ?? null
+        taskId,
+        segmentId,
+        mode: "interactive"
       },
+      policyEngine: new ToolPolicyEngine({
+        authorize: ({ definition, input }) => {
+          const permission = planStore.canRunTool(
+            definition.name,
+            input
+          );
+          return permission?.ok === false
+            ? {
+                decision: "deny",
+                code: permission.code,
+                message: permission.message,
+                details: permission.details
+              }
+            : { decision: "allow" };
+        }
+      }),
+      getRecordMetadata: () => {
+        const active = planStore.getExecutionState().active;
+        return {
+          batch: activityStore?.getActiveBatch?.() ?? null,
+          planStep: active
+            ? { id: active.id, title: active.title }
+            : null
+        };
+      },
+      eventStore: new ToolEventStore({
+        storageFile:
+          toolSettings.runtime?.saveToolHistory !== false &&
+          resultStoreDirectory &&
+          segmentId
+            ? path.join(
+                resultStoreDirectory,
+                `tool-events-${String(segmentId).replace(/[^a-zA-Z0-9_-]/g, "_")}.jsonl`
+              )
+            : ""
+      }),
       onRecord,
       defaultTimeoutMs:
         toolSettings.runtime
@@ -160,26 +216,44 @@ export function createAgentToolSession({
           ?.maxToolRetries ??
         1
     });
+  const runtime = new ToolRuntime({
+    definitions: enabledDefinitions,
+    executor
+  });
 
   return {
     definitions:
-      enabledDefinitions,
+      runtime.list(),
     registryManifest:
       registry.manifest(),
     tools:
-      executor.buildToolSet(
-        enabledDefinitions
+      createAiSdkToolSet(
+        runtime.list(),
+        (definition, input, options) =>
+          runtime.invoke(
+            definition.name,
+            input,
+            {
+              ...(options ?? {}),
+              segmentId: getSegmentId?.() || segmentId
+            }
+          ),
+        {
+          supportsStrictSchemas:
+            supportsStrictToolSchemas(activeModel ?? {})
+        }
       ),
     getRecords: () =>
-      executor.getRecords(),
+      runtime.getRecords(),
     getPlan: () =>
       planStore.get(),
-    getPendingQuestion: () =>
-      planStore
-        .getPendingQuestion(),
     getResultEntries: () =>
       resultStore.list(),
     getCallCount: () =>
-      executor.getCallCount()
+      runtime.getCallCount(),
+    getBudget: () =>
+      runtime.getBudget(),
+    getEvents: () =>
+      runtime.getEvents()
   };
 }

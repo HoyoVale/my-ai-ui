@@ -2329,7 +2329,8 @@
   opacity: 0.62;
 }
 
-.conversation-task-plan-row.is-blocked .conversation-task-plan-row__mark {
+.conversation-task-plan-row.is-blocked .conversation-task-plan-row__mark,
+.conversation-task-plan-row.is-needs_input .conversation-task-plan-row__mark {
   border-color: rgb(217 91 102 / 0.35);
   color: #d95b66;
   background: rgb(217 91 102 / 0.08);
@@ -3459,7 +3460,8 @@ button.conversation-thinking-event:focus-visible > strong {
   animation: conversation-thinking-pulse 1.35s ease-in-out infinite;
 }
 
-.conversation-plan-dashboard__item.is-blocked .conversation-plan-dashboard__mark {
+.conversation-plan-dashboard__item.is-blocked .conversation-plan-dashboard__mark,
+.conversation-plan-dashboard__item.is-needs_input .conversation-plan-dashboard__mark {
   border-color: var(--conversation-danger);
   color: var(--conversation-danger);
 }

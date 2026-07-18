@@ -83,7 +83,7 @@ describe(
         assert.equal(
           "ask_user" in
             session.tools,
-          true
+          false
         );
       }
     );

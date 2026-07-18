@@ -3,8 +3,12 @@ export const RUN_STOP_REASONS = Object.freeze({
   CANCELLED_BY_USER: "cancelled_by_user",
   INTERRUPTED: "interrupted",
   WAITING_FOR_USER: "waiting_for_user",
+  NEEDS_INPUT: "needs_input",
+  BLOCKED: "blocked",
   TOOL_CALL_LIMIT: "tool_call_limit",
   AGENT_STEP_LIMIT: "agent_step_limit",
+  AGENT_SEGMENT_LIMIT: "agent_segment_limit",
+  NO_PROGRESS: "no_progress",
   AGENT_RUN_TIMEOUT: "agent_run_timeout",
   TOOL_TIMEOUT: "tool_timeout",
   REPEATED_TOOL_CALL: "repeated_tool_call",
@@ -101,6 +105,14 @@ export function runStatusFromStopReason(
     return "waiting_for_user";
   }
 
+  if (reason === RUN_STOP_REASONS.NEEDS_INPUT) {
+    return "needs_input";
+  }
+
+  if (reason === RUN_STOP_REASONS.BLOCKED) {
+    return "blocked";
+  }
+
   if (
     reason ===
     RUN_STOP_REASONS.CANCELLED_BY_USER
@@ -164,6 +176,14 @@ export function inferRunStopReason({
     return RUN_STOP_REASONS.WAITING_FOR_USER;
   }
 
+
+  const needsInput =
+    Array.isArray(plan) &&
+    plan.some((item) => item?.status === "needs_input");
+
+  if (needsInput) {
+    return RUN_STOP_REASONS.NEEDS_INPUT;
+  }
   const toolReason = stopReasonFromToolRecords(
     records
   );
@@ -193,13 +213,20 @@ export function inferRunStopReason({
     return RUN_STOP_REASONS.MODEL_ERROR;
   }
 
+  const blockedPlan =
+    Array.isArray(plan) &&
+    plan.some((item) => item?.status === "blocked");
+
+  if (blockedPlan) {
+    return RUN_STOP_REASONS.BLOCKED;
+  }
+
   const unfinishedPlan =
     Array.isArray(plan) &&
     plan.some((item) =>
       [
         "pending",
-        "in_progress",
-        "blocked"
+        "in_progress"
       ].includes(item?.status)
     );
 

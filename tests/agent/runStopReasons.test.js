@@ -64,6 +64,14 @@ describe("run stop reasons", () => {
       "waiting_for_user"
     );
     assert.equal(
+      runStatusFromStopReason("needs_input"),
+      "needs_input"
+    );
+    assert.equal(
+      runStatusFromStopReason("blocked"),
+      "blocked"
+    );
+    assert.equal(
       runStatusFromStopReason("cancelled_by_user"),
       "cancelled"
     );
@@ -84,11 +92,27 @@ describe("run stop reasons", () => {
           {
             id: "two",
             title: "Summarize",
+
             status: "pending"
           }
         ]
       }),
       RUN_STOP_REASONS.PLAN_INCOMPLETE
+    );
+  });
+
+  it("treats missing input and blocked plans as explicit terminal states", () => {
+    assert.equal(
+      inferRunStopReason({
+        plan: [{ id: "one", title: "Path", status: "needs_input" }]
+      }),
+      RUN_STOP_REASONS.NEEDS_INPUT
+    );
+    assert.equal(
+      inferRunStopReason({
+        plan: [{ id: "one", title: "Access", status: "blocked" }]
+      }),
+      RUN_STOP_REASONS.BLOCKED
     );
   });
 

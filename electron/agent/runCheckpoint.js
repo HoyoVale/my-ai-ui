@@ -119,6 +119,7 @@ function compactAnsweredQuestions(
 }
 
 export function createRunCheckpoint({
+  goalId = "",
   taskId = "",
   runId = "",
   messageId = "",
@@ -129,6 +130,7 @@ export function createRunCheckpoint({
   pendingQuestion = null,
   stopReason = "",
   contextCompactions = 0,
+  orchestration = null,
   updatedAt = Date.now()
 } = {}) {
   const compactedPlan =
@@ -162,6 +164,7 @@ export function createRunCheckpoint({
 
   return {
     version: 1,
+    goalId: text(goalId, 120),
     taskId: text(taskId, 120),
     runId: text(runId, 120),
     messageId: text(messageId, 120),
@@ -199,7 +202,10 @@ export function createRunCheckpoint({
               320
             )
           }
-        : null
+        : null,
+    orchestration:
+      orchestration && typeof orchestration === "object"
+        ? structuredClone(orchestration) : null
   };
 }
 
@@ -244,6 +250,10 @@ export function createCheckpointInstruction(
     checkpoint.phase
       ? `Phase: ${checkpoint.phase}`
       : "",
+    checkpoint.orchestration?.segmentCount
+      ? `Segments: ${checkpoint.orchestration.segmentCount}/${checkpoint.orchestration.limits?.maxSegments ?? "?"}; no-progress streak: ${checkpoint.orchestration.noProgressSegments ?? 0}`
+      : "",
+    "Advance unfinished work from this checkpoint. Do not repeat completed tool calls.",
     planLines.length > 0
       ? "Plan:\n" + planLines.join("\n")
       : "",

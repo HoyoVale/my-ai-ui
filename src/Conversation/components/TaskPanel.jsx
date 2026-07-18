@@ -28,7 +28,7 @@ function planStatusMark(status) {
     return "✓";
   }
 
-  if (status === "blocked") {
+  if (["blocked", "needs_input"].includes(status)) {
     return "!";
   }
 

@@ -2,9 +2,17 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  redactSensitiveValue
+} from "./redaction.js";
+
 function clone(value) {
   return structuredClone(value);
 }
+
+export {
+  redactSensitiveValue as redactSensitiveResult
+};
 
 function serialize(value) {
   try {
@@ -140,7 +148,10 @@ export class ToolResultStore {
     defaultChunkCharacters = 8000,
     maxPreviewCharacters = 1800,
     storageDirectory = "",
-    retentionMs = 7 * 24 * 60 * 60 * 1000
+    retentionMs = 7 * 24 * 60 * 60 * 1000,
+    taskId = "",
+    segmentId = "",
+    redact = null
   } = {}) {
     this.maxInlineBytes = Math.max(
       2000,
@@ -165,6 +176,14 @@ export class ToolResultStore {
       Number(retentionMs) ||
         7 * 24 * 60 * 60 * 1000
     );
+    this.owner = {
+      taskId: String(taskId ?? ""),
+      segmentId: String(segmentId ?? "")
+    };
+    this.redact =
+      typeof redact === "function"
+        ? redact
+        : redactSensitiveValue;
     this.entries = new Map();
 
     if (this.storageDirectory) {
@@ -228,7 +247,8 @@ export class ToolResultStore {
 
       if (
         parsed?.id !== id ||
-        typeof parsed?.text !== "string"
+        typeof parsed?.text !== "string" ||
+        !this.isOwnedByStore(parsed)
       ) {
         return null;
       }
@@ -238,6 +258,25 @@ export class ToolResultStore {
     } catch {
       return null;
     }
+  }
+
+  isOwnedByStore(entry) {
+    const owner = entry?.owner ?? {};
+    if (
+      this.owner.taskId &&
+      owner.taskId &&
+      owner.taskId !== this.owner.taskId
+    ) {
+      return false;
+    }
+    if (
+      this.owner.segmentId &&
+      owner.segmentId &&
+      owner.segmentId !== this.owner.segmentId
+    ) {
+      return false;
+    }
+    return true;
   }
 
   cleanupExpired(now = Date.now()) {
@@ -271,11 +310,20 @@ export class ToolResultStore {
     return removed;
   }
 
-  capture(value, { toolName = "tool" } = {}) {
-    const serialized = serialize(value);
+  capture(
+    value,
+    {
+      toolName = "tool",
+      callId = "",
+      taskId = this.owner.taskId,
+      segmentId = this.owner.segmentId
+    } = {}
+  ) {
+    const safeValue = this.redact(clone(value));
+    const serialized = serialize(safeValue);
     const totalBytes = byteLength(serialized);
     const summary = summarizeValue(
-      value,
+      safeValue,
       toolName
     );
     const preview = serialized.slice(
@@ -288,14 +336,14 @@ export class ToolResultStore {
         status: "success",
         summary,
         preview,
-        data: value,
+        data: safeValue,
         truncated: false,
         originalBytes: totalBytes,
         storedBytes: totalBytes
       });
 
       return {
-        value: clone(value),
+        value: clone(safeValue),
         result,
         meta: {
           outputBytes: totalBytes,
@@ -317,6 +365,11 @@ export class ToolResultStore {
     const entry = {
       id: resultId,
       toolName,
+      callId: String(callId ?? ""),
+      owner: {
+        taskId: String(taskId ?? ""),
+        segmentId: String(segmentId ?? "")
+      },
       text: storedText,
       totalBytes,
       storedBytes,
@@ -328,7 +381,7 @@ export class ToolResultStore {
     this.persistEntry(entry);
 
     const compactValue = {
-      ok: value?.ok === false ? false : true,
+      ok: safeValue?.ok === false ? false : true,
       data: {
         resultId,
         preview,
@@ -370,12 +423,16 @@ export class ToolResultStore {
     value,
     {
       toolName = "tool",
-      cancelled = false
+      cancelled = false,
+      callId = "",
+      taskId = this.owner.taskId,
+      segmentId = this.owner.segmentId
     } = {}
   ) {
-    const serialized = serialize(value);
+    const safeValue = this.redact(clone(value));
+    const serialized = serialize(safeValue);
     const totalBytes = byteLength(serialized);
-    const error = value?.error ?? {
+    const error = safeValue?.error ?? {
       code: cancelled
         ? "CANCELLED_BY_USER"
         : "TOOL_EXECUTION_FAILED",
@@ -385,7 +442,7 @@ export class ToolResultStore {
     };
 
     return {
-      value: clone(value),
+      value: clone(safeValue),
       result: createResultEnvelope({
         status: cancelled
           ? "cancelled"
@@ -406,6 +463,9 @@ export class ToolResultStore {
           totalBytes > this.maxInlineBytes
       }),
       meta: {
+        callId: String(callId ?? ""),
+        taskId: String(taskId ?? ""),
+        segmentId: String(segmentId ?? ""),
         outputBytes: totalBytes,
         storedBytes: Math.min(
           totalBytes,
@@ -423,20 +483,30 @@ export class ToolResultStore {
     resultId,
     {
       offset = 0,
-      limit = this.defaultChunkCharacters
+      limit = this.defaultChunkCharacters,
+      taskId = this.owner.taskId,
+      segmentId = this.owner.segmentId
     } = {}
   ) {
     const entry = this.loadEntry(
       resultId
     );
 
-    if (!entry) {
+    if (
+      !entry ||
+      (taskId && entry.owner?.taskId && entry.owner.taskId !== taskId) ||
+      (
+        segmentId &&
+        entry.owner?.segmentId &&
+        entry.owner.segmentId !== segmentId
+      )
+    ) {
       return {
         ok: false,
         error: {
           code: "TOOL_RESULT_NOT_FOUND",
           message:
-            "找不到该工具结果，结果可能已过期或属于其他 Agent Run。",
+            "找不到该工具结果，结果可能已过期或属于其他任务。",
           retryable: false
         }
       };
@@ -467,6 +537,7 @@ export class ToolResultStore {
       data: {
         resultId: entry.id,
         toolName: entry.toolName,
+        callId: entry.callId ?? "",
         content,
         offset: start,
         nextOffset:

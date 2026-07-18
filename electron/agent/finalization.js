@@ -26,6 +26,10 @@ export function getPlanCompletionState(
     (item) =>
       item?.status === "blocked"
   );
+  const needsInput = items.filter(
+    (item) =>
+      item?.status === "needs_input"
+  );
   const cancelled = items.filter(
     (item) =>
       item?.status === "cancelled"
@@ -37,11 +41,14 @@ export function getPlanCompletionState(
       items.length > 0 &&
       unfinished.length === 0 &&
       blocked.length === 0 &&
+      needsInput.length === 0 &&
       cancelled.length === 0,
     hasUnfinished:
       unfinished.length > 0,
     hasBlocked:
       blocked.length > 0,
+    hasNeedsInput:
+      needsInput.length > 0,
     hasCancelled:
       cancelled.length > 0,
     items
@@ -74,7 +81,11 @@ export function shouldRunFinalization({
     [
       RUN_STOP_REASONS.AGENT_STEP_LIMIT,
       RUN_STOP_REASONS.PLAN_INCOMPLETE,
-      RUN_STOP_REASONS.COMPLETED
+      RUN_STOP_REASONS.COMPLETED,
+      RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT,
+      RUN_STOP_REASONS.NO_PROGRESS,
+      RUN_STOP_REASONS.NEEDS_INPUT,
+      RUN_STOP_REASONS.BLOCKED
     ].includes(stopReason);
 
   return Boolean(
@@ -162,8 +173,9 @@ export function createFinalizationInstruction({
 } = {}) {
   const planState =
     getPlanCompletionState(plan);
-  const completionNote =
-    planState.isComplete
+  const completionNote = planState.hasNeedsInput
+    ? "The task needs additional user input. Clearly state the exact missing input and stop; do not guess."
+    : planState.isComplete
       ? "The execution plan is complete."
       : planState.hasUnfinished ||
         planState.hasBlocked ||

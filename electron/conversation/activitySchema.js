@@ -84,6 +84,7 @@ function sanitizePlanItem(source, index) {
     "in_progress",
     "completed",
     "blocked",
+    "needs_input",
     "skipped",
     "cancelled",
     "superseded"
@@ -547,6 +548,8 @@ export function sanitizeActivity(source) {
     "running",
     "completed",
     "waiting_for_user",
+    "needs_input",
+    "blocked",
     "cancelling",
     "cancelled",
     "interrupted",

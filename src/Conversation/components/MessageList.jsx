@@ -1075,7 +1075,7 @@ function PlanDashboard({
               {item.status === "completed" && (
                 <ConversationIcon name="check" size={12} />
               )}
-              {item.status === "blocked" && (
+              {["blocked", "needs_input"].includes(item.status) && (
                 <ConversationIcon name="warning" size={12} />
               )}
               {item.status === "in_progress" && <span />}

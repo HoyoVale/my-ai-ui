@@ -15,7 +15,6 @@ export const SAFE_TOOL_CATALOG = Object.freeze([
   { name: "compute_file_hash", title: "Compute file hash", toolset: "workspace.read" },
   { name: "report_progress", title: "Report progress", toolset: "agent.internal" },
   { name: "update_plan", title: "Update task plan", toolset: "agent.internal" },
-  { name: "ask_user", title: "Ask user", toolset: "agent.internal" },
   { name: "read_tool_result", title: "Read tool result", toolset: "agent.internal" }
 ]);
 
@@ -63,7 +62,10 @@ function baseToolsetEnabled(mode, toolset) {
   return true;
 }
 
-export function resolveEnabledToolCatalog(settings = {}) {
+export function resolveEnabledToolCatalog(
+  settings = {},
+  catalog = SAFE_TOOL_CATALOG
+) {
   if (settings.enabled === false) {
     return [];
   }
@@ -75,11 +77,12 @@ export function resolveEnabledToolCatalog(settings = {}) {
   const legacyToolsets = settings.toolsets ?? {};
   const legacyOverrides = settings.overrides ?? {};
 
-  return SAFE_TOOL_CATALOG.filter((item) => {
-    let toolsetEnabled = baseToolsetEnabled(mode, item.toolset);
+  return catalog.filter((item) => {
+    const toolset = item.toolset ?? item.toolsets?.[0] ?? "core.runtime";
+    let toolsetEnabled = baseToolsetEnabled(mode, toolset);
 
     const toolsetOverride = overrideValue(
-      toolsetOverrides[item.toolset]
+      toolsetOverrides[toolset]
     );
 
     if (toolsetOverride === "enabled") {
@@ -88,9 +91,9 @@ export function resolveEnabledToolCatalog(settings = {}) {
       toolsetEnabled = false;
     } else if (
       settings.mode === undefined &&
-      typeof legacyToolsets[item.toolset] === "boolean"
+      typeof legacyToolsets[toolset] === "boolean"
     ) {
-      toolsetEnabled = legacyToolsets[item.toolset];
+      toolsetEnabled = legacyToolsets[toolset];
     }
 
     if (!toolsetEnabled) {

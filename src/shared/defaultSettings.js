@@ -227,6 +227,9 @@ export const FALLBACK_SETTINGS = {
     },
     runtime: {
       maxSteps: 6,
+      maxSegments: 6,
+      maxNoProgressSegments: 2,
+      maxFinalizationAttempts: 2,
       maxToolCalls: 12,
       maxToolRetries: 1,
       runTimeoutMs: 120000,
@@ -273,8 +276,7 @@ export const FALLBACK_SETTINGS = {
       search_text: true,
       detect_project: true,
       compute_file_hash: true,
-      update_plan: true,
-      ask_user: true
+      update_plan: true
     }
   },
   memory: {

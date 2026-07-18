@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   RunPlanStore
-} from "../../electron/tools/agent/agentTools.js";
+} from "../../electron/agent/orchestration/agentTools.js";
 
 describe("Plan replanning foundation", () => {
   it("preserves completed work and supersedes omitted unfinished steps", () => {

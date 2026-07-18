@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   normalizeAskUserRequest,
   OTHER_OPTION_ID
-} from "../../electron/tools/agent/askUserPolicy.js";
+} from "../../electron/agent/orchestration/askUserPolicy.js";
 
 describe("ask_user system other answer", () => {
   it("enables the fixed other answer by default", () => {

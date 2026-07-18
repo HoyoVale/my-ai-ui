@@ -22,7 +22,7 @@ describe(
   "agent tool runtime contract",
   () => {
     it(
-      "uses AI SDK multi-step tool calling with a hard step limit",
+      "uses bounded AI SDK segments with controlled long-task continuation",
       () => {
         const source =
           read(
@@ -35,11 +35,23 @@ describe(
         );
         assert.match(
           source,
-          /stepCountIs\([\s\S]*settings\.tools[\s\S]*maxSteps/u
+          /stepCountIs\([\s\S]*maxSteps/u
         );
         assert.match(
           source,
-          /getPendingQuestion\(\)/u
+          /new LongTaskOrchestrator/u
+        );
+        assert.match(
+          source,
+          /segmentOutcome\.decision === "continue"/u
+        );
+        assert.match(
+          source,
+          /maxNoProgressSegments/u
+        );
+        assert.doesNotMatch(
+          source,
+          /toolSession[\s\S]{0,80}getPendingQuestion/u
         );
         assert.match(
           source,
@@ -73,7 +85,7 @@ describe(
   "agent tool runtime 1.2 contract",
   () => {
     it(
-      "supports paged tool results and resumable user questions",
+      "supports paged tool results and legacy question recovery",
       () => {
         const session =
           read(
@@ -91,6 +103,10 @@ describe(
         assert.match(
           session,
           /ToolResultStore/u
+        );
+        assert.doesNotMatch(
+          session,
+          /getPendingQuestion/u
         );
         assert.match(
           runtime,

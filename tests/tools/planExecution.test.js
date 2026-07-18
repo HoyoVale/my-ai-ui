@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 
 import {
   RunPlanStore
-} from "../../electron/tools/agent/agentTools.js";
+} from "../../electron/agent/orchestration/agentTools.js";
 
 import {
   createAgentToolSession
@@ -77,6 +77,30 @@ describe("executable task plans", () => {
     assert.equal(
       store.getExecutionState().active.id,
       "two"
+    );
+  });
+
+  it("accepts needs_input as an unsuccessful terminal plan state", () => {
+    const store = new RunPlanStore();
+
+    store.update([
+      {
+        id: "path",
+        title: "Read requested file",
+        status: "needs_input",
+        reason: "File path is missing"
+      }
+    ]);
+
+    const state = store.getExecutionState();
+
+    assert.equal(state.hasUnfinished, false);
+    assert.equal(state.canFinish, true);
+    assert.equal(state.needsInput, 1);
+    assert.equal(state.isSuccessful, false);
+    assert.equal(
+      store.canRunTool("calculator").code,
+      "PLAN_STEP_REQUIRED"
     );
   });
 

@@ -97,7 +97,11 @@ import {
   collectAnsweredQuestions,
   countQuestionEvents,
   OTHER_OPTION_ID
-} from "../tools/agent/askUserPolicy.js";
+} from "./orchestration/askUserPolicy.js";
+import {
+  LongTaskOrchestrator
+} from "./orchestration/LongTaskOrchestrator.js";
+
 
 
 
@@ -142,8 +146,8 @@ function createResumeInstruction(
       ? `Resolved decision key: ${pending.request.decisionKey}`
       : "",
     "Continue the same task and the same plan. Do not greet the user or treat this as a new conversation turn.",
-    "This checkpoint is answered. Do not call ask_user again for the same decision.",
-    "Your next action must advance the plan, use a non-question tool, or provide the final answer. Only ask another question if a genuinely new blocking ambiguity appears later."
+    "This legacy checkpoint is answered. Continue with the supplied answer.",
+    "Your next action must advance the plan, use a tool, or provide the final answer. If information is still missing, explain the limitation in the final response."
   ].filter(Boolean).join("\n");
 }
 
@@ -308,6 +312,15 @@ export class AgentRuntime {
       taskId:
         this.activeRun
           ?.taskId ?? null,
+      goalId:
+        this.activeRun
+          ?.goalId ?? null,
+      orchestration:
+        this.activeRun
+          ?.orchestrator
+          ?.snapshot?.() ?? null,
+      currentSegmentId:
+        this.activeRun?.currentSegmentId ?? "",
       activity:
         this.activeRun
           ?.activityStore
@@ -357,6 +370,7 @@ export class AgentRuntime {
 
     return createRunCheckpoint({
       taskId: this.activeRun.taskId,
+      goalId: this.activeRun.goalId,
       runId: this.activeRun.runId,
       messageId:
         this.activeRun.replaceMessageId ?? "",
@@ -377,7 +391,10 @@ export class AgentRuntime {
       stopReason:
         this.activeRun.stopReason ?? "",
       contextCompactions:
-        this.activeRun.contextCompactionCount ?? 0
+        this.activeRun.contextCompactionCount ?? 0,
+      orchestration:
+        this.activeRun.orchestrator
+          ?.snapshot?.({ compact: true }) ?? null,
     });
   }
 
@@ -471,6 +488,9 @@ export class AgentRuntime {
     this.activeRun.phase = "cancelled";
     this.activeRun.stopReason =
       RUN_STOP_REASONS.CANCELLED_BY_USER;
+    this.activeRun.orchestrator?.terminate(
+      this.activeRun.stopReason
+    );
     this.activeRun.activityStore
       ?.finalize(
         this.activeRun.stopReason
@@ -655,6 +675,9 @@ export class AgentRuntime {
     const runId =
       crypto.randomUUID();
 
+    const goalId =
+      crypto.randomUUID();
+
     const taskId =
       crypto.randomUUID();
 
@@ -673,6 +696,10 @@ export class AgentRuntime {
 
     this.activeRun = {
       runId,
+      goalId,
+      objective: message,
+      orchestrator: null,
+      currentSegmentId: "",
       taskId,
       conversationId:
         conversation.id,
@@ -825,8 +852,12 @@ export class AgentRuntime {
     const runId =
       crypto.randomUUID();
 
+    const goalId =
+      crypto.randomUUID();
+
     const taskId =
       crypto.randomUUID();
+
 
     const abortController =
       new AbortController();
@@ -843,6 +874,10 @@ export class AgentRuntime {
 
     this.activeRun = {
       runId,
+      goalId,
+      objective: plan.userMessage.content,
+      orchestrator: null,
+      currentSegmentId: "",
       taskId,
       conversationId:
         plan.conversation.id,
@@ -980,6 +1015,9 @@ export class AgentRuntime {
 
     this.activeRun.stepNumber =
       Number(step?.stepNumber) || 0;
+
+    this.activeRun.orchestrator
+      ?.recordStep(step);
 
     if (
       classified.kind ===
@@ -1300,6 +1338,10 @@ export class AgentRuntime {
         pending.taskId ??
         pending.activity?.taskId ??
         runId;
+      const goalId =
+        pending.activity?.checkpoint?.goalId ??
+        taskId;
+
       const startedAt =
         pending.activity?.startedAt ??
         Date.now();
@@ -1319,6 +1361,10 @@ export class AgentRuntime {
       this.activeRun = {
         runId,
         taskId,
+        goalId,
+        objective: pending.request?.question ?? "",
+        orchestrator: null,
+        currentSegmentId: "",
         conversationId:
           normalizedConversationId,
         abortController,
@@ -1872,6 +1918,22 @@ export class AgentRuntime {
           modelSettings
         );
 
+      const runtimeSettings =
+        settings.tools?.runtime ?? {};
+      const orchestrator =
+        new LongTaskOrchestrator({
+          goalId: this.activeRun.goalId,
+          taskId: this.activeRun.taskId,
+          runId,
+          objective: this.activeRun.objective,
+          maxSegmentSteps: runtimeSettings.maxSteps ?? 6,
+          maxSegments: runtimeSettings.maxSegments ?? 6,
+          maxNoProgressSegments:
+            runtimeSettings.maxNoProgressSegments ?? 2,
+          startedAt: this.activeRun.startedAt
+        });
+      this.activeRun.orchestrator = orchestrator;
+
       const toolSession =
         createAgentToolSession({
           activeModel:
@@ -1907,47 +1969,22 @@ export class AgentRuntime {
               });
             }
           },
-          onQuestion: (question) => {
-            if (
-              this.isCurrentRun(
-                runId
-              )
-            ) {
-              this.activeRun.pendingQuestion = {
-                ...structuredClone(question),
-                status: "waiting"
-              };
-              this.activeRun.phase =
-                "waiting_for_user";
-              this.activeRun
-                .activityStore
-                ?.recordQuestion(
-                  question
-                );
-              this.persistActiveRunCheckpoint({
-                status: "waiting"
-              });
-              this.setStatus({
-                ...this.status
-              });
-            }
-          },
           activityStore:
             this.activeRun.activityStore,
           settings,
           initialPlan:
             this.activeRun
               .initialPlan,
-          answeredQuestions:
-            this.activeRun
-              .answeredQuestions ?? [],
-          initialQuestionCount:
-            this.activeRun
-              .initialQuestionCount ?? 0,
           resultStoreDirectory:
             getTaskResultDirectory(
               this.activeRun.taskId
-            )
+            ),
+          taskId:
+            this.activeRun.taskId,
+          getSegmentId: () =>
+            orchestrator.currentSegmentId(),
+          segmentId:
+            runId
         });
 
       this.activeRun.toolSession =
@@ -1960,12 +1997,70 @@ export class AgentRuntime {
           ?.runtime
           ?.maxSteps ?? 6;
 
+      const runTimeoutMs =
+        runtimeSettings.runTimeoutMs ??
+        modelSettings.timeoutMs;
+      const runDeadline =
+        this.activeRun.startedAt + runTimeoutMs;
+      let segmentSystem =
+        context.system;
+
+      while (true) {
+        if (
+          abortController.signal.aborted ||
+          !this.isCurrentRun(runId)
+        ) {
+          break;
+        }
+
+        const remainingRunMs =
+          runDeadline - Date.now();
+
+        if (remainingRunMs <= 0) {
+          this.activeRun.stopReason =
+            RUN_STOP_REASONS.AGENT_RUN_TIMEOUT;
+          this.activeRun.executionStopReason =
+            RUN_STOP_REASONS.AGENT_RUN_TIMEOUT;
+          orchestrator.terminate(
+            this.activeRun.stopReason
+          );
+          this.activeRun.phase = "failed";
+          this.activeRun.finalText =
+            "任务已达到总运行时间限制，已保留当前检查点。";
+          appendResponseChunk(this.activeRun.finalText);
+          this.activeRun.activityStore?.finalize(
+            this.activeRun.stopReason
+          );
+          break;
+        }
+
+        const segment = orchestrator.beginSegment({
+          plan: toolSession.getPlan(),
+          records: toolSession.getRecords()
+        });
+
+        if (!segment) {
+          this.activeRun.stopReason =
+            RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT;
+          this.activeRun.executionStopReason =
+            RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT;
+          orchestrator.terminate(
+            this.activeRun.stopReason
+          );
+          this.activeRun.phase = "failed";
+          break;
+        }
+
+        this.activeRun.currentSegmentId = segment.id;
+        this.activeRun.phase = "executing";
+        this.persistActiveRunCheckpoint({ status: "running" });
+
       const result =
         streamText({
           model: runtime.model,
 
           system:
-            context.system,
+            segmentSystem,
 
           messages:
             context.messages,
@@ -1973,15 +2068,10 @@ export class AgentRuntime {
           tools:
             toolSession.tools,
 
-          stopWhen: [
+          stopWhen:
             stepCountIs(
               maxSteps
             ),
-            () => Boolean(
-              toolSession
-                .getPendingQuestion()
-            )
-          ],
 
           ...runtime.requestOptions,
 
@@ -1990,12 +2080,9 @@ export class AgentRuntime {
 
           timeout: {
             totalMs:
-              Math.min(
-                modelSettings.timeoutMs,
-                settings.tools
-                  ?.runtime
-                  ?.runTimeoutMs ??
-                modelSettings.timeoutMs
+              Math.max(
+                1,
+                Math.min(modelSettings.timeoutMs, remainingRunMs)
               ),
 
             chunkMs:
@@ -2042,7 +2129,7 @@ export class AgentRuntime {
             return {
               messages: compacted.messages,
               instructions: [
-                context.system,
+                segmentSystem,
                 compacted.checkpointInstruction,
                 "Earlier tool details were compacted to protect the context budget. Use the checkpoint and result references; do not repeat completed work."
               ].filter(Boolean).join("\n\n")
@@ -2124,11 +2211,13 @@ export class AgentRuntime {
         const reasoningText =
           await result.reasoningText;
 
-        this.activeRun
-          .reasoningSummary =
-          String(
-            reasoningText ?? ""
-          ).trim();
+        this.activeRun.reasoningSummary = [
+          this.activeRun.reasoningSummary,
+          String(reasoningText ?? "").trim()
+        ]
+          .filter(Boolean)
+          .join("\n")
+          .slice(-4000);
 
         this.activeRun
           .activityStore
@@ -2139,9 +2228,7 @@ export class AgentRuntime {
 
         const records =
           toolSession.getRecords();
-        const pendingQuestion =
-          toolSession
-            .getPendingQuestion();
+        const pendingQuestion = null;
         const finishReason =
           await settleResultValue(
             result.finishReason,
@@ -2154,7 +2241,7 @@ export class AgentRuntime {
           );
         const plan =
           toolSession.getPlan();
-        const executionStopReason =
+        let executionStopReason =
           inferRunStopReason({
             pendingQuestion,
             records,
@@ -2164,15 +2251,48 @@ export class AgentRuntime {
             plan
           });
 
+        const segmentCheckpoint =
+          this.buildActiveCheckpoint();
+        if (segmentCheckpoint) {
+          segmentCheckpoint.orchestration = null;
+        }
+        const segmentOutcome =
+          orchestrator.completeSegment({
+            stopReason: executionStopReason,
+            finishReason,
+            plan,
+            records,
+            finalText: this.activeRun.finalText,
+            checkpoint: segmentCheckpoint
+          });
+
+        this.activeRun.currentSegmentId = "";
+        executionStopReason =
+          segmentOutcome.stopReason;
+
+        if (segmentOutcome.decision === "continue") {
+          this.activeRun.finalText = "";
+          this.activeRun.currentStepText = "";
+          this.activeRun.executionStopReason =
+            executionStopReason;
+
+          const continuationCheckpoint =
+            this.buildActiveCheckpoint();
+          this.activeRun.activityStore?.updateCheckpoint(
+            continuationCheckpoint
+          );
+          segmentSystem = [
+            context.system,
+            createCheckpointInstruction(continuationCheckpoint),
+            `[Segment continuation ${segmentOutcome.segment.index + 1}] Continue the same task from the checkpoint. Advance unfinished work; do not repeat completed tool calls. If required user input is missing, mark the current plan step needs_input and provide a final explanation.`
+          ].filter(Boolean).join("\n\n");
+          this.persistActiveRunCheckpoint({ status: "running" });
+          continue;
+        }
+
         this.activeRun.toolCalls =
           records;
-        this.activeRun.pendingQuestion =
-          pendingQuestion
-            ? {
-                ...pendingQuestion,
-                status: "waiting"
-              }
-            : null;
+        this.activeRun.pendingQuestion = null;
         this.activeRun
           .executionStopReason =
           executionStopReason;
@@ -2213,26 +2333,21 @@ export class AgentRuntime {
           );
 
         this.activeRun.stopReason =
-          pendingQuestion
-            ? RUN_STOP_REASONS
-                .WAITING_FOR_USER
-            : hasFinalText &&
-              (
-                planState.isComplete ||
-                executionStopReason ===
-                  RUN_STOP_REASONS
-                    .COMPLETED
-              )
-              ? RUN_STOP_REASONS
-                  .COMPLETED
-              : executionStopReason;
+          hasFinalText &&
+          (
+            planState.isComplete ||
+            executionStopReason === RUN_STOP_REASONS.COMPLETED
+          )
+            ? RUN_STOP_REASONS.COMPLETED
+            : executionStopReason;
         this.activeRun.phase =
-          pendingQuestion
-            ? "waiting_for_user"
-            : this.activeRun.stopReason ===
-                RUN_STOP_REASONS.COMPLETED
-              ? "completed"
-              : "failed";
+          this.activeRun.stopReason === RUN_STOP_REASONS.COMPLETED
+            ? "completed"
+            : this.activeRun.stopReason === RUN_STOP_REASONS.NEEDS_INPUT
+              ? "needs_input"
+              : this.activeRun.stopReason === RUN_STOP_REASONS.BLOCKED
+                ? "blocked"
+                : "failed";
 
         this.activeRun
           .activityStore
@@ -2240,6 +2355,8 @@ export class AgentRuntime {
             this.activeRun
               .stopReason
           );
+      }
+        break;
       }
 
       if (
@@ -2378,6 +2495,9 @@ export class AgentRuntime {
         this.activeRun.stopReason =
           RUN_STOP_REASONS
             .MODEL_ERROR;
+        this.activeRun.orchestrator?.terminate(
+          this.activeRun.stopReason
+        );
         this.activeRun.phase = "failed";
         this.activeRun
           .activityStore

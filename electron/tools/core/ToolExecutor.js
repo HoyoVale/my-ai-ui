@@ -1,69 +1,74 @@
-import { tool } from "ai";
-
 import {
-  ToolAuditLog
-} from "./ToolAuditLog.js";
-
+  ToolBudget
+} from "./ToolBudget.js";
+import {
+  ToolConcurrencyGuard
+} from "./ToolConcurrencyGuard.js";
+import {
+  ToolEventStore
+} from "./ToolEventStore.js";
+import {
+  ToolPolicyEngine
+} from "./ToolPolicyEngine.js";
 import {
   TOOL_ERROR_TYPES,
   classifyToolError,
   shouldRetryToolError
 } from "./toolErrors.js";
+import {
+  isJsonSerializable,
+  validateToolInput,
+  validateToolOutput
+} from "./toolContract.js";
 
 function errorMessage(error) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(
-    error ??
-    "工具执行失败。"
-  );
+  return error instanceof Error
+    ? error.message
+    : String(error ?? "工具执行失败。");
 }
 
 function normalizeOutput(output) {
-  if (
-    output &&
-    typeof output === "object" &&
-    "ok" in output
-  ) {
+  if (output && typeof output === "object" && "ok" in output) {
     return output;
   }
-
-  return {
-    ok: true,
-    data: output
-  };
+  return { ok: true, data: output };
 }
 
 function createRuntimeError(
   code,
   message,
   retryable = false,
-  type = ""
+  type = TOOL_ERROR_TYPES.EXECUTION_FAILED,
+  category = "internal",
+  details = undefined
 ) {
   return {
     ok: false,
     error: {
       code,
       type,
+      category,
       message,
-      retryable
+      retryable: Boolean(retryable),
+      ...(details === undefined ? {} : { details })
     }
   };
 }
 
 function createTimeoutError(timeoutMs) {
   const error = new Error(
-    `工具执行超过 ${Math.round(timeoutMs / 1000)} 秒，已停止等待。`
+    `工具执行超过 ${Math.max(1, Math.round(timeoutMs / 1000))} 秒，已停止等待。`
   );
   error.code = "TOOL_TIMEOUT";
   return error;
 }
 
-function createAbortError(reason = "user-stop") {
+function createAbortError(signal) {
+  if (signal?.reason instanceof Error) {
+    return signal.reason;
+  }
   const error = new Error(
-    reason === "user-stop"
+    signal?.reason === "user-stop"
       ? "工具调用已由用户取消。"
       : "工具调用已取消。"
   );
@@ -72,12 +77,34 @@ function createAbortError(reason = "user-stop") {
   return error;
 }
 
-function stableSignature(name, input) {
-  try {
-    return `${name}:${JSON.stringify(input)}`;
-  } catch {
-    return `${name}:${String(input)}`;
+function createAbortScope(parentSignal, timeoutMs) {
+  const controller = new AbortController();
+  let timeoutId = null;
+  const onParentAbort = () => {
+    controller.abort(parentSignal.reason);
+  };
+
+  if (parentSignal?.aborted) {
+    onParentAbort();
+  } else {
+    parentSignal?.addEventListener("abort", onParentAbort, { once: true });
   }
+
+  if (!controller.signal.aborted && timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      controller.abort(createTimeoutError(timeoutMs));
+    }, timeoutMs);
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup() {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      parentSignal?.removeEventListener("abort", onParentAbort);
+    }
+  };
 }
 
 function wait(ms, abortSignal) {
@@ -87,26 +114,16 @@ function wait(ms, abortSignal) {
 
   return new Promise((resolve, reject) => {
     let timeoutId = null;
-
     const cleanup = () => {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      abortSignal?.removeEventListener(
-        "abort",
-        onAbort
-      );
+      abortSignal?.removeEventListener("abort", onAbort);
     };
-
     const onAbort = () => {
       cleanup();
-      reject(
-        createAbortError(
-          abortSignal?.reason
-        )
-      );
+      reject(createAbortError(abortSignal));
     };
-
     timeoutId = setTimeout(() => {
       cleanup();
       resolve();
@@ -116,75 +133,31 @@ function wait(ms, abortSignal) {
       onAbort();
       return;
     }
-
-    abortSignal?.addEventListener(
-      "abort",
-      onAbort,
-      { once: true }
-    );
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
-function runWithAbortAndTimeout(
-  execution,
-  {
-    abortSignal = null,
-    timeoutMs = 0
-  } = {}
-) {
+function runWithAbort(execution, abortSignal) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let timeoutId = null;
-
     const cleanup = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      abortSignal?.removeEventListener(
-        "abort",
-        onAbort
-      );
+      abortSignal?.removeEventListener("abort", onAbort);
     };
-
     const settle = (callback, value) => {
       if (settled) {
         return;
       }
-
       settled = true;
       cleanup();
       callback(value);
     };
-
-    const onAbort = () => {
-      settle(
-        reject,
-        createAbortError(
-          abortSignal?.reason
-        )
-      );
-    };
+    const onAbort = () => settle(reject, createAbortError(abortSignal));
 
     if (abortSignal?.aborted) {
       onAbort();
       return;
     }
-
-    abortSignal?.addEventListener(
-      "abort",
-      onAbort,
-      { once: true }
-    );
-
-    if (timeoutMs > 0) {
-      timeoutId = setTimeout(() => {
-        settle(
-          reject,
-          createTimeoutError(timeoutMs)
-        );
-      }, timeoutMs);
-    }
-
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
     Promise.resolve(execution).then(
       (value) => settle(resolve, value),
       (error) => settle(reject, error)
@@ -192,95 +165,125 @@ function runWithAbortAndTimeout(
   });
 }
 
-function normalizedPolicy(
-  definition,
-  maxRetries
-) {
-  const policy =
-    definition.retryPolicy ?? {};
-  const configuredAttempts =
-    Math.max(
-      1,
-      Number(policy.maxAttempts) || 1
-    );
-  const runtimeAttempts =
-    Math.max(
-      1,
-      Number(maxRetries) + 1
-    );
+function normalizedPolicy(definition, maxRetries, idempotencyKey) {
+  const policy = definition.retryPolicy ?? {};
+  const configuredAttempts = Math.max(1, Number(policy.maxAttempts) || 1);
+  const runtimeAttempts = Math.max(1, Number(maxRetries) + 1);
+  const safeSideEffect = ["none", "read"].includes(
+    definition.sideEffect ?? "none"
+  );
+  const idempotent =
+    definition.idempotency === "natural" ||
+    (definition.idempotency === "required" && Boolean(idempotencyKey));
 
   return {
     ...policy,
-    maxAttempts: Math.min(
-      configuredAttempts,
-      runtimeAttempts
-    ),
-    retryOn: Array.isArray(
-      policy.retryOn
-    )
-      ? policy.retryOn
-      : [],
-    backoffMs: Math.max(
-      0,
-      Number(policy.backoffMs) || 0
-    )
+    maxAttempts:
+      safeSideEffect || idempotent
+        ? Math.min(configuredAttempts, runtimeAttempts)
+        : 1,
+    retryOn: Array.isArray(policy.retryOn) ? policy.retryOn : [],
+    backoffMs: Math.max(0, Number(policy.backoffMs) || 0)
   };
+}
+
+function resolveConcurrencyKey(definition, input) {
+  if (typeof definition.concurrencyKey === "function") {
+    return String(definition.concurrencyKey(input) ?? "");
+  }
+  return String(definition.concurrencyKey ?? "");
+}
+
+function categoryForType(type) {
+  return {
+    [TOOL_ERROR_TYPES.INVALID_ARGUMENTS]: "invalid_input",
+    [TOOL_ERROR_TYPES.PERMISSION_DENIED]: "permission_denied",
+    [TOOL_ERROR_TYPES.NOT_FOUND]: "not_found",
+    [TOOL_ERROR_TYPES.TIMEOUT]: "timeout",
+    [TOOL_ERROR_TYPES.TEMPORARY_FAILURE]: "unavailable",
+    [TOOL_ERROR_TYPES.CANCELLED]: "cancelled",
+    [TOOL_ERROR_TYPES.RESULT_TOO_LARGE]: "invalid_output",
+    [TOOL_ERROR_TYPES.INVALID_OUTPUT]: "invalid_output",
+    [TOOL_ERROR_TYPES.POLICY_DENIED]: "policy_denied",
+    [TOOL_ERROR_TYPES.CONFLICT]: "conflict",
+    [TOOL_ERROR_TYPES.RATE_LIMITED]: "rate_limited"
+  }[type] ?? "internal";
 }
 
 export class ToolExecutor {
   constructor({
     context = {},
     onRecord = null,
+    onEvent = null,
+    onExecutionComplete = null,
+    getRecordMetadata = null,
+    policyEngine = null,
     defaultTimeoutMs = 15000,
     maxToolCalls = 12,
     maxIdenticalCalls = 2,
     runTimeoutMs = 120000,
     resultStore = null,
-    maxRetries = 1
+    maxRetries = 1,
+    maxConcurrent = 4,
+    budget = null,
+    eventStore = null
   } = {}) {
-    this.context = context;
+    this.context = { ...context };
     this.onRecord = onRecord;
-    this.defaultTimeoutMs = defaultTimeoutMs;
-    this.maxToolCalls = maxToolCalls;
-    this.maxIdenticalCalls = maxIdenticalCalls;
-    this.runTimeoutMs = runTimeoutMs;
+    this.onEvent = onEvent;
+    this.onExecutionComplete = onExecutionComplete;
+    this.getRecordMetadata = getRecordMetadata;
+    this.defaultTimeoutMs = Math.max(0, Number(defaultTimeoutMs) || 0);
+    this.runTimeoutMs = Math.max(0, Number(runTimeoutMs) || 0);
     this.resultStore = resultStore;
-    this.maxRetries = Math.max(
-      0,
-      Math.min(
-        2,
-        Number(maxRetries) || 0
-      )
-    );
+    this.maxRetries = Math.max(0, Math.min(2, Number(maxRetries) || 0));
     this.startedAt = Date.now();
-    this.callCount = 0;
-    this.signatures = new Map();
-    this.auditLog = new ToolAuditLog();
+    this.deadline = this.runTimeoutMs > 0
+      ? this.startedAt + this.runTimeoutMs
+      : 0;
+    this.budget = budget ?? new ToolBudget({
+      maxRequests: maxToolCalls,
+      maxIdenticalRequests: maxIdenticalCalls,
+      maxRetries: this.maxRetries,
+      deadline: this.deadline
+    });
+    this.policyEngine = policyEngine ?? new ToolPolicyEngine();
+    this.concurrency = new ToolConcurrencyGuard({ maxConcurrent });
+    this.eventStore = eventStore ?? new ToolEventStore();
   }
 
   emit(record) {
-    const merged = this.auditLog.upsert(record);
-    this.onRecord?.(merged);
-    return merged;
+    const event = this.eventStore.append({
+      type: "tool_lifecycle",
+      callId: record.id,
+      toolId: record.toolId ?? record.name,
+      name: record.name,
+      status: record.status,
+      attempt: record.attempt ?? 0,
+      record
+    });
+    try {
+      this.onEvent?.(event);
+    } catch (error) {
+      console.warn("工具事件监听器执行失败：", error);
+    }
+    try {
+      this.onRecord?.(event.record);
+    } catch (error) {
+      console.warn("工具记录监听器执行失败：", error);
+    }
+    return event.record;
   }
 
   captureFailure(output, options = {}) {
     if (this.resultStore) {
-      return this.resultStore.captureFailure(
-        output,
-        options
-      );
+      return this.resultStore.captureFailure(output, options);
     }
-
     return {
       value: output,
       result: {
-        status: options.cancelled
-          ? "cancelled"
-          : "error",
-        summary:
-          output?.error?.message ??
-          "工具执行失败。",
+        status: options.cancelled ? "cancelled" : "error",
+        summary: output?.error?.message ?? "工具执行失败。",
         preview: "",
         error: output?.error,
         truncated: false,
@@ -297,543 +300,490 @@ export class ToolExecutor {
     };
   }
 
-  rejectBeforeExecution(
-    definition,
-    input,
-    id,
-    queuedAt
-  ) {
-    let output = null;
-
-    if (
-      this.context.abortSignal
-        ?.aborted
-    ) {
-      output = createRuntimeError(
-        "CANCELLED_BY_USER",
-        "工具调用已由用户取消。",
-        false,
-        TOOL_ERROR_TYPES.CANCELLED
-      );
-    } else if (
-      this.runTimeoutMs > 0 &&
-      queuedAt - this.startedAt >
-        this.runTimeoutMs
-    ) {
-      output = createRuntimeError(
-        "AGENT_RUN_TIMEOUT",
-        "本次 Agent 任务已超过允许的总运行时间。"
-      );
-    } else if (
-      definition.countsTowardLimit !== false &&
-      this.callCount >=
-      this.maxToolCalls
-    ) {
-      output = createRuntimeError(
-        "TOOL_CALL_LIMIT",
-        `本次回复最多允许调用 ${this.maxToolCalls} 次工具。`
-      );
-    } else {
-      const planPermission =
-        this.context.planStore
-          ?.canRunTool?.(
-            definition.name,
-            input
-          );
-
-      if (
-        planPermission &&
-        planPermission.ok === false
-      ) {
-        output = createRuntimeError(
-          planPermission.code,
-          planPermission.message,
-          planPermission.retryable === true,
-          TOOL_ERROR_TYPES
-            .INVALID_ARGUMENTS
-        );
-      } else if (
-        definition.countsTowardLimit !== false
-      ) {
-        const signature = stableSignature(
-          definition.name,
-          input
-        );
-        const count =
-          this.signatures.get(signature) ?? 0;
-
-        if (
-          count >= this.maxIdenticalCalls
-        ) {
-          output = createRuntimeError(
-            "REPEATED_TOOL_CALL",
-            `相同工具和参数已调用 ${count} 次，没有必要继续重复。`
-          );
-        }
-      }
-    }
-
-    if (!output) {
-      return null;
-    }
-
+  finishRejected(baseRecord, output) {
+    this.budget.noteDenied();
+    this.budget.noteOutput(output);
     const endedAt = Date.now();
-    const batch =
-      this.context.getActiveBatch
-        ?.() ?? null;
-    const captured = this.captureFailure(
-      output,
-      {
-        toolName: definition.name,
-        cancelled:
-          output.error?.type ===
-          TOOL_ERROR_TYPES.CANCELLED
-      }
-    );
-
+    const cancelled = output.error?.type === TOOL_ERROR_TYPES.CANCELLED;
+    const captured = this.captureFailure(output, {
+      toolName: baseRecord.name,
+      cancelled,
+      callId: baseRecord.id,
+      taskId: baseRecord.taskId,
+      segmentId: baseRecord.segmentId
+    });
     this.emit({
-      id,
-      name: definition.name,
-      title: definition.title,
-      source: definition.source,
-      riskLevel:
-        definition.riskLevel,
-      sideEffect:
-        definition.sideEffect,
-      status:
-        output.error?.type ===
-        TOOL_ERROR_TYPES.CANCELLED
-          ? "cancelled"
-          : "failed",
-      batch,
-      input,
+      ...baseRecord,
+      status: cancelled ? "cancelled" : "failed",
       output: captured.value,
       result: captured.result,
-      meta: captured.meta,
-      queuedAt,
-      startedAt: null,
+      meta: { ...captured.meta, budget: this.budget.snapshot() },
       endedAt,
-      durationMs: Math.max(
-        1,
-        endedAt - queuedAt
-      ),
+      durationMs: Math.max(1, endedAt - baseRecord.queuedAt),
       attempt: 0,
       maxAttempts: 0
     });
-
     return output;
   }
 
-  async execute(
-    definition,
-    input,
-    options = {}
-  ) {
+  effectiveTimeout(definition, options, now) {
+    const requested = Math.max(
+      0,
+      Number(definition.timeoutMs ?? this.defaultTimeoutMs) || 0
+    );
+    const deadlines = [this.deadline, Number(options.deadline) || 0]
+      .filter((value) => value > 0);
+    const remaining = deadlines.length
+      ? Math.max(0, Math.min(...deadlines) - now)
+      : 0;
+
+    if (requested > 0 && remaining > 0) {
+      return Math.min(requested, remaining);
+    }
+    return requested || remaining;
+  }
+
+  async execute(definition, input, options = {}) {
     const id = String(
-      options.toolCallId ??
-      `${definition.name}-${Date.now()}`
+      options.toolCallId ?? `${definition.name}-${Date.now()}`
     );
     const queuedAt = Date.now();
-    const planStep =
-      this.context.planStore
-        ?.getExecutionState?.()
-        ?.active ?? null;
-    const batch =
-      this.context.getActiveBatch
-        ?.() ?? null;
-    const timeoutMs =
-      definition.timeoutMs ??
-      this.defaultTimeoutMs;
-    const abortSignal =
-      options.abortSignal ??
-      this.context.abortSignal;
-    const retryPolicy =
-      normalizedPolicy(
-        definition,
-        this.maxRetries
-      );
-
+    let recordMetadata = options.metadata ?? {};
+    try {
+      recordMetadata =
+        (await this.getRecordMetadata?.({
+          definition,
+          input,
+          callId: id
+        })) ?? recordMetadata;
+    } catch (error) {
+      console.warn("工具记录元数据读取失败：", error);
+    }
+    const taskId = String(options.taskId ?? this.context.taskId ?? "");
+    const segmentId = String(options.segmentId ?? this.context.segmentId ?? "");
     const baseRecord = {
       id,
+      toolId: definition.id ?? definition.name,
       name: definition.name,
       title: definition.title,
       source: definition.source,
-      riskLevel:
-        definition.riskLevel,
-      sideEffect:
-        definition.sideEffect,
-      batch,
-      planStep:
-        planStep
-          ? {
-              id: planStep.id,
-              title: planStep.title
-            }
-          : null,
+      riskLevel: definition.riskLevel,
+      sideEffect: definition.sideEffect,
+      taskId,
+      segmentId,
+      batch: recordMetadata.batch ?? null,
+      planStep: recordMetadata.planStep ?? null,
       input,
       queuedAt,
       startedAt: null,
       endedAt: null,
       durationMs: 0,
       attempt: 0,
-      maxAttempts:
-        retryPolicy.maxAttempts
+      maxAttempts: 0
     };
+    this.emit({ ...baseRecord, status: "queued" });
 
-    this.emit({
-      ...baseRecord,
-      status: "queued"
-    });
-
-    const rejected = this.rejectBeforeExecution(
-      definition,
+    const budgetCheck = this.budget.inspectRequest(
+      definition.name,
       input,
-      id,
-      queuedAt
+      { countsTowardLimit: definition.countsTowardLimit !== false }
     );
-
-    if (rejected) {
-      return rejected;
-    }
-
-    if (
-      definition.countsTowardLimit !== false
-    ) {
-      this.callCount += 1;
-      const signature = stableSignature(
-        definition.name,
-        input
-      );
-      this.signatures.set(
-        signature,
-        (this.signatures.get(signature) ?? 0) + 1
+    if (this.context.abortSignal?.aborted) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          "CANCELLED_BY_USER",
+          "工具调用已由用户取消。",
+          false,
+          TOOL_ERROR_TYPES.CANCELLED,
+          "cancelled"
+        )
       );
     }
+    if (this.deadline > 0 && queuedAt >= this.deadline) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          "AGENT_RUN_TIMEOUT",
+          "本次任务已超过允许的总运行时间。",
+          false,
+          TOOL_ERROR_TYPES.TIMEOUT,
+          "timeout"
+        )
+      );
+    }
+    if (budgetCheck.rejection) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          budgetCheck.rejection.code,
+          budgetCheck.rejection.message,
+          false,
+          TOOL_ERROR_TYPES.EXECUTION_FAILED,
+          "budget_exceeded"
+        )
+      );
+    }
 
+    const validatedInput = validateToolInput(definition, input);
+    if (!validatedInput.ok) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          validatedInput.code,
+          validatedInput.message,
+          false,
+          TOOL_ERROR_TYPES.INVALID_ARGUMENTS,
+          "invalid_input"
+        )
+      );
+    }
+    if (!isJsonSerializable(validatedInput.value)) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          "INVALID_TOOL_ARGUMENTS",
+          "工具参数必须是可序列化的 JSON 值。",
+          false,
+          TOOL_ERROR_TYPES.INVALID_ARGUMENTS,
+          "invalid_input"
+        )
+      );
+    }
+
+    let policyDecision;
+    try {
+      policyDecision = await this.policyEngine.evaluate({
+        definition: {
+          id: definition.id ?? definition.name,
+          name: definition.name,
+          version: definition.version ?? 1,
+          source: definition.source ?? "builtin",
+          riskLevel: definition.riskLevel ?? "none",
+          sideEffect: definition.sideEffect ?? "none"
+        },
+        input: validatedInput.value,
+        taskId,
+        segmentId,
+        callId: id,
+        capabilities: this.context.capabilities ?? null,
+        mode: this.context.mode ?? "interactive"
+      });
+    } catch (error) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          "POLICY_EVALUATION_FAILED",
+          errorMessage(error),
+          false,
+          TOOL_ERROR_TYPES.EXECUTION_FAILED,
+          "internal"
+        )
+      );
+    }
+
+    if (policyDecision.decision !== "allow") {
+      const approval = policyDecision.decision === "require_approval";
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          approval ? "APPROVAL_REQUIRED" : policyDecision.code,
+          policyDecision.message,
+          false,
+          TOOL_ERROR_TYPES.PERMISSION_DENIED,
+          approval ? "approval_required" : "policy_denied",
+          approval ? policyDecision.request : policyDecision.details
+        )
+      );
+    }
+
+    const timeoutMs = this.effectiveTimeout(definition, options, Date.now());
+    if (timeoutMs <= 0 && (this.deadline > 0 || Number(options.deadline) > 0)) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          "TOOL_TIMEOUT",
+          "工具调用在开始前已超过截止时间。",
+          false,
+          TOOL_ERROR_TYPES.TIMEOUT,
+          "timeout"
+        )
+      );
+    }
+
+    const scope = createAbortScope(this.context.abortSignal, timeoutMs);
+    let release = null;
+    try {
+      release = await this.concurrency.acquire(
+        resolveConcurrencyKey(definition, validatedInput.value),
+        scope.signal
+      );
+      this.budget.noteExecution();
+      return await this.executeAuthorized(
+        definition,
+        validatedInput.value,
+        options,
+        baseRecord,
+        scope.signal
+      );
+    } catch (error) {
+      const classified = classifyToolError(error, { abortSignal: scope.signal });
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          classified.code,
+          classified.message,
+          false,
+          classified.type,
+          categoryForType(classified.type)
+        )
+      );
+    } finally {
+      release?.();
+      scope.cleanup();
+    }
+  }
+
+  async executeAuthorized(
+    definition,
+    input,
+    options,
+    baseRecord,
+    abortSignal
+  ) {
+    const retryPolicy = normalizedPolicy(
+      definition,
+      this.maxRetries,
+      options.idempotencyKey
+    );
     const startedAt = Date.now();
     let lastFailure = null;
 
-    for (
-      let attempt = 1;
-      attempt <= retryPolicy.maxAttempts;
-      attempt += 1
-    ) {
+    for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt += 1) {
       this.emit({
         ...baseRecord,
         status: "running",
         startedAt,
         attempt,
-        maxAttempts:
-          retryPolicy.maxAttempts,
-        lastError:
-          lastFailure
+        maxAttempts: retryPolicy.maxAttempts,
+        lastError: lastFailure
       });
 
       try {
-        const execution =
-          definition.execute(
-            input,
-            {
-              ...this.context,
-              toolCallId: id,
-              abortSignal,
-              attempt,
-              maxAttempts:
-                retryPolicy.maxAttempts,
-              definition
-            }
+        const rawOutput = await runWithAbort(
+          definition.execute(input, {
+            ...this.context,
+            callId: baseRecord.id,
+            toolCallId: baseRecord.id,
+            taskId: baseRecord.taskId,
+            segmentId: baseRecord.segmentId,
+            attempt,
+            maxAttempts: retryPolicy.maxAttempts,
+            deadline: this.deadline,
+            abortSignal,
+            idempotencyKey: options.idempotencyKey ?? "",
+            metadata: options.metadata ?? null
+          }),
+          abortSignal
+        );
+        const validatedOutput = validateToolOutput(definition, rawOutput);
+        if (!validatedOutput.ok) {
+          throw Object.assign(new Error(validatedOutput.message), {
+            code: validatedOutput.code
+          });
+        }
+        const normalizedOutput = normalizeOutput(validatedOutput.value);
+        if (!isJsonSerializable(normalizedOutput)) {
+          throw Object.assign(
+            new Error("工具输出必须是可序列化的 JSON 值。"),
+            { code: "INVALID_TOOL_OUTPUT" }
           );
-        const normalizedOutput =
-          normalizeOutput(
-            await runWithAbortAndTimeout(
-              execution,
-              {
-                abortSignal,
-                timeoutMs
-              }
-            )
-          );
+        }
 
         if (normalizedOutput.ok === false) {
-          const classified =
-            classifyToolError(
-              normalizedOutput,
-              {
-                abortSignal,
-                retryable:
-                  normalizedOutput
-                    .error
-                    ?.retryable
-              }
-            );
+          const classified = classifyToolError(normalizedOutput, {
+            abortSignal
+          });
           const output = {
             ...normalizedOutput,
             error: {
               ...normalizedOutput.error,
-              code:
-                classified.code,
-              type:
-                classified.type,
-              message:
-                classified.message,
-              retryable:
-                classified.retryable
+              code: classified.code,
+              type: classified.type,
+              category: categoryForType(classified.type),
+              message: classified.message,
+              retryable: classified.retryable
             }
           };
 
-          if (
-            shouldRetryToolError(
-              classified,
-              retryPolicy,
-              attempt
-            )
-          ) {
-            lastFailure =
-              output.error;
+          if (shouldRetryToolError(classified, retryPolicy, attempt)) {
+            lastFailure = output.error;
+            this.budget.noteRetry();
             this.emit({
               ...baseRecord,
               status: "retrying",
               startedAt,
               attempt,
-              maxAttempts:
-                retryPolicy.maxAttempts,
-              lastError:
-                output.error,
-              durationMs: Math.max(
-                1,
-                Date.now() - startedAt
-              )
+              maxAttempts: retryPolicy.maxAttempts,
+              lastError: output.error,
+              durationMs: Math.max(1, Date.now() - startedAt)
             });
-            await wait(
-              retryPolicy.backoffMs *
-                attempt,
-              abortSignal
-            );
+            await wait(retryPolicy.backoffMs * attempt, abortSignal);
             continue;
           }
 
-          const captured =
-            this.captureFailure(
-              output,
-              {
-                toolName:
-                  definition.name,
-                cancelled:
-                  classified.type ===
-                  TOOL_ERROR_TYPES
-                    .CANCELLED
-              }
-            );
-          const endedAt = Date.now();
-
-          this.emit({
-            ...baseRecord,
-            status:
-              classified.type ===
-              TOOL_ERROR_TYPES
-                .CANCELLED
-                ? "cancelled"
-                : "failed",
-            output: captured.value,
-            result: captured.result,
-            meta: captured.meta,
+          return this.finishExecutionFailure(
+            baseRecord,
+            output,
             startedAt,
-            endedAt,
-            durationMs: Math.max(
-              1,
-              endedAt - startedAt
-            ),
             attempt,
-            maxAttempts:
-              retryPolicy.maxAttempts,
-            lastError:
-              output.error
-          });
-
-          return output;
+            retryPolicy.maxAttempts,
+            classified.type === TOOL_ERROR_TYPES.CANCELLED
+          );
         }
 
-        const captured =
-          this.resultStore
-            ? this.resultStore.capture(
-                normalizedOutput,
-                {
-                  toolName:
-                    definition.name
-                }
-              )
-            : {
-                value:
-                  normalizedOutput,
-                result: {
-                  status: "success",
-                  summary:
-                    `${definition.title ?? definition.name}执行完成`,
-                  preview: "",
-                  data:
-                    normalizedOutput,
-                  truncated: false,
-                  originalBytes: 0,
-                  storedBytes: 0,
-                  clipped: false
-                },
-                meta: {
-                  outputBytes: 0,
-                  storedBytes: 0,
-                  truncated: false,
-                  clipped: false
-                }
-              };
+        const captured = this.resultStore
+          ? this.resultStore.capture(normalizedOutput, {
+              toolName: definition.name,
+              callId: baseRecord.id,
+              taskId: baseRecord.taskId,
+              segmentId: baseRecord.segmentId
+            })
+          : {
+              value: normalizedOutput,
+              result: {
+                status: "success",
+                summary: `${definition.title ?? definition.name}执行完成`,
+                preview: "",
+                data: normalizedOutput,
+                truncated: false,
+                originalBytes: 0,
+                storedBytes: 0,
+                clipped: false
+              },
+              meta: {
+                outputBytes: 0,
+                storedBytes: 0,
+                truncated: false,
+                clipped: false
+              }
+            };
         const endedAt = Date.now();
+        this.budget.noteOutput(captured.value);
 
-        this.context.planStore
-          ?.noteToolExecution?.(
-            definition.name
-          );
+        try {
+          await this.onExecutionComplete?.({
+            definition,
+            input,
+            output: captured.value,
+            callId: baseRecord.id
+          });
+        } catch (error) {
+          console.warn("工具完成回调执行失败：", error);
+        }
 
         this.emit({
           ...baseRecord,
           status: "completed",
           output: captured.value,
           result: captured.result,
-          meta: captured.meta,
+          meta: { ...captured.meta, budget: this.budget.snapshot() },
           startedAt,
           endedAt,
-          durationMs: Math.max(
-            1,
-            endedAt - startedAt
-          ),
+          durationMs: Math.max(1, endedAt - startedAt),
           attempt,
-          maxAttempts:
-            retryPolicy.maxAttempts,
-          lastError:
-            lastFailure
+          maxAttempts: retryPolicy.maxAttempts,
+          lastError: lastFailure
         });
-
         return captured.value;
       } catch (error) {
-        const classified =
-          classifyToolError(
-            error,
-            { abortSignal }
-          );
-        const cancelled =
-          classified.type ===
-          TOOL_ERROR_TYPES.CANCELLED;
-        const output = {
-          ok: false,
-          error: {
-            code:
-              classified.code,
-            type:
-              classified.type,
-            message: cancelled
-              ? "工具调用已由用户取消。"
-              : errorMessage(error),
-            retryable:
-              classified.retryable
-          }
-        };
+        const classified = classifyToolError(error, { abortSignal });
+        const output = createRuntimeError(
+          classified.code,
+          classified.type === TOOL_ERROR_TYPES.CANCELLED
+            ? "工具调用已由用户取消。"
+            : errorMessage(error),
+          classified.retryable,
+          classified.type,
+          categoryForType(classified.type)
+        );
 
-        if (
-          shouldRetryToolError(
-            classified,
-            retryPolicy,
-            attempt
-          )
-        ) {
+        if (shouldRetryToolError(classified, retryPolicy, attempt)) {
           lastFailure = output.error;
+          this.budget.noteRetry();
           this.emit({
             ...baseRecord,
             status: "retrying",
             startedAt,
             attempt,
-            maxAttempts:
-              retryPolicy.maxAttempts,
-            lastError:
-              output.error,
-            durationMs: Math.max(
-              1,
-              Date.now() - startedAt
-            )
+            maxAttempts: retryPolicy.maxAttempts,
+            lastError: output.error,
+            durationMs: Math.max(1, Date.now() - startedAt)
           });
-          await wait(
-            retryPolicy.backoffMs *
-              attempt,
-            abortSignal
-          );
+          await wait(retryPolicy.backoffMs * attempt, abortSignal);
           continue;
         }
 
-        const captured =
-          this.captureFailure(
-            output,
-            {
-              toolName:
-                definition.name,
-              cancelled
-            }
-          );
-        const endedAt = Date.now();
-
-        this.emit({
-          ...baseRecord,
-          status: cancelled
-            ? "cancelled"
-            : "failed",
-          output: captured.value,
-          result: captured.result,
-          meta: captured.meta,
+        return this.finishExecutionFailure(
+          baseRecord,
+          output,
           startedAt,
-          endedAt,
-          durationMs: Math.max(
-            1,
-            endedAt - startedAt
-          ),
           attempt,
-          maxAttempts:
-            retryPolicy.maxAttempts,
-          lastError:
-            output.error
-        });
-
-        return output;
+          retryPolicy.maxAttempts,
+          classified.type === TOOL_ERROR_TYPES.CANCELLED
+        );
       }
     }
 
-    return createRuntimeError(
-      "TOOL_EXECUTION_FAILED",
-      "工具执行失败。"
-    );
+    return createRuntimeError("TOOL_EXECUTION_FAILED", "工具执行失败。");
   }
 
-  buildToolSet(definitions) {
-    return Object.fromEntries(
-      definitions.map((definition) => [
-        definition.name,
-        tool({
-          description:
-            definition.description,
-          inputSchema:
-            definition.inputSchema,
-          strict:
-            definition.strict ?? false,
-          execute: (input, options) =>
-            this.execute(
-              definition,
-              input,
-              options
-            )
-        })
-      ])
-    );
+  finishExecutionFailure(
+    baseRecord,
+    output,
+    startedAt,
+    attempt,
+    maxAttempts,
+    cancelled
+  ) {
+    this.budget.noteOutput(output);
+    const captured = this.captureFailure(output, {
+      toolName: baseRecord.name,
+      cancelled,
+      callId: baseRecord.id,
+      taskId: baseRecord.taskId,
+      segmentId: baseRecord.segmentId
+    });
+    const endedAt = Date.now();
+    this.emit({
+      ...baseRecord,
+      status: cancelled ? "cancelled" : "failed",
+      output: captured.value,
+      result: captured.result,
+      meta: { ...captured.meta, budget: this.budget.snapshot() },
+      startedAt,
+      endedAt,
+      durationMs: Math.max(1, endedAt - startedAt),
+      attempt,
+      maxAttempts,
+      lastError: output.error
+    });
+    return output;
   }
 
   getRecords() {
-    return this.auditLog.list();
+    return this.eventStore.projectRecords();
+  }
+
+  getEvents() {
+    return this.eventStore.list();
+  }
+
+  getBudget() {
+    return this.budget.snapshot();
   }
 
   getCallCount() {
-    return this.callCount;
+    return this.budget.requestCount;
   }
 }

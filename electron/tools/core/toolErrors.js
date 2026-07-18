@@ -10,6 +10,10 @@ export const TOOL_ERROR_TYPES = Object.freeze({
   CANCELLED: "CANCELLED",
   RESULT_TOO_LARGE:
     "RESULT_TOO_LARGE",
+  CONFLICT: "CONFLICT",
+  RATE_LIMITED: "RATE_LIMITED",
+  POLICY_DENIED: "POLICY_DENIED",
+  INVALID_OUTPUT: "INVALID_OUTPUT",
   EXECUTION_FAILED:
     "EXECUTION_FAILED"
 });
@@ -47,6 +51,33 @@ const INVALID_CODES = new Set([
   "PLAN_STEP_REQUIRED"
 ]);
 
+const POLICY_CODES = new Set([
+  "PATH_OUTSIDE_WORKSPACE",
+  "SENSITIVE_PATH_BLOCKED",
+  "POLICY_DENIED",
+  "APPROVAL_REQUIRED",
+  "ASK_USER_ALREADY_ANSWERED",
+  "ASK_USER_MUST_ADVANCE",
+  "ASK_USER_LIMIT"
+]);
+
+const CONFLICT_CODES = new Set([
+  "EEXIST",
+  "CONFLICT",
+  "VERSION_CONFLICT"
+]);
+
+const RATE_LIMIT_CODES = new Set([
+  "RATE_LIMITED",
+  "RATE_LIMIT",
+  "TOO_MANY_REQUESTS"
+]);
+
+const INVALID_OUTPUT_CODES = new Set([
+  "INVALID_TOOL_OUTPUT",
+  "NON_SERIALIZABLE_OUTPUT"
+]);
+
 function messageOf(value) {
   return String(
     value?.error?.message ??
@@ -72,8 +103,12 @@ export function classifyToolError(
   } = {}
 ) {
   const code = codeOf(value);
+  const abortedForTimeout = [
+    "TOOL_TIMEOUT",
+    "TIMEOUT"
+  ].includes(String(abortSignal?.reason?.code ?? ""));
   const cancelled = Boolean(
-    abortSignal?.aborted ||
+    (abortSignal?.aborted && !abortedForTimeout) ||
     value?.name === "AbortError" ||
     [
       "ABORT_ERR",
@@ -88,12 +123,17 @@ export function classifyToolError(
   if (cancelled) {
     type = TOOL_ERROR_TYPES.CANCELLED;
   } else if (
+    abortedForTimeout ||
     [
       "TOOL_TIMEOUT",
       "TIMEOUT"
     ].includes(code)
   ) {
     type = TOOL_ERROR_TYPES.TIMEOUT;
+  } else if (
+    POLICY_CODES.has(code)
+  ) {
+    type = TOOL_ERROR_TYPES.POLICY_DENIED;
   } else if (
     PERMISSION_CODES.has(code)
   ) {
@@ -110,6 +150,18 @@ export function classifyToolError(
     type =
       TOOL_ERROR_TYPES
         .INVALID_ARGUMENTS;
+  } else if (
+    INVALID_OUTPUT_CODES.has(code)
+  ) {
+    type = TOOL_ERROR_TYPES.INVALID_OUTPUT;
+  } else if (
+    CONFLICT_CODES.has(code)
+  ) {
+    type = TOOL_ERROR_TYPES.CONFLICT;
+  } else if (
+    RATE_LIMIT_CODES.has(code)
+  ) {
+    type = TOOL_ERROR_TYPES.RATE_LIMITED;
   } else if (
     [
       "RESULT_TOO_LARGE",
@@ -134,15 +186,16 @@ export function classifyToolError(
   const explicitlyRetryable =
     typeof retryable === "boolean"
       ? retryable
-      : typeof value?.error?.retryable === "boolean"
-        ? value.error.retryable
-        : inferredRetryable;
+      : inferredRetryable;
   const retryableType = ![
     TOOL_ERROR_TYPES.CANCELLED,
     TOOL_ERROR_TYPES.PERMISSION_DENIED,
     TOOL_ERROR_TYPES.INVALID_ARGUMENTS,
     TOOL_ERROR_TYPES.NOT_FOUND,
     TOOL_ERROR_TYPES.RESULT_TOO_LARGE,
+    TOOL_ERROR_TYPES.POLICY_DENIED,
+    TOOL_ERROR_TYPES.INVALID_OUTPUT,
+    TOOL_ERROR_TYPES.CONFLICT,
     TOOL_ERROR_TYPES.TIMEOUT
   ].includes(type);
 
@@ -153,6 +206,19 @@ export function classifyToolError(
         ? "CANCELLED_BY_USER"
         : "TOOL_EXECUTION_FAILED"),
     type,
+    category: {
+      [TOOL_ERROR_TYPES.INVALID_ARGUMENTS]: "invalid_input",
+      [TOOL_ERROR_TYPES.INVALID_OUTPUT]: "invalid_output",
+      [TOOL_ERROR_TYPES.PERMISSION_DENIED]: "permission_denied",
+      [TOOL_ERROR_TYPES.POLICY_DENIED]: "policy_denied",
+      [TOOL_ERROR_TYPES.NOT_FOUND]: "not_found",
+      [TOOL_ERROR_TYPES.CONFLICT]: "conflict",
+      [TOOL_ERROR_TYPES.TIMEOUT]: "timeout",
+      [TOOL_ERROR_TYPES.RATE_LIMITED]: "rate_limited",
+      [TOOL_ERROR_TYPES.TEMPORARY_FAILURE]: "unavailable",
+      [TOOL_ERROR_TYPES.CANCELLED]: "cancelled",
+      [TOOL_ERROR_TYPES.RESULT_TOO_LARGE]: "invalid_output"
+    }[type] ?? "internal",
     message: messageOf(value),
     retryable:
       retryableType && explicitlyRetryable
@@ -173,6 +239,9 @@ export function shouldRetryToolError(
       TOOL_ERROR_TYPES.INVALID_ARGUMENTS,
       TOOL_ERROR_TYPES.NOT_FOUND,
       TOOL_ERROR_TYPES.RESULT_TOO_LARGE,
+      TOOL_ERROR_TYPES.POLICY_DENIED,
+      TOOL_ERROR_TYPES.INVALID_OUTPUT,
+      TOOL_ERROR_TYPES.CONFLICT,
       TOOL_ERROR_TYPES.TIMEOUT
     ].includes(classified.type)
   ) {

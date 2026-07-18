@@ -135,8 +135,9 @@ export const DEFAULT_SETTINGS = {
     },
     runtime: {
       maxSteps: 6,
+      maxSegments: 6,
+      maxNoProgressSegments: 2,
       maxFinalizationAttempts: 2,
-      maxAskUserCalls: 3,
       maxToolCalls: 12,
       maxToolRetries: 1,
       runTimeoutMs: 120000,
@@ -185,7 +186,6 @@ export const DEFAULT_SETTINGS = {
       compute_file_hash: true,
       report_progress: true,
       update_plan: true,
-      ask_user: true,
       read_tool_result: true
     }
   },

@@ -25,7 +25,7 @@ describe("automatic plan dashboard", () => {
     assert.match(source, /setPlanDismissed\(false\)/u);
   });
 
-  it("renders completed, in-progress, pending and blocked plan states", () => {
+  it("renders completed, in-progress, pending, blocked and needs-input states", () => {
     const source = read(
       "../../src/Conversation/components/MessageList.jsx"
     );
@@ -36,9 +36,10 @@ describe("automatic plan dashboard", () => {
     assert.match(source, /is-\$\{item\.status\}/u);
     assert.match(source, /item\.status === "completed"/u);
     assert.match(source, /item\.status === "in_progress"/u);
-    assert.match(source, /item\.status === "blocked"/u);
+    assert.match(source, /\["blocked", "needs_input"\]\.includes\(item\.status\)/u);
     assert.match(css, /conversation-plan-dashboard__progress/u);
     assert.match(css, /is-in_progress/u);
+    assert.match(css, /is-needs_input/u);
   });
 
   it("removes duplicate update_plan tool rows from the public timeline", () => {

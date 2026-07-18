@@ -161,6 +161,10 @@ export function normalizePlanStatus(status) {
     return "completed";
   }
 
+  if (status === "needs_input") {
+    return "needs_input";
+  }
+
   if (["blocked", "error", "failed"].includes(status)) {
     return "blocked";
   }
@@ -196,7 +200,8 @@ export function getPlanStats(plan = []) {
     (item) => item.status === "in_progress"
   ) ?? null;
   const blocked = normalizedPlan.some(
-    (item) => item.status === "blocked"
+    (item) =>
+      ["blocked", "needs_input"].includes(item.status)
   );
   const settled = normalizedPlan.filter(
     (item) =>
@@ -204,7 +209,8 @@ export function getPlanStats(plan = []) {
         "completed",
         "skipped",
         "cancelled",
-        "superseded"
+        "superseded",
+        "needs_input"
       ].includes(item.status)
   ).length;
 
@@ -226,6 +232,10 @@ const STOP_REASON_LABELS = Object.freeze({
   completed: "已完成",
   waiting_for_user: "等待你的回答",
   cancelled_by_user: "已取消",
+  needs_input: "需要补充信息",
+  blocked: "任务被阻塞",
+  agent_segment_limit: "达到任务分段上限",
+  no_progress: "连续分段没有新进展",
   tool_call_limit: "达到工具调用上限",
   agent_step_limit: "达到任务步骤上限",
   agent_run_timeout: "任务运行超时",

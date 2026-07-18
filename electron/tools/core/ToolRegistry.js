@@ -12,6 +12,12 @@ const TOOL_SIDE_EFFECTS = new Set([
   "external"
 ]);
 
+const TOOL_IDEMPOTENCY_MODES = new Set([
+  "none",
+  "natural",
+  "required"
+]);
+
 function cloneMetadata(value) {
   return structuredClone(value);
 }
@@ -19,6 +25,7 @@ function cloneMetadata(value) {
 function copyDefinition(definition) {
   return {
     ...definition,
+    toolsets: [...(definition.toolsets ?? [])],
     retryPolicy: {
       ...definition.retryPolicy,
       retryOn: [
@@ -133,10 +140,43 @@ function normalizeDefinition(
         : sideEffect === "none"
           ? "none"
           : "low";
+  const version = Math.max(
+    1,
+    Math.round(Number(definition.version) || 1)
+  );
+  const source =
+    String(
+      definition.source ??
+      defaults.source ??
+      "builtin"
+    ).trim() || "builtin";
+  const toolsets = [
+    ...new Set(
+      (
+        definition.toolsets ??
+        defaults.toolsets ??
+        [definition.toolset ?? defaults.toolset]
+      )
+        .flat()
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+    )
+  ];
+  const idempotency = TOOL_IDEMPOTENCY_MODES.has(
+    definition.idempotency
+  )
+    ? definition.idempotency
+    : ["none", "read"].includes(sideEffect)
+      ? "natural"
+      : "none";
 
   return {
     ...definition,
     name,
+    version,
+    id:
+      String(definition.id ?? `${source}.${name}@${version}`).trim() ||
+      `${source}.${name}@${version}`,
     title:
       String(
         definition.title ?? name
@@ -145,14 +185,15 @@ function normalizeDefinition(
       String(
         definition.description ?? ""
       ).trim(),
-    source:
-      String(
-        definition.source ??
-        defaults.source ??
-        "builtin"
-      ).trim() || "builtin",
+    source,
+    toolsets,
     riskLevel,
     sideEffect,
+    idempotency,
+    concurrencyKey:
+      typeof definition.concurrencyKey === "function"
+        ? definition.concurrencyKey
+        : String(definition.concurrencyKey ?? "").trim() || null,
     countsTowardLimit:
       definition.countsTowardLimit !==
       false,
@@ -180,12 +221,18 @@ function normalizeDefinition(
 export class ToolRegistry {
   constructor() {
     this.definitions = new Map();
+    this.ids = new Set();
+    this.frozen = false;
   }
 
   register(
     definition,
     defaults = {}
   ) {
+    if (this.frozen) {
+      throw new Error("Tool registry is frozen.");
+    }
+
     const normalized =
       normalizeDefinition(
         definition,
@@ -202,10 +249,15 @@ export class ToolRegistry {
       );
     }
 
+    if (this.ids.has(normalized.id)) {
+      throw new Error(`Tool id already registered: ${normalized.id}`);
+    }
+
     this.definitions.set(
       normalized.name,
       normalized
     );
+    this.ids.add(normalized.id);
 
     return copyDefinition(normalized);
   }
@@ -247,15 +299,20 @@ export class ToolRegistry {
   manifest() {
     return this.list().map(
       (definition) => ({
+        id: definition.id,
         name: definition.name,
+        version: definition.version,
         title: definition.title,
         description:
           definition.description,
         source: definition.source,
+        toolsets: [...definition.toolsets],
         riskLevel:
           definition.riskLevel,
         sideEffect:
           definition.sideEffect,
+        idempotency:
+          definition.idempotency,
         countsTowardLimit:
           definition.countsTowardLimit,
         retryPolicy:
@@ -264,6 +321,55 @@ export class ToolRegistry {
           )
       })
     );
+  }
+
+  snapshot() {
+    return new ToolRegistrySnapshot(this.list());
+  }
+
+  freeze() {
+    this.frozen = true;
+    return this.snapshot();
+  }
+}
+
+export class ToolRegistrySnapshot {
+  #definitions;
+
+  constructor(definitions = []) {
+    this.#definitions = new Map(
+      definitions.map((definition) => [
+        definition.name,
+        copyDefinition(definition)
+      ])
+    );
+    Object.freeze(this);
+  }
+
+  get(name) {
+    const definition = this.#definitions.get(String(name ?? ""));
+    return definition ? copyDefinition(definition) : null;
+  }
+
+  list() {
+    return [...this.#definitions.values()].map(copyDefinition);
+  }
+
+  manifest() {
+    return this.list().map((definition) => ({
+      id: definition.id,
+      name: definition.name,
+      version: definition.version,
+      title: definition.title,
+      description: definition.description,
+      source: definition.source,
+      toolsets: [...definition.toolsets],
+      riskLevel: definition.riskLevel,
+      sideEffect: definition.sideEffect,
+      idempotency: definition.idempotency,
+      countsTowardLimit: definition.countsTowardLimit,
+      retryPolicy: cloneMetadata(definition.retryPolicy)
+    }));
   }
 }
 

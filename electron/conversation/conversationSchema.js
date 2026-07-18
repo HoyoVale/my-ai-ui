@@ -244,6 +244,7 @@ function sanitizePlanItem(
     "in_progress",
     "completed",
     "blocked",
+    "needs_input",
     "skipped",
     "cancelled",
     "superseded"

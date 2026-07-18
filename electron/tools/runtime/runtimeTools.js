@@ -19,6 +19,7 @@ export function createRuntimeToolDefinitions({
   getAgentStatus = () => ({
     state: "unknown"
   }),
+  getPlan = () => [],
   settings = {}
 } = {}) {
   const toolSettings =
@@ -47,10 +48,7 @@ export function createRuntimeToolDefinitions({
       description:
         "Get the current agent run state, selected model, context limit, enabled safe tool profile, and current plan without exposing prompts or credentials.",
       inputSchema: z.object({}),
-      async execute(
-        _input,
-        context
-      ) {
+      async execute() {
         const status =
           getAgentStatus();
 
@@ -76,8 +74,7 @@ export function createRuntimeToolDefinitions({
                 }
               : null,
           plan:
-            context.planStore
-              ?.get() ?? [],
+            getPlan() ?? [],
           toolProfile:
             resolveToolProfileId(
               toolSettings

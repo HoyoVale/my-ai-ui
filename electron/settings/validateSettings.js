@@ -938,17 +938,23 @@ function sanitizeToolSettings(
         1,
         12
       ),
+      maxSegments: integerValue(
+        runtime.maxSegments,
+        defaults.runtime.maxSegments,
+        1,
+        12
+      ),
+      maxNoProgressSegments: integerValue(
+        runtime.maxNoProgressSegments,
+        defaults.runtime.maxNoProgressSegments,
+        1,
+        4
+      ),
       maxFinalizationAttempts: integerValue(
         runtime.maxFinalizationAttempts,
         defaults.runtime.maxFinalizationAttempts,
         1,
         3
-      ),
-      maxAskUserCalls: integerValue(
-        runtime.maxAskUserCalls,
-        defaults.runtime.maxAskUserCalls,
-        1,
-        10
       ),
       maxToolCalls: integerValue(
         runtime.maxToolCalls,

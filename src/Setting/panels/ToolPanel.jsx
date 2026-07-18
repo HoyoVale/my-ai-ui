@@ -353,8 +353,8 @@ export function ToolPanel({
                 <h3>Tool Runtime</h3>
 
                 <SettingRow
-                  title="最大 Agent 步数"
-                  description="限制模型与工具结果之间的循环次数。"
+                  title="单段最大步骤"
+                  description="每个 Segment 内模型与工具结果之间的循环上限；未完成时可自动进入下一段。"
                 >
                   <Slider
                     value={settings.runtime.maxSteps}
@@ -363,6 +363,38 @@ export function ToolPanel({
                     unit=" 步"
                     onChange={(maxSteps) => {
                       updateRuntime({ maxSteps });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="最大任务分段"
+                  description="限制一个长期任务自动续跑的 Segment 总数。"
+                >
+                  <Slider
+                    value={settings.runtime.maxSegments}
+                    min={1}
+                    max={12}
+                    unit=" 段"
+                    onChange={(maxSegments) => {
+                      updateRuntime({ maxSegments });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="无进展分段限制"
+                  description="连续多个 Segment 没有新计划进展或新工具结果时停止，避免空转。"
+                >
+                  <Slider
+                    value={settings.runtime.maxNoProgressSegments}
+                    min={1}
+                    max={4}
+                    unit=" 段"
+                    onChange={(maxNoProgressSegments) => {
+                      updateRuntime({
+                        maxNoProgressSegments
+                      });
                     }}
                   />
                 </SettingRow>
@@ -378,21 +410,6 @@ export function ToolPanel({
                     unit=" 次"
                     onChange={(maxFinalizationAttempts) => {
                       updateRuntime({ maxFinalizationAttempts });
-                    }}
-                  />
-                </SettingRow>
-
-                <SettingRow
-                  title="用户问题上限"
-                  description="限制单个任务中 ask_user 可提出的问题数量，并阻止回答后立即连续追问。"
-                >
-                  <Slider
-                    value={settings.runtime.maxAskUserCalls}
-                    min={1}
-                    max={10}
-                    unit=" 个"
-                    onChange={(maxAskUserCalls) => {
-                      updateRuntime({ maxAskUserCalls });
                     }}
                   />
                 </SettingRow>
