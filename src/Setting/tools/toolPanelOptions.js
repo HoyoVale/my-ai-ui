@@ -119,6 +119,12 @@ export const TOOLSET_OPTIONS = [
         title: "询问用户",
         description:
           "在缺少必要信息时暂停工具循环，并显示结构化问题。"
+      },
+      {
+        name: "read_tool_result",
+        title: "读取工具结果",
+        description:
+          "分页读取当前 Agent Run 中被截断的大型工具结果。"
       }
     ]
   }

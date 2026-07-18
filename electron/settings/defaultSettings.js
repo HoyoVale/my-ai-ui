@@ -172,7 +172,8 @@ export const DEFAULT_SETTINGS = {
       detect_project: true,
       compute_file_hash: true,
       update_plan: true,
-      ask_user: true
+      ask_user: true,
+      read_tool_result: true
     }
   },
 

@@ -1,6 +1,5 @@
 export function SettingsSection({
   title,
-  description,
   children
 }) {
   return (
@@ -8,9 +7,6 @@ export function SettingsSection({
       <header className="settings-section__header">
         <h2>{title}</h2>
 
-        {description && (
-          <p>{description}</p>
-        )}
       </header>
 
       <div className="settings-section__body">
@@ -22,7 +18,6 @@ export function SettingsSection({
 
 export function SettingRow({
   title,
-  description,
   disabled = false,
   children
 }) {
@@ -41,11 +36,6 @@ export function SettingRow({
           {title}
         </div>
 
-        {description && (
-          <div className="settings-row__description">
-            {description}
-          </div>
-        )}
       </div>
 
       <div className="settings-row__control">

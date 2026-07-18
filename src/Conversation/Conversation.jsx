@@ -36,6 +36,10 @@ import {
 } from "../shared/hooks/useResolvedTheme.js";
 
 import {
+  useAgentStatus
+} from "../shared/hooks/useAgentStatus.js";
+
+import {
   getWindowTypographyStyle
 } from "../shared/typography.js";
 
@@ -57,6 +61,10 @@ export default function Conversation() {
 
   const history =
     useConversationHistory();
+
+  const {
+    status: agentStatus
+  } = useAgentStatus();
 
   const [
     sidebarCollapsed,
@@ -274,6 +282,15 @@ export default function Conversation() {
             }
             conversation={
               history.current
+            }
+            liveActivity={
+              agentStatus.conversationId ===
+                history.current?.id &&
+              ["running", "stopping"].includes(
+                agentStatus.state
+              )
+                ? agentStatus
+                : null
             }
             busy={history.busy}
             onOpenInput={openInput}

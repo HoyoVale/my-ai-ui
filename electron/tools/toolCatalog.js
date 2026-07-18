@@ -14,7 +14,8 @@ export const SAFE_TOOL_CATALOG = Object.freeze([
   { name: "detect_project", title: "Detect project", toolset: "workspace.read" },
   { name: "compute_file_hash", title: "Compute file hash", toolset: "workspace.read" },
   { name: "update_plan", title: "Update task plan", toolset: "agent.internal" },
-  { name: "ask_user", title: "Ask user", toolset: "agent.internal" }
+  { name: "ask_user", title: "Ask user", toolset: "agent.internal" },
+  { name: "read_tool_result", title: "Read tool result", toolset: "agent.internal" }
 ]);
 
 export const TOOLSET_IDS = Object.freeze([

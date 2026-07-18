@@ -471,3 +471,13 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - [第一版低风险工具系统](docs/SAFE_TOOLS.md)
 
 工具仅提供时间、计算、运行状态、任务计划和授权工作区只读能力。普通设置通过 `Chat / Coding` 两种工作模式与工作区完成配置；开启 `Setting → General → Developer mode` 后，才显示 Tool Runtime、Toolset、单工具 description、三态覆盖和诊断信息。Conversation 使用轻量工具活动卡片和持久化计划展示工具过程；运行环境注入位于 `Setting → AI → Context`。Shell、写文件、任意网络请求、浏览器自动化和 MCP 尚未开放。
+
+### Tool Runtime 1.2
+
+当前工具运行时进一步支持：
+
+- Conversation 实时工具活动与计划状态；
+- `ask_user` 暂停后由下一条用户消息继续原任务；
+- 大型工具结果自动保存并通过 `read_tool_result` 分页读取；
+- 标准化 Agent 停止原因；
+- Setting 设置项不再显示标题下方的重复说明文字，开发者工具 description 保留。

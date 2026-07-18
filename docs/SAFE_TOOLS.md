@@ -162,3 +162,51 @@ XIXI_WORKSPACE_ROOTS=C:\Projects\one;D:\Projects\two
 - 读取敏感凭据；
 - 逃逸授权工作区；
 - 解除外部资源安全策略。
+
+## Tool Runtime 1.2
+
+### 实时工具活动
+
+Agent 运行期间，主进程会持续广播当前计划和工具调用状态。Conversation 会直接显示：
+
+- 正在思考
+- 正在调用的工具
+- 已完成或失败的工具
+- 当前任务计划
+
+工具执行结束后，活动会随 Assistant 消息持久化；普通模式保持简洁，开发者模式可查看内部名称、输入、输出和停止原因。
+
+### 大型工具结果
+
+工具结果超过行内阈值时，不再把完整内容一次性发送给模型。`ToolResultStore` 会：
+
+1. 保存当前 Agent Run 内的完整或受限结果；
+2. 返回预览、`resultId` 和大小信息；
+3. 允许模型调用 `read_tool_result` 分页继续读取。
+
+结果存储仅属于当前 Agent Run，结束后不会作为长期文件保存。
+
+### 可恢复的用户询问
+
+`ask_user` 会将 Assistant 消息标记为等待用户，并保存当前计划。用户发送下一条消息后：
+
+1. 原问题被标记为已回答；
+2. 新一轮模型请求会收到“继续原任务”的运行指令；
+3. 原任务计划会作为初始计划继续使用。
+
+### 停止原因
+
+Assistant 消息可以保存标准化停止原因，例如：
+
+- `completed`
+- `user_input_required`
+- `step_limit`
+- `tool_call_limit`
+- `run_timeout`
+- `tool_timeout`
+- `repeated_call`
+- `output_limit`
+- `content_filter`
+- `aborted`
+
+普通模式不展示内部代码；开发者模式可在工具活动详情中查看。

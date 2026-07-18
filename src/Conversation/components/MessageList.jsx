@@ -122,6 +122,7 @@ function stringifyToolValue(
 export function ConversationMessageList({
   loading,
   conversation,
+  liveActivity = null,
   busy = false,
   developerMode = false,
   toolDetailLevel = "compact",
@@ -308,6 +309,22 @@ export function ConversationMessageList({
                         </span>
                       )}
 
+                      {isAssistant &&
+                        message.pendingQuestion
+                          ?.status === "waiting" && (
+                        <span className="conversation-message__status-chip is-waiting">
+                          等待回复
+                        </span>
+                      )}
+
+                      {isAssistant &&
+                        message.pendingQuestion
+                          ?.status === "answered" && (
+                        <span className="conversation-message__status-chip">
+                          已继续
+                        </span>
+                      )}
+
                       {message.status ===
                         "aborted" && (
                         <span className="conversation-message__status-chip">
@@ -404,6 +421,14 @@ export function ConversationMessageList({
               </article>
             );
           }
+        )}
+
+        {liveActivity && (
+          <LiveAgentActivity
+            activity={liveActivity}
+            developerMode={developerMode}
+            detailLevel={toolDetailLevel}
+          />
         )}
 
         <div ref={endRef} />
@@ -524,6 +549,96 @@ function AgentPlan({ plan }) {
   );
 }
 
+function LiveAgentActivity({
+  activity,
+  developerMode,
+  detailLevel
+}) {
+  const toolCalls =
+    Array.isArray(
+      activity.activeToolCalls
+    )
+      ? activity.activeToolCalls
+      : [];
+  const plan =
+    Array.isArray(activity.plan)
+      ? activity.plan
+      : [];
+  const showDetails =
+    developerMode ||
+    detailLevel === "detailed";
+
+  return (
+    <article
+      className="conversation-message conversation-message--assistant conversation-message--live"
+      data-testid="conversation-live-agent-activity"
+    >
+      <div className="conversation-message__content">
+        <div className="conversation-agent-activity is-live">
+          <AgentPlan plan={plan} />
+
+          <div className="conversation-live-status">
+            <span className="conversation-live-status__pulse" />
+            <strong>
+              {activity.state === "stopping"
+                ? "正在停止…"
+                : toolCalls.length > 0
+                  ? "正在使用工具…"
+                  : "正在思考…"}
+            </strong>
+          </div>
+
+          {toolCalls.length > 0 && (
+            <div className="conversation-tool-list conversation-tool-list--live">
+              {toolCalls.map((toolCall, index) => {
+                const title =
+                  toolTitle(toolCall);
+                const description =
+                  describeToolCall(
+                    toolCall
+                  );
+                const key =
+                  toolCall.id ??
+                  `${toolCall.name}-${index}`;
+
+                return (
+                  <div
+                    className="conversation-tool-row"
+                    key={key}
+                  >
+                    <span className={`conversation-tool-mark is-${toolCall.status ?? "running"}`}>
+                      {toolStatusMark(
+                        toolCall.status
+                      )}
+                    </span>
+                    <div>
+                      <strong>{title}</strong>
+                      {developerMode && (
+                        <code>{toolCall.name}</code>
+                      )}
+                      {showDetails && description && (
+                        <small>{description}</small>
+                      )}
+                    </div>
+                    {showDetails &&
+                      toolCall.durationMs > 0 && (
+                      <em>
+                        {formatDuration(
+                          toolCall.durationMs
+                        )}
+                      </em>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function AssistantActivity({
   message,
   developerMode,
@@ -548,6 +663,10 @@ function AssistantActivity({
 
   const duration =
     Number(message.durationMs) || 0;
+  const stopReason =
+    String(
+      message.stopReason ?? ""
+    );
 
   if (
     !duration &&
@@ -658,6 +777,12 @@ function AssistantActivity({
                 }
               )}
             </div>
+
+            {developerMode && stopReason && (
+              <div className="conversation-stop-reason">
+                Stop reason · {stopReason}
+              </div>
+            )}
 
             {reasoning && (
               <details className="conversation-reasoning">

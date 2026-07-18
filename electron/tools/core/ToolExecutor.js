@@ -75,7 +75,8 @@ export class ToolExecutor {
     defaultTimeoutMs = 15000,
     maxToolCalls = 12,
     maxIdenticalCalls = 2,
-    runTimeoutMs = 120000
+    runTimeoutMs = 120000,
+    resultStore = null
   } = {}) {
     this.context = context;
     this.onRecord = onRecord;
@@ -87,6 +88,8 @@ export class ToolExecutor {
       maxIdenticalCalls;
     this.runTimeoutMs =
       runTimeoutMs;
+    this.resultStore =
+      resultStore;
     this.startedAt = Date.now();
     this.callCount = 0;
     this.signatures = new Map();
@@ -255,10 +258,32 @@ export class ToolExecutor {
             ])
           : execution;
 
-      const output =
+      const normalizedOutput =
         normalizeOutput(
           await timed
         );
+
+      const captured =
+        this.resultStore &&
+        normalizedOutput.ok !== false
+          ? this.resultStore.capture(
+              normalizedOutput,
+              {
+                toolName:
+                  definition.name
+              }
+            )
+          : {
+              value:
+                normalizedOutput,
+              meta: {
+                outputBytes: 0,
+                truncated: false
+              }
+            };
+
+      const output =
+        captured.value;
 
       const record = {
         id,
@@ -270,6 +295,8 @@ export class ToolExecutor {
             : "complete",
         input,
         output,
+        meta:
+          captured.meta,
         durationMs:
           Math.max(
             1,
@@ -347,5 +374,9 @@ export class ToolExecutor {
 
   getRecords() {
     return this.auditLog.list();
+  }
+
+  getCallCount() {
+    return this.callCount;
   }
 }

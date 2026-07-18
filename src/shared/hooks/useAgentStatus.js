@@ -6,8 +6,13 @@ import {
 const INITIAL_STATUS = {
   state: "idle",
   runId: null,
+  conversationId: null,
   startedAt: null,
-  lastError: null
+  lastError: null,
+  pendingQuestion: null,
+  stopReason: null,
+  plan: [],
+  activeToolCalls: []
 };
 
 export function useAgentStatus() {
@@ -61,6 +66,9 @@ export function useAgentStatus() {
       status.state ===
         "running" ||
       status.state ===
-        "stopping"
+        "stopping",
+    isWaitingForUser:
+      status.state ===
+        "waiting_for_user"
   };
 }

@@ -17,7 +17,7 @@ import {
 
 import {
   useAgentStatus
-} from "./hooks/useAgentStatus.js";
+} from "../shared/hooks/useAgentStatus.js";
 
 import {
   useInputWindowResize
@@ -51,7 +51,8 @@ export default function Input() {
 
   const {
     status,
-    isRunning
+    isRunning,
+    isWaitingForUser
   } = useAgentStatus();
 
   const inputSettings =
@@ -184,8 +185,10 @@ export default function Input() {
       placeholder={
         isRunning
           ? "正在生成回复…"
-          : inputSettings
-              .placeholder
+          : isWaitingForUser
+            ? "回答 Agent 的问题…"
+            : inputSettings
+                .placeholder
       }
       canSend={
         isRunning ||

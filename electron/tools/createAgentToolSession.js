@@ -3,6 +3,10 @@ import {
 } from "./core/ToolExecutor.js";
 
 import {
+  ToolResultStore
+} from "./core/ToolResultStore.js";
+
+import {
   RunPlanStore,
   createAgentToolDefinitions
 } from "./agent/agentTools.js";
@@ -28,10 +32,15 @@ export function createAgentToolSession({
   getAgentStatus = null,
   abortSignal = null,
   onRecord = null,
-  settings = {}
+  settings = {},
+  initialPlan = []
 } = {}) {
   const planStore =
-    new RunPlanStore();
+    new RunPlanStore(
+      initialPlan
+    );
+  const resultStore =
+    new ToolResultStore();
   const toolSettings =
     settings.tools ?? {};
   const workspaceSettings =
@@ -47,7 +56,9 @@ export function createAgentToolSession({
     ...createWorkspaceToolDefinitions(
       workspaceSettings
     ),
-    ...createAgentToolDefinitions()
+    ...createAgentToolDefinitions({
+      resultStore
+    })
   ];
 
   const enabledNames = new Set(
@@ -86,7 +97,8 @@ export function createAgentToolSession({
       runTimeoutMs:
         toolSettings.runtime
           ?.runTimeoutMs ??
-        120000
+        120000,
+      resultStore
     });
 
   return {
@@ -102,6 +114,10 @@ export function createAgentToolSession({
       planStore.get(),
     getPendingQuestion: () =>
       planStore
-        .getPendingQuestion()
+        .getPendingQuestion(),
+    getResultEntries: () =>
+      resultStore.list(),
+    getCallCount: () =>
+      executor.getCallCount()
   };
 }

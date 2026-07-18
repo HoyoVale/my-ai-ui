@@ -1,4 +1,4 @@
-const STORE_VERSION = 5;
+const STORE_VERSION = 6;
 
 const MESSAGE_ROLES =
   new Set([
@@ -10,6 +10,28 @@ const MESSAGE_STATUSES =
   new Set([
     "complete",
     "aborted"
+  ]);
+
+const STOP_REASONS =
+  new Set([
+    "completed",
+    "user_input_required",
+    "step_limit",
+    "tool_call_limit",
+    "run_timeout",
+    "tool_timeout",
+    "repeated_call",
+    "output_limit",
+    "content_filter",
+    "aborted",
+    "error",
+    "unknown"
+  ]);
+
+const PENDING_QUESTION_STATUSES =
+  new Set([
+    "waiting",
+    "answered"
   ]);
 
 function stringValue(
@@ -75,6 +97,93 @@ function jsonValue(
   }
 }
 
+function sanitizePendingQuestion(source) {
+  if (
+    !source ||
+    typeof source !== "object"
+  ) {
+    return null;
+  }
+
+  const question = stringValue(
+    source.question,
+    "",
+    1000
+  ).trim();
+
+  if (!question) {
+    return null;
+  }
+
+  const options =
+    Array.isArray(source.options)
+      ? source.options
+          .map((option, index) => {
+            if (
+              !option ||
+              typeof option !== "object"
+            ) {
+              return null;
+            }
+
+            const label = stringValue(
+              option.label,
+              "",
+              200
+            ).trim();
+
+            if (!label) {
+              return null;
+            }
+
+            return {
+              id:
+                stringValue(
+                  option.id,
+                  `option-${index + 1}`,
+                  80
+                ) || `option-${index + 1}`,
+              label
+            };
+          })
+          .filter(Boolean)
+          .slice(0, 6)
+      : [];
+
+  const status =
+    PENDING_QUESTION_STATUSES.has(
+      source.status
+    )
+      ? source.status
+      : "waiting";
+
+  const result = {
+    question,
+    reason: stringValue(
+      source.reason,
+      "",
+      500
+    ).trim(),
+    options,
+    status
+  };
+
+  if (status === "answered") {
+    result.answeredAt =
+      timestampValue(
+        source.answeredAt,
+        0
+      );
+    result.answerMessageId =
+      stringValue(
+        source.answerMessageId,
+        "",
+        100
+      );
+  }
+
+  return result;
+}
 
 function sanitizePlanItem(
   source,
@@ -165,6 +274,8 @@ function sanitizeToolCall(
       source.durationMs,
       0
     );
+  const meta =
+    jsonValue(source.meta);
 
   if (input !== undefined) {
     toolCall.input = input;
@@ -177,6 +288,10 @@ function sanitizeToolCall(
   if (durationMs > 0) {
     toolCall.durationMs =
       durationMs;
+  }
+
+  if (meta !== undefined) {
+    toolCall.meta = meta;
   }
 
   return toolCall;
@@ -313,6 +428,40 @@ export function sanitizeMessage(
 
     if (plan.length > 0) {
       message.plan = plan;
+    }
+
+    const stopReason =
+      STOP_REASONS.has(
+        source.stopReason
+      )
+        ? source.stopReason
+        : "";
+
+    if (stopReason) {
+      message.stopReason =
+        stopReason;
+    }
+
+    const pendingQuestion =
+      sanitizePendingQuestion(
+        source.pendingQuestion
+      );
+
+    if (pendingQuestion) {
+      message.pendingQuestion =
+        pendingQuestion;
+    }
+
+    const resumedFromMessageId =
+      stringValue(
+        source.resumedFromMessageId,
+        "",
+        100
+      );
+
+    if (resumedFromMessageId) {
+      message.resumedFromMessageId =
+        resumedFromMessageId;
     }
   }
 

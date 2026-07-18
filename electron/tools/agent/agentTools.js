@@ -3,8 +3,15 @@ import {
 } from "zod";
 
 export class RunPlanStore {
-  constructor() {
-    this.items = [];
+  constructor(
+    initialItems = []
+  ) {
+    this.items =
+      Array.isArray(initialItems)
+        ? structuredClone(
+            initialItems
+          )
+        : [];
     this.pendingQuestion = null;
   }
 
@@ -39,7 +46,9 @@ export class RunPlanStore {
   }
 }
 
-export function createAgentToolDefinitions() {
+export function createAgentToolDefinitions({
+  resultStore = null
+} = {}) {
   return [
     {
       name: "update_plan",
@@ -94,7 +103,7 @@ export function createAgentToolDefinitions() {
       name: "ask_user",
       title: "Ask user",
       description:
-        "Ask the user a necessary clarification question when the task cannot be completed safely or accurately without more information. Calling this tool ends the current tool loop; the user can answer in the next message.",
+        "Ask the user a necessary clarification question when the task cannot be completed safely or accurately without more information. Calling this tool pauses the task. The next user message resumes the same task plan.",
       inputSchema: z.object({
         question: z.string()
           .min(1)
@@ -131,6 +140,50 @@ export function createAgentToolDefinitions() {
                   input.options ?? []
               })
         };
+      }
+    },
+    {
+      name: "read_tool_result",
+      title: "Read tool result",
+      description:
+        "Read another chunk from a large tool result saved during the current Agent run. Use the resultId returned by a truncated tool result.",
+      inputSchema: z.object({
+        resultId: z.string()
+          .min(1)
+          .max(120),
+        offset: z.number()
+          .int()
+          .min(0)
+          .optional(),
+        limit: z.number()
+          .int()
+          .min(500)
+          .max(12000)
+          .optional()
+      }),
+      async execute(input) {
+        if (!resultStore) {
+          return {
+            ok: false,
+            error: {
+              code:
+                "TOOL_RESULT_STORE_UNAVAILABLE",
+              message:
+                "当前 Agent Run 没有可用的工具结果存储。",
+              retryable: false
+            }
+          };
+        }
+
+        return resultStore.read(
+          input.resultId,
+          {
+            offset:
+              input.offset ?? 0,
+            limit:
+              input.limit ?? 8000
+          }
+        );
       }
     }
   ];

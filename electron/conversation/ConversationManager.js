@@ -323,7 +323,10 @@ export class ConversationManager {
     durationMs = 0,
     reasoningSummary = "",
     toolCalls = [],
-    plan = []
+    plan = [],
+    stopReason = "",
+    pendingQuestion = null,
+    resumedFromMessageId = ""
   }) {
     const data =
       this.ensureLoaded();
@@ -371,7 +374,10 @@ export class ConversationManager {
         durationMs,
         reasoningSummary,
         toolCalls,
-        plan
+        plan,
+        stopReason,
+        pendingQuestion,
+        resumedFromMessageId
       }
     );
 
@@ -504,7 +510,10 @@ export class ConversationManager {
     durationMs = 0,
     reasoningSummary = "",
     toolCalls = [],
-    plan = []
+    plan = [],
+    stopReason = "",
+    pendingQuestion = null,
+    resumedFromMessageId = ""
   }) {
     const conversation =
       this.findMutableConversation(
@@ -558,6 +567,9 @@ export class ConversationManager {
     delete message.reasoningSummary;
     delete message.toolCalls;
     delete message.plan;
+    delete message.stopReason;
+    delete message.pendingQuestion;
+    delete message.resumedFromMessageId;
 
     this.applyAssistantMetadata(
       message,
@@ -565,7 +577,10 @@ export class ConversationManager {
         durationMs,
         reasoningSummary,
         toolCalls,
-        plan
+        plan,
+        stopReason,
+        pendingQuestion,
+        resumedFromMessageId
       }
     );
 
@@ -594,7 +609,10 @@ export class ConversationManager {
       durationMs = 0,
       reasoningSummary = "",
       toolCalls = [],
-      plan = []
+      plan = [],
+      stopReason = "",
+      pendingQuestion = null,
+      resumedFromMessageId = ""
     } = {}
   ) {
     if (
@@ -640,6 +658,140 @@ export class ConversationManager {
     ) {
       message.plan = clone(plan);
     }
+
+    if (stopReason) {
+      message.stopReason =
+        String(stopReason);
+    }
+
+    if (
+      pendingQuestion &&
+      typeof pendingQuestion === "object"
+    ) {
+      message.pendingQuestion = {
+        ...clone(pendingQuestion),
+        status:
+          pendingQuestion.status ??
+          "waiting"
+      };
+    }
+
+    if (resumedFromMessageId) {
+      message.resumedFromMessageId =
+        String(resumedFromMessageId);
+    }
+  }
+
+  getPendingQuestion(
+    conversationId
+  ) {
+    const conversation =
+      this.getConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return null;
+    }
+
+    const message =
+      [...conversation.messages]
+        .reverse()
+        .find((item) =>
+          item.role === "assistant" &&
+          item.pendingQuestion?.status ===
+            "waiting"
+        );
+
+    if (!message) {
+      return null;
+    }
+
+    const messageIndex =
+      conversation.messages.findIndex(
+        (item) =>
+          item.id === message.id
+      );
+    const hasLaterUserMessage =
+      conversation.messages
+        .slice(messageIndex + 1)
+        .some(
+          (item) =>
+            item.role === "user"
+        );
+
+    if (hasLaterUserMessage) {
+      return null;
+    }
+
+    return {
+      messageId: message.id,
+      request:
+        clone(
+          message.pendingQuestion
+        ),
+      plan:
+        clone(message.plan ?? [])
+    };
+  }
+
+  resolvePendingQuestion({
+    conversationId,
+    messageId,
+    answerMessageId
+  }) {
+    const conversation =
+      this.findMutableConversation(
+        conversationId
+      );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code:
+          "conversation-not-found"
+      };
+    }
+
+    const message =
+      conversation.messages.find(
+        (item) =>
+          item.id === messageId &&
+          item.role === "assistant"
+      );
+
+    if (
+      !message?.pendingQuestion ||
+      message.pendingQuestion.status !==
+        "waiting"
+    ) {
+      return {
+        ok: false,
+        code:
+          "pending-question-not-found"
+      };
+    }
+
+    message.pendingQuestion = {
+      ...message.pendingQuestion,
+      status: "answered",
+      answeredAt: this.now(),
+      answerMessageId:
+        String(
+          answerMessageId ?? ""
+        )
+    };
+
+    conversation.updatedAt =
+      message.pendingQuestion
+        .answeredAt;
+
+    this.commit();
+
+    return {
+      ok: true,
+      message: clone(message)
+    };
   }
 
   buildContext(

@@ -125,6 +125,103 @@ function formatPendingQuestion(
   return lines.join("\n");
 }
 
+
+function createResumeInstruction(
+  pending
+) {
+  if (!pending?.request?.question) {
+    return "";
+  }
+
+  return [
+    "[Resumed Agent Task]",
+    "The user message is an answer to the clarification question from the previous assistant turn.",
+    `Previous question: ${pending.request.question}`,
+    "Continue the same task instead of starting an unrelated task. Reuse and update the existing plan when useful."
+  ].join("\n");
+}
+
+async function settleResultValue(
+  value,
+  fallback
+) {
+  try {
+    return await value;
+  } catch {
+    return fallback;
+  }
+}
+
+function stopReasonFromToolRecords(
+  records = []
+) {
+  const code = [...records]
+    .reverse()
+    .find(
+      (record) =>
+        record.output?.error?.code
+    )?.output?.error?.code;
+
+  const mapping = {
+    AGENT_RUN_TIMEOUT:
+      "run_timeout",
+    TOOL_CALL_LIMIT:
+      "tool_call_limit",
+    TOOL_TIMEOUT:
+      "tool_timeout",
+    REPEATED_TOOL_CALL:
+      "repeated_call"
+  };
+
+  return mapping[code] ?? "";
+}
+
+function inferStopReason({
+  pendingQuestion,
+  records,
+  finishReason,
+  steps,
+  maxSteps
+}) {
+  if (pendingQuestion) {
+    return "user_input_required";
+  }
+
+  const toolReason =
+    stopReasonFromToolRecords(
+      records
+    );
+
+  if (toolReason) {
+    return toolReason;
+  }
+
+  if (
+    Array.isArray(steps) &&
+    steps.length >= maxSteps &&
+    finishReason === "tool-calls"
+  ) {
+    return "step_limit";
+  }
+
+  if (finishReason === "length") {
+    return "output_limit";
+  }
+
+  if (
+    finishReason ===
+    "content-filter"
+  ) {
+    return "content_filter";
+  }
+
+  if (finishReason === "error") {
+    return "error";
+  }
+
+  return "completed";
+}
+
 export class AgentRuntime {
   constructor() {
     this.activeRun = null;
@@ -139,12 +236,54 @@ export class AgentRuntime {
   }
 
   getStatus() {
+    let status = this.status;
+    let pendingQuestion =
+      this.activeRun
+        ?.pendingQuestion ??
+      null;
+
+    if (
+      !this.activeRun &&
+      status.state === "idle"
+    ) {
+      const state =
+        conversationManager
+          .getState();
+      const pending =
+        state.currentConversationId
+          ? conversationManager
+              .getPendingQuestion(
+                state.currentConversationId
+              )
+          : null;
+
+      if (pending) {
+        status = {
+          ...status,
+          state:
+            "waiting_for_user",
+          conversationId:
+            state.currentConversationId
+        };
+        pendingQuestion =
+          pending.request;
+      }
+    }
+
     return cloneStatus({
-      ...this.status,
+      ...status,
+      pendingQuestion,
+      stopReason:
+        this.activeRun
+          ?.stopReason ??
+        status.stopReason ??
+        null,
       plan:
         this.activeRun
           ?.toolSession
-          ?.getPlan?.() ?? [],
+          ?.getPlan?.() ??
+        this.activeRun
+          ?.initialPlan ?? [],
       activeToolCalls:
         this.activeRun
           ?.toolSession
@@ -209,20 +348,40 @@ export class AgentRuntime {
     let conversation;
     let memories;
     let context;
+    let pendingResume = null;
 
     try {
       conversation =
         conversationManager
           .getCurrentConversation();
 
-      conversationManager
-        .appendMessage({
-          conversationId:
-            conversation.id,
+      pendingResume =
+        conversationManager
+          .getPendingQuestion(
+            conversation.id
+          );
 
-          role: "user",
-          content: message
-        });
+      const userMessage =
+        conversationManager
+          .appendMessage({
+            conversationId:
+              conversation.id,
+
+            role: "user",
+            content: message
+          });
+
+      if (pendingResume) {
+        conversationManager
+          .resolvePendingQuestion({
+            conversationId:
+              conversation.id,
+            messageId:
+              pendingResume.messageId,
+            answerMessageId:
+              userMessage.id
+          });
+      }
 
       conversation =
         conversationManager
@@ -242,6 +401,23 @@ export class AgentRuntime {
           conversation,
           memories
         });
+
+      const resumeInstruction =
+        createResumeInstruction(
+          pendingResume
+        );
+
+      if (resumeInstruction) {
+        context.system = [
+          context.system,
+          resumeInstruction
+        ].filter(Boolean).join("\n\n");
+        context.metadata = {
+          ...context.metadata,
+          resumedFromMessageId:
+            pendingResume.messageId
+        };
+      }
     } catch (error) {
       const errorMessage =
         "无法准备当前消息或长期记忆，请检查应用数据目录。";
@@ -283,7 +459,13 @@ export class AgentRuntime {
       startedAt,
       replaceMessageId: null,
       reasoningSummary: "",
-      toolCalls: []
+      toolCalls: [],
+      initialPlan:
+        pendingResume?.plan ?? [],
+      resumedFromMessageId:
+        pendingResume?.messageId ?? "",
+      pendingQuestion: null,
+      stopReason: null
     };
 
     this.setStatus({
@@ -424,7 +606,11 @@ export class AgentRuntime {
       replaceMessageId:
         plan.targetMessage.id,
       reasoningSummary: "",
-      toolCalls: []
+      toolCalls: [],
+      initialPlan: [],
+      resumedFromMessageId: "",
+      pendingQuestion: null,
+      stopReason: null
     };
 
     this.setStatus({
@@ -529,7 +715,19 @@ export class AgentRuntime {
       plan:
         this.activeRun
           .toolSession
-          ?.getPlan?.() ?? []
+          ?.getPlan?.() ?? [],
+      stopReason:
+        this.activeRun
+          .stopReason ??
+        (status === "aborted"
+          ? "aborted"
+          : "completed"),
+      pendingQuestion:
+        this.activeRun
+          .pendingQuestion,
+      resumedFromMessageId:
+        this.activeRun
+          .resumedFromMessageId
     };
 
     if (
@@ -729,6 +927,8 @@ export class AgentRuntime {
           .trim();
 
       if (assistantText) {
+        this.activeRun.stopReason =
+          "completed";
         this.persistAssistantResponse({
           conversationId,
           content:
@@ -814,13 +1014,21 @@ export class AgentRuntime {
               record
             );
           },
-          settings
+          settings,
+          initialPlan:
+            this.activeRun
+              .initialPlan
         });
 
       this.activeRun.toolSession =
         toolSession;
 
       startResponseStream();
+
+      const maxSteps =
+        settings.tools
+          ?.runtime
+          ?.maxSteps ?? 6;
 
       const result =
         streamText({
@@ -837,10 +1045,7 @@ export class AgentRuntime {
 
           stopWhen: [
             stepCountIs(
-              settings.tools
-                ?.runtime
-                ?.maxSteps ??
-              6
+              maxSteps
             ),
             hasToolCall(
               "ask_user"
@@ -920,8 +1125,39 @@ export class AgentRuntime {
             reasoningText ?? ""
           ).trim();
 
-        this.activeRun.toolCalls =
+        const records =
           toolSession.getRecords();
+        const pendingQuestion =
+          toolSession
+            .getPendingQuestion();
+        const finishReason =
+          await settleResultValue(
+            result.finishReason,
+            "unknown"
+          );
+        const steps =
+          await settleResultValue(
+            result.steps,
+            []
+          );
+
+        this.activeRun.toolCalls =
+          records;
+        this.activeRun.pendingQuestion =
+          pendingQuestion
+            ? {
+                ...pendingQuestion,
+                status: "waiting"
+              }
+            : null;
+        this.activeRun.stopReason =
+          inferStopReason({
+            pendingQuestion,
+            records,
+            finishReason,
+            steps,
+            maxSteps
+          });
       }
 
       if (
@@ -932,8 +1168,8 @@ export class AgentRuntime {
       ) {
         const pendingQuestion =
           formatPendingQuestion(
-            toolSession
-              .getPendingQuestion()
+            this.activeRun
+              .pendingQuestion
           );
 
         const fallbackText =
@@ -977,6 +1213,8 @@ export class AgentRuntime {
             !this.activeRun
               .replaceMessageId
           ) {
+            this.activeRun.stopReason =
+              "aborted";
             this.persistAssistantResponse({
               conversationId,
               content:
@@ -1018,14 +1256,28 @@ export class AgentRuntime {
           });
         }
 
+        const waitingQuestion =
+          this.activeRun
+            .pendingQuestion;
+        const finalStopReason =
+          this.activeRun
+            .stopReason;
+
         this.activeRun = null;
 
         this.setStatus({
-          state: "idle",
+          state:
+            waitingQuestion
+              ? "waiting_for_user"
+              : "idle",
           runId: null,
           conversationId,
           startedAt: null,
-          lastError: null
+          lastError: null,
+          pendingQuestion:
+            waitingQuestion,
+          stopReason:
+            finalStopReason
         });
       }
     } catch (error) {
@@ -1058,6 +1310,8 @@ export class AgentRuntime {
             !this.activeRun
               .replaceMessageId
           ) {
+            this.activeRun.stopReason =
+              "aborted";
             this.persistAssistantResponse({
               conversationId,
               content:

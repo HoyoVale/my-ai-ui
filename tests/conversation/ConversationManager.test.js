@@ -583,3 +583,97 @@ describe(
     );
   }
 );
+
+describe(
+  "ConversationManager pending questions",
+  () => {
+    it(
+      "persists a pending question and resolves it with the next user message",
+      () => {
+        const manager =
+          createManager();
+        const conversation =
+          manager.create();
+
+        const assistant =
+          manager.appendMessage({
+            conversationId:
+              conversation.id,
+            role: "assistant",
+            content:
+              "Which folder should I inspect?",
+            stopReason:
+              "user_input_required",
+            pendingQuestion: {
+              question:
+                "Which folder should I inspect?",
+              options: [
+                {
+                  id: "src",
+                  label: "src"
+                }
+              ],
+              status: "waiting"
+            },
+            plan: [
+              {
+                id: "inspect",
+                title: "Inspect project",
+                status: "in_progress"
+              }
+            ]
+          });
+
+        const pending =
+          manager.getPendingQuestion(
+            conversation.id
+          );
+
+        assert.equal(
+          pending.messageId,
+          assistant.id
+        );
+        assert.equal(
+          pending.plan[0].id,
+          "inspect"
+        );
+
+        const answer =
+          manager.appendMessage({
+            conversationId:
+              conversation.id,
+            role: "user",
+            content: "src"
+          });
+
+        const resolved =
+          manager.resolvePendingQuestion({
+            conversationId:
+              conversation.id,
+            messageId:
+              assistant.id,
+            answerMessageId:
+              answer.id
+          });
+
+        assert.equal(
+          resolved.ok,
+          true
+        );
+        assert.equal(
+          manager.getPendingQuestion(
+            conversation.id
+          ),
+          null
+        );
+        assert.equal(
+          manager.getConversation(
+            conversation.id
+          ).messages[0]
+            .pendingQuestion.status,
+          "answered"
+        );
+      }
+    );
+  }
+);

@@ -68,3 +68,43 @@ describe(
     );
   }
 );
+
+describe(
+  "agent tool runtime 1.2 contract",
+  () => {
+    it(
+      "supports paged tool results and resumable user questions",
+      () => {
+        const session =
+          read(
+            "../../electron/tools/createAgentToolSession.js"
+          );
+        const runtime =
+          read(
+            "../../electron/agent/AgentRuntime.js"
+          );
+        const conversation =
+          read(
+            "../../src/Conversation/Conversation.jsx"
+          );
+
+        assert.match(
+          session,
+          /ToolResultStore/u
+        );
+        assert.match(
+          runtime,
+          /getPendingQuestion/u
+        );
+        assert.match(
+          runtime,
+          /waiting_for_user/u
+        );
+        assert.match(
+          conversation,
+          /liveActivity/u
+        );
+      }
+    );
+  }
+);
