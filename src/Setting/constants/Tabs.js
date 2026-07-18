@@ -71,7 +71,14 @@ export const SETTING_GROUPS = [
         label: "Context",
         title: "会话与上下文",
         description:
-          "管理会话保存、短期上下文和历史数据。"
+          "管理运行环境注入、短期上下文和会话数据。"
+      },
+      {
+        id: "tools",
+        label: "Tools",
+        title: "工具",
+        description:
+          "管理 Tool Runtime、只读工作区和低风险工具权限。"
       },
       {
         id: "memory",

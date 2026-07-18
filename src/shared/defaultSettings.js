@@ -193,6 +193,64 @@ export const FALLBACK_SETTINGS = {
     autoTitle: true,
     saveAbortedReplies: true
   },
+  context: {
+    environment: {
+      enabled: true,
+      profile: "standard",
+      includeTime: true,
+      includeLocale: true,
+      includeSystem: true,
+      includeApplication: true,
+      includeModel: true,
+      includeWorkspace: true,
+      includeTools: true,
+      workspaceDetail: "summary",
+      toolDetail: "profile"
+    }
+  },
+  tools: {
+    enabled: true,
+    profile: "workspace",
+    runtime: {
+      maxSteps: 6,
+      defaultTimeoutMs: 15000,
+      saveToolHistory: true
+    },
+    workspace: {
+      enabled: true,
+      includeProjectRoot: true,
+      roots: [],
+      maxTextFileBytes: 2000000,
+      maxReadLines: 1000,
+      maxDirectoryEntries: 200,
+      maxSearchResults: 100,
+      maxSearchDepth: 6,
+      maxHashFileBytes: 50000000
+    },
+    toolsets: {
+      "core.runtime": true,
+      "workspace.read": true,
+      "agent.internal": true
+    },
+    overrides: {
+      get_current_time: true,
+      convert_time_zone: true,
+      calculate_date: true,
+      calculator: true,
+      get_runtime_info: true,
+      get_agent_status: true,
+      get_workspace_info: true,
+      list_directory: true,
+      stat_path: true,
+      read_text_file: true,
+      search_files: true,
+      search_text: true,
+      detect_project: true,
+      compute_file_hash: true,
+      update_plan: true,
+      ask_user: true
+    }
+  },
   memory: {
     enabled: true,
     maxInjected: 5,

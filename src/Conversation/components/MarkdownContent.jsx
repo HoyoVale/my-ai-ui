@@ -21,6 +21,15 @@ import {
   ConversationIcon
 } from "./Icon.jsx";
 
+import {
+  SafeMarkdownImage,
+  SafeMarkdownLink
+} from "../../shared/security/MarkdownResources.jsx";
+
+import {
+  safeMarkdownUrlTransform
+} from "../../shared/security/markdownUrlPolicy.js";
+
 async function copyText(
   text
 ) {
@@ -193,6 +202,10 @@ export function MarkdownContent({
       }
     >
       <ReactMarkdown
+        skipHtml
+        urlTransform={
+          safeMarkdownUrlTransform
+        }
         remarkPlugins={[
           remarkGfm,
           remarkMath
@@ -276,14 +289,23 @@ export function MarkdownContent({
             </MarkdownTable>
           ),
 
-          a: ({ children, ...props }) => (
-            <a
+          img: (props) => (
+            <SafeMarkdownImage
               {...props}
-              target="_blank"
-              rel="noreferrer"
+            />
+          ),
+
+          a: ({
+            children,
+            href,
+            title
+          }) => (
+            <SafeMarkdownLink
+              href={href}
+              title={title}
             >
               {children}
-            </a>
+            </SafeMarkdownLink>
           )
         }}
       >

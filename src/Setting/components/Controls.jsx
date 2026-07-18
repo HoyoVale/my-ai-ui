@@ -93,6 +93,7 @@ export function Slider({
   step = 1,
   unit = "",
   formatValue,
+  disabled = false,
   onChange
 }) {
   const displayValue =
@@ -108,6 +109,7 @@ export function Slider({
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(event) => {
           onChange?.(
             Number(
@@ -127,6 +129,7 @@ export function Slider({
 export function Select({
   value,
   options,
+  disabled = false,
   onChange,
   testId
 }) {
@@ -135,6 +138,7 @@ export function Select({
       className="settings-select"
       data-testid={testId}
       value={value}
+      disabled={disabled}
       onChange={(event) => {
         const selected =
           options.find(
@@ -218,6 +222,7 @@ export function TextArea({
 export function Segmented({
   value,
   options,
+  disabled = false,
   onChange,
   testId
 }) {
@@ -225,11 +230,16 @@ export function Segmented({
     <div
       className="settings-segmented"
       data-testid={testId}
+      style={{
+        "--segment-count":
+          options.length
+      }}
     >
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
+          disabled={disabled}
           className={
             `settings-segmented__item${
               value === option.value

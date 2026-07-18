@@ -1,5 +1,7 @@
 import {
   app,
+  BrowserWindow,
+  dialog,
   ipcMain
 } from "electron";
 
@@ -143,6 +145,47 @@ export function registerSettingsIpc() {
       return commitSettings(
         settings
       );
+    }
+  );
+
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .settings
+      .SELECT_DIRECTORY,
+    async (event) => {
+      if (!canModifySettings(event)) {
+        throw new Error(
+          "Only the Setting window can select workspaces."
+        );
+      }
+
+      const window =
+        BrowserWindow.fromWebContents(
+          event.sender
+        );
+
+      const options = {
+        title: "选择只读工作区",
+        properties: [
+          "openDirectory",
+          "createDirectory"
+        ]
+      };
+
+      const result = window
+        ? await dialog.showOpenDialog(
+            window,
+            options
+          )
+        : await dialog.showOpenDialog(
+            options
+          );
+
+      return {
+        canceled: result.canceled,
+        paths: result.filePaths
+      };
     }
   );
 

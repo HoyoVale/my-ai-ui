@@ -197,6 +197,8 @@ app.whenReady().then(
               "sendAgentMessage",
               "getAgentStatus",
               "getSettings",
+              "selectWorkspaceDirectory",
+              "openExternalLink",
               "getConversationState",
               "getConversation",
               "createConversation",

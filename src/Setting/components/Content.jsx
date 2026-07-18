@@ -43,6 +43,10 @@ import {
   ResponsePanel
 } from "../panels/ResponsePanel.jsx";
 
+import {
+  ToolPanel
+} from "../panels/ToolPanel.jsx";
+
 export function SettingsContent({
   activeTab,
   settings,
@@ -146,13 +150,33 @@ export function SettingsContent({
 
     conversation: (
       <ConversationPanel
-        settings={
-          settings
-            .conversation
+        conversationSettings={
+          settings.conversation
         }
-        onUpdate={(patch) => {
+        contextSettings={
+          settings.context
+        }
+        onUpdateConversation={(patch) => {
           onUpdateSection(
             "conversation",
+            patch
+          );
+        }}
+        onUpdateContext={(patch) => {
+          onUpdateSection(
+            "context",
+            patch
+          );
+        }}
+      />
+    ),
+
+    tools: (
+      <ToolPanel
+        settings={settings.tools}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "tools",
             patch
           );
         }}

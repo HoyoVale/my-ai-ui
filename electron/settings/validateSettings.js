@@ -2,6 +2,12 @@ import {
   cloneDefaultSettings
 } from "./defaultSettings.js";
 
+import {
+  SAFE_TOOL_NAMES,
+  TOOLSET_IDS,
+  resolveToolProfileId
+} from "../tools/toolCatalog.js";
+
 const PROVIDER_TYPES = [
   "deepseek",
   "openai",
@@ -61,6 +67,31 @@ const DENSITY_OPTIONS = [
   "compact",
   "comfortable",
   "spacious"
+];
+
+const ENVIRONMENT_PROFILES = [
+  "minimal",
+  "standard",
+  "detailed",
+  "custom"
+];
+
+const WORKSPACE_DETAIL_OPTIONS = [
+  "hidden",
+  "summary",
+  "full"
+];
+
+const TOOL_DETAIL_OPTIONS = [
+  "hidden",
+  "profile",
+  "names"
+];
+
+const TOOL_PROFILES = [
+  "chat",
+  "workspace",
+  "custom"
 ];
 
 function clamp(value, min, max) {
@@ -642,6 +673,209 @@ function sanitizeModelSettings(
   };
 }
 
+function stringArrayValue(
+  value,
+  fallback = [],
+  maxItems = 12,
+  maxLength = 500
+) {
+  if (!Array.isArray(value)) {
+    return [...fallback];
+  }
+
+  return [
+    ...new Set(
+      value
+        .slice(0, maxItems)
+        .map((item) =>
+          typeof item === "string"
+            ? item.trim().slice(0, maxLength)
+            : ""
+        )
+        .filter(Boolean)
+    )
+  ];
+}
+
+function sanitizeContextSettings(
+  context,
+  defaults
+) {
+  const environment =
+    context?.environment ?? {};
+  const fallback =
+    defaults.environment;
+
+  return {
+    environment: {
+      enabled: booleanValue(
+        environment.enabled,
+        fallback.enabled
+      ),
+      profile: enumValue(
+        environment.profile,
+        ENVIRONMENT_PROFILES,
+        fallback.profile
+      ),
+      includeTime: booleanValue(
+        environment.includeTime,
+        fallback.includeTime
+      ),
+      includeLocale: booleanValue(
+        environment.includeLocale,
+        fallback.includeLocale
+      ),
+      includeSystem: booleanValue(
+        environment.includeSystem,
+        fallback.includeSystem
+      ),
+      includeApplication: booleanValue(
+        environment.includeApplication,
+        fallback.includeApplication
+      ),
+      includeModel: booleanValue(
+        environment.includeModel,
+        fallback.includeModel
+      ),
+      includeWorkspace: booleanValue(
+        environment.includeWorkspace,
+        fallback.includeWorkspace
+      ),
+      includeTools: booleanValue(
+        environment.includeTools,
+        fallback.includeTools
+      ),
+      workspaceDetail: enumValue(
+        environment.workspaceDetail,
+        WORKSPACE_DETAIL_OPTIONS,
+        fallback.workspaceDetail
+      ),
+      toolDetail: enumValue(
+        environment.toolDetail,
+        TOOL_DETAIL_OPTIONS,
+        fallback.toolDetail
+      )
+    }
+  };
+}
+
+function sanitizeToolSettings(
+  tools,
+  defaults
+) {
+  const runtime = tools?.runtime ?? {};
+  const workspace = tools?.workspace ?? {};
+  const sourceToolsets =
+    tools?.toolsets ?? {};
+  const sourceOverrides =
+    tools?.overrides ?? {};
+
+  const toolsets = {};
+  for (const id of TOOLSET_IDS) {
+    toolsets[id] = booleanValue(
+      sourceToolsets[id],
+      defaults.toolsets[id]
+    );
+  }
+
+  const overrides = {};
+  for (const name of SAFE_TOOL_NAMES) {
+    overrides[name] = booleanValue(
+      sourceOverrides[name],
+      defaults.overrides[name]
+    );
+  }
+
+  const sanitized = {
+    enabled: booleanValue(
+      tools?.enabled,
+      defaults.enabled
+    ),
+    profile: enumValue(
+      tools?.profile,
+      TOOL_PROFILES,
+      defaults.profile
+    ),
+    runtime: {
+      maxSteps: integerValue(
+        runtime.maxSteps,
+        defaults.runtime.maxSteps,
+        1,
+        12
+      ),
+      defaultTimeoutMs: integerValue(
+        runtime.defaultTimeoutMs,
+        defaults.runtime.defaultTimeoutMs,
+        2000,
+        120000
+      ),
+      saveToolHistory: booleanValue(
+        runtime.saveToolHistory,
+        defaults.runtime.saveToolHistory
+      )
+    },
+    workspace: {
+      enabled: booleanValue(
+        workspace.enabled,
+        defaults.workspace.enabled
+      ),
+      includeProjectRoot: booleanValue(
+        workspace.includeProjectRoot,
+        defaults.workspace.includeProjectRoot
+      ),
+      roots: stringArrayValue(
+        workspace.roots,
+        defaults.workspace.roots
+      ),
+      maxTextFileBytes: integerValue(
+        workspace.maxTextFileBytes,
+        defaults.workspace.maxTextFileBytes,
+        65536,
+        20000000
+      ),
+      maxReadLines: integerValue(
+        workspace.maxReadLines,
+        defaults.workspace.maxReadLines,
+        50,
+        5000
+      ),
+      maxDirectoryEntries: integerValue(
+        workspace.maxDirectoryEntries,
+        defaults.workspace.maxDirectoryEntries,
+        20,
+        1000
+      ),
+      maxSearchResults: integerValue(
+        workspace.maxSearchResults,
+        defaults.workspace.maxSearchResults,
+        10,
+        500
+      ),
+      maxSearchDepth: integerValue(
+        workspace.maxSearchDepth,
+        defaults.workspace.maxSearchDepth,
+        1,
+        12
+      ),
+      maxHashFileBytes: integerValue(
+        workspace.maxHashFileBytes,
+        defaults.workspace.maxHashFileBytes,
+        1000000,
+        200000000
+      )
+    },
+    toolsets,
+    overrides
+  };
+
+  sanitized.profile =
+    resolveToolProfileId(
+      sanitized
+    );
+
+  return sanitized;
+}
+
 export function sanitizeSettings(
   source = {}
 ) {
@@ -660,6 +894,10 @@ export function sanitizeSettings(
     source.personality ?? {};
   const conversation =
     source.conversation ?? {};
+  const context =
+    source.context ?? {};
+  const tools =
+    source.tools ?? {};
   const memory =
     source.memory ?? {};
   const model = source.model ?? {};
@@ -943,6 +1181,16 @@ export function sanitizeSettings(
             .saveAbortedReplies
         )
     },
+
+    context: sanitizeContextSettings(
+      context,
+      defaults.context
+    ),
+
+    tools: sanitizeToolSettings(
+      tools,
+      defaults.tools
+    ),
 
     memory: {
       enabled: booleanValue(

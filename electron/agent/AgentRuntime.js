@@ -4,6 +4,8 @@ import {
 
 import {
   generateText,
+  hasToolCall,
+  stepCountIs,
   streamText
 } from "ai";
 
@@ -57,6 +59,10 @@ import {
   streamE2EResponse
 } from "./e2eAgentDriver.js";
 
+import {
+  createAgentToolSession
+} from "../tools/index.js";
+
 
 
 
@@ -83,6 +89,42 @@ function cloneStatus(status) {
   };
 }
 
+function formatPendingQuestion(
+  request
+) {
+  if (!request?.question) {
+    return "";
+  }
+
+  const lines = [
+    request.question
+  ];
+
+  if (request.reason) {
+    lines.push(
+      "",
+      `需要确认的原因：${request.reason}`
+    );
+  }
+
+  if (
+    Array.isArray(
+      request.options
+    ) &&
+    request.options.length > 0
+  ) {
+    lines.push(
+      "",
+      ...request.options.map(
+        (option, index) =>
+          `${index + 1}. ${option.label}`
+      )
+    );
+  }
+
+  return lines.join("\n");
+}
+
 export class AgentRuntime {
   constructor() {
     this.activeRun = null;
@@ -97,9 +139,17 @@ export class AgentRuntime {
   }
 
   getStatus() {
-    return cloneStatus(
-      this.status
-    );
+    return cloneStatus({
+      ...this.status,
+      plan:
+        this.activeRun
+          ?.toolSession
+          ?.getPlan?.() ?? [],
+      activeToolCalls:
+        this.activeRun
+          ?.toolSession
+          ?.getRecords?.() ?? []
+    });
   }
 
   startMessage(content) {
@@ -415,6 +465,41 @@ export class AgentRuntime {
     };
   }
 
+  upsertToolRecord(
+    runId,
+    record
+  ) {
+    if (
+      !this.isCurrentRun(runId)
+    ) {
+      return;
+    }
+
+    const records =
+      this.activeRun.toolCalls;
+
+    const index =
+      records.findIndex(
+        (item) =>
+          item.id === record.id
+      );
+
+    if (index >= 0) {
+      records[index] = {
+        ...records[index],
+        ...structuredClone(record)
+      };
+    } else {
+      records.push(
+        structuredClone(record)
+      );
+    }
+
+    this.setStatus({
+      ...this.status
+    });
+  }
+
   persistAssistantResponse({
     conversationId,
     content,
@@ -435,8 +520,12 @@ export class AgentRuntime {
         this.activeRun
           .reasoningSummary,
       toolCalls:
-        this.activeRun
-          .toolCalls
+        getSettings().tools
+          ?.runtime
+          ?.saveToolHistory === false
+          ? []
+          : this.activeRun
+              .toolCalls
     };
 
     if (
@@ -707,6 +796,26 @@ export class AgentRuntime {
           modelSettings
         );
 
+      const toolSession =
+        createAgentToolSession({
+          activeModel:
+            modelSettings,
+          getAgentStatus: () =>
+            this.getStatus(),
+          abortSignal:
+            abortController.signal,
+          onRecord: (record) => {
+            this.upsertToolRecord(
+              runId,
+              record
+            );
+          },
+          settings
+        });
+
+      this.activeRun.toolSession =
+        toolSession;
+
       startResponseStream();
 
       const result =
@@ -718,6 +827,21 @@ export class AgentRuntime {
 
           messages:
             context.messages,
+
+          tools:
+            toolSession.tools,
+
+          stopWhen: [
+            stepCountIs(
+              settings.tools
+                ?.runtime
+                ?.maxSteps ??
+              6
+            ),
+            hasToolCall(
+              "ask_user"
+            )
+          ],
 
           ...runtime.requestOptions,
 
@@ -778,13 +902,8 @@ export class AgentRuntime {
           .aborted &&
         this.isCurrentRun(runId)
       ) {
-        const [
-          reasoningText,
-          toolCalls
-        ] = await Promise.all([
-          result.reasoningText,
-          result.toolCalls
-        ]);
+        const reasoningText =
+          await result.reasoningText;
 
         this.activeRun
           .reasoningSummary =
@@ -793,19 +912,7 @@ export class AgentRuntime {
           ).trim();
 
         this.activeRun.toolCalls =
-          Array.isArray(toolCalls)
-            ? toolCalls.map(
-                (toolCall) => ({
-                  id:
-                    toolCall.toolCallId,
-                  name:
-                    toolCall.toolName,
-                  status: "requested",
-                  input:
-                    toolCall.input
-                })
-              )
-            : [];
+          toolSession.getRecords();
       }
 
       if (
@@ -814,7 +921,14 @@ export class AgentRuntime {
           .aborted &&
         !receivedText
       ) {
+        const pendingQuestion =
+          formatPendingQuestion(
+            toolSession
+              .getPendingQuestion()
+          );
+
         const fallbackText =
+          pendingQuestion ||
           "模型没有返回可显示的文字。";
 
         this.activeRun

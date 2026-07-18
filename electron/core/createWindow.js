@@ -8,6 +8,10 @@ import {
   fileURLToPath
 } from "node:url";
 
+import {
+  applyWindowSecurity
+} from "../security/rendererSecurity.js";
+
 const __filename =
   fileURLToPath(import.meta.url);
 
@@ -33,18 +37,27 @@ export function createBaseWindow(
     ...windowOptions
   } = options;
 
-  return new BrowserWindow({
-    frame: false,
-    show: true,
+  const window =
+    new BrowserWindow({
+      frame: false,
+      show: true,
 
-    ...windowOptions,
+      ...windowOptions,
 
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
+      webPreferences: {
+        ...webPreferences,
 
-      ...webPreferences
-    }
-  });
+        preload: preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent:
+          false
+      }
+    });
+
+  applyWindowSecurity(window);
+
+  return window;
 }

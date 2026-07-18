@@ -71,6 +71,10 @@ describe(
           result.system.indexOf(
             "运行在用户桌面"
           );
+        const runtimeIndex =
+          result.system.indexOf(
+            "当前运行环境"
+          );
         const personalityIndex =
           result.system.indexOf(
             "名称：Nova"
@@ -85,8 +89,13 @@ describe(
           true
         );
         assert.equal(
-          personalityIndex >
+          runtimeIndex >
             baseIndex,
+          true
+        );
+        assert.equal(
+          personalityIndex >
+            runtimeIndex,
           true
         );
         assert.equal(
@@ -115,6 +124,21 @@ describe(
             .personality
             .name,
           "Nova"
+        );
+        assert.equal(
+          result.metadata
+            .runtime
+            .toolProfile,
+          "workspace"
+        );
+        assert.equal(
+          result.budget.sections
+            .some(
+              (section) =>
+                section.id ===
+                "runtime"
+            ),
+          true
         );
       }
     );

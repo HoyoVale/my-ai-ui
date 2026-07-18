@@ -461,3 +461,13 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - Conversation 支持会话重命名、用户消息时间、按角色区分的悬停操作与 Markdown/GFM 渲染。
 - Conversation 与 Response 共用 Markdown + LaTeX 渲染器，支持 `$...$` 行内公式和 `$$...$$` 块级公式。
 - Response 流式气泡支持代码块、表格、公式与独立复制。
+
+## Safe core agent runtime
+
+本版本加入三项 Agent 基础能力：
+
+- [外部资源安全策略](docs/EXTERNAL_RESOURCES.md)
+- 每轮请求的实时运行环境注入
+- [第一版低风险工具系统](docs/SAFE_TOOLS.md)
+
+工具仅提供时间、计算、运行状态、任务计划和授权工作区只读能力。可在 `Setting → AI → Tools` 中配置 Tool Runtime、工作区、Toolset 和单工具开关；运行环境注入位于 `Setting → AI → Context`。Shell、写文件、任意网络请求、浏览器自动化和 MCP 尚未开放。

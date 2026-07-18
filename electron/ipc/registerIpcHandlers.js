@@ -31,6 +31,10 @@ import {
 } from "./handlers/settingsIpc.js";
 
 import {
+  registerSecurityIpc
+} from "./handlers/securityIpc.js";
+
+import {
   registerWindowIpc
 } from "./handlers/windowIpc.js";
 
@@ -51,5 +55,6 @@ export function registerIpcHandlers() {
   registerResponseIpc();
   registerSettingIpc();
   registerSettingsIpc();
+  registerSecurityIpc();
   registerWindowIpc();
 }

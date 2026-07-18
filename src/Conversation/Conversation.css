@@ -1311,3 +1311,73 @@
   padding:
     calc(18px * var(--app-density-factor));
 }
+
+/*
+ * Markdown 外部资源默认不在 Electron Renderer 中加载。
+ */
+.markdown-resource-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(
+    in srgb,
+    currentColor 14%,
+    transparent
+  );
+  border-radius: 10px;
+  background: color-mix(
+    in srgb,
+    currentColor 4%,
+    transparent
+  );
+}
+
+.markdown-resource-placeholder > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.markdown-resource-placeholder span,
+.markdown-resource-placeholder code {
+  overflow: hidden;
+  color: var(
+    --conversation-muted,
+    #6b7280
+  );
+  font-size: 0.86em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markdown-resource-placeholder button {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(
+    in srgb,
+    currentColor 18%,
+    transparent
+  );
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.markdown-resource-error {
+  margin: 10px 0;
+  color: #b42318;
+  font-size: 0.9em;
+}
+
+.markdown-link-disabled {
+  color: var(
+    --conversation-muted,
+    #6b7280
+  );
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}

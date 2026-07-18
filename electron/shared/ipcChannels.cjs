@@ -150,6 +150,11 @@ const IPC_CHANNELS =
         "memory-changed"
     }),
 
+    security: Object.freeze({
+      OPEN_EXTERNAL_URL:
+        "security-open-external-url"
+    }),
+
     settings: Object.freeze({
       GET:
         "settings-get",
@@ -164,7 +169,10 @@ const IPC_CHANNELS =
         "settings-changed",
 
       GET_APP_INFO:
-        "settings-get-app-info"
+        "settings-get-app-info",
+
+      SELECT_DIRECTORY:
+        "settings-select-directory"
     }),
 
     window: Object.freeze({

@@ -161,6 +161,12 @@ const CHANNELS = Object.freeze({
   SETTINGS_GET_APP_INFO:
     "settings-get-app-info",
 
+  SETTINGS_SELECT_DIRECTORY:
+    "settings-select-directory",
+
+  OPEN_EXTERNAL_URL:
+    "security-open-external-url",
+
   MINIMIZE_WINDOW:
     "minimize-window",
 
@@ -678,6 +684,23 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS
         .SETTINGS_GET_APP_INFO
+    );
+  },
+
+  selectWorkspaceDirectory: () => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .SETTINGS_SELECT_DIRECTORY
+    );
+  },
+
+  openExternalLink: (
+    url
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .OPEN_EXTERNAL_URL,
+      String(url ?? "")
     );
   },
 

@@ -27,6 +27,14 @@ import {
   resolveActiveModelSettings
 } from "../settings/modelSettings.js";
 
+import {
+  buildRuntimeContextSection
+} from "../runtime/runtimeContextProvider.js";
+
+import {
+  resolveToolProfileId
+} from "../tools/toolCatalog.js";
+
 
 export function assembleAgentContext({
   settings,
@@ -104,8 +112,18 @@ export function assembleAgentContext({
       sourceMessages
     );
 
+  const runtimeContext =
+    buildRuntimeContextSection({
+      activeModel,
+      contextSettings:
+        normalizedSettings.context,
+      toolSettings:
+        normalizedSettings.tools
+    });
+
   const systemSections = [
     BASE_SYSTEM_CONTEXT,
+    runtimeContext,
     personalityContext,
     memoryContext,
     pinnedContext
@@ -129,6 +147,14 @@ export function assembleAgentContext({
           tokens:
             estimateTextTokens(
               BASE_SYSTEM_CONTEXT
+            )
+        },
+        {
+          id: "runtime",
+          label: "运行环境",
+          tokens:
+            estimateTextTokens(
+              runtimeContext
             )
         },
         {
@@ -184,6 +210,19 @@ export function assembleAgentContext({
           activeModel.model,
         contextTokenBudget:
           activeModel.contextTokenBudget
+      },
+
+      runtime: {
+        enabled:
+          Boolean(runtimeContext),
+        timezone:
+          Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone || "UTC",
+        toolProfile:
+          resolveToolProfileId(
+            normalizedSettings.tools
+          )
       },
 
       personality:

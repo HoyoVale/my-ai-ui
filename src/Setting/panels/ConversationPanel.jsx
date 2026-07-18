@@ -2,6 +2,8 @@ import {
   ActionButton,
   SettingRow,
   SettingsSection,
+  Segmented,
+  Select,
   Slider,
   Toggle
 } from "../components/Controls.jsx";
@@ -10,9 +12,50 @@ import {
   useConversations
 } from "../hooks/useConversations.js";
 
+const ENVIRONMENT_PROFILES = {
+  minimal: {
+    profile: "minimal",
+    includeTime: true,
+    includeLocale: false,
+    includeSystem: false,
+    includeApplication: false,
+    includeModel: true,
+    includeWorkspace: false,
+    includeTools: false,
+    workspaceDetail: "hidden",
+    toolDetail: "hidden"
+  },
+  standard: {
+    profile: "standard",
+    includeTime: true,
+    includeLocale: true,
+    includeSystem: true,
+    includeApplication: true,
+    includeModel: true,
+    includeWorkspace: true,
+    includeTools: true,
+    workspaceDetail: "summary",
+    toolDetail: "profile"
+  },
+  detailed: {
+    profile: "detailed",
+    includeTime: true,
+    includeLocale: true,
+    includeSystem: true,
+    includeApplication: true,
+    includeModel: true,
+    includeWorkspace: true,
+    includeTools: true,
+    workspaceDetail: "full",
+    toolDetail: "names"
+  }
+};
+
 export function ConversationPanel({
-  settings,
-  onUpdate
+  conversationSettings,
+  contextSettings,
+  onUpdateConversation,
+  onUpdateContext
 }) {
   const {
     state,
@@ -25,6 +68,42 @@ export function ConversationPanel({
 
   const isWorking =
     status === "working";
+
+  const environment =
+    contextSettings.environment;
+
+  const updateEnvironment = (patch) => {
+    onUpdateContext({
+      environment: {
+        ...environment,
+        ...patch
+      }
+    });
+  };
+
+  const setEnvironmentProfile = (profile) => {
+    const preset =
+      ENVIRONMENT_PROFILES[profile];
+
+    if (!preset) {
+      updateEnvironment({
+        profile: "custom"
+      });
+      return;
+    }
+
+    updateEnvironment(preset);
+  };
+
+  const updateEnvironmentField = (
+    field,
+    value
+  ) => {
+    updateEnvironment({
+      profile: "custom",
+      [field]: value
+    });
+  };
 
   const handleClear = async () => {
     const confirmed =
@@ -42,6 +121,121 @@ export function ConversationPanel({
   return (
     <>
       <SettingsSection
+        title="运行环境上下文"
+        description="每轮请求前由应用实时生成。默认只注入完成任务所需的信息，不包含凭据或任意文件内容。"
+      >
+        <SettingRow
+          title="注入运行环境"
+          description="关闭后模型仍可主动调用时间和运行状态工具，但不会自动收到环境快照。"
+        >
+          <Toggle
+            checked={environment.enabled}
+            label="注入运行环境"
+            testId="runtime-context-enabled"
+            onChange={(enabled) => {
+              updateEnvironment({ enabled });
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title="信息级别"
+          description="标准模式适合日常使用；详细模式会增加完整工作区路径、工具名称与运行时版本。"
+          disabled={!environment.enabled}
+        >
+          <Segmented
+            value={environment.profile}
+            testId="runtime-context-profile"
+            disabled={!environment.enabled}
+            options={[
+              { value: "minimal", label: "精简" },
+              { value: "standard", label: "标准" },
+              { value: "detailed", label: "详细" },
+              { value: "custom", label: "自定义" }
+            ]}
+            onChange={setEnvironmentProfile}
+          />
+        </SettingRow>
+
+        <div className="runtime-context-summary">
+          <span className={environment.includeTime ? "is-on" : ""}>时间</span>
+          <span className={environment.includeSystem ? "is-on" : ""}>系统</span>
+          <span className={environment.includeModel ? "is-on" : ""}>模型</span>
+          <span className={environment.includeWorkspace ? "is-on" : ""}>工作区</span>
+          <span className={environment.includeTools ? "is-on" : ""}>工具</span>
+        </div>
+
+        <details className="settings-disclosure">
+          <summary>自定义包含内容</summary>
+          <div className="settings-disclosure__body">
+            {[
+              ["includeTime", "日期、时间与时区", "让模型知道当前本地时间和 UTC。"],
+              ["includeLocale", "区域语言", "注入系统 Locale，辅助日期和语言格式。"],
+              ["includeSystem", "操作系统", "注入平台、系统版本和 CPU 架构。"],
+              ["includeApplication", "应用与运行时", "注入应用版本；详细模式还包含 Node、Electron 和 Chromium。"],
+              ["includeModel", "当前模型", "注入 Provider、模型 ID 和上下文上限。"],
+              ["includeWorkspace", "工作区摘要", "注入授权目录数量或完整路径。"],
+              ["includeTools", "工具摘要", "注入当前工具预设、数量或工具名称。"]
+            ].map(([field, title, description]) => (
+              <SettingRow
+                key={field}
+                title={title}
+                description={description}
+                disabled={!environment.enabled}
+              >
+                <Toggle
+                  checked={environment[field]}
+                  disabled={!environment.enabled}
+                  label={title}
+                  onChange={(value) => {
+                    updateEnvironmentField(field, value);
+                  }}
+                />
+              </SettingRow>
+            ))}
+
+            <SettingRow
+              title="工作区信息"
+              description="摘要只说明授权目录数量；完整会把路径发送给当前模型。"
+              disabled={!environment.enabled || !environment.includeWorkspace}
+            >
+              <Select
+                value={environment.workspaceDetail}
+                disabled={!environment.enabled || !environment.includeWorkspace}
+                options={[
+                  { value: "hidden", label: "不显示" },
+                  { value: "summary", label: "仅摘要" },
+                  { value: "full", label: "完整路径" }
+                ]}
+                onChange={(workspaceDetail) => {
+                  updateEnvironmentField("workspaceDetail", workspaceDetail);
+                }}
+              />
+            </SettingRow>
+
+            <SettingRow
+              title="工具信息"
+              description="默认只发送预设和数量；工具名称模式会增加上下文占用。"
+              disabled={!environment.enabled || !environment.includeTools}
+            >
+              <Select
+                value={environment.toolDetail}
+                disabled={!environment.enabled || !environment.includeTools}
+                options={[
+                  { value: "hidden", label: "不显示" },
+                  { value: "profile", label: "预设与数量" },
+                  { value: "names", label: "工具名称" }
+                ]}
+                onChange={(toolDetail) => {
+                  updateEnvironmentField("toolDetail", toolDetail);
+                }}
+              />
+            </SettingRow>
+          </div>
+        </details>
+      </SettingsSection>
+
+      <SettingsSection
         title="短期上下文"
         description="控制每次请求向模型发送多少轮最近对话。当前用户消息始终会被包含。"
       >
@@ -51,7 +245,7 @@ export function ConversationPanel({
         >
           <Slider
             value={
-              settings
+              conversationSettings
                 .contextTurns
             }
             min={1}
@@ -60,7 +254,7 @@ export function ConversationPanel({
             onChange={(
               contextTurns
             ) => {
-              onUpdate({
+              onUpdateConversation({
                 contextTurns
               });
             }}
@@ -79,7 +273,7 @@ export function ConversationPanel({
         >
           <Slider
             value={
-              settings
+              conversationSettings
                 .maxConversations
             }
             min={10}
@@ -89,7 +283,7 @@ export function ConversationPanel({
             onChange={(
               maxConversations
             ) => {
-              onUpdate({
+              onUpdateConversation({
                 maxConversations
               });
             }}
@@ -102,13 +296,13 @@ export function ConversationPanel({
         >
           <Toggle
             checked={
-              settings.autoTitle
+              conversationSettings.autoTitle
             }
             label="自动生成会话标题"
             onChange={(
               autoTitle
             ) => {
-              onUpdate({
+              onUpdateConversation({
                 autoTitle
               });
             }}
@@ -121,14 +315,14 @@ export function ConversationPanel({
         >
           <Toggle
             checked={
-              settings
+              conversationSettings
                 .saveAbortedReplies
             }
             label="保存中止的回复"
             onChange={(
               saveAbortedReplies
             ) => {
-              onUpdate({
+              onUpdateConversation({
                 saveAbortedReplies
               });
             }}

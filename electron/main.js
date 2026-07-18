@@ -24,6 +24,10 @@ import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
 
+import {
+  installRendererSessionSecurity
+} from "./security/rendererSecurity.js";
+
 const e2eUserData =
   process.env
     .XIXI_E2E_USER_DATA;
@@ -40,16 +44,8 @@ if (e2eUserData) {
 registerIpcHandlers();
 
 app.whenReady().then(() => {
-
-  session.defaultSession.webRequest.onErrorOccurred(
-    (details) => {
-      console.error(
-        "[NET ERROR]",
-        details.error,
-        details.resourceType,
-        details.url
-      );
-    }
+  installRendererSessionSecurity(
+    session.defaultSession
   );
 
   const settings = getSettings();

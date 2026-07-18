@@ -115,6 +115,30 @@ describe(
     );
 
     it(
+      "exposes the safe external-link channel",
+      () => {
+        assert.equal(
+          channels
+            .security
+            .OPEN_EXTERNAL_URL,
+          "security-open-external-url"
+        );
+      }
+    );
+
+    it(
+      "exposes the workspace directory picker channel",
+      () => {
+        assert.equal(
+          channels
+            .settings
+            .SELECT_DIRECTORY,
+          "settings-select-directory"
+        );
+      }
+    );
+
+    it(
       "exposes memory channels",
       () => {
         assert.equal(

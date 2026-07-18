@@ -862,6 +862,90 @@ async function main() {
 
     await setting
       .locator(
+        '[data-testid="setting-tab-tools"]'
+      )
+      .click();
+
+    await waitForText(
+      setting.locator(
+        ".setting-page__header"
+      ),
+      "工具"
+    );
+
+    await waitForText(
+      setting.locator(
+        ".tool-overview-card"
+      ),
+      "Safe Tool Runtime"
+    );
+
+    await setting
+      .locator(
+        "details.tool-list-disclosure summary"
+      )
+      .click();
+
+    const calculatorToggle =
+      setting.locator(
+        '[data-testid="tool-toggle-calculator"]'
+      );
+
+    await calculatorToggle.click();
+    await waitForAttribute(
+      calculatorToggle,
+      "aria-checked",
+      "false"
+    );
+    await calculatorToggle.click();
+    await waitForAttribute(
+      calculatorToggle,
+      "aria-checked",
+      "true"
+    );
+
+    await setting
+      .locator(
+        '[data-testid="setting-tab-conversation"]'
+      )
+      .click();
+
+    await waitForText(
+      setting.locator(
+        ".setting-page__header"
+      ),
+      "会话与上下文"
+    );
+
+    await waitForText(
+      setting.locator(
+        ".settings-section"
+      ).first(),
+      "运行环境上下文"
+    );
+
+    await setting
+      .locator(
+        '[data-testid="runtime-context-profile"]'
+      )
+      .getByRole(
+        "button",
+        { name: "精简" }
+      )
+      .click();
+
+    await setting
+      .locator(
+        '[data-testid="runtime-context-profile"]'
+      )
+      .getByRole(
+        "button",
+        { name: "标准" }
+      )
+      .click();
+
+    await setting
+      .locator(
         '[data-testid="setting-tab-personality"]'
       )
       .click();
