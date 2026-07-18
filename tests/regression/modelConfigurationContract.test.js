@@ -146,3 +146,61 @@ describe(
     );
   }
 );
+
+
+describe(
+  "official SDK model interface",
+  () => {
+    it(
+      "installs first-party provider SDKs and the native Ollama provider",
+      () => {
+        const packageSource = read(
+          "../../package.json"
+        );
+
+        for (const dependency of [
+          "@ai-sdk/openai",
+          "@ai-sdk/anthropic",
+          "@ai-sdk/openai-compatible",
+          "ollama-ai-provider-v2"
+        ]) {
+          assert.match(
+            packageSource,
+            new RegExp(dependency.replace("/", "\\/"), "u")
+          );
+        }
+      }
+    );
+
+    it(
+      "keeps provider selection, model navigation and advanced generation settings separated",
+      () => {
+        const source = read(
+          "../../src/Setting/panels/ModelPanel.jsx"
+        );
+
+        assert.match(source, /model-provider-header/u);
+        assert.match(source, /model-list-card/u);
+        assert.match(source, /model-config-card/u);
+        assert.match(source, /API 模式/u);
+        assert.match(source, /推理模式/u);
+        assert.match(source, /失败重试/u);
+      }
+    );
+
+    it(
+      "routes providers through the SDK registry instead of handwritten protocol adapters",
+      () => {
+        const source = read(
+          "../../electron/agent/providers/sdkProviderRegistry.js"
+        );
+
+        assert.match(source, /createOpenAI/u);
+        assert.match(source, /createAnthropic/u);
+        assert.match(source, /createOpenAICompatible/u);
+        assert.match(source, /createOllama/u);
+        assert.match(source, /createDeepSeek/u);
+      }
+    );
+  }
+);

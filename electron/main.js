@@ -1,7 +1,8 @@
 import {
   app,
   BrowserWindow,
-  nativeTheme
+  nativeTheme,
+  session
 } from "electron";
 
 import path from "node:path";
@@ -39,8 +40,19 @@ if (e2eUserData) {
 registerIpcHandlers();
 
 app.whenReady().then(() => {
-  const settings =
-    getSettings();
+
+  session.defaultSession.webRequest.onErrorOccurred(
+    (details) => {
+      console.error(
+        "[NET ERROR]",
+        details.error,
+        details.resourceType,
+        details.url
+      );
+    }
+  );
+
+  const settings = getSettings();
 
   createPetWindow();
 

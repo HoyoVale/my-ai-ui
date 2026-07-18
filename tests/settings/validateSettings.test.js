@@ -480,3 +480,66 @@ describe(
     );
   }
 );
+
+describe(
+  "SDK model option validation",
+  () => {
+    it(
+      "sanitizes advanced request options and migrates Ollama to its native API",
+      () => {
+        const settings = sanitizeSettings({
+          model: {
+            activeProvider: "ollama",
+            providers: {
+              ollama: {
+                id: "ollama",
+                type: "openai-compatible",
+                name: "Ollama",
+                baseURL: "http://localhost:11434/v1",
+                credentialMode: "optional",
+                activeModelId: "qwen",
+                models: [
+                  {
+                    id: "qwen",
+                    name: "Qwen",
+                    modelId: "qwen3:4b",
+                    apiMode: "chat",
+                    contextTokenBudget: 32768,
+                    temperature: 5,
+                    topP: -1,
+                    seed: "42",
+                    maxOutputTokens: 4096,
+                    maxRetries: 9,
+                    timeoutMs: 120000,
+                    reasoningMode: "enabled",
+                    reasoningEffort: "high",
+                    reasoningBudgetTokens: 2048,
+                    textVerbosity: "high"
+                  }
+                ]
+              }
+            }
+          }
+        });
+
+        const provider =
+          settings.model.providers.ollama;
+        const model = provider.models[0];
+
+        assert.equal(provider.type, "ollama");
+        assert.equal(
+          provider.baseURL,
+          "http://localhost:11434/api"
+        );
+        assert.equal(model.temperature, 2);
+        assert.equal(model.topP, 0);
+        assert.equal(model.seed, 42);
+        assert.equal(model.maxRetries, 5);
+        assert.equal(
+          model.reasoningMode,
+          "enabled"
+        );
+      }
+    );
+  }
+);

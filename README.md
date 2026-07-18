@@ -98,6 +98,8 @@ OpenAI-compatible   LM Studio、LiteLLM 与自建网关
 
 Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 共同决定下一次请求使用的模型。旧版单模型设置会自动迁移到 DeepSeek Provider。
 
+Provider SDK、运行时解析和扩展步骤见 [`docs/MODEL_PROVIDERS.md`](docs/MODEL_PROVIDERS.md)。
+
 ## 全局字体与窗口密度
 
 所有窗口共享一个字体族。Conversation、Response、Input、Memory、Setting 和 Pet menu 分别保存字号与密度，密度会同时调整行高和主要留白。旧版 Input/Response 字体字段会自动迁移。

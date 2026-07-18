@@ -1,18 +1,11 @@
 import {
-  createDeepSeek
-} from "@ai-sdk/deepseek";
-
-import {
   getProviderApiKey
 } from "./credentialStore.js";
 
 import {
-  AnthropicLanguageModel
-} from "./providers/anthropicLanguageModel.js";
-
-import {
-  OpenAICompatibleLanguageModel
-} from "./providers/openAICompatibleLanguageModel.js";
+  buildSdkRequestOptions,
+  createSdkModel
+} from "./providers/sdkProviderRegistry.js";
 
 function getCredential(
   modelSettings
@@ -30,7 +23,7 @@ export function getCredentialError(
 ) {
   if (
     modelSettings.credentialMode !==
-    "required"
+      "required"
   ) {
     return null;
   }
@@ -42,16 +35,7 @@ export function getCredentialError(
   return `尚未配置 ${modelSettings.providerName} API Key。请先在 Setting → Model 中保存密钥。`;
 }
 
-function compatibleProviderName(
-  providerId
-) {
-  return String(providerId ?? "provider")
-    .replace(/[^a-z0-9]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase() || "provider";
-}
-
-export function createConfiguredModel(
+export function createModelRuntime(
   modelSettings
 ) {
   const apiKey =
@@ -68,57 +52,43 @@ export function createConfiguredModel(
     );
   }
 
-  if (
-    modelSettings.provider ===
-    "deepseek"
-  ) {
-    const provider = createDeepSeek({
-      apiKey,
-      baseURL:
-        modelSettings.baseURL
-    });
+  const sdkModel = createSdkModel({
+    modelSettings,
+    apiKey
+  });
 
-    return provider(
-      modelSettings.model
-    );
-  }
-
-  if (
-    modelSettings.provider ===
-    "anthropic"
-  ) {
-    return new AnthropicLanguageModel({
-      apiKey,
-      baseURL:
-        modelSettings.baseURL,
+  return {
+    model: sdkModel.model,
+    requestOptions:
+      buildSdkRequestOptions(
+        modelSettings,
+        sdkModel.providerOptions
+      ),
+    descriptor: {
+      providerId:
+        modelSettings.providerId,
+      providerName:
+        modelSettings.providerName,
+      providerType:
+        modelSettings.provider,
+      modelConfigId:
+        modelSettings.modelConfigId,
       modelId:
-        modelSettings.model
-    });
-  }
+        modelSettings.model,
+      modelName:
+        modelSettings.modelName,
+      sdk: sdkModel.sdk,
+      apiMode: sdkModel.apiMode,
+      reasoningEnabled:
+        sdkModel.reasoningEnabled
+    }
+  };
+}
 
-  if (
-    modelSettings.provider ===
-    "openai-compatible"
-  ) {
-    return new OpenAICompatibleLanguageModel({
-      provider:
-        compatibleProviderName(
-          modelSettings.providerId
-        ),
-      apiKey:
-        apiKey ||
-        (modelSettings.providerId ===
-        "ollama"
-          ? "ollama"
-          : ""),
-      baseURL:
-        modelSettings.baseURL,
-      modelId:
-        modelSettings.model
-    });
-  }
-
-  throw new Error(
-    `暂不支持模型提供商：${modelSettings.provider}`
-  );
+export function createConfiguredModel(
+  modelSettings
+) {
+  return createModelRuntime(
+    modelSettings
+  ).model;
 }

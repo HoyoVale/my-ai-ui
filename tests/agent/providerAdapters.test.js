@@ -7,305 +7,268 @@ import assert
   from "node:assert/strict";
 
 import {
-  AnthropicLanguageModel
-} from "../../electron/agent/providers/anthropicLanguageModel.js";
+  generateText
+} from "ai";
 
 import {
-  OpenAICompatibleLanguageModel
-} from "../../electron/agent/providers/openAICompatibleLanguageModel.js";
+  createSdkModel,
+  normalizeOllamaBaseURL
+} from "../../electron/agent/providers/sdkProviderRegistry.js";
 
-function textPrompt() {
-  return [
-    {
-      role: "system",
-      content: "You are concise."
-    },
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "Hello"
-        }
-      ]
-    }
-  ];
-}
-
-async function collectStream(stream) {
-  const parts = [];
-
-  for await (const part of stream) {
-    parts.push(part);
-  }
-
-  return parts;
+function baseSettings(overrides = {}) {
+  return {
+    provider: "openai-compatible",
+    providerId: "compatible",
+    providerName: "Compatible",
+    baseURL: "https://api.example.com/v1",
+    model: "test-model",
+    apiMode: "chat",
+    contextTokenBudget: 32768,
+    temperature: 0.7,
+    topP: 1,
+    seed: null,
+    maxOutputTokens: 1024,
+    maxRetries: 0,
+    timeoutMs: 30000,
+    reasoningMode: "auto",
+    reasoningEffort: "default",
+    reasoningBudgetTokens: 4096,
+    textVerbosity: "default",
+    ...overrides
+  };
 }
 
 describe(
-  "OpenAI-compatible language model adapter",
+  "official provider SDK registry",
   () => {
     it(
-      "generates text and maps standard usage",
+      "uses the OpenAI-compatible SDK and maps usage",
       async () => {
         let request;
 
-        const model =
-          new OpenAICompatibleLanguageModel({
-            provider: "openai",
-            modelId: "gpt-test",
-            baseURL: "https://api.example.com/v1/",
-            apiKey: "secret",
-            fetchImplementation:
-              async (url, options) => {
-                request = {
-                  url,
-                  options,
-                  body: JSON.parse(
-                    options.body
-                  )
-                };
+        const runtime = createSdkModel({
+          modelSettings: baseSettings(),
+          apiKey: "secret",
+          fetchImplementation:
+            async (url, options) => {
+              request = {
+                url,
+                headers: options.headers,
+                body: JSON.parse(options.body)
+              };
 
-                return new Response(
-                  JSON.stringify({
-                    id: "response-1",
-                    model: "gpt-test",
-                    choices: [
-                      {
-                        message: {
-                          content: "Connected"
-                        },
-                        finish_reason: "stop"
-                      }
-                    ],
-                    usage: {
-                      prompt_tokens: 12,
-                      completion_tokens: 3
+              return new Response(
+                JSON.stringify({
+                  id: "response-1",
+                  object: "chat.completion",
+                  created: 1,
+                  model: "test-model",
+                  choices: [
+                    {
+                      index: 0,
+                      message: {
+                        role: "assistant",
+                        content: "Connected"
+                      },
+                      finish_reason: "stop"
                     }
-                  }),
-                  {
-                    status: 200,
-                    headers: {
-                      "content-type":
-                        "application/json"
-                    }
+                  ],
+                  usage: {
+                    prompt_tokens: 12,
+                    completion_tokens: 3,
+                    total_tokens: 15
                   }
-                );
-              }
-          });
+                }),
+                {
+                  status: 200,
+                  headers: {
+                    "content-type":
+                      "application/json"
+                  }
+                }
+              );
+            }
+        });
 
-        const result =
-          await model.doGenerate({
-            prompt: textPrompt(),
-            maxOutputTokens: 64,
-            temperature: 0.2
-          });
+        const result = await generateText({
+          model: runtime.model,
+          prompt: "Hello",
+          maxOutputTokens: 64,
+          maxRetries: 0
+        });
 
         assert.equal(
           request.url,
           "https://api.example.com/v1/chat/completions"
         );
         assert.equal(
-          request.options.headers
-            .Authorization,
-          "Bearer secret"
-        );
-        assert.equal(
           request.body.model,
-          "gpt-test"
+          "test-model"
         );
         assert.equal(
-          request.body.messages[0]
-            .role,
-          "system"
-        );
-        assert.equal(
-          result.content[0].text,
+          result.text,
           "Connected"
         );
         assert.equal(
-          result.usage.inputTokens
-            .total,
+          result.usage.inputTokens,
           12
         );
         assert.equal(
-          result.usage.outputTokens
-            .total,
+          result.usage.outputTokens,
           3
         );
       }
     );
 
     it(
-      "streams OpenAI-compatible text deltas",
-      async () => {
-        const encoder =
-          new TextEncoder();
-
-        const model =
-          new OpenAICompatibleLanguageModel({
-            provider: "ollama",
-            modelId: "gemma3",
-            baseURL:
-              "http://localhost:11434/v1",
-            apiKey: "",
-            fetchImplementation:
-              async () => {
-                const stream =
-                  new ReadableStream({
-                    start(controller) {
-                      controller.enqueue(
-                        encoder.encode(
-                          'data: {"id":"1","model":"gemma3","choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}\n\n'
-                        )
-                      );
-                      controller.enqueue(
-                        encoder.encode(
-                          'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":1}}\n\n'
-                        )
-                      );
-                      controller.enqueue(
-                        encoder.encode(
-                          "data: [DONE]\n\n"
-                        )
-                      );
-                      controller.close();
-                    }
-                  });
-
-                return new Response(
-                  stream,
-                  {
-                    status: 200,
-                    headers: {
-                      "content-type":
-                        "text/event-stream"
-                    }
-                  }
-                );
-              }
-          });
-
-        const result =
-          await model.doStream({
-            prompt: textPrompt(),
-            maxOutputTokens: 64
-          });
-
-        const parts =
-          await collectStream(
-            result.stream
-          );
-
-        assert.equal(
-          parts.find(
-            (part) =>
-              part.type ===
-              "text-delta"
-          ).delta,
-          "Hi"
-        );
-        assert.equal(
-          parts.at(-1).type,
-          "finish"
-        );
-        assert.equal(
-          parts.at(-1).usage
-            .inputTokens.total,
-          5
-        );
-      }
-    );
-  }
-);
-
-describe(
-  "Anthropic Messages adapter",
-  () => {
-    it(
-      "uses the native Messages endpoint and Anthropic headers",
+      "uses the Anthropic SDK Messages endpoint",
       async () => {
         let request;
 
-        const model =
-          new AnthropicLanguageModel({
-            modelId:
-              "claude-sonnet-4-20250514",
+        const runtime = createSdkModel({
+          modelSettings: baseSettings({
+            provider: "anthropic",
+            providerId: "anthropic",
             baseURL:
-              "https://api.anthropic.com/v1/",
-            apiKey: "anthropic-secret",
-            fetchImplementation:
-              async (url, options) => {
-                request = {
-                  url,
-                  options,
-                  body: JSON.parse(
-                    options.body
-                  )
-                };
+              "https://api.anthropic.com/v1",
+            model:
+              "claude-sonnet-4-6",
+            apiMode: "messages"
+          }),
+          apiKey: "anthropic-secret",
+          fetchImplementation:
+            async (url, options) => {
+              request = {
+                url,
+                body: JSON.parse(options.body)
+              };
 
-                return new Response(
-                  JSON.stringify({
-                    id: "msg_1",
-                    model:
-                      "claude-sonnet-4-20250514",
-                    content: [
-                      {
-                        type: "text",
-                        text: "Connected"
-                      }
-                    ],
-                    stop_reason: "end_turn",
-                    usage: {
-                      input_tokens: 10,
-                      output_tokens: 2
+              return new Response(
+                JSON.stringify({
+                  id: "msg_1",
+                  type: "message",
+                  role: "assistant",
+                  model:
+                    "claude-sonnet-4-6",
+                  content: [
+                    {
+                      type: "text",
+                      text: "Connected"
                     }
-                  }),
-                  {
-                    status: 200,
-                    headers: {
-                      "content-type":
-                        "application/json"
-                    }
+                  ],
+                  stop_reason: "end_turn",
+                  stop_sequence: null,
+                  usage: {
+                    input_tokens: 10,
+                    output_tokens: 2
                   }
-                );
-              }
-          });
+                }),
+                {
+                  status: 200,
+                  headers: {
+                    "content-type":
+                      "application/json"
+                  }
+                }
+              );
+            }
+        });
 
-        const result =
-          await model.doGenerate({
-            prompt: textPrompt(),
-            maxOutputTokens: 32
-          });
+        const result = await generateText({
+          model: runtime.model,
+          prompt: "Hello",
+          maxOutputTokens: 32,
+          maxRetries: 0
+        });
 
         assert.equal(
           request.url,
           "https://api.anthropic.com/v1/messages"
         );
         assert.equal(
-          request.options.headers[
-            "x-api-key"
-          ],
-          "anthropic-secret"
+          request.body.model,
+          "claude-sonnet-4-6"
         );
         assert.equal(
-          request.options.headers[
-            "anthropic-version"
-          ],
-          "2023-06-01"
-        );
-        assert.equal(
-          request.body.system,
-          "You are concise."
-        );
-        assert.equal(
-          result.content[0].text,
+          result.text,
           "Connected"
         );
+      }
+    );
+
+    it(
+      "uses the native Ollama SDK and migrates /v1 to /api",
+      async () => {
+        let request;
+
+        const runtime = createSdkModel({
+          modelSettings: baseSettings({
+            provider: "ollama",
+            providerId: "ollama",
+            baseURL:
+              "http://localhost:11434/v1",
+            model: "qwen3:4b",
+            reasoningMode: "enabled"
+          }),
+          apiKey: "",
+          fetchImplementation:
+            async (url, options) => {
+              request = {
+                url,
+                body: JSON.parse(options.body)
+              };
+
+              return new Response(
+                JSON.stringify({
+                  model: "qwen3:4b",
+                  created_at:
+                    "2026-01-01T00:00:00Z",
+                  message: {
+                    role: "assistant",
+                    content: "Connected"
+                  },
+                  done: true,
+                  done_reason: "stop",
+                  prompt_eval_count: 5,
+                  eval_count: 1
+                }),
+                {
+                  status: 200,
+                  headers: {
+                    "content-type":
+                      "application/json"
+                  }
+                }
+              );
+            }
+        });
+
+        const result = await generateText({
+          model: runtime.model,
+          prompt: "Hello",
+          maxOutputTokens: 32,
+          maxRetries: 0,
+          providerOptions:
+            runtime.providerOptions
+        });
+
         assert.equal(
-          result.usage.outputTokens
-            .total,
-          2
+          normalizeOllamaBaseURL(
+            "http://localhost:11434/v1"
+          ),
+          "http://localhost:11434/api"
+        );
+        assert.equal(
+          request.url,
+          "http://localhost:11434/api/chat"
+        );
+        assert.equal(
+          request.body.think,
+          true
+        );
+        assert.equal(
+          result.text,
+          "Connected"
         );
       }
     );

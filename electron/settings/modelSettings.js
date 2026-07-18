@@ -90,11 +90,31 @@ export function resolveActiveModelSettings(
     modelName:
       model.name ?? model.modelId,
     model: model.modelId,
+    apiMode:
+      model.apiMode ?? "auto",
     contextTokenBudget:
       model.contextTokenBudget,
     temperature: model.temperature,
+    topP: model.topP ?? 1,
+    seed:
+      Number.isInteger(model.seed)
+        ? model.seed
+        : null,
     maxOutputTokens:
       model.maxOutputTokens,
-    timeoutMs: model.timeoutMs
+    maxRetries:
+      model.maxRetries ?? 1,
+    timeoutMs: model.timeoutMs,
+    reasoningMode:
+      model.reasoningMode ?? "auto",
+    reasoningEffort:
+      model.reasoningEffort ??
+      "default",
+    reasoningBudgetTokens:
+      model.reasoningBudgetTokens ??
+      4096,
+    textVerbosity:
+      model.textVerbosity ??
+      "default"
   };
 }

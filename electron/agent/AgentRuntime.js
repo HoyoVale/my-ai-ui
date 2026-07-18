@@ -43,7 +43,7 @@ import {
 } from "../windows/response/index.js";
 
 import {
-  createConfiguredModel,
+  createModelRuntime,
   getCredentialError
 } from "./modelFactory.js";
 
@@ -520,12 +520,14 @@ export class AgentRuntime {
       Date.now();
 
     try {
+      const runtime =
+        createModelRuntime(
+          modelSettings
+        );
+
       const result =
         await generateText({
-          model:
-            createConfiguredModel(
-              modelSettings
-            ),
+          model: runtime.model,
 
           system:
             assembleAgentContext({
@@ -537,6 +539,7 @@ export class AgentRuntime {
           prompt:
             "只回复：连接成功",
 
+          ...runtime.requestOptions,
           maxOutputTokens: 16,
           temperature: 0,
           maxRetries: 0,
@@ -699,8 +702,8 @@ export class AgentRuntime {
           settings.model
         );
 
-      const model =
-        createConfiguredModel(
+      const runtime =
+        createModelRuntime(
           modelSettings
         );
 
@@ -708,7 +711,7 @@ export class AgentRuntime {
 
       const result =
         streamText({
-          model,
+          model: runtime.model,
 
           system:
             context.system,
@@ -716,15 +719,7 @@ export class AgentRuntime {
           messages:
             context.messages,
 
-          temperature:
-            modelSettings
-              .temperature,
-
-          maxOutputTokens:
-            modelSettings
-              .maxOutputTokens,
-
-          maxRetries: 1,
+          ...runtime.requestOptions,
 
           abortSignal:
             abortController.signal,
@@ -775,6 +770,42 @@ export class AgentRuntime {
             textPart
           );
         }
+      }
+
+      if (
+        !abortController
+          .signal
+          .aborted &&
+        this.isCurrentRun(runId)
+      ) {
+        const [
+          reasoningText,
+          toolCalls
+        ] = await Promise.all([
+          result.reasoningText,
+          result.toolCalls
+        ]);
+
+        this.activeRun
+          .reasoningSummary =
+          String(
+            reasoningText ?? ""
+          ).trim();
+
+        this.activeRun.toolCalls =
+          Array.isArray(toolCalls)
+            ? toolCalls.map(
+                (toolCall) => ({
+                  id:
+                    toolCall.toolCallId,
+                  name:
+                    toolCall.toolName,
+                  status: "requested",
+                  input:
+                    toolCall.input
+                })
+              )
+            : [];
       }
 
       if (

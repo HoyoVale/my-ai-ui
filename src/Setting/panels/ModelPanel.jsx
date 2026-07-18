@@ -7,7 +7,6 @@ import {
   ActionButton,
   Select,
   SettingRow,
-  SettingsSection,
   Slider,
   TextInput
 } from "../components/Controls.jsx";
@@ -16,478 +15,189 @@ import {
   useModelCredentials
 } from "../hooks/useModelCredentials.js";
 
-const CONTEXT_OPTIONS = [
-  8192,
-  16384,
-  32768,
-  64000,
-  128000,
-  200000,
-  256000,
-  512000,
-  1000000,
-  2000000
-].map((value) => ({
-  value,
-  label:
-    value >= 1000000
-      ? `${value / 1000000}M`
-      : `${Math.round(value / 1000)}K`
-}));
+import {
+  apiModeOptions,
+  CONTEXT_OPTIONS,
+  CREDENTIAL_OPTIONS,
+  credentialDescription,
+  createModelTemplate,
+  OUTPUT_OPTIONS,
+  providerSdkLabel,
+  REASONING_EFFORT_OPTIONS,
+  REASONING_MODE_OPTIONS,
+  VERBOSITY_OPTIONS
+} from "../model/modelPanelOptions.js";
 
-const OUTPUT_OPTIONS = [
-  2048,
-  4096,
-  8192,
-  16384,
-  32768,
-  65536,
-  131072,
-  262144,
-  384000
-].map((value) => ({
-  value,
-  label:
-    value >= 100000
-      ? `${Math.round(value / 1000)}K`
-      : `${Math.round(value / 1024)}K`
-}));
+function ProviderSelector({
+  modelSettings,
+  providerId,
+  provider,
+  onSelect
+}) {
+  return (
+    <div className="model-provider-header">
+      <div>
+        <span className="model-eyebrow">Provider</span>
+        <strong>{provider.name}</strong>
+        <small>{providerSdkLabel(provider)}</small>
+      </div>
 
-const CREDENTIAL_OPTIONS = [
-  {
-    value: "required",
-    label: "必须"
-  },
-  {
-    value: "optional",
-    label: "可选"
-  },
-  {
-    value: "none",
-    label: "不使用"
-  }
-];
+      <Select
+        testId="model-provider-select"
+        value={providerId}
+        options={Object.values(
+          modelSettings.providers
+        ).map((item) => ({
+          value: item.id,
+          label: item.name
+        }))}
+        onChange={onSelect}
+      />
+    </div>
+  );
+}
 
-function credentialDescription(
+function ModelList({
+  provider,
+  activeModel,
+  onSelect,
+  onAdd,
+  onDelete
+}) {
+  return (
+    <aside className="model-list-card">
+      <div className="model-list-card__header">
+        <div>
+          <span className="model-eyebrow">Models</span>
+          <strong>已配置模型</strong>
+        </div>
+
+        <ActionButton
+          testId="model-add"
+          onClick={onAdd}
+        >
+          ＋
+          <span className="settings-sr-only">
+            添加模型
+          </span>
+        </ActionButton>
+      </div>
+
+      <div className="model-list-card__items">
+        {provider.models.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`model-list-item${
+              item.id === activeModel.id
+                ? " is-active"
+                : ""
+            }`}
+            onClick={() => onSelect(item.id)}
+          >
+            <span>{item.name || item.modelId}</span>
+            <small>{item.modelId}</small>
+          </button>
+        ))}
+      </div>
+
+      <div className="model-list-card__footer">
+        <ActionButton
+          testId="model-delete"
+          tone="danger"
+          disabled={provider.models.length <= 1}
+          onClick={onDelete}
+        >
+          删除当前模型
+        </ActionButton>
+      </div>
+
+      <select
+        className="model-active-select-proxy"
+        data-testid="model-active-select"
+        aria-label="当前模型"
+        value={provider.activeModelId}
+        onChange={(event) => onSelect(event.target.value)}
+      >
+        {provider.models.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name || item.modelId}
+          </option>
+        ))}
+      </select>
+    </aside>
+  );
+}
+
+function ProviderConnection({
   provider,
   status,
-  loading
-) {
-  if (
-    provider.credentialMode ===
-    "none"
-  ) {
-    return "该提供商不会发送 API Key。";
-  }
-
-  if (loading) {
-    return "正在读取凭据状态…";
-  }
-
-  if (!status.configured) {
-    if (
-      provider.credentialMode ===
-      "optional"
-    ) {
-      return "API Key 可选；适用于本地 Ollama、LM Studio 等无需鉴权的服务。";
-    }
-
-    return "尚未保存 API Key。密钥只保存在主进程凭据存储中。";
-  }
-
-  if (status.source === "environment") {
-    return `当前使用环境变量 ${status.environmentKey || provider.environmentKey}。`;
-  }
-
-  if (status.protected) {
-    return "API Key 已使用系统安全存储加密。";
-  }
-
-  return "API Key 已保存，但当前系统未提供安全存储。";
-}
-
-function createModelId() {
-  return `model-${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 7)}`;
-}
-
-function createModelTemplate(
-  provider
-) {
-  const source =
-    provider.models[0];
-
-  return {
-    id: createModelId(),
-    name: "新模型",
-    modelId:
-      provider.id === "ollama"
-        ? "gemma3"
-        : source?.modelId ??
-          "model-id",
-    contextTokenBudget:
-      source?.contextTokenBudget ??
-      64000,
-    temperature:
-      source?.temperature ?? 0.7,
-    maxOutputTokens:
-      Math.min(
-        source?.maxOutputTokens ??
-          8192,
-        source?.contextTokenBudget ??
-          64000
-      ),
-    timeoutMs:
-      source?.timeoutMs ?? 120000
-  };
-}
-
-export function ModelPanel({
-  settings,
-  onUpdate
+  loading,
+  apiKey,
+  credentialHint,
+  onApiKeyChange,
+  onProviderUpdate,
+  onSave,
+  onClear
 }) {
-  const modelSettings =
-    settings.model;
-
-  const providerId =
-    modelSettings.activeProvider;
-
-  const provider =
-    modelSettings.providers[
-      providerId
-    ] ??
-    Object.values(
-      modelSettings.providers
-    )[0];
-
-  const activeModel = useMemo(
-    () => {
-      return provider.models.find(
-        (item) =>
-          item.id ===
-          provider.activeModelId
-      ) ?? provider.models[0];
-    },
-    [
-      provider.activeModelId,
-      provider.models
-    ]
-  );
-
-  const [apiKey, setApiKey] =
-    useState("");
-
-  const [credentialAction, setCredentialAction] =
-    useState("idle");
-
-  const [testResult, setTestResult] =
-    useState(null);
-
-  const [testing, setTesting] =
-    useState(false);
-
-  const {
-    status,
-    loading,
-    saveApiKey,
-    clearApiKey
-  } = useModelCredentials(provider);
-
-  const updateProvider =
-    (patch) => {
-      onUpdate({
-        providers: {
-          ...modelSettings.providers,
-          [providerId]: {
-            ...provider,
-            ...patch
-          }
-        }
-      });
-    };
-
-  const updateActiveModel =
-    (patch) => {
-      updateProvider({
-        models:
-          provider.models.map(
-            (item) =>
-              item.id ===
-              activeModel.id
-                ? {
-                    ...item,
-                    ...patch
-                  }
-                : item
-          )
-      });
-    };
-
-  const handleAddModel = () => {
-    const model =
-      createModelTemplate(provider);
-
-    updateProvider({
-      activeModelId: model.id,
-      models: [
-        ...provider.models,
-        model
-      ]
-    });
-
-    setTestResult(null);
-  };
-
-  const handleDeleteModel = () => {
-    if (
-      provider.models.length <= 1
-    ) {
-      return;
-    }
-
-    const remaining =
-      provider.models.filter(
-        (item) =>
-          item.id !==
-          activeModel.id
-      );
-
-    updateProvider({
-      models: remaining,
-      activeModelId:
-        remaining[0].id
-    });
-
-    setTestResult(null);
-  };
-
-  const handleSaveApiKey =
-    async () => {
-      if (!apiKey.trim()) {
-        setCredentialAction("empty");
-        return;
-      }
-
-      setCredentialAction("saving");
-
-      try {
-        await saveApiKey(apiKey);
-        setApiKey("");
-        setCredentialAction("saved");
-      } catch (error) {
-        console.error(
-          "保存 API Key 失败：",
-          error
-        );
-        setCredentialAction("error");
-      }
-    };
-
-  const handleClearApiKey =
-    async () => {
-      setCredentialAction("saving");
-
-      try {
-        await clearApiKey();
-        setApiKey("");
-        setCredentialAction("cleared");
-      } catch (error) {
-        console.error(
-          "清除 API Key 失败：",
-          error
-        );
-        setCredentialAction("error");
-      }
-    };
-
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-
-    try {
-      const result =
-        await window.api
-          ?.testModelConnection?.(
-            modelSettings
-          );
-
-      setTestResult(
-        result ?? {
-          ok: false,
-          message:
-            "未收到测试结果。"
-        }
-      );
-    } catch (error) {
-      setTestResult({
-        ok: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : String(error)
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const credentialHint = {
-    empty: "请输入 API Key。",
-    saving: "正在保存…",
-    saved: "API Key 已保存。",
-    cleared: "已清除本地 API Key。",
-    error: "操作失败，请查看控制台。"
-  }[credentialAction];
-
-  const providerOptions =
-    Object.values(
-      modelSettings.providers
-    ).map((item) => ({
-      value: item.id,
-      label: item.name
-    }));
-
   return (
-    <div className="settings-panel-stack">
-      <SettingsSection
-        title="当前模型"
-        description="先选择提供商，再选择该提供商下实际使用的模型。"
-      >
-        <SettingRow
-          title="提供商"
-          description="DeepSeek 与 Anthropic 使用原生适配器；OpenAI、Ollama 和兼容服务使用 OpenAI-compatible 适配器。"
-        >
-          <Select
-            testId="model-provider-select"
-            value={providerId}
-            options={providerOptions}
-            onChange={(activeProvider) => {
-              onUpdate({
-                activeProvider
-              });
-              setApiKey("");
-              setCredentialAction("idle");
-              setTestResult(null);
-            }}
-          />
-        </SettingRow>
+    <details className="model-config-card" open>
+      <summary>
+        <span>
+          <strong>提供商连接</strong>
+          <small>地址与凭据由该 Provider 下全部模型共享</small>
+        </span>
+        <span className="model-card-summary-status">
+          {status.configured ? "已配置" : "未配置"}
+        </span>
+      </summary>
 
-        <SettingRow
-          title="使用模型"
-          description="模型参数与上下文容量会随选择一起切换。"
-        >
-          <div className="settings-model-picker">
-            <Select
-              testId="model-active-select"
-              value={
-                provider.activeModelId
-              }
-              options={
-                provider.models.map(
-                  (item) => ({
-                    value: item.id,
-                    label:
-                      item.name ||
-                      item.modelId
-                  })
-                )
-              }
-              onChange={(activeModelId) => {
-                updateProvider({
-                  activeModelId
-                });
-                setTestResult(null);
-              }}
-            />
-
-            <ActionButton
-              testId="model-add"
-              onClick={handleAddModel}
-            >
-              添加模型
-            </ActionButton>
-
-            <ActionButton
-              testId="model-delete"
-              tone="danger"
-              disabled={
-                provider.models.length <= 1
-              }
-              onClick={handleDeleteModel}
-            >
-              删除
-            </ActionButton>
-          </div>
-        </SettingRow>
-      </SettingsSection>
-
-      <SettingsSection
-        title="提供商配置"
-        description="连接地址和凭据由当前提供商下的所有模型共享。"
-      >
-        <SettingRow
-          title="显示名称"
-          description="用于提供商选择器和错误提示。"
-        >
+      <div className="model-config-card__body">
+        <SettingRow title="显示名称">
           <TextInput
             value={provider.name}
-            onChange={(name) => {
-              updateProvider({ name });
-            }}
+            onChange={(name) => onProviderUpdate({ name })}
           />
         </SettingRow>
 
         <SettingRow
           title="Base URL"
-          description="填写 API 前缀；OpenAI-compatible 通常以 /v1 结尾。"
+          description={
+            provider.type === "ollama"
+              ? "原生 Ollama SDK 使用 /api 地址；旧 /v1 地址会自动迁移。"
+              : "填写当前 SDK 使用的 API 前缀。"
+          }
         >
           <TextInput
             value={provider.baseURL}
             placeholder="https://api.example.com/v1"
-            onChange={(baseURL) => {
-              updateProvider({
-                baseURL
-              });
-              setTestResult(null);
-            }}
+            onChange={(baseURL) => onProviderUpdate({ baseURL })}
           />
         </SettingRow>
 
-        <SettingRow
-          title="凭据模式"
-          description="本地 Ollama 等服务可设为可选或不使用。"
-        >
+        <SettingRow title="凭据模式">
           <Select
-            value={
-              provider.credentialMode
-            }
+            value={provider.credentialMode}
             options={CREDENTIAL_OPTIONS}
-            onChange={(credentialMode) => {
-              updateProvider({
-                credentialMode
-              });
-              setTestResult(null);
-            }}
+            onChange={(credentialMode) =>
+              onProviderUpdate({ credentialMode })
+            }
           />
         </SettingRow>
 
         <SettingRow
           title="环境变量"
-          description="没有保存本地密钥时，主进程会尝试读取该变量。留空表示不读取。"
+          description="未保存本地密钥时，主进程会尝试读取该变量。"
         >
           <TextInput
-            value={
-              provider.environmentKey
-            }
+            value={provider.environmentKey}
             placeholder="PROVIDER_API_KEY"
-            onChange={(environmentKey) => {
-              updateProvider({
+            onChange={(environmentKey) =>
+              onProviderUpdate({
                 environmentKey:
-                  environmentKey
-                    .toUpperCase()
-              });
-            }}
+                  environmentKey.toUpperCase()
+              })
+            }
           />
         </SettingRow>
 
@@ -507,207 +217,406 @@ export function ModelPanel({
               <TextInput
                 type="password"
                 value={apiKey}
-                placeholder={
-                  status.configured
-                    ? "输入新密钥以替换"
-                    : "sk-..."
-                }
+                placeholder={status.configured ? "输入新密钥以替换" : "sk-..."}
                 autoComplete="off"
-                onChange={(value) => {
-                  setApiKey(value);
-                  setCredentialAction("idle");
-                }}
+                onChange={onApiKeyChange}
               />
-
-              <ActionButton
-                disabled={
-                  credentialAction ===
-                  "saving"
-                }
-                onClick={() => {
-                  void handleSaveApiKey();
-                }}
-              >
-                {status.configured
-                  ? "替换"
-                  : "保存"}
+              <ActionButton onClick={onSave}>
+                {status.configured ? "替换" : "保存"}
               </ActionButton>
-
               {status.configured && (
-                <ActionButton
-                  tone="danger"
-                  disabled={
-                    credentialAction ===
-                    "saving"
-                  }
-                  onClick={() => {
-                    void handleClearApiKey();
-                  }}
-                >
+                <ActionButton tone="danger" onClick={onClear}>
                   清除
                 </ActionButton>
               )}
             </div>
           </SettingRow>
         )}
-      </SettingsSection>
+      </div>
+    </details>
+  );
+}
 
-      <SettingsSection
-        title="模型配置"
-        description="每个模型独立保存上下文容量与生成参数。"
-      >
-        <SettingRow
-          title="显示名称"
-          description="只用于本地识别，不会发送给提供商。"
-        >
-          <TextInput
-            testId="model-display-name"
-            value={activeModel.name}
-            placeholder="模型名称"
-            onChange={(name) => {
-              updateActiveModel({ name });
-            }}
-          />
-        </SettingRow>
+function ModelConfiguration({
+  provider,
+  model,
+  onUpdate
+}) {
+  const modeOptions = apiModeOptions(provider);
 
-        <SettingRow
-          title="模型 ID"
-          description="填写 API 请求实际使用的模型名称。"
-        >
-          <TextInput
-            testId="model-id-input"
-            value={activeModel.modelId}
-            placeholder="model-id"
-            onChange={(modelId) => {
-              updateActiveModel({
-                modelId
-              });
-              setTestResult(null);
-            }}
-          />
-        </SettingRow>
+  return (
+    <>
+      <details className="model-config-card" open>
+        <summary>
+          <span>
+            <strong>模型标识与容量</strong>
+            <small>决定请求目标、上下文上限与最大输出</small>
+          </span>
+          <span className="model-card-summary-status">
+            {model.contextTokenBudget >= 1000000
+              ? `${model.contextTokenBudget / 1000000}M`
+              : `${Math.round(model.contextTokenBudget / 1000)}K`}
+          </span>
+        </summary>
 
-        <SettingRow
-          title="上下文 Token 上限"
-          description="Context 面板会使用该容量计算当前输入占用和最坏情况预算。"
-        >
-          <Select
-            testId="model-context-limit"
-            value={
-              activeModel
-                .contextTokenBudget
-            }
-            options={CONTEXT_OPTIONS}
-            onChange={(
-              contextTokenBudget
-            ) => {
-              updateActiveModel({
-                contextTokenBudget,
-                maxOutputTokens:
-                  Math.min(
-                    activeModel
-                      .maxOutputTokens,
+        <div className="model-config-card__body">
+          <SettingRow title="显示名称">
+            <TextInput
+              testId="model-display-name"
+              value={model.name}
+              onChange={(name) => onUpdate({ name })}
+            />
+          </SettingRow>
+
+          <SettingRow
+            title="模型 ID"
+            description="发送给 Provider SDK 的真实模型名称。"
+          >
+            <TextInput
+              testId="model-id-input"
+              value={model.modelId}
+              onChange={(modelId) => onUpdate({ modelId })}
+            />
+          </SettingRow>
+
+          <SettingRow title="API 模式">
+            <Select
+              value={modeOptions.some((item) => item.value === model.apiMode)
+                ? model.apiMode
+                : modeOptions[0].value}
+              options={modeOptions}
+              onChange={(apiMode) => onUpdate({ apiMode })}
+            />
+          </SettingRow>
+
+          <SettingRow title="上下文 Token 上限">
+            <Select
+              testId="model-context-limit"
+              value={model.contextTokenBudget}
+              options={CONTEXT_OPTIONS}
+              onChange={(contextTokenBudget) =>
+                onUpdate({
+                  contextTokenBudget,
+                  maxOutputTokens: Math.min(
+                    model.maxOutputTokens,
                     contextTokenBudget
                   )
-              });
-            }}
-          />
-        </SettingRow>
+                })
+              }
+            />
+          </SettingRow>
 
-        <SettingRow
-          title="最大输出 Tokens"
-          description="作为单次生成上限，同时用于最坏情况请求预算。"
-        >
-          <Select
-            value={
-              activeModel
-                .maxOutputTokens
-            }
-            options={
-              OUTPUT_OPTIONS.filter(
-                (item) =>
-                  item.value <=
-                  activeModel
-                    .contextTokenBudget
-              )
-            }
-            onChange={(maxOutputTokens) => {
-              updateActiveModel({
-                maxOutputTokens
-              });
-            }}
-          />
-        </SettingRow>
+          <SettingRow title="最大输出 Tokens">
+            <Select
+              value={model.maxOutputTokens}
+              options={OUTPUT_OPTIONS.filter(
+                (item) => item.value <= model.contextTokenBudget
+              )}
+              onChange={(maxOutputTokens) => onUpdate({ maxOutputTokens })}
+            />
+          </SettingRow>
+        </div>
+      </details>
 
-        <SettingRow
-          title="Temperature"
-          description="数值越低越稳定；部分推理模型可能忽略该参数。"
-        >
-          <Slider
-            value={activeModel.temperature}
-            min={0}
-            max={2}
-            step={0.1}
-            formatValue={(value) =>
-              Number(value).toFixed(1)
-            }
-            onChange={(temperature) => {
-              updateActiveModel({
-                temperature
-              });
-            }}
-          />
-        </SettingRow>
+      <details className="model-config-card">
+        <summary>
+          <span>
+            <strong>生成与推理</strong>
+            <small>高级参数默认保持兼容值，需要时再调整</small>
+          </span>
+          <span className="model-card-summary-status">Advanced</span>
+        </summary>
 
-        <SettingRow
-          title="请求超时"
-          description="超过该时间后自动终止本次请求。"
-        >
-          <Slider
-            value={Math.round(
-              activeModel.timeoutMs /
-              1000
-            )}
-            min={15}
-            max={600}
-            step={5}
-            unit=" 秒"
-            onChange={(seconds) => {
-              updateActiveModel({
-                timeoutMs:
-                  seconds * 1000
-              });
-            }}
-          />
-        </SettingRow>
-      </SettingsSection>
+        <div className="model-config-card__body">
+          <SettingRow title="Temperature">
+            <Slider
+              value={model.temperature}
+              min={0}
+              max={2}
+              step={0.1}
+              formatValue={(value) => Number(value).toFixed(1)}
+              onChange={(temperature) => onUpdate({ temperature })}
+            />
+          </SettingRow>
 
-      <SettingsSection
-        title="连接测试"
-        description="使用当前提供商与模型发送一个极短请求。"
-      >
-        <SettingRow
-          title="测试当前模型"
-          description={
-            testResult
-              ? testResult.ok
-                ? `连接成功 · ${testResult.latencyMs} ms · ${testResult.text || "已响应"}`
-                : `连接失败 · ${testResult.message}`
-              : `${provider.name} · ${activeModel.name} · ${activeModel.modelId}`
-          }
-        >
-          <ActionButton
-            disabled={testing}
-            onClick={() => {
-              void handleTest();
-            }}
+          <SettingRow title="Top P">
+            <Slider
+              value={model.topP}
+              min={0}
+              max={1}
+              step={0.05}
+              formatValue={(value) => Number(value).toFixed(2)}
+              onChange={(topP) => onUpdate({ topP })}
+            />
+          </SettingRow>
+
+          <SettingRow
+            title="Seed"
+            description="留空表示随机；并非所有模型都支持固定种子。"
           >
-            {testing
-              ? "测试中…"
-              : "测试连接"}
+            <TextInput
+              type="number"
+              value={model.seed ?? ""}
+              placeholder="随机"
+              onChange={(value) =>
+                onUpdate({
+                  seed: value === "" ? null : Number(value)
+                })
+              }
+            />
+          </SettingRow>
+
+          <SettingRow title="失败重试">
+            <Slider
+              value={model.maxRetries}
+              min={0}
+              max={5}
+              step={1}
+              unit=" 次"
+              onChange={(maxRetries) => onUpdate({ maxRetries })}
+            />
+          </SettingRow>
+
+          <SettingRow title="推理模式">
+            <Select
+              value={model.reasoningMode}
+              options={REASONING_MODE_OPTIONS}
+              onChange={(reasoningMode) => onUpdate({ reasoningMode })}
+            />
+          </SettingRow>
+
+          {(provider.type === "openai" || provider.type === "openai-compatible") && (
+            <SettingRow title="推理强度">
+              <Select
+                value={model.reasoningEffort}
+                options={REASONING_EFFORT_OPTIONS}
+                onChange={(reasoningEffort) => onUpdate({ reasoningEffort })}
+              />
+            </SettingRow>
+          )}
+
+          {provider.type === "anthropic" && model.reasoningMode === "enabled" && (
+            <SettingRow title="Thinking 预算">
+              <Slider
+                value={model.reasoningBudgetTokens}
+                min={1024}
+                max={Math.max(1024, model.maxOutputTokens)}
+                step={1024}
+                unit=" tokens"
+                onChange={(reasoningBudgetTokens) => onUpdate({ reasoningBudgetTokens })}
+              />
+            </SettingRow>
+          )}
+
+          {provider.type === "openai" && (
+            <SettingRow title="回答详细度">
+              <Select
+                value={model.textVerbosity}
+                options={VERBOSITY_OPTIONS}
+                onChange={(textVerbosity) => onUpdate({ textVerbosity })}
+              />
+            </SettingRow>
+          )}
+
+          <SettingRow title="请求超时">
+            <Slider
+              value={Math.round(model.timeoutMs / 1000)}
+              min={15}
+              max={600}
+              step={5}
+              unit=" 秒"
+              onChange={(seconds) => onUpdate({ timeoutMs: seconds * 1000 })}
+            />
+          </SettingRow>
+        </div>
+      </details>
+    </>
+  );
+}
+
+export function ModelPanel({ settings, onUpdate }) {
+  const modelSettings = settings.model;
+  const providerId = modelSettings.activeProvider;
+  const provider =
+    modelSettings.providers[providerId] ??
+    Object.values(modelSettings.providers)[0];
+
+  const activeModel = useMemo(
+    () => provider.models.find(
+      (item) => item.id === provider.activeModelId
+    ) ?? provider.models[0],
+    [provider.activeModelId, provider.models]
+  );
+
+  const [apiKey, setApiKey] = useState("");
+  const [credentialAction, setCredentialAction] = useState("idle");
+  const [testResult, setTestResult] = useState(null);
+  const [testing, setTesting] = useState(false);
+
+  const {
+    status,
+    loading,
+    saveApiKey,
+    clearApiKey
+  } = useModelCredentials(provider);
+
+  const updateProvider = (patch) => {
+    onUpdate({
+      providers: {
+        ...modelSettings.providers,
+        [providerId]: {
+          ...provider,
+          ...patch
+        }
+      }
+    });
+  };
+
+  const updateActiveModel = (patch) => {
+    updateProvider({
+      models: provider.models.map((item) =>
+        item.id === activeModel.id
+          ? { ...item, ...patch }
+          : item
+      )
+    });
+    setTestResult(null);
+  };
+
+  const addModel = () => {
+    const model = createModelTemplate(provider);
+    updateProvider({
+      activeModelId: model.id,
+      models: [...provider.models, model]
+    });
+  };
+
+  const deleteModel = () => {
+    if (provider.models.length <= 1) return;
+    const models = provider.models.filter((item) => item.id !== activeModel.id);
+    updateProvider({ models, activeModelId: models[0].id });
+  };
+
+  const credentialHint = {
+    empty: "请输入 API Key。",
+    saving: "正在保存…",
+    saved: "API Key 已保存。",
+    cleared: "已清除本地 API Key。",
+    error: "操作失败，请查看控制台。"
+  }[credentialAction];
+
+  const handleSave = async () => {
+    if (!apiKey.trim()) {
+      setCredentialAction("empty");
+      return;
+    }
+    setCredentialAction("saving");
+    try {
+      await saveApiKey(apiKey);
+      setApiKey("");
+      setCredentialAction("saved");
+    } catch {
+      setCredentialAction("error");
+    }
+  };
+
+  const handleClear = async () => {
+    setCredentialAction("saving");
+    try {
+      await clearApiKey();
+      setApiKey("");
+      setCredentialAction("cleared");
+    } catch {
+      setCredentialAction("error");
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await window.api?.testModelConnection?.(modelSettings);
+      setTestResult(result ?? { ok: false, message: "未收到测试结果。" });
+    } catch (error) {
+      setTestResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="model-panel">
+      <ProviderSelector
+        modelSettings={modelSettings}
+        providerId={providerId}
+        provider={provider}
+        onSelect={(activeProvider) => {
+          onUpdate({ activeProvider });
+          setApiKey("");
+          setCredentialAction("idle");
+          setTestResult(null);
+        }}
+      />
+
+      <div className="model-runtime-summary">
+        <div>
+          <span className="model-eyebrow">Active runtime</span>
+          <strong>{provider.name} · {activeModel.name}</strong>
+          <small>{providerSdkLabel(provider)} · {activeModel.modelId}</small>
+        </div>
+
+        <div className="model-runtime-summary__actions">
+          {testResult && (
+            <span className={`model-test-result${testResult.ok ? " is-success" : " is-error"}`}>
+              {testResult.ok
+                ? `连接成功 · ${testResult.latencyMs} ms`
+                : testResult.message}
+            </span>
+          )}
+          <ActionButton disabled={testing} onClick={() => void handleTest()}>
+            {testing ? "测试中…" : "测试当前模型"}
           </ActionButton>
-        </SettingRow>
-      </SettingsSection>
+        </div>
+      </div>
+
+      <div className="model-workspace">
+        <ModelList
+          provider={provider}
+          activeModel={activeModel}
+          onSelect={(activeModelId) => updateProvider({ activeModelId })}
+          onAdd={addModel}
+          onDelete={deleteModel}
+        />
+
+        <div className="model-editor-stack">
+          <ProviderConnection
+            provider={provider}
+            status={status}
+            loading={loading}
+            apiKey={apiKey}
+            credentialHint={credentialHint}
+            onApiKeyChange={(value) => {
+              setApiKey(value);
+              setCredentialAction("idle");
+            }}
+            onProviderUpdate={(patch) => {
+              updateProvider(patch);
+              setTestResult(null);
+            }}
+            onSave={() => void handleSave()}
+            onClear={() => void handleClear()}
+          />
+
+          <ModelConfiguration
+            provider={provider}
+            model={activeModel}
+            onUpdate={updateActiveModel}
+          />
+        </div>
+      </div>
     </div>
   );
 }

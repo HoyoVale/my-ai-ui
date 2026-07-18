@@ -1995,3 +1995,329 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   Model workspace
+   ============================================================ */
+
+.model-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.model-provider-header,
+.model-runtime-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--setting-border);
+  border-radius: 15px;
+  background: var(--setting-surface);
+}
+
+.model-provider-header > div,
+.model-runtime-summary > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.model-provider-header strong,
+.model-runtime-summary strong {
+  color: var(--setting-text);
+  font-size: 16px;
+  font-weight: 680;
+}
+
+.model-provider-header small,
+.model-runtime-summary small {
+  color: var(--setting-text-faint);
+  font-size: 11px;
+}
+
+.model-eyebrow {
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.model-provider-header .settings-select {
+  width: min(260px, 42%);
+}
+
+.model-runtime-summary {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 7%, var(--setting-surface)),
+      var(--setting-surface)
+    );
+}
+
+.model-runtime-summary__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.model-test-result {
+  max-width: 360px;
+  color: var(--setting-text-soft);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.model-test-result.is-success {
+  color: var(--accent);
+}
+
+.model-test-result.is-error {
+  color: var(--setting-danger);
+}
+
+.model-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.model-list-card,
+.model-config-card {
+  border: 1px solid var(--setting-border);
+  border-radius: 14px;
+  background: var(--setting-surface);
+  overflow: hidden;
+}
+
+.model-list-card {
+  position: sticky;
+  top: 12px;
+}
+
+.model-list-card__header,
+.model-list-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+}
+
+.model-list-card__header {
+  border-bottom: 1px solid var(--setting-border);
+}
+
+.model-list-card__header > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-list-card__header strong {
+  color: var(--setting-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.model-list-card__header .settings-action {
+  min-width: 32px;
+  padding-inline: 9px;
+  font-size: 17px;
+}
+
+.model-list-card__items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+.model-list-item {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--setting-text-soft);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.model-list-item:hover {
+  color: var(--setting-text);
+  background: var(--setting-surface-soft);
+}
+
+.model-list-item.is-active {
+  color: var(--setting-text);
+  border-color:
+    color-mix(in srgb, var(--accent) 28%, var(--setting-border));
+  background:
+    color-mix(in srgb, var(--accent) 8%, var(--setting-surface-soft));
+}
+
+.model-list-item span,
+.model-list-item small {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-list-item span {
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.model-list-item small {
+  color: var(--setting-text-faint);
+  font-size: 10px;
+}
+
+.model-list-card__footer {
+  border-top: 1px solid var(--setting-border);
+}
+
+.model-list-card__footer .settings-action {
+  width: 100%;
+  justify-content: center;
+}
+
+.model-active-select-proxy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.model-editor-stack {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.model-config-card > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 18px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.model-config-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.model-config-card > summary::after {
+  content: "⌄";
+  color: var(--setting-text-faint);
+  font-size: 14px;
+  transition: transform 130ms ease;
+}
+
+.model-config-card[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.model-config-card > summary > span:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.model-config-card > summary strong {
+  color: var(--setting-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.model-config-card > summary small {
+  color: var(--setting-text-faint);
+  font-size: 10.5px;
+}
+
+.model-card-summary-status {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.model-config-card__body {
+  border-top: 1px solid var(--setting-border);
+}
+
+.model-config-card .settings-row {
+  min-height: 64px;
+}
+
+@media (max-width: 900px) {
+  .model-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .model-list-card {
+    position: static;
+  }
+
+  .model-list-card__items {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .model-provider-header,
+  .model-runtime-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .model-provider-header .settings-select {
+    width: 100%;
+  }
+
+  .model-runtime-summary__actions {
+    justify-content: flex-start;
+  }
+}
+
+.settings-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

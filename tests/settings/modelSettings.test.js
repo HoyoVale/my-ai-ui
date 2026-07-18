@@ -80,9 +80,9 @@ describe(
             providers: {
               ollama: {
                 id: "ollama",
-                type: "openai-compatible",
+                type: "ollama",
                 name: "Ollama",
-                baseURL: "http://localhost:11434/v1",
+                baseURL: "http://localhost:11434/api",
                 credentialMode: "optional",
                 environmentKey: "OLLAMA_API_KEY",
                 activeModelId: "local",
@@ -103,7 +103,7 @@ describe(
 
         assert.equal(
           resolved.provider,
-          "openai-compatible"
+          "ollama"
         );
         assert.equal(
           resolved.providerId,

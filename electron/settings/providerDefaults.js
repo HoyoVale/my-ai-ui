@@ -1,3 +1,21 @@
+function modelDefaults(overrides) {
+  return {
+    apiMode: "auto",
+    contextTokenBudget: 64000,
+    temperature: 0.7,
+    topP: 1,
+    seed: null,
+    maxOutputTokens: 8192,
+    maxRetries: 1,
+    timeoutMs: 120000,
+    reasoningMode: "auto",
+    reasoningEffort: "default",
+    reasoningBudgetTokens: 4096,
+    textVerbosity: "default",
+    ...overrides
+  };
+}
+
 export const PROVIDER_DEFAULTS = Object.freeze({
   deepseek: {
     id: "deepseek",
@@ -8,45 +26,42 @@ export const PROVIDER_DEFAULTS = Object.freeze({
     environmentKey: "DEEPSEEK_API_KEY",
     activeModelId: "deepseek-v4-flash",
     models: [
-      {
+      modelDefaults({
         id: "deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
         modelId: "deepseek-v4-flash",
+        apiMode: "chat",
         contextTokenBudget: 1000000,
-        temperature: 0.7,
-        maxOutputTokens: 32768,
-        timeoutMs: 120000
-      },
-      {
+        maxOutputTokens: 32768
+      }),
+      modelDefaults({
         id: "deepseek-v4-pro",
         name: "DeepSeek V4 Pro",
         modelId: "deepseek-v4-pro",
+        apiMode: "chat",
         contextTokenBudget: 1000000,
-        temperature: 0.7,
-        maxOutputTokens: 32768,
-        timeoutMs: 120000
-      }
+        maxOutputTokens: 32768
+      })
     ]
   },
 
   openai: {
     id: "openai",
-    type: "openai-compatible",
+    type: "openai",
     name: "OpenAI",
     baseURL: "https://api.openai.com/v1",
     credentialMode: "required",
     environmentKey: "OPENAI_API_KEY",
-    activeModelId: "gpt-4-1-mini",
+    activeModelId: "gpt-5-2",
     models: [
-      {
-        id: "gpt-4-1-mini",
-        name: "GPT-4.1 mini",
-        modelId: "gpt-4.1-mini",
-        contextTokenBudget: 1000000,
-        temperature: 0.7,
-        maxOutputTokens: 32768,
-        timeoutMs: 120000
-      }
+      modelDefaults({
+        id: "gpt-5-2",
+        name: "GPT-5.2",
+        modelId: "gpt-5.2",
+        apiMode: "responses",
+        contextTokenBudget: 128000,
+        maxOutputTokens: 16384
+      })
     ]
   },
 
@@ -57,38 +72,37 @@ export const PROVIDER_DEFAULTS = Object.freeze({
     baseURL: "https://api.anthropic.com/v1",
     credentialMode: "required",
     environmentKey: "ANTHROPIC_API_KEY",
-    activeModelId: "claude-sonnet-4-20250514",
+    activeModelId: "claude-sonnet-4-6",
     models: [
-      {
-        id: "claude-sonnet-4-20250514",
-        name: "Claude Sonnet 4",
-        modelId: "claude-sonnet-4-20250514",
+      modelDefaults({
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        modelId: "claude-sonnet-4-6",
+        apiMode: "messages",
         contextTokenBudget: 200000,
-        temperature: 0.7,
-        maxOutputTokens: 32768,
-        timeoutMs: 120000
-      }
+        maxOutputTokens: 32768
+      })
     ]
   },
 
   ollama: {
     id: "ollama",
-    type: "openai-compatible",
+    type: "ollama",
     name: "Ollama",
-    baseURL: "http://localhost:11434/v1",
+    baseURL: "http://127.0.0.1:11434/api",
     credentialMode: "optional",
     environmentKey: "OLLAMA_API_KEY",
     activeModelId: "gemma3",
     models: [
-      {
+      modelDefaults({
         id: "gemma3",
         name: "Gemma 3",
         modelId: "gemma3",
+        apiMode: "chat",
         contextTokenBudget: 32768,
-        temperature: 0.7,
         maxOutputTokens: 8192,
         timeoutMs: 180000
-      }
+      })
     ]
   },
 
@@ -101,15 +115,14 @@ export const PROVIDER_DEFAULTS = Object.freeze({
     environmentKey: "",
     activeModelId: "compatible-model",
     models: [
-      {
+      modelDefaults({
         id: "compatible-model",
         name: "Compatible model",
         modelId: "model-id",
+        apiMode: "chat",
         contextTokenBudget: 32768,
-        temperature: 0.7,
-        maxOutputTokens: 8192,
-        timeoutMs: 120000
-      }
+        maxOutputTokens: 8192
+      })
     ]
   }
 });

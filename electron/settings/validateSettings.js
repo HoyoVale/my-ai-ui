@@ -4,8 +4,42 @@ import {
 
 const PROVIDER_TYPES = [
   "deepseek",
+  "openai",
   "anthropic",
+  "ollama",
   "openai-compatible"
+];
+
+const API_MODES = [
+  "auto",
+  "responses",
+  "chat",
+  "messages"
+];
+
+const REASONING_MODES = [
+  "auto",
+  "disabled",
+  "enabled",
+  "adaptive"
+];
+
+const REASONING_EFFORTS = [
+  "default",
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max"
+];
+
+const TEXT_VERBOSITIES = [
+  "default",
+  "low",
+  "medium",
+  "high"
 ];
 
 const CREDENTIAL_MODES = [
@@ -64,6 +98,31 @@ function integerValue(
       min,
       max
     )
+  );
+}
+
+function nullableIntegerValue(
+  value,
+  fallback,
+  min,
+  max
+) {
+  if (
+    value === null ||
+    value === "" ||
+    value === undefined
+  ) {
+    return fallback ?? null;
+  }
+
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return fallback ?? null;
+  }
+
+  return Math.round(
+    clamp(numeric, min, max)
   );
 }
 
@@ -244,10 +303,18 @@ function sanitizeModelList(
           id: `${providerId}-model`,
           name: "模型",
           modelId: "model-id",
+          apiMode: "auto",
           contextTokenBudget: 64000,
           temperature: 0.7,
+          topP: 1,
+          seed: null,
           maxOutputTokens: 8192,
-          timeoutMs: 120000
+          maxRetries: 1,
+          timeoutMs: 120000,
+          reasoningMode: "auto",
+          reasoningEffort: "default",
+          reasoningBudgetTokens: 4096,
+          textVerbosity: "default"
         };
 
       let id = nonEmptyStringValue(
@@ -274,6 +341,21 @@ function sanitizeModelList(
           2000000
         );
 
+      const maxOutputTokens =
+        integerValue(
+          sourceModel?.maxOutputTokens,
+          Math.min(
+            fallback.maxOutputTokens ??
+              2048,
+            contextTokenBudget
+          ),
+          128,
+          Math.min(
+            384000,
+            contextTokenBudget
+          )
+        );
+
       return {
         id,
         name: nonEmptyStringValue(
@@ -290,6 +372,11 @@ function sanitizeModelList(
             "model-id",
           160
         ),
+        apiMode: enumValue(
+          sourceModel?.apiMode,
+          API_MODES,
+          fallback.apiMode ?? "auto"
+        ),
         contextTokenBudget,
         temperature: numberValue(
           sourceModel?.temperature,
@@ -297,18 +384,24 @@ function sanitizeModelList(
           0,
           2
         ),
-        maxOutputTokens: integerValue(
-          sourceModel?.maxOutputTokens,
-          Math.min(
-            fallback.maxOutputTokens ??
-              2048,
-            contextTokenBudget
-          ),
-          128,
-          Math.min(
-            384000,
-            contextTokenBudget
-          )
+        topP: numberValue(
+          sourceModel?.topP,
+          fallback.topP ?? 1,
+          0,
+          1
+        ),
+        seed: nullableIntegerValue(
+          sourceModel?.seed,
+          fallback.seed ?? null,
+          0,
+          2147483647
+        ),
+        maxOutputTokens,
+        maxRetries: integerValue(
+          sourceModel?.maxRetries,
+          fallback.maxRetries ?? 1,
+          0,
+          5
         ),
         timeoutMs: integerValue(
           sourceModel?.timeoutMs,
@@ -316,6 +409,40 @@ function sanitizeModelList(
             120000,
           15000,
           600000
+        ),
+        reasoningMode: enumValue(
+          sourceModel?.reasoningMode,
+          REASONING_MODES,
+          fallback.reasoningMode ??
+            "auto"
+        ),
+        reasoningEffort: enumValue(
+          sourceModel?.reasoningEffort,
+          REASONING_EFFORTS,
+          fallback.reasoningEffort ??
+            "default"
+        ),
+        reasoningBudgetTokens:
+          integerValue(
+            sourceModel
+              ?.reasoningBudgetTokens,
+            Math.min(
+              fallback
+                .reasoningBudgetTokens ??
+                4096,
+              maxOutputTokens
+            ),
+            1024,
+            Math.max(
+              1024,
+              maxOutputTokens
+            )
+          ),
+        textVerbosity: enumValue(
+          sourceModel?.textVerbosity,
+          TEXT_VERBOSITIES,
+          fallback.textVerbosity ??
+            "default"
         )
       };
     }
@@ -354,25 +481,57 @@ function sanitizeProvider(
       120
     );
 
+  let requestedType = source?.type;
+
+  if (
+    providerId === "openai" &&
+    requestedType ===
+      "openai-compatible"
+  ) {
+    requestedType = "openai";
+  }
+
+  if (
+    providerId === "ollama" &&
+    requestedType ===
+      "openai-compatible"
+  ) {
+    requestedType = "ollama";
+  }
+
+  const type = enumValue(
+    requestedType,
+    PROVIDER_TYPES,
+    fallback?.type ??
+      "openai-compatible"
+  );
+
+  let baseURL = urlValue(
+    source?.baseURL,
+    fallback?.baseURL ??
+      "http://localhost:1234/v1"
+  );
+
+  if (type === "ollama") {
+    baseURL = baseURL
+      .replace(/\/v1$/u, "/api")
+      .replace(/\/+$/u, "");
+
+    if (!/\/api$/u.test(baseURL)) {
+      baseURL = `${baseURL}/api`;
+    }
+  }
+
   return {
     id: normalizedId,
-    type: enumValue(
-      source?.type,
-      PROVIDER_TYPES,
-      fallback?.type ??
-        "openai-compatible"
-    ),
+    type,
     name: nonEmptyStringValue(
       source?.name,
       fallback?.name ??
         normalizedId,
       80
     ),
-    baseURL: urlValue(
-      source?.baseURL,
-      fallback?.baseURL ??
-        "http://localhost:1234/v1"
-    ),
+    baseURL,
     credentialMode: enumValue(
       source?.credentialMode,
       CREDENTIAL_MODES,
