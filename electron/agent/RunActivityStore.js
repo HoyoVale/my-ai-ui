@@ -20,8 +20,10 @@ function canonicalToolStatus(status) {
     return "queued";
   }
 
-  if (["running", "in_progress"].includes(status)) {
-    return "running";
+  if (["running", "in_progress", "retrying"].includes(status)) {
+    return status === "retrying"
+      ? "retrying"
+      : "running";
   }
 
   if (["cancelled", "aborted"].includes(status)) {
@@ -47,7 +49,13 @@ function planEventStatus(items) {
   if (
     items.length > 0 &&
     items.every((item) =>
-      ["completed", "complete", "skipped"].includes(item?.status)
+      [
+        "completed",
+        "complete",
+        "skipped",
+        "cancelled",
+        "superseded"
+      ].includes(item?.status)
     )
   ) {
     return "completed";
@@ -84,6 +92,7 @@ export class RunActivityStore {
     this.questionRevision = 0;
     this.lastPlanSignature = "";
     this.activeBatchId = "";
+    this.checkpoint = null;
 
     this.upsertEvent({
       id: `run:${this.runId || this.taskId}`,
@@ -164,6 +173,11 @@ export class RunActivityStore {
     store.lastPlanSignature =
       JSON.stringify(latestPlan);
     store.activeBatchId = "";
+    store.checkpoint =
+      source.checkpoint &&
+      typeof source.checkpoint === "object"
+        ? clone(source.checkpoint)
+        : null;
     store.status = "running";
     store.stopReason = "";
     store.endedAt = null;
@@ -409,6 +423,9 @@ export class RunActivityStore {
         id: record.id,
         name: record.name,
         title: record.title,
+        source: record.source,
+        riskLevel: record.riskLevel,
+        sideEffect: record.sideEffect,
         status: canonicalToolStatus(record.status),
         batchId: batch?.id ?? "",
         batchObjective: batch?.objective ?? "",
@@ -432,12 +449,22 @@ export class RunActivityStore {
         queuedAt: record.queuedAt,
         startedAt: record.startedAt,
         endedAt: record.endedAt,
-        durationMs: record.durationMs ?? 0
+        durationMs: record.durationMs ?? 0,
+        attempt: record.attempt ?? 0,
+        maxAttempts: record.maxAttempts ?? 0,
+        lastError:
+          record.lastError === undefined
+            ? undefined
+            : clone(record.lastError)
       }
     });
   }
 
-  recordPlan(items, timestamp = Date.now()) {
+  recordPlan(
+    items,
+    timestamp = Date.now(),
+    change = null
+  ) {
     const plan = Array.isArray(items)
       ? clone(items)
       : [];
@@ -461,6 +488,13 @@ export class RunActivityStore {
       batchId: this.activeBatchId,
       createdAt: timestamp,
       updatedAt: timestamp,
+      reason:
+        String(
+          change?.reason ?? ""
+        ).trim(),
+      revision:
+        Number(change?.revision) ||
+        this.planRevision,
       plan
     });
   }
@@ -502,6 +536,39 @@ export class RunActivityStore {
     });
   }
 
+  updateCheckpoint(checkpoint) {
+    this.checkpoint =
+      checkpoint &&
+      typeof checkpoint === "object"
+        ? clone(checkpoint)
+        : null;
+
+    return this.checkpoint
+      ? clone(this.checkpoint)
+      : null;
+  }
+
+  markStatus(
+    status,
+    {
+      title = "",
+      stopReason = "",
+      timestamp = Date.now()
+    } = {}
+  ) {
+    this.status = String(status || "running");
+    this.stopReason = String(stopReason || "");
+
+    return this.upsertEvent({
+      id: `run:${this.runId || this.taskId}`,
+      type: "status",
+      status: this.status,
+      title: title || this.status,
+      stopReason: this.stopReason,
+      updatedAt: timestamp
+    });
+  }
+
   finalize(stopReason, endedAt = Date.now()) {
     this.stopReason = normalizeRunStopReason(stopReason);
     this.status = runStatusFromStopReason(this.stopReason);
@@ -535,7 +602,7 @@ export class RunActivityStore {
     const currentEnd = endedAt ?? Date.now();
 
     return {
-      version: 2,
+      version: 3,
       taskId: this.taskId,
       runId: this.runId,
       status: this.status,
@@ -543,6 +610,10 @@ export class RunActivityStore {
       endedAt,
       durationMs: Math.max(0, currentEnd - this.startedAt),
       stopReason: this.stopReason,
+      checkpoint:
+        this.checkpoint
+          ? clone(this.checkpoint)
+          : null,
       events: clone(this.events)
     };
   }

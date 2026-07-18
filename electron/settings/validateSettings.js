@@ -956,6 +956,12 @@ function sanitizeToolSettings(
         1,
         50
       ),
+      maxToolRetries: integerValue(
+        runtime.maxToolRetries,
+        defaults.runtime.maxToolRetries,
+        0,
+        2
+      ),
       runTimeoutMs: integerValue(
         runtime.runTimeoutMs,
         defaults.runtime.runTimeoutMs,

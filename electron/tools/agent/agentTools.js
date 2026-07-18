@@ -3,21 +3,94 @@ import {
 } from "zod";
 
 import {
-  createDecisionKey
+  createDecisionKey,
+  normalizeAskUserRequest
 } from "./askUserPolicy.js";
 
 function clone(value) {
   return structuredClone(value);
 }
 
+const PLAN_STATUSES = new Set([
+  "pending",
+  "in_progress",
+  "completed",
+  "blocked",
+  "skipped",
+  "cancelled",
+  "superseded"
+]);
+
+const TERMINAL_PLAN_STATUSES = new Set([
+  "completed",
+  "blocked",
+  "skipped",
+  "cancelled",
+  "superseded"
+]);
+
 function normalizePlanItems(items) {
   return Array.isArray(items)
-    ? items.map((item) => ({
-        id: String(item.id),
-        title: String(item.title),
-        status: item.status
+    ? items.map((item, index) => ({
+        id:
+          String(
+            item?.id ??
+            `step-${index + 1}`
+          ).trim() ||
+          `step-${index + 1}`,
+        title:
+          String(
+            item?.title ?? ""
+          ).trim(),
+        status:
+          PLAN_STATUSES.has(
+            item?.status
+          )
+            ? item.status
+            : "pending",
+        reason:
+          String(
+            item?.reason ?? ""
+          ).trim()
       }))
+      .filter((item) => item.title)
     : [];
+}
+
+function mergePlanRevision(
+  previousItems,
+  nextItems,
+  reason = ""
+) {
+  const incomingIds = new Set(
+    nextItems.map((item) => item.id)
+  );
+  const retained = previousItems
+    .filter((item) =>
+      !incomingIds.has(item.id)
+    )
+    .map((item) => {
+      if (
+        TERMINAL_PLAN_STATUSES.has(
+          item.status
+        )
+      ) {
+        return item;
+      }
+
+      return {
+        ...item,
+        status: "superseded",
+        reason:
+          reason ||
+          "已由新的计划修订替代。"
+      };
+    });
+
+  return [
+    ...nextItems,
+    ...retained
+  ];
 }
 
 export class RunPlanStore {
@@ -34,6 +107,8 @@ export class RunPlanStore {
     this.items = normalizePlanItems(
       initialItems
     );
+    this.revision = 0;
+    this.lastChange = null;
     this.pendingQuestion = null;
     this.onChange = onChange;
     this.onQuestion = onQuestion;
@@ -63,6 +138,17 @@ export class RunPlanStore {
   }
 
   validate(items) {
+    const ids = new Set();
+
+    for (const item of items) {
+      if (ids.has(item.id)) {
+        throw new Error(
+          `计划步骤 id 重复：${item.id}`
+        );
+      }
+      ids.add(item.id);
+    }
+
     const activeItems = items.filter(
       (item) =>
         item.status ===
@@ -93,17 +179,31 @@ export class RunPlanStore {
     }
   }
 
-  update(items) {
-    const normalized =
+  update(
+    items,
+    {
+      reason = ""
+    } = {}
+  ) {
+    const incoming =
       normalizePlanItems(items);
-    const previous = this.getExecutionState();
+    const normalized =
+      mergePlanRevision(
+        this.items,
+        incoming,
+        String(reason ?? "").trim()
+      );
+    const previous =
+      this.getExecutionState();
 
     this.validate(normalized);
     this.items = clone(normalized);
+    this.revision += 1;
 
     const next = this.getExecutionState();
     const madeProgress =
       next.completed > previous.completed ||
+      next.terminal > previous.terminal ||
       next.active?.id !== previous.active?.id ||
       next.blocked < previous.blocked;
 
@@ -112,13 +212,29 @@ export class RunPlanStore {
     }
 
     const plan = this.get();
-    this.onChange?.(plan);
+    this.lastChange = {
+      revision: this.revision,
+      reason:
+        String(reason ?? "").trim(),
+      changedAt: Date.now(),
+      plan
+    };
+    this.onChange?.(
+      plan,
+      clone(this.lastChange)
+    );
 
     return plan;
   }
 
   get() {
     return clone(this.items);
+  }
+
+  getLastChange() {
+    return this.lastChange
+      ? clone(this.lastChange)
+      : null;
   }
 
   getExecutionState() {
@@ -132,14 +248,16 @@ export class RunPlanStore {
       (item) =>
         item.status === "pending"
     ) ?? null;
-    const completed = items.filter(
-      (item) =>
-        item.status === "completed"
-    ).length;
-    const blocked = items.filter(
-      (item) =>
-        item.status === "blocked"
-    ).length;
+    const count = (status) =>
+      items.filter(
+        (item) =>
+          item.status === status
+      ).length;
+    const completed = count("completed");
+    const blocked = count("blocked");
+    const skipped = count("skipped");
+    const cancelled = count("cancelled");
+    const superseded = count("superseded");
     const unfinished = items.filter(
       (item) =>
         [
@@ -147,6 +265,12 @@ export class RunPlanStore {
           "in_progress"
         ].includes(item.status)
     );
+    const terminal = items.filter(
+      (item) =>
+        TERMINAL_PLAN_STATUSES.has(
+          item.status
+        )
+    ).length;
 
     return {
       items,
@@ -154,13 +278,24 @@ export class RunPlanStore {
       next,
       completed,
       blocked,
+      skipped,
+      cancelled,
+      superseded,
+      terminal,
       total: items.length,
       hasPlan: items.length > 0,
       hasUnfinished:
         unfinished.length > 0,
       canFinish:
         items.length === 0 ||
-        unfinished.length === 0
+        unfinished.length === 0,
+      isSuccessful:
+        items.length === 0 ||
+        (
+          unfinished.length === 0 &&
+          blocked === 0 &&
+          cancelled === 0
+        )
     };
   }
 
@@ -379,7 +514,7 @@ export function createAgentToolDefinitions({
       name: "update_plan",
       title: "Update task plan",
       description:
-        "Create and actively maintain the execution plan for multi-step work. The plan is an execution contract, not a report: keep exactly one unfinished item in_progress, complete it before advancing, then mark the next item in_progress. Do not finish the response while pending or in_progress items remain unless blocked or waiting for the user.",
+        "Create, execute, and revise the plan for multi-step work. Keep exactly one unfinished item in_progress. Preserve completed work. When the approach changes, mark obsolete steps skipped, cancelled, or superseded and provide a concise revision reason. Do not finish while pending or in_progress items remain unless waiting for the user.",
       inputSchema: z.object({
         items: z.array(
           z.object({
@@ -393,10 +528,19 @@ export function createAgentToolDefinitions({
               "pending",
               "in_progress",
               "completed",
-              "blocked"
-            ])
+              "blocked",
+              "skipped",
+              "cancelled",
+              "superseded"
+            ]),
+            reason: z.string()
+              .max(300)
+              .optional()
           })
-        ).min(1).max(20)
+        ).min(1).max(20),
+        reason: z.string()
+          .max(500)
+          .optional()
       }),
       async execute(
         input,
@@ -404,7 +548,13 @@ export function createAgentToolDefinitions({
       ) {
         const items =
           context.planStore
-            .update(input.items);
+            .update(
+              input.items,
+              {
+                reason:
+                  input.reason ?? ""
+              }
+            );
 
         return {
           items,
@@ -451,26 +601,25 @@ export function createAgentToolDefinitions({
         input,
         context
       ) {
-        const options =
-          input.options ?? [];
+        const request =
+          normalizeAskUserRequest({
+            question:
+              input.question,
+            decisionId:
+              input.decisionId ?? "",
+            reason:
+              input.reason ?? "",
+            options:
+              input.options ?? [],
+            selectionMode:
+              input.selectionMode,
+            allowOther:
+              input.allowOther
+          });
 
         const requested =
           context.planStore
-            .requestQuestion({
-              question:
-                input.question,
-              decisionId:
-                input.decisionId ?? "",
-              reason:
-                input.reason ?? "",
-              options,
-              selectionMode:
-                input.selectionMode ??
-                "single",
-              allowOther:
-                input.allowOther ??
-                options.length === 0
-            });
+            .requestQuestion(request);
 
         if (requested.ok === false) {
           return requested;

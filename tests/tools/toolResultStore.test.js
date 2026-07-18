@@ -6,6 +6,10 @@ import {
 import assert
   from "node:assert/strict";
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import {
   ToolResultStore
 } from "../../electron/tools/core/ToolResultStore.js";
@@ -143,6 +147,40 @@ describe(
           store.list()[0].clipped,
           true
         );
+      }
+    );
+
+    it(
+      "reopens large result references from task-scoped disk storage",
+      () => {
+        const directory = fs.mkdtempSync(
+          path.join(os.tmpdir(), "tool-result-store-")
+        );
+
+        try {
+          const firstStore = new ToolResultStore({
+            maxInlineBytes: 2000,
+            maxStoredBytes: 12000,
+            storageDirectory: directory
+          });
+          const captured = firstStore.capture({
+            ok: true,
+            data: { text: "persisted".repeat(1000) }
+          });
+          const resultId = captured.result.reference.resultId;
+          const secondStore = new ToolResultStore({
+            maxInlineBytes: 2000,
+            maxStoredBytes: 12000,
+            storageDirectory: directory
+          });
+          const reopened = secondStore.read(resultId, { limit: 800 });
+
+          assert.equal(reopened.ok, true);
+          assert.equal(reopened.data.resultId, resultId);
+          assert.equal(reopened.data.content.length, 800);
+        } finally {
+          fs.rmSync(directory, { recursive: true, force: true });
+        }
       }
     );
 

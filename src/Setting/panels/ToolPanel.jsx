@@ -413,6 +413,21 @@ export function ToolPanel({
                 </SettingRow>
 
                 <SettingRow
+                  title="安全重试次数"
+                  description="仅对可安全重试的临时故障生效；权限、参数和取消错误不会自动重试。"
+                >
+                  <Slider
+                    value={settings.runtime.maxToolRetries}
+                    min={0}
+                    max={2}
+                    unit=" 次"
+                    onChange={(maxToolRetries) => {
+                      updateRuntime({ maxToolRetries });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
                   title="任务总超时"
                   description="限制一个 Agent Run 可持续的总时间。"
                 >

@@ -243,7 +243,7 @@ export default function Conversation() {
               current ??
               (agentStatus.conversationId ===
                 history.current?.id &&
-              ["running", "stopping"].includes(
+              ["running", "stopping", "cancelling"].includes(
                 agentStatus.state
               )
                 ? "live"
@@ -329,7 +329,7 @@ export default function Conversation() {
             liveActivity={
               agentStatus.conversationId ===
                 history.current?.id &&
-              ["running", "stopping"].includes(
+              ["running", "stopping", "cancelling"].includes(
                 agentStatus.state
               )
                 ? agentStatus
@@ -394,7 +394,7 @@ export default function Conversation() {
           liveActivity={
             agentStatus.conversationId ===
               history.current?.id &&
-            ["running", "stopping"].includes(
+            ["running", "stopping", "cancelling"].includes(
               agentStatus.state
             )
               ? agentStatus

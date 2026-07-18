@@ -198,8 +198,9 @@ export default function Input() {
       }
       isRunning={isRunning}
       isStopping={
-        status.state ===
-        "stopping"
+        ["stopping", "cancelling"].includes(
+        status.state
+      )
       }
       disabled={submitting}
       onChange={setValue}

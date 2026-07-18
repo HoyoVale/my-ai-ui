@@ -914,6 +914,143 @@ export class ConversationManager {
     };
   }
 
+  recoverInterruptedRuns() {
+    const data = this.ensureLoaded();
+    const timestamp = this.now();
+    let recovered = 0;
+
+    for (const conversation of data.conversations) {
+      for (const message of conversation.messages) {
+        if (message.role !== "assistant") {
+          continue;
+        }
+
+        const activity = message.activity;
+        const waiting =
+          message.pendingQuestion?.status === "waiting" ||
+          activity?.status === "waiting_for_user";
+        const unfinished =
+          ["running", "cancelling"].includes(message.status) ||
+          ["running", "cancelling", "resumed"].includes(activity?.status);
+
+        if (!unfinished || waiting) {
+          continue;
+        }
+
+        message.status = "interrupted";
+        message.stopReason = "interrupted";
+
+        if (Array.isArray(message.plan)) {
+          message.plan = message.plan.map((item) =>
+            item.status === "in_progress"
+              ? {
+                  ...item,
+                  status: "blocked",
+                  reason: item.reason || "应用退出导致执行中断"
+                }
+              : item
+          );
+        }
+
+        if (activity && typeof activity === "object") {
+          activity.status = "interrupted";
+          activity.stopReason = "interrupted";
+          activity.endedAt = timestamp;
+          activity.durationMs = Math.max(
+            0,
+            timestamp - Number(activity.startedAt || timestamp)
+          );
+
+          if (activity.checkpoint) {
+            activity.checkpoint = {
+              ...activity.checkpoint,
+              phase: "interrupted",
+              stopReason: "interrupted",
+              updatedAt: timestamp,
+              plan: clone(message.plan ?? activity.checkpoint.plan ?? [])
+            };
+          }
+
+          const events = Array.isArray(activity.events)
+            ? activity.events
+            : [];
+          let statusEventFound = false;
+
+          activity.events = events.map((event) => {
+            if (event.type === "tool" && ["queued", "running", "retrying"].includes(event.status)) {
+              return {
+                ...event,
+                status: "cancelled",
+                updatedAt: timestamp,
+                tool: {
+                  ...event.tool,
+                  status: "cancelled",
+                  endedAt: timestamp,
+                  result: event.tool?.result ?? {
+                    ok: false,
+                    error: {
+                      type: "CANCELLED",
+                      code: "APP_INTERRUPTED",
+                      message: "应用退出导致工具执行中断。",
+                      retryable: false
+                    }
+                  }
+                }
+              };
+            }
+
+            if (event.type === "plan" && Array.isArray(event.plan)) {
+              return {
+                ...event,
+                status: "failed",
+                updatedAt: timestamp,
+                plan: clone(message.plan ?? event.plan)
+              };
+            }
+
+            if (event.type === "status") {
+              statusEventFound = true;
+              return {
+                ...event,
+                status: "interrupted",
+                title: "执行被中断",
+                stopReason: "interrupted",
+                updatedAt: timestamp
+              };
+            }
+
+            return event;
+          });
+
+          if (!statusEventFound) {
+            activity.events.push({
+              id: `run:${activity.runId || message.id}`,
+              type: "status",
+              sequence: activity.events.length,
+              status: "interrupted",
+              title: "执行被中断",
+              stopReason: "interrupted",
+              createdAt: timestamp,
+              updatedAt: timestamp
+            });
+          }
+        }
+
+        conversation.updatedAt = timestamp;
+        recovered += 1;
+      }
+    }
+
+    if (recovered > 0) {
+      this.commit();
+    }
+
+    return {
+      ok: true,
+      recovered
+    };
+  }
+
   buildContext(
     conversationId
   ) {

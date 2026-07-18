@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
 function clone(value) {
   return structuredClone(value);
@@ -116,12 +118,29 @@ function createResultEnvelope({
   return result;
 }
 
+function safeResultId(value) {
+  const id = String(value ?? "").trim();
+  return /^[a-zA-Z0-9_-]{8,128}$/.test(id)
+    ? id
+    : "";
+}
+
+function atomicWriteJson(filePath, value) {
+  const directory = path.dirname(filePath);
+  fs.mkdirSync(directory, { recursive: true });
+  const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(value), "utf8");
+  fs.renameSync(temporary, filePath);
+}
+
 export class ToolResultStore {
   constructor({
     maxInlineBytes = 24000,
     maxStoredBytes = 200000,
     defaultChunkCharacters = 8000,
-    maxPreviewCharacters = 1800
+    maxPreviewCharacters = 1800,
+    storageDirectory = "",
+    retentionMs = 7 * 24 * 60 * 60 * 1000
   } = {}) {
     this.maxInlineBytes = Math.max(
       2000,
@@ -139,7 +158,117 @@ export class ToolResultStore {
       400,
       maxPreviewCharacters
     );
+    this.storageDirectory =
+      String(storageDirectory ?? "").trim();
+    this.retentionMs = Math.max(
+      60 * 60 * 1000,
+      Number(retentionMs) ||
+        7 * 24 * 60 * 60 * 1000
+    );
     this.entries = new Map();
+
+    if (this.storageDirectory) {
+      this.cleanupExpired();
+    }
+  }
+
+  entryPath(resultId) {
+    const id = safeResultId(resultId);
+
+    if (!id || !this.storageDirectory) {
+      return "";
+    }
+
+    return path.join(
+      this.storageDirectory,
+      `${id}.json`
+    );
+  }
+
+  persistEntry(entry) {
+    const filePath = this.entryPath(entry?.id);
+
+    if (!filePath) {
+      return;
+    }
+
+    try {
+      atomicWriteJson(filePath, entry);
+    } catch (error) {
+      console.warn(
+        "无法持久化工具结果引用：",
+        error
+      );
+    }
+  }
+
+  loadEntry(resultId) {
+    const id = safeResultId(resultId);
+
+    if (!id) {
+      return null;
+    }
+
+    const memoryEntry = this.entries.get(id);
+
+    if (memoryEntry) {
+      return memoryEntry;
+    }
+
+    const filePath = this.entryPath(id);
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(
+        fs.readFileSync(filePath, "utf8")
+      );
+
+      if (
+        parsed?.id !== id ||
+        typeof parsed?.text !== "string"
+      ) {
+        return null;
+      }
+
+      this.entries.set(id, parsed);
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  cleanupExpired(now = Date.now()) {
+    if (
+      !this.storageDirectory ||
+      !fs.existsSync(this.storageDirectory)
+    ) {
+      return 0;
+    }
+
+    let removed = 0;
+
+    for (const name of fs.readdirSync(this.storageDirectory)) {
+      if (!name.endsWith(".json")) {
+        continue;
+      }
+
+      const filePath = path.join(this.storageDirectory, name);
+
+      try {
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > this.retentionMs) {
+          fs.rmSync(filePath, { force: true });
+          removed += 1;
+        }
+      } catch {
+        // Ignore files concurrently removed by another run.
+      }
+    }
+
+    return removed;
   }
 
   capture(value, { toolName = "tool" } = {}) {
@@ -185,7 +314,7 @@ export class ToolResultStore {
     const storedBytes = byteLength(storedText);
     const clipped = storedBytes < totalBytes;
 
-    this.entries.set(resultId, {
+    const entry = {
       id: resultId,
       toolName,
       text: storedText,
@@ -193,7 +322,10 @@ export class ToolResultStore {
       storedBytes,
       clipped,
       createdAt: Date.now()
-    });
+    };
+
+    this.entries.set(resultId, entry);
+    this.persistEntry(entry);
 
     const compactValue = {
       ok: value?.ok === false ? false : true,
@@ -294,8 +426,8 @@ export class ToolResultStore {
       limit = this.defaultChunkCharacters
     } = {}
   ) {
-    const entry = this.entries.get(
-      String(resultId ?? "")
+    const entry = this.loadEntry(
+      resultId
     );
 
     if (!entry) {

@@ -30,6 +30,8 @@ const TIME_FORMATTER =
     }
   );
 
+const OTHER_OPTION_ID = "__other__";
+
 const FULL_TIME_FORMATTER =
   new Intl.DateTimeFormat(
     "zh-CN",
@@ -96,6 +98,8 @@ export function ConversationMessageList({
 
   const [copiedId, setCopiedId] =
     useState(null);
+  const [showReturnToCurrent, setShowReturnToCurrent] =
+    useState(false);
 
   const liveRevision =
     useMemo(() => {
@@ -128,6 +132,7 @@ export function ConversationMessageList({
 
   useEffect(() => {
     followLiveRef.current = true;
+    setShowReturnToCurrent(false);
   }, [conversation?.id]);
 
   useEffect(() => {
@@ -151,6 +156,15 @@ export function ConversationMessageList({
     conversation?.messages.length,
     liveRevision
   ]);
+
+  useEffect(() => {
+    if (
+      liveActivity &&
+      !followLiveRef.current
+    ) {
+      setShowReturnToCurrent(true);
+    }
+  }, [liveActivity, liveRevision]);
 
   const lastAssistantId =
     useMemo(() => {
@@ -236,6 +250,9 @@ export function ConversationMessageList({
 
         followLiveRef.current =
           remaining < 140;
+        if (followLiveRef.current) {
+          setShowReturnToCurrent(false);
+        }
       }}
     >
       <div className="conversation-messages__canvas">
@@ -376,6 +393,13 @@ export function ConversationMessageList({
                           回复已中止
                         </span>
                       )}
+
+                      {message.status ===
+                        "interrupted" && (
+                        <span className="conversation-message__status-chip">
+                          上次执行被中断
+                        </span>
+                      )}
                     </div>
 
                     <div className="conversation-message__action-group">
@@ -477,6 +501,26 @@ export function ConversationMessageList({
               onOpenTaskPanel?.("live");
             }}
           />
+        )}
+
+        {liveActivity && showReturnToCurrent && (
+          <button
+            type="button"
+            className="conversation-return-to-current"
+            data-testid="conversation-return-to-current"
+            onClick={() => {
+              followLiveRef.current = true;
+              setShowReturnToCurrent(false);
+              endRef.current
+                ?.scrollIntoView?.({
+                  block: "end",
+                  behavior: "smooth"
+                });
+            }}
+          >
+            <ConversationIcon name="chevron" size={13} />
+            返回当前活动
+          </button>
         )}
 
         <div ref={endRef} />
@@ -655,7 +699,11 @@ function PendingQuestionCard({
   const options = Array.isArray(
     request?.options
   )
-    ? request.options
+    ? request.options.filter(
+        (option) =>
+          String(option?.id) !==
+          OTHER_OPTION_ID
+      )
     : [];
   const multiple =
     request?.selectionMode ===
@@ -717,13 +765,25 @@ function PendingQuestionCard({
     otherActive
       ? other.trim()
       : "";
+  const submittedOptionIds = [
+    ...selected,
+    ...(otherActive
+      ? [OTHER_OPTION_ID]
+      : [])
+  ];
   const answer = [
     ...selectedLabels,
     otherText
   ].filter(Boolean).join("、");
+  const valid =
+    submittedOptionIds.length > 0 &&
+    (!otherActive || Boolean(otherText));
 
   const submit = async () => {
-    if (!answer || busy || submitting) {
+    if (!valid || busy || submitting) {
+      if (otherActive && !otherText) {
+        setError("请输入其它回答后再继续。");
+      }
       return;
     }
 
@@ -735,7 +795,7 @@ function PendingQuestionCard({
         await onSubmit?.({
           answer,
           selectedOptionIds:
-            selected,
+            submittedOptionIds,
           otherText
         });
 
@@ -824,6 +884,7 @@ function PendingQuestionCard({
                   ? " is-selected"
                   : ""
               }`}
+              data-option-id={OTHER_OPTION_ID}
             >
               <button
                 type="button"
@@ -839,8 +900,8 @@ function PendingQuestionCard({
                   <span />
                 </span>
                 <span className="conversation-question-option__copy">
-                  <strong>其他</strong>
-                  <small>输入自定义回答</small>
+                  <strong>其它回答</strong>
+                  <small>输入未列出的答案</small>
                 </span>
               </button>
 
@@ -849,7 +910,7 @@ function PendingQuestionCard({
                   autoFocus
                   value={other}
                   rows={2}
-                  placeholder="输入你的回答"
+                  placeholder="输入其它回答"
                   onChange={(event) => {
                     setOther(
                       event.target.value
@@ -878,7 +939,7 @@ function PendingQuestionCard({
         <button
           type="button"
           disabled={
-            !answer ||
+            !valid ||
             busy ||
             submitting
           }
@@ -932,8 +993,9 @@ function LiveAgentActivity({
               ""
             }
             stopping={
-              activity.state ===
-              "stopping"
+              ["stopping", "cancelling"].includes(
+                activity.state
+              )
             }
             onOpenTaskPanel={
               onOpenTaskPanel
@@ -1017,6 +1079,9 @@ function PlanDashboard({
                 <ConversationIcon name="warning" size={12} />
               )}
               {item.status === "in_progress" && <span />}
+              {["skipped", "cancelled", "superseded"].includes(item.status) && (
+                <ConversationIcon name="minus" size={12} />
+              )}
             </span>
             <strong>{item.title}</strong>
           </div>

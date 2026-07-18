@@ -228,6 +228,7 @@ export const FALLBACK_SETTINGS = {
     runtime: {
       maxSteps: 6,
       maxToolCalls: 12,
+      maxToolRetries: 1,
       runTimeoutMs: 120000,
       defaultTimeoutMs: 15000,
       maxIdenticalCalls: 2,

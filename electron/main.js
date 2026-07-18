@@ -21,6 +21,10 @@ import {
 } from "./settings/settingsRuntime.js";
 
 import {
+  conversationManager
+} from "./conversation/index.js";
+
+import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
 
@@ -44,6 +48,9 @@ if (e2eUserData) {
 registerIpcHandlers();
 
 app.whenReady().then(() => {
+  conversationManager
+    .recoverInterruptedRuns();
+
   installRendererSessionSecurity(
     session.defaultSession
   );

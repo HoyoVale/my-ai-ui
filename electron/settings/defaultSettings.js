@@ -138,6 +138,7 @@ export const DEFAULT_SETTINGS = {
       maxFinalizationAttempts: 2,
       maxAskUserCalls: 3,
       maxToolCalls: 12,
+      maxToolRetries: 1,
       runTimeoutMs: 120000,
       defaultTimeoutMs: 15000,
       maxIdenticalCalls: 2,

@@ -9,12 +9,14 @@ import {
 } from "ai";
 
 import crypto from "node:crypto";
+import path from "node:path";
 
 import IPC_CHANNELS
   from "../shared/ipcChannels.cjs";
 
 import {
-  conversationManager
+  conversationManager,
+  getConversationPath
 } from "../conversation/index.js";
 
 import {
@@ -76,6 +78,15 @@ import {
 } from "./stepText.js";
 
 import {
+  compactRunStepContext
+} from "./contextCompaction.js";
+
+import {
+  createCheckpointInstruction,
+  createRunCheckpoint
+} from "./runCheckpoint.js";
+
+import {
   createFallbackFinalSummary,
   createFinalizationInstruction,
   getPlanCompletionState,
@@ -84,7 +95,8 @@ import {
 
 import {
   collectAnsweredQuestions,
-  countQuestionEvents
+  countQuestionEvents,
+  OTHER_OPTION_ID
 } from "../tools/agent/askUserPolicy.js";
 
 
@@ -173,8 +185,14 @@ function appendResumeAnswerToContext(
       answer
     );
 
+  const checkpointInstruction =
+    createCheckpointInstruction(
+      pending?.activity?.checkpoint
+    );
+
   context.system = [
     context.system,
+    checkpointInstruction,
     resumeInstruction
   ].filter(Boolean).join("\n\n");
 
@@ -189,6 +207,26 @@ function appendResumeAnswerToContext(
   return context;
 }
 
+
+function getTaskResultDirectory(taskId) {
+  const safeTaskId = String(taskId ?? "")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 120);
+
+  if (!safeTaskId) {
+    return "";
+  }
+
+  try {
+    return path.join(
+      path.dirname(getConversationPath()),
+      "tool-results",
+      safeTaskId
+    );
+  } catch {
+    return "";
+  }
+}
 
 async function settleResultValue(
   value,
@@ -297,7 +335,164 @@ export class AgentRuntime {
           ?.phase ?? "idle",
       finalizationAttemptCount:
         this.activeRun
-          ?.finalizationAttemptCount ?? 0
+          ?.finalizationAttemptCount ?? 0,
+      contextCompactionCount:
+        this.activeRun
+          ?.contextCompactionCount ?? 0,
+      toolRegistry:
+        this.activeRun
+          ?.toolSession
+          ?.registryManifest ?? [],
+      checkpoint:
+        this.activeRun
+          ?.activityStore
+          ?.checkpoint ?? null
+    });
+  }
+
+  buildActiveCheckpoint() {
+    if (!this.activeRun) {
+      return null;
+    }
+
+    return createRunCheckpoint({
+      taskId: this.activeRun.taskId,
+      runId: this.activeRun.runId,
+      messageId:
+        this.activeRun.replaceMessageId ?? "",
+      phase:
+        this.activeRun.phase ?? "executing",
+      plan:
+        this.activeRun.toolSession
+          ?.getPlan?.() ??
+        this.activeRun.initialPlan ?? [],
+      records:
+        this.activeRun.toolSession
+          ?.getRecords?.() ??
+        this.activeRun.toolCalls ?? [],
+      answeredQuestions:
+        this.activeRun.answeredQuestions ?? [],
+      pendingQuestion:
+        this.activeRun.pendingQuestion,
+      stopReason:
+        this.activeRun.stopReason ?? "",
+      contextCompactions:
+        this.activeRun.contextCompactionCount ?? 0
+    });
+  }
+
+  ensureActiveAssistantMessage(
+    conversationId
+  ) {
+    if (!this.activeRun) {
+      return null;
+    }
+
+    if (this.activeRun.replaceMessageId) {
+      this.persistActiveRunCheckpoint({
+        status: "running"
+      });
+      return this.activeRun.replaceMessageId;
+    }
+
+    const checkpoint =
+      this.buildActiveCheckpoint();
+    this.activeRun.activityStore
+      ?.updateCheckpoint(checkpoint);
+
+    const persisted =
+      this.persistAssistantResponse({
+        conversationId,
+        content: "",
+        status: "running"
+      });
+    const message =
+      persisted?.message ?? persisted;
+
+    if (message?.id) {
+      this.activeRun.replaceMessageId =
+        message.id;
+      this.activeRun.resumeInPlace = true;
+
+      const updated =
+        this.buildActiveCheckpoint();
+      this.activeRun.activityStore
+        ?.updateCheckpoint(updated);
+      this.persistAssistantResponse({
+        conversationId,
+        content: "",
+        status: "running"
+      });
+    }
+
+    return this.activeRun.replaceMessageId;
+  }
+
+  persistActiveRunCheckpoint({
+    status = "running"
+  } = {}) {
+    if (
+      !this.activeRun ||
+      !this.activeRun.replaceMessageId
+    ) {
+      return null;
+    }
+
+    const checkpoint =
+      this.buildActiveCheckpoint();
+    this.activeRun.activityStore
+      ?.updateCheckpoint(checkpoint);
+
+    return this.persistAssistantResponse({
+      conversationId:
+        this.activeRun.conversationId,
+      content:
+        this.activeRun.finalText ?? "",
+      status
+    });
+  }
+
+  finishCancelledRun({
+    runId,
+    conversationId
+  }) {
+    if (!this.isCurrentRun(runId)) {
+      return;
+    }
+
+    const savePartial =
+      getSettings()
+        .conversation
+        .saveAbortedReplies;
+    const content = savePartial
+      ? this.activeRun.finalText.trim()
+      : "";
+
+    this.activeRun.phase = "cancelled";
+    this.activeRun.stopReason =
+      RUN_STOP_REASONS.CANCELLED_BY_USER;
+    this.activeRun.activityStore
+      ?.finalize(
+        this.activeRun.stopReason
+      );
+    this.persistActiveRunCheckpoint({
+      status: "aborted"
+    });
+    this.persistAssistantResponse({
+      conversationId,
+      content,
+      status: "aborted"
+    });
+
+    this.activeRun = null;
+    this.setStatus({
+      state: "idle",
+      runId: null,
+      conversationId,
+      startedAt: null,
+      lastError: null,
+      stopReason:
+        RUN_STOP_REASONS.CANCELLED_BY_USER
     });
   }
 
@@ -499,9 +694,14 @@ export class AgentRuntime {
       resumeInPlace: false,
       phase: "executing",
       finalizationAttemptCount: 0,
+      contextCompactionCount: 0,
       executionStopReason: null,
       stopReason: null
     };
+
+    this.ensureActiveAssistantMessage(
+      conversation.id
+    );
 
     this.setStatus({
       state: "running",
@@ -665,9 +865,14 @@ export class AgentRuntime {
       resumeInPlace: false,
       phase: "executing",
       finalizationAttemptCount: 0,
+      contextCompactionCount: 0,
       executionStopReason: null,
       stopReason: null
     };
+
+    this.ensureActiveAssistantMessage(
+      plan.conversation.id
+    );
 
     this.setStatus({
       state: "running",
@@ -741,6 +946,22 @@ export class AgentRuntime {
       .activityStore
       ?.upsertTool(record);
 
+    if (
+      [
+        "retrying",
+        "completed",
+        "failed",
+        "cancelled"
+      ].includes(record.status)
+    ) {
+      this.persistActiveRunCheckpoint({
+        status:
+          this.activeRun.pendingQuestion
+            ? "waiting"
+            : "running"
+      });
+    }
+
     this.setStatus({
       ...this.status
     });
@@ -793,6 +1014,13 @@ export class AgentRuntime {
 
     this.activeRun.currentStepText =
       "";
+
+    this.persistActiveRunCheckpoint({
+      status:
+        this.activeRun.pendingQuestion
+          ? "waiting"
+          : "running"
+    });
 
     this.setStatus({
       ...this.status
@@ -849,7 +1077,9 @@ export class AgentRuntime {
       plan:
         this.activeRun
           .toolSession
-          ?.getPlan?.() ?? [],
+          ?.getPlan?.() ??
+        this.activeRun
+          .initialPlan ?? [],
       stopReason:
         this.activeRun
           .stopReason ??
@@ -965,15 +1195,32 @@ export class AgentRuntime {
             String(option.id)
           )
       );
+    const otherAllowed =
+      pending.request?.allowOther !== false;
+    const includesOther =
+      normalizedSelectedOptionIds.includes(
+        OTHER_OPTION_ID
+      );
     const invalidSelection =
       normalizedSelectedOptionIds.some(
         (id) =>
+          id !== OTHER_OPTION_ID &&
           !allowedOptionIds.has(
             String(id)
           )
       );
+    const invalidOther =
+      includesOther &&
+      (
+        !otherAllowed ||
+        !String(otherText ?? "").trim()
+      );
+    const invalidSingleSelection =
+      pending.request?.selectionMode !==
+        "multiple" &&
+      normalizedSelectedOptionIds.length > 1;
 
-    if (invalidSelection) {
+    if (invalidSelection || invalidOther || invalidSingleSelection) {
       return {
         ok: false,
         code: "invalid-answer-option",
@@ -1106,9 +1353,20 @@ export class AgentRuntime {
           ),
         phase: "executing",
         finalizationAttemptCount: 0,
+        contextCompactionCount:
+          Number(
+            pending.activity
+              ?.checkpoint
+              ?.counts
+              ?.contextCompactions
+          ) || 0,
         executionStopReason: null,
         stopReason: null
       };
+
+      this.ensureActiveAssistantMessage(
+        normalizedConversationId
+      );
 
       this.setStatus({
         state: "running",
@@ -1173,9 +1431,20 @@ export class AgentRuntime {
       };
     }
 
+    this.activeRun.phase =
+      "cancelling";
+    this.activeRun.activityStore
+      ?.markStatus(
+        "cancelling",
+        { title: "正在取消" }
+      );
+    this.persistActiveRunCheckpoint({
+      status: "running"
+    });
+
     this.setStatus({
       ...this.status,
-      state: "stopping"
+      state: "cancelling"
     });
 
     this.activeRun
@@ -1350,6 +1619,10 @@ export class AgentRuntime {
             this.activeRun
               .stopReason
           );
+        this.activeRun.activityStore
+          ?.updateCheckpoint(
+            this.buildActiveCheckpoint()
+          );
         this.persistAssistantResponse({
           conversationId,
           content:
@@ -1376,22 +1649,10 @@ export class AgentRuntime {
           .aborted ||
         isAbortError(error)
       ) {
-        if (
-          this.isCurrentRun(
-            runId
-          )
-        ) {
-          this.activeRun = null;
-
-          this.setStatus({
-            state: "idle",
-            runId: null,
-            conversationId,
-            startedAt: null,
-            lastError: null
-          });
-        }
-
+        this.finishCancelledRun({
+          runId,
+          conversationId
+        });
         return;
       }
 
@@ -1625,7 +1886,7 @@ export class AgentRuntime {
               record
             );
           },
-          onPlanChange: (plan) => {
+          onPlanChange: (plan, change) => {
             if (
               this.isCurrentRun(
                 runId
@@ -1633,7 +1894,14 @@ export class AgentRuntime {
             ) {
               this.activeRun
                 .activityStore
-                ?.recordPlan(plan);
+                ?.recordPlan(
+                  plan,
+                  Date.now(),
+                  change
+                );
+              this.persistActiveRunCheckpoint({
+                status: "running"
+              });
               this.setStatus({
                 ...this.status
               });
@@ -1645,11 +1913,20 @@ export class AgentRuntime {
                 runId
               )
             ) {
+              this.activeRun.pendingQuestion = {
+                ...structuredClone(question),
+                status: "waiting"
+              };
+              this.activeRun.phase =
+                "waiting_for_user";
               this.activeRun
                 .activityStore
                 ?.recordQuestion(
                   question
                 );
+              this.persistActiveRunCheckpoint({
+                status: "waiting"
+              });
               this.setStatus({
                 ...this.status
               });
@@ -1666,7 +1943,11 @@ export class AgentRuntime {
               .answeredQuestions ?? [],
           initialQuestionCount:
             this.activeRun
-              .initialQuestionCount ?? 0
+              .initialQuestionCount ?? 0,
+          resultStoreDirectory:
+            getTaskResultDirectory(
+              this.activeRun.taskId
+            )
         });
 
       this.activeRun.toolSession =
@@ -1723,6 +2004,49 @@ export class AgentRuntime {
                 modelSettings
                   .timeoutMs
               )
+          },
+
+          prepareStep: ({
+            stepNumber,
+            initialMessages,
+            responseMessages
+          }) => {
+            if (
+              stepNumber < 4 ||
+              !this.isCurrentRun(runId)
+            ) {
+              return undefined;
+            }
+
+            const compacted =
+              compactRunStepContext({
+                initialMessages,
+                responseMessages,
+                checkpoint:
+                  this.buildActiveCheckpoint(),
+                contextTokenBudget:
+                  modelSettings.contextTokenBudget,
+                outputReserve:
+                  modelSettings.maxOutputTokens ?? 4096
+              });
+
+            if (!compacted.compacted) {
+              return undefined;
+            }
+
+            this.activeRun.contextCompactionCount += 1;
+            this.persistActiveRunCheckpoint({
+              status: "running"
+            });
+
+            return {
+              messages: compacted.messages,
+              instructions: [
+                context.system,
+                compacted.checkpointInstruction,
+                "Earlier tool details were compacted to protect the context budget. Use the checkpoint and result references; do not repeat completed work."
+              ].filter(Boolean).join("\n\n")
+            };
           },
 
           onStepStart: ({
@@ -1902,6 +2226,13 @@ export class AgentRuntime {
               ? RUN_STOP_REASONS
                   .COMPLETED
               : executionStopReason;
+        this.activeRun.phase =
+          pendingQuestion
+            ? "waiting_for_user"
+            : this.activeRun.stopReason ===
+                RUN_STOP_REASONS.COMPLETED
+              ? "completed"
+              : "failed";
 
         this.activeRun
           .activityStore
@@ -1940,55 +2271,10 @@ export class AgentRuntime {
           .signal
           .aborted
       ) {
-        if (
-          this.isCurrentRun(
-            runId
-          )
-        ) {
-          const assistantText =
-            this.activeRun
-              .finalText
-              .trim();
-
-          const shouldSave =
-            getSettings()
-              .conversation
-              .saveAbortedReplies;
-
-          if (
-            shouldSave &&
-            assistantText &&
-            !this.activeRun
-              .replaceMessageId
-          ) {
-            this.activeRun.stopReason =
-              RUN_STOP_REASONS
-                .CANCELLED_BY_USER;
-            this.activeRun
-              .activityStore
-              ?.finalize(
-                this.activeRun
-                  .stopReason
-              );
-            this.persistAssistantResponse({
-              conversationId,
-              content:
-                assistantText,
-              status: "aborted"
-            });
-          }
-
-          this.activeRun = null;
-
-          this.setStatus({
-            state: "idle",
-            runId: null,
-            conversationId,
-            startedAt: null,
-            lastError: null
-          });
-        }
-
+        this.finishCancelledRun({
+          runId,
+          conversationId
+        });
         return;
       }
 
@@ -2019,11 +2305,18 @@ export class AgentRuntime {
           assistantText ||
           waitingQuestion
         ) {
+          this.activeRun.activityStore
+            ?.updateCheckpoint(
+              this.buildActiveCheckpoint()
+            );
           this.persistAssistantResponse({
             conversationId,
             content:
               assistantText,
-            status: "complete"
+            status:
+              waitingQuestion
+                ? "waiting"
+                : "complete"
           });
         }
 
@@ -2056,56 +2349,10 @@ export class AgentRuntime {
         isAbortError(error)
       ) {
         endResponseStream();
-
-        if (
-          this.isCurrentRun(
-            runId
-          )
-        ) {
-          const assistantText =
-            this.activeRun
-              .finalText
-              .trim();
-
-          const shouldSave =
-            getSettings()
-              .conversation
-              .saveAbortedReplies;
-
-          if (
-            shouldSave &&
-            assistantText &&
-            !this.activeRun
-              .replaceMessageId
-          ) {
-            this.activeRun.stopReason =
-              RUN_STOP_REASONS
-                .CANCELLED_BY_USER;
-            this.activeRun
-              .activityStore
-              ?.finalize(
-                this.activeRun
-                  .stopReason
-              );
-            this.persistAssistantResponse({
-              conversationId,
-              content:
-                assistantText,
-              status: "aborted"
-            });
-          }
-
-          this.activeRun = null;
-
-          this.setStatus({
-            state: "idle",
-            runId: null,
-            conversationId,
-            startedAt: null,
-            lastError: null
-          });
-        }
-
+        this.finishCancelledRun({
+          runId,
+          conversationId
+        });
         return;
       }
 
@@ -2131,6 +2378,7 @@ export class AgentRuntime {
         this.activeRun.stopReason =
           RUN_STOP_REASONS
             .MODEL_ERROR;
+        this.activeRun.phase = "failed";
         this.activeRun
           .activityStore
           ?.finalize(
@@ -2139,6 +2387,10 @@ export class AgentRuntime {
           );
         this.activeRun.finalText =
           `⚠ ${friendlyMessage}`;
+        this.activeRun.activityStore
+          ?.updateCheckpoint(
+            this.buildActiveCheckpoint()
+          );
         this.persistAssistantResponse({
           conversationId,
           content:

@@ -65,8 +65,9 @@ export function useAgentStatus() {
     isRunning:
       status.state ===
         "running" ||
-      status.state ===
-        "stopping",
+      ["stopping", "cancelling"].includes(
+        status.state
+      ),
     isWaitingForUser:
       status.state ===
         "waiting_for_user"

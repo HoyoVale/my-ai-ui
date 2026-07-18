@@ -26,17 +26,24 @@ export function getPlanCompletionState(
     (item) =>
       item?.status === "blocked"
   );
+  const cancelled = items.filter(
+    (item) =>
+      item?.status === "cancelled"
+  );
 
   return {
     hasPlan: items.length > 0,
     isComplete:
       items.length > 0 &&
       unfinished.length === 0 &&
-      blocked.length === 0,
+      blocked.length === 0 &&
+      cancelled.length === 0,
     hasUnfinished:
       unfinished.length > 0,
     hasBlocked:
       blocked.length > 0,
+    hasCancelled:
+      cancelled.length > 0,
     items
   };
 }
@@ -159,7 +166,8 @@ export function createFinalizationInstruction({
     planState.isComplete
       ? "The execution plan is complete."
       : planState.hasUnfinished ||
-        planState.hasBlocked
+        planState.hasBlocked ||
+        planState.hasCancelled
         ? "The execution plan is not fully complete. Clearly state what remains or is blocked."
         : "No explicit execution plan is active.";
   const answerNote = answeredQuestion?.answer

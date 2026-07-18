@@ -47,8 +47,10 @@ function normalizeToolStatus(value) {
     return "queued";
   }
 
-  if (["running", "in_progress"].includes(value)) {
-    return "running";
+  if (["running", "in_progress", "retrying"].includes(value)) {
+    return value === "retrying"
+      ? "retrying"
+      : "running";
   }
 
   if (["cancelled", "aborted"].includes(value)) {
@@ -82,7 +84,9 @@ function sanitizePlanItem(source, index) {
     "in_progress",
     "completed",
     "blocked",
-    "skipped"
+    "skipped",
+    "cancelled",
+    "superseded"
   ]);
 
   return {
@@ -95,7 +99,12 @@ function sanitizePlanItem(source, index) {
     title,
     status: allowed.has(source.status)
       ? source.status
-      : "pending"
+      : "pending",
+    reason: stringValue(
+      source.reason,
+      "",
+      300
+    ).trim()
   };
 }
 
@@ -219,6 +228,29 @@ export function sanitizeActivityTool(
       source.batchObjective,
       "",
       240
+    ),
+    source: stringValue(
+      source.source,
+      "",
+      120
+    ),
+    riskLevel: stringValue(
+      source.riskLevel,
+      "none",
+      40
+    ),
+    sideEffect: stringValue(
+      source.sideEffect,
+      "none",
+      40
+    ),
+    attempt: timestampValue(
+      source.attempt,
+      0
+    ),
+    maxAttempts: timestampValue(
+      source.maxAttempts,
+      0
     )
   };
 
@@ -227,6 +259,10 @@ export function sanitizeActivityTool(
   const meta = jsonValue(source.meta, 8000);
   const result = sanitizeToolResult(
     source.result
+  );
+  const lastError = jsonValue(
+    source.lastError,
+    8000
   );
   const planStep =
     source.planStep &&
@@ -259,6 +295,10 @@ export function sanitizeActivityTool(
 
   if (result) {
     tool.result = result;
+  }
+
+  if (lastError !== undefined) {
+    tool.lastError = lastError;
   }
 
   if (
@@ -352,6 +392,15 @@ function sanitizeActivityEvent(source, index) {
       : [];
 
     event.plan = plan;
+    event.reason = stringValue(
+      source.reason,
+      "",
+      500
+    ).trim();
+    event.revision = timestampValue(
+      source.revision,
+      0
+    );
   }
 
   if (type === "commentary") {
@@ -430,6 +479,61 @@ function sanitizeActivityEvent(source, index) {
   return event;
 }
 
+function sanitizeCheckpoint(source) {
+  if (
+    !source ||
+    typeof source !== "object"
+  ) {
+    return null;
+  }
+
+  const checkpoint = jsonValue(
+    source,
+    48000
+  );
+
+  if (
+    !checkpoint ||
+    typeof checkpoint !== "object"
+  ) {
+    return null;
+  }
+
+  return {
+    ...checkpoint,
+    version: 1,
+    taskId: stringValue(
+      checkpoint.taskId,
+      "",
+      120
+    ),
+    runId: stringValue(
+      checkpoint.runId,
+      "",
+      120
+    ),
+    messageId: stringValue(
+      checkpoint.messageId,
+      "",
+      120
+    ),
+    phase: stringValue(
+      checkpoint.phase,
+      "executing",
+      40
+    ),
+    stopReason: stringValue(
+      checkpoint.stopReason,
+      "",
+      80
+    ),
+    updatedAt: timestampValue(
+      checkpoint.updatedAt,
+      0
+    )
+  };
+}
+
 export function sanitizeActivity(source) {
   if (!source || typeof source !== "object") {
     return null;
@@ -443,7 +547,9 @@ export function sanitizeActivity(source) {
     "running",
     "completed",
     "waiting_for_user",
+    "cancelling",
     "cancelled",
+    "interrupted",
     "failed",
     "unknown",
     "resumed"
@@ -466,7 +572,7 @@ export function sanitizeActivity(source) {
   });
 
   return {
-    version: 2,
+    version: 3,
     taskId: stringValue(
       source.taskId,
       "",
@@ -494,6 +600,10 @@ export function sanitizeActivity(source) {
       0
     ),
     stopReason,
+    checkpoint:
+      sanitizeCheckpoint(
+        source.checkpoint
+      ),
     events
   };
 }

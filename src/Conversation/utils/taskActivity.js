@@ -97,8 +97,8 @@ export function normalizeToolStatus(status) {
     return "queued";
   }
 
-  if (["running", "in_progress"].includes(status)) {
-    return "running";
+  if (["running", "in_progress", "retrying"].includes(status)) {
+    return status === "retrying" ? "retrying" : "running";
   }
 
   if (["aborted", "cancelled"].includes(status)) {
@@ -123,6 +123,10 @@ export function toolStatusLabel(status) {
     return "进行中";
   }
 
+  if (normalized === "retrying") {
+    return "正在重试";
+  }
+
   if (normalized === "aborted") {
     return "已取消";
   }
@@ -137,7 +141,7 @@ export function toolStatusMark(status) {
     return "!";
   }
 
-  if (["queued", "running"].includes(normalized)) {
+  if (["queued", "running", "retrying"].includes(normalized)) {
     return "";
   }
 
@@ -161,8 +165,16 @@ export function normalizePlanStatus(status) {
     return "blocked";
   }
 
-  if (["skipped", "aborted", "cancelled"].includes(status)) {
+  if (status === "skipped") {
     return "skipped";
+  }
+
+  if (["aborted", "cancelled"].includes(status)) {
+    return "cancelled";
+  }
+
+  if (status === "superseded") {
+    return "superseded";
   }
 
   return "pending";
@@ -186,16 +198,26 @@ export function getPlanStats(plan = []) {
   const blocked = normalizedPlan.some(
     (item) => item.status === "blocked"
   );
+  const settled = normalizedPlan.filter(
+    (item) =>
+      [
+        "completed",
+        "skipped",
+        "cancelled",
+        "superseded"
+      ].includes(item.status)
+  ).length;
 
   return {
     plan: normalizedPlan,
     total: normalizedPlan.length,
     completed,
+    settled,
     active,
     blocked,
     ratio:
       normalizedPlan.length > 0
-        ? completed / normalizedPlan.length
+        ? settled / normalizedPlan.length
         : 0
   };
 }
@@ -216,6 +238,7 @@ const STOP_REASON_LABELS = Object.freeze({
   output_limit: "达到输出上限",
   content_filter: "内容被安全策略拦截",
   plan_incomplete: "计划尚未执行完成",
+  interrupted: "执行被应用关闭中断",
   unknown: "任务已结束"
 });
 
@@ -489,7 +512,8 @@ export function createActivitySnapshot(
   );
   const running = Boolean(live) && [
     "running",
-    "stopping"
+    "stopping",
+    "cancelling"
   ].includes(lastSource?.state);
   const failed =
     planStats.blocked ||
@@ -500,12 +524,17 @@ export function createActivitySnapshot(
     ["failed"].includes(lastSource?.activity?.status);
   const aborted =
     lastSource?.status === "aborted" ||
-    lastSource?.state === "stopping" ||
+    ["stopping", "cancelling"].includes(lastSource?.state) ||
     lastSource?.activity?.status === "cancelled" ||
     toolCalls.some(
       (toolCall) =>
         normalizeToolStatus(toolCall.status) === "aborted"
     );
+
+  const interrupted =
+    lastSource?.status === "interrupted" ||
+    lastSource?.activity?.status === "interrupted" ||
+    stopReason === "interrupted";
 
   return {
     source: lastSource,
@@ -520,6 +549,7 @@ export function createActivitySnapshot(
     running,
     failed,
     aborted,
+    interrupted,
     events,
     plan: planStats.plan,
     planStats,

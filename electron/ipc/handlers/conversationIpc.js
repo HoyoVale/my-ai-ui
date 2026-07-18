@@ -33,7 +33,7 @@ function isAgentBusy() {
 
   return (
     state === "running" ||
-    state === "stopping"
+    ["stopping", "cancelling"].includes(state)
   );
 }
 

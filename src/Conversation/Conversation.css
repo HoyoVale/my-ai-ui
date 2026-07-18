@@ -3713,3 +3713,55 @@ button.conversation-thinking-event:focus-visible > strong {
 .reduce-motion .conversation-thinking-event--commentary.is-streaming::after {
   animation: none;
 }
+
+.conversation-return-to-current {
+  position: sticky;
+  bottom: 18px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  margin: 0 auto 10px;
+  padding: 8px 13px;
+  border: 1px solid var(--conversation-border-strong);
+  border-radius: 999px;
+  color: var(--conversation-text);
+  background: color-mix(in srgb, var(--conversation-surface) 92%, transparent);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.14);
+  backdrop-filter: blur(12px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  animation: conversation-message-in 160ms ease both;
+}
+
+.conversation-return-to-current svg {
+  transform: rotate(90deg);
+}
+
+.conversation-activity-plan__row > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.conversation-activity-plan__row > div > strong {
+  color: var(--conversation-soft);
+  font-size: 12px;
+  font-weight: 540;
+  line-height: 1.45;
+}
+
+.conversation-activity-plan__row > div > small {
+  color: var(--conversation-faint);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.conversation-activity-plan__row.is-skipped,
+.conversation-activity-plan__row.is-cancelled,
+.conversation-activity-plan__row.is-superseded {
+  opacity: 0.55;
+}

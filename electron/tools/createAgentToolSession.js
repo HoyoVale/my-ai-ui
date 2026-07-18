@@ -7,6 +7,10 @@ import {
 } from "./core/ToolResultStore.js";
 
 import {
+  ToolRegistry
+} from "./core/ToolRegistry.js";
+
+import {
   RunPlanStore,
   createAgentToolDefinitions
 } from "./agent/agentTools.js";
@@ -38,7 +42,8 @@ export function createAgentToolSession({
   settings = {},
   initialPlan = [],
   answeredQuestions = [],
-  initialQuestionCount = 0
+  initialQuestionCount = 0,
+  resultStoreDirectory = ""
 } = {}) {
   const planStore =
     new RunPlanStore(
@@ -56,26 +61,58 @@ export function createAgentToolSession({
       }
     );
   const resultStore =
-    new ToolResultStore();
+    new ToolResultStore({
+      storageDirectory:
+        resultStoreDirectory
+    });
   const toolSettings =
     settings.tools ?? {};
   const workspaceSettings =
     toolSettings.workspace ?? {};
 
-  const definitions = [
-    ...createDateTimeToolDefinitions(),
-    ...createRuntimeToolDefinitions({
-      activeModel,
-      getAgentStatus,
-      settings
-    }),
-    ...createWorkspaceToolDefinitions(
-      workspaceSettings
-    ),
-    ...createAgentToolDefinitions({
-      resultStore
-    })
-  ];
+  const registry = new ToolRegistry()
+    .registerMany(
+      createDateTimeToolDefinitions(),
+      {
+        source: "builtin.datetime",
+        sideEffect: "none",
+        riskLevel: "none"
+      }
+    )
+    .registerMany(
+      createRuntimeToolDefinitions({
+        activeModel,
+        getAgentStatus,
+        settings
+      }),
+      {
+        source: "builtin.runtime",
+        sideEffect: "none",
+        riskLevel: "none"
+      }
+    )
+    .registerMany(
+      createWorkspaceToolDefinitions(
+        workspaceSettings
+      ),
+      {
+        source: "builtin.workspace",
+        sideEffect: "read",
+        riskLevel: "low"
+      }
+    )
+    .registerMany(
+      createAgentToolDefinitions({
+        resultStore
+      }),
+      {
+        source: "builtin.agent",
+        sideEffect: "none",
+        riskLevel: "none"
+      }
+    );
+
+  const definitions = registry.list();
 
   const enabledNames = new Set(
     resolveEnabledToolCatalog(
@@ -117,12 +154,18 @@ export function createAgentToolSession({
         toolSettings.runtime
           ?.runTimeoutMs ??
         120000,
-      resultStore
+      resultStore,
+      maxRetries:
+        toolSettings.runtime
+          ?.maxToolRetries ??
+        1
     });
 
   return {
     definitions:
       enabledDefinitions,
+    registryManifest:
+      registry.manifest(),
     tools:
       executor.buildToolSet(
         enabledDefinitions

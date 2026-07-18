@@ -1,6 +1,7 @@
 export const RUN_STOP_REASONS = Object.freeze({
   COMPLETED: "completed",
   CANCELLED_BY_USER: "cancelled_by_user",
+  INTERRUPTED: "interrupted",
   WAITING_FOR_USER: "waiting_for_user",
   TOOL_CALL_LIMIT: "tool_call_limit",
   AGENT_STEP_LIMIT: "agent_step_limit",
@@ -28,6 +29,8 @@ const LEGACY_ALIASES = Object.freeze({
     RUN_STOP_REASONS.REPEATED_TOOL_CALL,
   aborted:
     RUN_STOP_REASONS.CANCELLED_BY_USER,
+  interrupted:
+    RUN_STOP_REASONS.INTERRUPTED,
   error:
     RUN_STOP_REASONS.MODEL_ERROR
 });
@@ -48,7 +51,17 @@ const TOOL_ERROR_REASON = Object.freeze({
   CANCELLED_BY_USER:
     RUN_STOP_REASONS.CANCELLED_BY_USER,
   PLAN_STEP_REQUIRED:
-    RUN_STOP_REASONS.PLAN_INCOMPLETE
+    RUN_STOP_REASONS.PLAN_INCOMPLETE,
+  TIMEOUT:
+    RUN_STOP_REASONS.TOOL_TIMEOUT,
+  INVALID_ARGUMENTS:
+    RUN_STOP_REASONS.INVALID_TOOL_ARGUMENTS,
+  NOT_FOUND:
+    RUN_STOP_REASONS.TOOL_ERROR,
+  TEMPORARY_FAILURE:
+    RUN_STOP_REASONS.TOOL_ERROR,
+  CANCELLED:
+    RUN_STOP_REASONS.CANCELLED_BY_USER
 });
 
 const KNOWN_REASONS = new Set(
@@ -93,6 +106,13 @@ export function runStatusFromStopReason(
     RUN_STOP_REASONS.CANCELLED_BY_USER
   ) {
     return "cancelled";
+  }
+
+  if (
+    reason ===
+    RUN_STOP_REASONS.INTERRUPTED
+  ) {
+    return "interrupted";
   }
 
   if (reason === RUN_STOP_REASONS.UNKNOWN) {

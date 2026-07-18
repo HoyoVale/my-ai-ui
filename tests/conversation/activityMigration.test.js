@@ -37,7 +37,7 @@ describe("conversation activity migration", () => {
     });
 
     assert.equal(message.stopReason, "agent_step_limit");
-    assert.equal(message.activity.version, 2);
+    assert.equal(message.activity.version, 3);
     assert.equal(message.activity.taskId, "assistant-1");
     assert.equal(
       message.activity.events.some((event) => event.type === "plan"),
@@ -132,7 +132,7 @@ describe("conversation activity migration", () => {
       (event) => event.type === "tool"
     );
 
-    assert.equal(message.activity.version, 2);
+    assert.equal(message.activity.version, 3);
     assert.equal(message.activity.runId, "run-progress");
     assert.equal(batch.batch.objective, "检查活动分组");
     assert.equal(commentary.phase, "before_tools");

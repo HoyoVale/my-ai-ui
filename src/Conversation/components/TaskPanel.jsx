@@ -32,7 +32,7 @@ function planStatusMark(status) {
     return "!";
   }
 
-  if (status === "skipped") {
+  if (["skipped", "cancelled", "superseded"].includes(status)) {
     return "–";
   }
 
@@ -60,7 +60,7 @@ function panelTimelineEvents(snapshot) {
       return true;
     }
 
-    return ["failed", "cancelled"].includes(event.status);
+    return ["failed", "cancelled", "interrupted"].includes(event.status);
   });
 }
 
@@ -149,7 +149,7 @@ export function ConversationTaskPanel({
               <span>
                 <ConversationIcon
                   name={
-                    snapshot.failed
+                    snapshot.failed || snapshot.interrupted
                       ? "warning"
                       : snapshot.aborted
                         ? "minus"
@@ -162,9 +162,11 @@ export function ConversationTaskPanel({
                 <strong>
                   {snapshot.running
                     ? "正在思考"
-                    : snapshot.durationMs > 0
-                      ? `思考了 ${formatTaskDuration(snapshot.durationMs)}`
-                      : stopReasonLabel(snapshot.stopReason)}
+                    : snapshot.interrupted
+                      ? "上次执行被中断"
+                      : snapshot.durationMs > 0
+                        ? `思考了 ${formatTaskDuration(snapshot.durationMs)}`
+                        : stopReasonLabel(snapshot.stopReason)}
                 </strong>
                 {snapshot.failed && (
                   <small>{stopReasonLabel(snapshot.stopReason)}</small>
@@ -190,7 +192,10 @@ export function ConversationTaskPanel({
                   key={item.id ?? `${item.title}-${index}`}
                 >
                   <span>{planStatusMark(item.status)}</span>
-                  <strong>{item.title}</strong>
+                  <div>
+                    <strong>{item.title}</strong>
+                    {item.reason && <small>{item.reason}</small>}
+                  </div>
                 </div>
               ))}
             </div>

@@ -9,7 +9,7 @@ import {
   normalizeRunStopReason
 } from "../agent/runStopReasons.js";
 
-const STORE_VERSION = 9;
+const STORE_VERSION = 10;
 
 const MESSAGE_ROLES =
   new Set([
@@ -19,8 +19,11 @@ const MESSAGE_ROLES =
 
 const MESSAGE_STATUSES =
   new Set([
+    "running",
+    "waiting",
     "complete",
-    "aborted"
+    "aborted",
+    "interrupted"
   ]);
 
 const PENDING_QUESTION_STATUSES =
@@ -108,18 +111,33 @@ function sanitizePendingQuestion(source) {
               "",
               200
             ).trim();
+            const id = stringValue(
+              option.id,
+              `option-${index + 1}`,
+              80
+            ) || `option-${index + 1}`;
+            const normalizedLabel =
+              label.toLowerCase();
 
-            if (!label) {
+            if (
+              !label ||
+              id === "__other__" ||
+              [
+                "other",
+                "other answer",
+                "custom",
+                "custom answer",
+                "其他",
+                "其它",
+                "其他回答",
+                "其它回答"
+              ].includes(normalizedLabel)
+            ) {
               return null;
             }
 
             return {
-              id:
-                stringValue(
-                  option.id,
-                  `option-${index + 1}`,
-                  80
-                ) || `option-${index + 1}`,
+              id,
               label
             };
           })
@@ -158,10 +176,7 @@ function sanitizePendingQuestion(source) {
         ? "multiple"
         : "single",
     allowOther:
-      typeof source.allowOther ===
-        "boolean"
-        ? source.allowOther
-        : options.length === 0,
+      source.allowOther !== false,
     status
   };
 
@@ -228,7 +243,10 @@ function sanitizePlanItem(
     "pending",
     "in_progress",
     "completed",
-    "blocked"
+    "blocked",
+    "skipped",
+    "cancelled",
+    "superseded"
   ].includes(source.status)
     ? source.status
     : "pending";
@@ -241,7 +259,12 @@ function sanitizePlanItem(
         80
       ) || `step-${index + 1}`,
     title,
-    status
+    status,
+    reason: stringValue(
+      source.reason,
+      "",
+      300
+    ).trim()
   };
 }
 function sanitizeToolCall(
