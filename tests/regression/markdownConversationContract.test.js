@@ -62,7 +62,7 @@ describe(
         );
         assert.doesNotMatch(
           source,
-          /conversation-message--assistant\s+\.conversation-message__body\s*\{[\s\S]*background/u
+          /conversation-message--assistant\s+\.conversation-message__body\s*\{[^}]*background/u
         );
       }
     );

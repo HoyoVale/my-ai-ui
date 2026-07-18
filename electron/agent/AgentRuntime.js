@@ -4,7 +4,6 @@ import {
 
 import {
   generateText,
-  hasToolCall,
   stepCountIs,
   streamText
 } from "ai";
@@ -63,6 +62,31 @@ import {
   createAgentToolSession
 } from "../tools/index.js";
 
+import {
+  RunActivityStore
+} from "./RunActivityStore.js";
+
+import {
+  inferRunStopReason,
+  RUN_STOP_REASONS
+} from "./runStopReasons.js";
+
+import {
+  classifyAgentStep
+} from "./stepText.js";
+
+import {
+  createFallbackFinalSummary,
+  createFinalizationInstruction,
+  getPlanCompletionState,
+  shouldRunFinalization
+} from "./finalization.js";
+
+import {
+  collectAnsweredQuestions,
+  countQuestionEvents
+} from "../tools/agent/askUserPolicy.js";
+
 
 
 
@@ -89,45 +113,9 @@ function cloneStatus(status) {
   };
 }
 
-function formatPendingQuestion(
-  request
-) {
-  if (!request?.question) {
-    return "";
-  }
-
-  const lines = [
-    request.question
-  ];
-
-  if (request.reason) {
-    lines.push(
-      "",
-      `需要确认的原因：${request.reason}`
-    );
-  }
-
-  if (
-    Array.isArray(
-      request.options
-    ) &&
-    request.options.length > 0
-  ) {
-    lines.push(
-      "",
-      ...request.options.map(
-        (option, index) =>
-          `${index + 1}. ${option.label}`
-      )
-    );
-  }
-
-  return lines.join("\n");
-}
-
-
 function createResumeInstruction(
-  pending
+  pending,
+  answer = ""
 ) {
   if (!pending?.request?.question) {
     return "";
@@ -135,11 +123,72 @@ function createResumeInstruction(
 
   return [
     "[Resumed Agent Task]",
-    "The user message is an answer to the clarification question from the previous assistant turn.",
+    "The user answered the clarification checkpoint inside the current assistant run.",
     `Previous question: ${pending.request.question}`,
-    "Continue the same task instead of starting an unrelated task. Reuse and update the existing plan when useful."
-  ].join("\n");
+    `User answer: ${String(answer ?? "").trim()}`,
+    pending.request.decisionKey
+      ? `Resolved decision key: ${pending.request.decisionKey}`
+      : "",
+    "Continue the same task and the same plan. Do not greet the user or treat this as a new conversation turn.",
+    "This checkpoint is answered. Do not call ask_user again for the same decision.",
+    "Your next action must advance the plan, use a non-question tool, or provide the final answer. Only ask another question if a genuinely new blocking ambiguity appears later."
+  ].filter(Boolean).join("\n");
 }
+
+function createAnsweredQuestion(
+  pending,
+  {
+    answer = "",
+    selectedOptionIds = [],
+    otherText = ""
+  } = {}
+) {
+  return {
+    ...structuredClone(
+      pending?.request ?? {}
+    ),
+    status: "answered",
+    answer:
+      String(answer ?? "").trim(),
+    selectedOptionIds:
+      Array.isArray(selectedOptionIds)
+        ? selectedOptionIds.map(String)
+        : [],
+    otherText:
+      String(otherText ?? "").trim(),
+    answeredAt: Date.now()
+  };
+}
+
+function appendResumeAnswerToContext(
+  context,
+  pending,
+  answeredQuestion
+) {
+  const answer =
+    answeredQuestion?.answer ?? "";
+  const resumeInstruction =
+    createResumeInstruction(
+      pending,
+      answer
+    );
+
+  context.system = [
+    context.system,
+    resumeInstruction
+  ].filter(Boolean).join("\n\n");
+
+  context.metadata = {
+    ...context.metadata,
+    resumedMessageId:
+      pending.messageId,
+    resumedRunId:
+      pending.activity?.runId ?? ""
+  };
+
+  return context;
+}
+
 
 async function settleResultValue(
   value,
@@ -150,76 +199,6 @@ async function settleResultValue(
   } catch {
     return fallback;
   }
-}
-
-function stopReasonFromToolRecords(
-  records = []
-) {
-  const code = [...records]
-    .reverse()
-    .find(
-      (record) =>
-        record.output?.error?.code
-    )?.output?.error?.code;
-
-  const mapping = {
-    AGENT_RUN_TIMEOUT:
-      "run_timeout",
-    TOOL_CALL_LIMIT:
-      "tool_call_limit",
-    TOOL_TIMEOUT:
-      "tool_timeout",
-    REPEATED_TOOL_CALL:
-      "repeated_call"
-  };
-
-  return mapping[code] ?? "";
-}
-
-function inferStopReason({
-  pendingQuestion,
-  records,
-  finishReason,
-  steps,
-  maxSteps
-}) {
-  if (pendingQuestion) {
-    return "user_input_required";
-  }
-
-  const toolReason =
-    stopReasonFromToolRecords(
-      records
-    );
-
-  if (toolReason) {
-    return toolReason;
-  }
-
-  if (
-    Array.isArray(steps) &&
-    steps.length >= maxSteps &&
-    finishReason === "tool-calls"
-  ) {
-    return "step_limit";
-  }
-
-  if (finishReason === "length") {
-    return "output_limit";
-  }
-
-  if (
-    finishReason ===
-    "content-filter"
-  ) {
-    return "content_filter";
-  }
-
-  if (finishReason === "error") {
-    return "error";
-  }
-
-  return "completed";
 }
 
 export class AgentRuntime {
@@ -287,11 +266,48 @@ export class AgentRuntime {
       activeToolCalls:
         this.activeRun
           ?.toolSession
-          ?.getRecords?.() ?? []
+          ?.getRecords?.() ?? [],
+      taskId:
+        this.activeRun
+          ?.taskId ?? null,
+      activity:
+        this.activeRun
+          ?.activityStore
+          ?.snapshot?.() ?? null,
+      assistantText:
+        this.activeRun
+          ?.finalText ??
+        this.activeRun
+          ?.currentStepText ??
+        "",
+      liveStepText:
+        this.activeRun
+          ?.currentStepText ?? "",
+      finalText:
+        this.activeRun
+          ?.finalText ?? "",
+      replaceMessageId:
+        this.activeRun
+          ?.replaceMessageId ?? "",
+      stepNumber:
+        this.activeRun
+          ?.stepNumber ?? 0,
+      phase:
+        this.activeRun
+          ?.phase ?? "idle",
+      finalizationAttemptCount:
+        this.activeRun
+          ?.finalizationAttemptCount ?? 0
     });
   }
 
-  startMessage(content) {
+  startMessage(
+    content,
+    {
+      expectedConversationId = "",
+      expectedPendingMessageId = ""
+    } = {}
+  ) {
     const message =
       String(content ?? "")
         .trim();
@@ -348,40 +364,56 @@ export class AgentRuntime {
     let conversation;
     let memories;
     let context;
-    let pendingResume = null;
 
     try {
       conversation =
         conversationManager
           .getCurrentConversation();
 
-      pendingResume =
+      if (
+        expectedConversationId &&
+        conversation.id !==
+          expectedConversationId
+      ) {
+        return {
+          ok: false,
+          code: "conversation-changed",
+          message:
+            "当前会话已经切换，请回到原会话后重新提交回答。"
+        };
+      }
+
+      const pendingQuestion =
         conversationManager
           .getPendingQuestion(
             conversation.id
           );
 
-      const userMessage =
-        conversationManager
-          .appendMessage({
-            conversationId:
-              conversation.id,
-
-            role: "user",
-            content: message
-          });
-
-      if (pendingResume) {
-        conversationManager
-          .resolvePendingQuestion({
-            conversationId:
-              conversation.id,
-            messageId:
-              pendingResume.messageId,
-            answerMessageId:
-              userMessage.id
-          });
+      if (pendingQuestion) {
+        return {
+          ok: false,
+          code: "pending-question-active",
+          message:
+            "请先在当前回复中回答待确认问题。"
+        };
       }
+
+      if (expectedPendingMessageId) {
+        return {
+          ok: false,
+          code: "question-expired",
+          message:
+            "这个问题已经失效或被回答，请刷新会话。"
+        };
+      }
+
+      conversationManager
+        .appendMessage({
+          conversationId:
+            conversation.id,
+          role: "user",
+          content: message
+        });
 
       conversation =
         conversationManager
@@ -402,22 +434,6 @@ export class AgentRuntime {
           memories
         });
 
-      const resumeInstruction =
-        createResumeInstruction(
-          pendingResume
-        );
-
-      if (resumeInstruction) {
-        context.system = [
-          context.system,
-          resumeInstruction
-        ].filter(Boolean).join("\n\n");
-        context.metadata = {
-          ...context.metadata,
-          resumedFromMessageId:
-            pendingResume.messageId
-        };
-      }
     } catch (error) {
       const errorMessage =
         "无法准备当前消息或长期记忆，请检查应用数据目录。";
@@ -444,27 +460,46 @@ export class AgentRuntime {
     const runId =
       crypto.randomUUID();
 
+    const taskId =
+      crypto.randomUUID();
+
     const abortController =
       new AbortController();
 
     const startedAt =
       Date.now();
 
+    const activityStore =
+      new RunActivityStore({
+        taskId,
+        runId,
+        startedAt
+      });
+
     this.activeRun = {
       runId,
+      taskId,
       conversationId:
         conversation.id,
       abortController,
-      assistantText: "",
+      currentStepText: "",
+      finalText: "",
+      stepNumber: 0,
       startedAt,
       replaceMessageId: null,
       reasoningSummary: "",
       toolCalls: [],
-      initialPlan:
-        pendingResume?.plan ?? [],
-      resumedFromMessageId:
-        pendingResume?.messageId ?? "",
+      activityStore,
+      initialPlan: [],
+      resumedFromMessageId: "",
       pendingQuestion: null,
+      answeredQuestion: null,
+      answeredQuestions: [],
+      initialQuestionCount: 0,
+      resumeInPlace: false,
+      phase: "executing",
+      finalizationAttemptCount: 0,
+      executionStopReason: null,
       stopReason: null
     };
 
@@ -590,26 +625,47 @@ export class AgentRuntime {
     const runId =
       crypto.randomUUID();
 
+    const taskId =
+      crypto.randomUUID();
+
     const abortController =
       new AbortController();
 
     const startedAt =
       Date.now();
 
+    const activityStore =
+      new RunActivityStore({
+        taskId,
+        runId,
+        startedAt
+      });
+
     this.activeRun = {
       runId,
+      taskId,
       conversationId:
         plan.conversation.id,
       abortController,
-      assistantText: "",
+      currentStepText: "",
+      finalText: "",
+      stepNumber: 0,
       startedAt,
       replaceMessageId:
         plan.targetMessage.id,
       reasoningSummary: "",
       toolCalls: [],
+      activityStore,
       initialPlan: [],
       resumedFromMessageId: "",
       pendingQuestion: null,
+      answeredQuestion: null,
+      answeredQuestions: [],
+      initialQuestionCount: 0,
+      resumeInPlace: false,
+      phase: "executing",
+      finalizationAttemptCount: 0,
+      executionStopReason: null,
       stopReason: null
     };
 
@@ -681,6 +737,63 @@ export class AgentRuntime {
       );
     }
 
+    this.activeRun
+      .activityStore
+      ?.upsertTool(record);
+
+    this.setStatus({
+      ...this.status
+    });
+  }
+
+  handleStepEnd(
+    runId,
+    step
+  ) {
+    if (!this.isCurrentRun(runId)) {
+      return;
+    }
+
+    const classified =
+      classifyAgentStep(step);
+
+    this.activeRun.stepNumber =
+      Number(step?.stepNumber) || 0;
+
+    if (
+      classified.kind ===
+        "commentary"
+    ) {
+      this.activeRun
+        .activityStore
+        ?.recordCommentary({
+          content:
+            classified.text,
+          phase:
+            this.activeRun
+              .activityStore
+              ?.events
+              ?.some(
+                (event) =>
+                  event.type ===
+                    "tool"
+              )
+              ? "between_tools"
+              : "before_tools",
+          objective:
+            classified.objective
+        });
+    } else if (
+      classified.kind ===
+        "final"
+    ) {
+      this.activeRun.finalText =
+        classified.text;
+    }
+
+    this.activeRun.currentStepText =
+      "";
+
     this.setStatus({
       ...this.status
     });
@@ -695,6 +808,29 @@ export class AgentRuntime {
       return null;
     }
 
+    const saveToolHistory =
+      getSettings().tools
+        ?.runtime
+        ?.saveToolHistory !== false;
+    const activitySnapshot =
+      this.activeRun
+        .activityStore
+        ?.snapshot?.() ?? null;
+    const persistedActivity =
+      !saveToolHistory &&
+      activitySnapshot
+        ? {
+            ...activitySnapshot,
+            events:
+              activitySnapshot.events
+                .filter(
+                  (event) =>
+                    event.type !==
+                    "tool"
+                )
+          }
+        : activitySnapshot;
+
     const metadata = {
       durationMs:
         Math.max(
@@ -706,12 +842,10 @@ export class AgentRuntime {
         this.activeRun
           .reasoningSummary,
       toolCalls:
-        getSettings().tools
-          ?.runtime
-          ?.saveToolHistory === false
-          ? []
-          : this.activeRun
-              .toolCalls,
+        saveToolHistory
+          ? this.activeRun
+              .toolCalls
+          : [],
       plan:
         this.activeRun
           .toolSession
@@ -720,14 +854,23 @@ export class AgentRuntime {
         this.activeRun
           .stopReason ??
         (status === "aborted"
-          ? "aborted"
-          : "completed"),
+          ? RUN_STOP_REASONS
+              .CANCELLED_BY_USER
+          : RUN_STOP_REASONS
+              .COMPLETED),
       pendingQuestion:
         this.activeRun
-          .pendingQuestion,
+          .pendingQuestion ??
+        this.activeRun
+          .answeredQuestion ??
+        null,
       resumedFromMessageId:
         this.activeRun
-          .resumedFromMessageId
+          .resumedFromMessageId,
+      taskId:
+        this.activeRun.taskId,
+      activity:
+        persistedActivity
     };
 
     if (
@@ -742,6 +885,11 @@ export class AgentRuntime {
               .replaceMessageId,
           content,
           status,
+          preserveCreatedAt:
+            Boolean(
+              this.activeRun
+                .resumeInPlace
+            ),
           ...metadata
         });
     }
@@ -754,6 +902,265 @@ export class AgentRuntime {
         status,
         ...metadata
       });
+  }
+
+  resumeQuestion({
+    conversationId,
+    messageId,
+    answer,
+    selectedOptionIds = [],
+    otherText = ""
+  } = {}) {
+    const normalizedConversationId =
+      String(conversationId ?? "").trim();
+    const normalizedMessageId =
+      String(messageId ?? "").trim();
+    const normalizedAnswer =
+      String(answer ?? "").trim();
+
+    if (!normalizedAnswer) {
+      return {
+        ok: false,
+        code: "empty-answer",
+        message: "请选择或输入一个回答。"
+      };
+    }
+
+    if (this.activeRun) {
+      return {
+        ok: false,
+        code: "busy",
+        message:
+          "当前回复尚未结束，请稍后再提交。"
+      };
+    }
+
+    const pending =
+      conversationManager
+        .getPendingQuestion(
+          normalizedConversationId
+        );
+
+    if (
+      !pending ||
+      pending.messageId !==
+        normalizedMessageId
+    ) {
+      return {
+        ok: false,
+        code: "question-expired",
+        message:
+          "这个问题已经失效或被回答，请刷新会话。"
+      };
+    }
+
+    const normalizedSelectedOptionIds =
+      Array.isArray(selectedOptionIds)
+        ? selectedOptionIds.map(String)
+        : [];
+    const allowedOptionIds =
+      new Set(
+        (pending.request?.options ?? [])
+          .map((option) =>
+            String(option.id)
+          )
+      );
+    const invalidSelection =
+      normalizedSelectedOptionIds.some(
+        (id) =>
+          !allowedOptionIds.has(
+            String(id)
+          )
+      );
+
+    if (invalidSelection) {
+      return {
+        ok: false,
+        code: "invalid-answer-option",
+        message:
+          "所选选项已经发生变化，请重新选择。"
+      };
+    }
+
+    const credentialError =
+      isE2EMode()
+        ? null
+        : getActiveCredentialError();
+
+    if (credentialError) {
+      return {
+        ok: false,
+        code: "missing-api-key",
+        message: credentialError
+      };
+    }
+
+    try {
+      const answeredQuestion =
+        createAnsweredQuestion(
+          pending,
+          {
+            answer:
+              normalizedAnswer,
+            selectedOptionIds:
+              normalizedSelectedOptionIds,
+            otherText
+          }
+        );
+
+      const resolved =
+        conversationManager
+          .resolvePendingQuestion({
+            conversationId:
+              normalizedConversationId,
+            messageId:
+              normalizedMessageId,
+            answer:
+              normalizedAnswer,
+            selectedOptionIds:
+              normalizedSelectedOptionIds,
+            otherText
+          });
+
+      if (!resolved.ok) {
+        return resolved;
+      }
+
+      const conversation =
+        conversationManager
+          .getConversation(
+            normalizedConversationId
+          );
+      const memories =
+        memoryManager.retrieve({
+          query: normalizedAnswer
+        });
+      const context =
+        appendResumeAnswerToContext(
+          assembleAgentContext({
+            settings:
+              getSettings(),
+            conversation,
+            memories
+          }),
+          pending,
+          answeredQuestion
+        );
+      const runId =
+        pending.activity?.runId ??
+        crypto.randomUUID();
+      const taskId =
+        pending.taskId ??
+        pending.activity?.taskId ??
+        runId;
+      const startedAt =
+        pending.activity?.startedAt ??
+        Date.now();
+      const abortController =
+        new AbortController();
+      const activityStore =
+        RunActivityStore
+          .resumeFromSnapshot(
+            pending.activity,
+            {
+              answeredQuestion,
+              runId,
+              taskId
+            }
+          );
+
+      this.activeRun = {
+        runId,
+        taskId,
+        conversationId:
+          normalizedConversationId,
+        abortController,
+        currentStepText: "",
+        finalText: "",
+        stepNumber: 0,
+        startedAt,
+        replaceMessageId:
+          normalizedMessageId,
+        resumeInPlace: true,
+        reasoningSummary: "",
+        toolCalls: [],
+        activityStore,
+        initialPlan:
+          pending.plan ?? [],
+        resumedFromMessageId:
+          normalizedMessageId,
+        pendingQuestion: null,
+        answeredQuestion,
+        answeredQuestions: [
+          ...collectAnsweredQuestions(
+            pending.activity
+          ),
+          answeredQuestion
+        ],
+        initialQuestionCount:
+          Math.max(
+            countQuestionEvents(
+              pending.activity
+            ),
+            1
+          ),
+        phase: "executing",
+        finalizationAttemptCount: 0,
+        executionStopReason: null,
+        stopReason: null
+      };
+
+      this.setStatus({
+        state: "running",
+        runId,
+        conversationId:
+          normalizedConversationId,
+        startedAt,
+        lastError: null
+      });
+
+      const runArguments = {
+        runId,
+        conversationId:
+          normalizedConversationId,
+        context,
+        memories,
+        abortController
+      };
+
+      if (isE2EMode()) {
+        void this.runE2EMessage(
+          runArguments
+        );
+      } else {
+        void this.runMessage(
+          runArguments
+        );
+      }
+
+      return {
+        ok: true,
+        runId,
+        taskId,
+        conversationId:
+          normalizedConversationId,
+        messageId:
+          normalizedMessageId,
+        resumedInPlace: true
+      };
+    } catch (error) {
+      console.error(
+        "恢复待确认任务失败：",
+        error
+      );
+
+      return {
+        ok: false,
+        code: "resume-failed",
+        message:
+          "无法继续当前任务，请稍后重试。"
+      };
+    }
   }
 
   stop() {
@@ -899,12 +1306,19 @@ export class AgentRuntime {
           }
 
           this.activeRun
-            .assistantText +=
+            .currentStepText +=
             textPart;
+          this.activeRun.finalText =
+            this.activeRun
+              .currentStepText;
 
           appendResponseChunk(
             textPart
           );
+
+          this.setStatus({
+            ...this.status
+          });
         }
       });
 
@@ -923,12 +1337,19 @@ export class AgentRuntime {
 
       const assistantText =
         this.activeRun
-          .assistantText
+          .finalText
           .trim();
 
       if (assistantText) {
         this.activeRun.stopReason =
-          "completed";
+          RUN_STOP_REASONS
+            .COMPLETED;
+        this.activeRun
+          .activityStore
+          ?.finalize(
+            this.activeRun
+              .stopReason
+          );
         this.persistAssistantResponse({
           conversationId,
           content:
@@ -978,14 +1399,204 @@ export class AgentRuntime {
     }
   }
 
+  async runFinalization({
+    runId,
+    context,
+    runtime,
+    modelSettings,
+    settings,
+    records,
+    plan,
+    executionStopReason,
+    abortController
+  }) {
+    const maxAttempts =
+      settings.tools
+        ?.runtime
+        ?.maxFinalizationAttempts ??
+      2;
+
+    this.activeRun.phase =
+      "finalizing";
+    this.activeRun.currentStepText =
+      "";
+
+    this.setStatus({
+      ...this.status
+    });
+
+    const instruction =
+      createFinalizationInstruction({
+        plan,
+        records,
+        executionStopReason,
+        answeredQuestion:
+          this.activeRun
+            .answeredQuestion
+      });
+
+    for (
+      let attempt = 1;
+      attempt <= maxAttempts;
+      attempt += 1
+    ) {
+      if (
+        abortController.signal.aborted ||
+        !this.isCurrentRun(runId)
+      ) {
+        return {
+          ok: false,
+          text: "",
+          aborted: true
+        };
+      }
+
+      this.activeRun
+        .finalizationAttemptCount =
+        attempt;
+      this.activeRun.currentStepText =
+        "";
+
+      this.setStatus({
+        ...this.status
+      });
+
+      const result = streamText({
+        model: runtime.model,
+
+        system: [
+          context.system,
+          instruction,
+          attempt > 1
+            ? "The previous finalization attempt returned no usable text. Return a concise final answer now."
+            : ""
+        ].filter(Boolean).join("\n\n"),
+
+        messages:
+          context.messages,
+
+        ...runtime.requestOptions,
+
+        abortSignal:
+          abortController.signal,
+
+        timeout: {
+          totalMs:
+            Math.min(
+              modelSettings.timeoutMs,
+              settings.tools
+                ?.runtime
+                ?.runTimeoutMs ??
+              modelSettings.timeoutMs
+            ),
+
+          chunkMs:
+            Math.min(
+              45000,
+              modelSettings.timeoutMs
+            )
+        },
+
+        onError: ({ error }) => {
+          console.error(
+            "最终总结流式请求错误：",
+            error
+          );
+        }
+      });
+
+      let text = "";
+
+      for await (
+        const textPart
+        of result.textStream
+      ) {
+        if (
+          !this.isCurrentRun(runId)
+        ) {
+          break;
+        }
+
+        if (textPart) {
+          text += textPart;
+          this.activeRun
+            .currentStepText =
+            text;
+          this.activeRun.finalText =
+            text;
+
+          appendResponseChunk(
+            textPart
+          );
+
+          this.setStatus({
+            ...this.status
+          });
+        }
+      }
+
+      const normalized =
+        text.trim();
+
+      if (normalized) {
+        this.activeRun.finalText =
+          normalized;
+        this.activeRun
+          .currentStepText =
+          "";
+        this.activeRun.phase =
+          "completed";
+
+        this.setStatus({
+          ...this.status
+        });
+
+        return {
+          ok: true,
+          text: normalized,
+          attempts: attempt
+        };
+      }
+    }
+
+    const fallback =
+      createFallbackFinalSummary({
+        plan,
+        records,
+        executionStopReason
+      });
+
+    this.activeRun.finalText =
+      fallback;
+    this.activeRun.currentStepText =
+      "";
+    this.activeRun.phase =
+      "completed";
+
+    if (fallback) {
+      appendResponseChunk(
+        fallback
+      );
+    }
+
+    this.setStatus({
+      ...this.status
+    });
+
+    return {
+      ok: Boolean(fallback),
+      text: fallback,
+      attempts: maxAttempts,
+      fallback: true
+    };
+  }
+
   async runMessage({
     runId,
     conversationId,
     context,
     abortController
   }) {
-    let receivedText = false;
-
     try {
       const settings =
         getSettings();
@@ -1014,10 +1625,48 @@ export class AgentRuntime {
               record
             );
           },
+          onPlanChange: (plan) => {
+            if (
+              this.isCurrentRun(
+                runId
+              )
+            ) {
+              this.activeRun
+                .activityStore
+                ?.recordPlan(plan);
+              this.setStatus({
+                ...this.status
+              });
+            }
+          },
+          onQuestion: (question) => {
+            if (
+              this.isCurrentRun(
+                runId
+              )
+            ) {
+              this.activeRun
+                .activityStore
+                ?.recordQuestion(
+                  question
+                );
+              this.setStatus({
+                ...this.status
+              });
+            }
+          },
+          activityStore:
+            this.activeRun.activityStore,
           settings,
           initialPlan:
             this.activeRun
-              .initialPlan
+              .initialPlan,
+          answeredQuestions:
+            this.activeRun
+              .answeredQuestions ?? [],
+          initialQuestionCount:
+            this.activeRun
+              .initialQuestionCount ?? 0
         });
 
       this.activeRun.toolSession =
@@ -1047,8 +1696,9 @@ export class AgentRuntime {
             stepCountIs(
               maxSteps
             ),
-            hasToolCall(
-              "ask_user"
+            () => Boolean(
+              toolSession
+                .getPendingQuestion()
             )
           ],
 
@@ -1075,6 +1725,35 @@ export class AgentRuntime {
               )
           },
 
+          onStepStart: ({
+            stepNumber
+          }) => {
+            if (
+              !this.isCurrentRun(
+                runId
+              )
+            ) {
+              return;
+            }
+
+            this.activeRun
+              .currentStepText =
+              "";
+            this.activeRun.stepNumber =
+              Number(stepNumber) || 0;
+
+            this.setStatus({
+              ...this.status
+            });
+          },
+
+          onStepEnd: (step) => {
+            this.handleStepEnd(
+              runId,
+              step
+            );
+          },
+
           onError: ({
             error
           }) => {
@@ -1098,15 +1777,17 @@ export class AgentRuntime {
         }
 
         if (textPart) {
-          receivedText = true;
-
           this.activeRun
-            .assistantText +=
+            .currentStepText +=
             textPart;
 
           appendResponseChunk(
             textPart
           );
+
+          this.setStatus({
+            ...this.status
+          });
         }
       }
 
@@ -1125,6 +1806,13 @@ export class AgentRuntime {
             reasoningText ?? ""
           ).trim();
 
+        this.activeRun
+          .activityStore
+          ?.recordSummary(
+            this.activeRun
+              .reasoningSummary
+          );
+
         const records =
           toolSession.getRecords();
         const pendingQuestion =
@@ -1140,6 +1828,17 @@ export class AgentRuntime {
             result.steps,
             []
           );
+        const plan =
+          toolSession.getPlan();
+        const executionStopReason =
+          inferRunStopReason({
+            pendingQuestion,
+            records,
+            finishReason,
+            steps,
+            maxSteps,
+            plan
+          });
 
         this.activeRun.toolCalls =
           records;
@@ -1150,34 +1849,83 @@ export class AgentRuntime {
                 status: "waiting"
               }
             : null;
-        this.activeRun.stopReason =
-          inferStopReason({
+        this.activeRun
+          .executionStopReason =
+          executionStopReason;
+
+        if (
+          shouldRunFinalization({
             pendingQuestion,
+            finalText:
+              this.activeRun
+                .finalText,
+            plan,
             records,
             finishReason,
-            steps,
-            maxSteps
+            stopReason:
+              executionStopReason
+          })
+        ) {
+          await this.runFinalization({
+            runId,
+            context,
+            runtime,
+            modelSettings,
+            settings,
+            records,
+            plan,
+            executionStopReason,
+            abortController
           });
+        }
+
+        const planState =
+          getPlanCompletionState(plan);
+        const hasFinalText =
+          Boolean(
+            this.activeRun
+              .finalText
+              .trim()
+          );
+
+        this.activeRun.stopReason =
+          pendingQuestion
+            ? RUN_STOP_REASONS
+                .WAITING_FOR_USER
+            : hasFinalText &&
+              (
+                planState.isComplete ||
+                executionStopReason ===
+                  RUN_STOP_REASONS
+                    .COMPLETED
+              )
+              ? RUN_STOP_REASONS
+                  .COMPLETED
+              : executionStopReason;
+
+        this.activeRun
+          .activityStore
+          ?.finalize(
+            this.activeRun
+              .stopReason
+          );
       }
 
       if (
         !abortController
           .signal
           .aborted &&
-        !receivedText
+        !this.activeRun
+          .finalText
+          .trim() &&
+        !this.activeRun
+          .pendingQuestion
       ) {
-        const pendingQuestion =
-          formatPendingQuestion(
-            this.activeRun
-              .pendingQuestion
-          );
-
         const fallbackText =
-          pendingQuestion ||
           "模型没有返回可显示的文字。";
 
         this.activeRun
-          .assistantText =
+          .finalText =
           fallbackText;
 
         appendResponseChunk(
@@ -1199,7 +1947,7 @@ export class AgentRuntime {
         ) {
           const assistantText =
             this.activeRun
-              .assistantText
+              .finalText
               .trim();
 
           const shouldSave =
@@ -1214,7 +1962,14 @@ export class AgentRuntime {
               .replaceMessageId
           ) {
             this.activeRun.stopReason =
-              "aborted";
+              RUN_STOP_REASONS
+                .CANCELLED_BY_USER;
+            this.activeRun
+              .activityStore
+              ?.finalize(
+                this.activeRun
+                  .stopReason
+              );
             this.persistAssistantResponse({
               conversationId,
               content:
@@ -1242,12 +1997,28 @@ export class AgentRuntime {
           runId
         )
       ) {
-        const assistantText =
+        const waitingQuestion =
           this.activeRun
-            .assistantText
+            .pendingQuestion;
+        let assistantText =
+          this.activeRun
+            .finalText
             .trim();
 
-        if (assistantText) {
+        if (
+          !assistantText &&
+          !waitingQuestion
+        ) {
+          assistantText =
+            "任务已处理完成。";
+          this.activeRun.finalText =
+            assistantText;
+        }
+
+        if (
+          assistantText ||
+          waitingQuestion
+        ) {
           this.persistAssistantResponse({
             conversationId,
             content:
@@ -1256,9 +2027,6 @@ export class AgentRuntime {
           });
         }
 
-        const waitingQuestion =
-          this.activeRun
-            .pendingQuestion;
         const finalStopReason =
           this.activeRun
             .stopReason;
@@ -1296,7 +2064,7 @@ export class AgentRuntime {
         ) {
           const assistantText =
             this.activeRun
-              .assistantText
+              .finalText
               .trim();
 
           const shouldSave =
@@ -1311,7 +2079,14 @@ export class AgentRuntime {
               .replaceMessageId
           ) {
             this.activeRun.stopReason =
-              "aborted";
+              RUN_STOP_REASONS
+                .CANCELLED_BY_USER;
+            this.activeRun
+              .activityStore
+              ?.finalize(
+                this.activeRun
+                  .stopReason
+              );
             this.persistAssistantResponse({
               conversationId,
               content:
@@ -1353,6 +2128,25 @@ export class AgentRuntime {
           runId
         )
       ) {
+        this.activeRun.stopReason =
+          RUN_STOP_REASONS
+            .MODEL_ERROR;
+        this.activeRun
+          .activityStore
+          ?.finalize(
+            this.activeRun
+              .stopReason
+          );
+        this.activeRun.finalText =
+          `⚠ ${friendlyMessage}`;
+        this.persistAssistantResponse({
+          conversationId,
+          content:
+            this.activeRun
+              .finalText,
+          status: "complete"
+        });
+
         this.activeRun = null;
 
         this.setStatus({
@@ -1361,7 +2155,10 @@ export class AgentRuntime {
           conversationId,
           startedAt: null,
           lastError:
-            friendlyMessage
+            friendlyMessage,
+          stopReason:
+            RUN_STOP_REASONS
+              .MODEL_ERROR
         });
       }
     }

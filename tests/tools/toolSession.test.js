@@ -107,7 +107,7 @@ describe(
         assert.equal(
           session.getRecords()[0]
             .status,
-          "complete"
+          "completed"
         );
         assert.equal(
           records.some(
@@ -123,8 +123,13 @@ describe(
     it(
       "stores a structured user question for the next turn",
       async () => {
+        const questions = [];
         const session =
-          createAgentToolSession();
+          createAgentToolSession({
+            onQuestion: (question) => {
+              questions.push(question);
+            }
+          });
 
         await session.tools.ask_user
           .execute(
@@ -135,6 +140,10 @@ describe(
                 {
                   id: "src",
                   label: "src"
+                },
+                {
+                  id: "tests",
+                  label: "tests"
                 }
               ]
             },
@@ -148,6 +157,11 @@ describe(
           session
             .getPendingQuestion()
             .question,
+          "Which folder should I inspect?"
+        );
+        assert.equal(questions.length, 1);
+        assert.equal(
+          questions[0].question,
           "Which folder should I inspect?"
         );
       }

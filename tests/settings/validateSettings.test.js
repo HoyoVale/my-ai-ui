@@ -420,14 +420,25 @@ describe(
             .customFontFamily,
           "Atkinson Hyperlegible"
         );
-        assert.deepEqual(
+        assert.equal(
           settings.appearance.typography
-            .conversation,
-          {
-            fontSize: 19,
-            lineHeight: 1.9,
-            density: "spacious"
-          }
+            .conversation.fontSize,
+          19
+        );
+        assert.equal(
+          settings.appearance.typography
+            .conversation.lineHeight,
+          1.9
+        );
+        assert.equal(
+          settings.appearance.typography
+            .conversation.density,
+          "spacious"
+        );
+        assert.equal(
+          settings.appearance.typography
+            .conversation.contentWidth,
+          768
         );
         assert.equal(
           settings.appearance.typography

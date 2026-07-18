@@ -60,6 +60,9 @@ const IPC_CHANNELS =
       SEND_MESSAGE:
         "agent-send-message",
 
+      RESUME_QUESTION:
+        "agent-resume-question",
+
       STOP:
         "agent-stop",
 

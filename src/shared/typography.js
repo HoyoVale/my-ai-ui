@@ -55,13 +55,28 @@ export function getWindowTypography(
       Number(typography.fontSize) || 14,
     lineHeight:
       Number(typography.lineHeight) || 1.5,
+    letterSpacing:
+      Number.isFinite(
+        Number(typography.letterSpacing)
+      )
+        ? Number(typography.letterSpacing)
+        : 0,
     density:
       typography.density ??
       "comfortable",
     densityFactor:
       DENSITY_FACTORS[
         typography.density
-      ] ?? 1
+      ] ?? 1,
+    contentWidth:
+      Number(typography.contentWidth) ||
+      null,
+    messageSpacing:
+      Number(typography.messageSpacing) ||
+      null,
+    paragraphSpacing:
+      Number(typography.paragraphSpacing) ||
+      null
   };
 }
 
@@ -75,7 +90,7 @@ export function getWindowTypographyStyle(
       windowId
     );
 
-  return {
+  const style = {
     "--app-font-family":
       typography.fontFamily,
     "--app-font-size":
@@ -83,6 +98,19 @@ export function getWindowTypographyStyle(
     "--app-line-height":
       typography.lineHeight,
     "--app-density-factor":
-      typography.densityFactor
+      typography.densityFactor,
+    letterSpacing:
+      `${typography.letterSpacing}em`
   };
+
+  if (windowId === "conversation") {
+    style["--conversation-content-width"] =
+      `${typography.contentWidth ?? 768}px`;
+    style["--conversation-message-spacing"] =
+      `${typography.messageSpacing ?? 34}px`;
+    style["--conversation-paragraph-spacing"] =
+      `${typography.paragraphSpacing ?? 1}em`;
+  }
+
+  return style;
 }

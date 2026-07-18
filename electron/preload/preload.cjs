@@ -61,6 +61,9 @@ const CHANNELS = Object.freeze({
   AGENT_SEND_MESSAGE:
     "agent-send-message",
 
+  AGENT_RESUME_QUESTION:
+    "agent-resume-question",
+
   AGENT_STOP:
     "agent-stop",
 
@@ -394,6 +397,29 @@ const api = Object.freeze({
       CHANNELS
         .AGENT_SEND_MESSAGE,
       String(content ?? "")
+    );
+  },
+
+  answerAgentQuestion: (
+    response = {}
+  ) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .AGENT_RESUME_QUESTION,
+      {
+        conversationId:
+          String(response.conversationId ?? ""),
+        messageId:
+          String(response.messageId ?? ""),
+        answer:
+          String(response.answer ?? ""),
+        selectedOptionIds:
+          Array.isArray(response.selectedOptionIds)
+            ? response.selectedOptionIds.map(String)
+            : [],
+        otherText:
+          String(response.otherText ?? "")
+      }
     );
   },
 

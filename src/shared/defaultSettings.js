@@ -171,12 +171,20 @@ export const FALLBACK_SETTINGS = {
     fontFamily: "system",
     customFontFamily: "",
     typography: {
-      pet: { fontSize: 13, lineHeight: 1.4, density: "comfortable" },
-      input: { fontSize: 14, lineHeight: 1.45, density: "comfortable" },
-      response: { fontSize: 14, lineHeight: 1.55, density: "comfortable" },
-      conversation: { fontSize: 15, lineHeight: 1.72, density: "comfortable" },
-      memory: { fontSize: 14, lineHeight: 1.55, density: "comfortable" },
-      setting: { fontSize: 14, lineHeight: 1.5, density: "comfortable" }
+      pet: { fontSize: 13, lineHeight: 1.4, letterSpacing: 0, density: "comfortable" },
+      input: { fontSize: 14, lineHeight: 1.45, letterSpacing: 0, density: "comfortable" },
+      response: { fontSize: 14, lineHeight: 1.55, letterSpacing: 0, density: "comfortable" },
+      conversation: {
+        fontSize: 16,
+        lineHeight: 1.75,
+        letterSpacing: -0.006,
+        density: "comfortable",
+        contentWidth: 768,
+        messageSpacing: 34,
+        paragraphSpacing: 1
+      },
+      memory: { fontSize: 14, lineHeight: 1.55, letterSpacing: 0, density: "comfortable" },
+      setting: { fontSize: 14, lineHeight: 1.5, letterSpacing: 0, density: "comfortable" }
     }
   },
   personality: {
@@ -215,7 +223,7 @@ export const FALLBACK_SETTINGS = {
     mode: "coding",
     profile: "workspace",
     display: {
-      detailLevel: "compact"
+      detailLevel: "detailed"
     },
     runtime: {
       maxSteps: 6,

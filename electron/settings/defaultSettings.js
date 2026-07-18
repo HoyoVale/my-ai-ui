@@ -53,31 +53,40 @@ export const DEFAULT_SETTINGS = {
       pet: {
         fontSize: 13,
         lineHeight: 1.4,
+        letterSpacing: 0,
         density: "comfortable"
       },
       input: {
         fontSize: 14,
         lineHeight: 1.45,
+        letterSpacing: 0,
         density: "comfortable"
       },
       response: {
         fontSize: 14,
         lineHeight: 1.55,
+        letterSpacing: 0,
         density: "comfortable"
       },
       conversation: {
-        fontSize: 15,
-        lineHeight: 1.72,
-        density: "comfortable"
+        fontSize: 16,
+        lineHeight: 1.75,
+        letterSpacing: -0.006,
+        density: "comfortable",
+        contentWidth: 768,
+        messageSpacing: 34,
+        paragraphSpacing: 1
       },
       memory: {
         fontSize: 14,
         lineHeight: 1.55,
+        letterSpacing: 0,
         density: "comfortable"
       },
       setting: {
         fontSize: 14,
         lineHeight: 1.5,
+        letterSpacing: 0,
         density: "comfortable"
       }
     }
@@ -122,10 +131,12 @@ export const DEFAULT_SETTINGS = {
     mode: "coding",
     profile: "workspace",
     display: {
-      detailLevel: "compact"
+      detailLevel: "detailed"
     },
     runtime: {
       maxSteps: 6,
+      maxFinalizationAttempts: 2,
+      maxAskUserCalls: 3,
       maxToolCalls: 12,
       runTimeoutMs: 120000,
       defaultTimeoutMs: 15000,
@@ -171,6 +182,7 @@ export const DEFAULT_SETTINGS = {
       search_text: true,
       detect_project: true,
       compute_file_hash: true,
+      report_progress: true,
       update_plan: true,
       ask_user: true,
       read_tool_result: true

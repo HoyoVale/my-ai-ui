@@ -8,24 +8,24 @@ export class ToolAuditLog {
   }
 
   upsert(record) {
-    const index =
-      this.records.findIndex(
-        (item) =>
-          item.id === record.id
-      );
+    const index = this.records.findIndex(
+      (item) => item.id === record.id
+    );
 
     if (index >= 0) {
       this.records[index] = {
         ...this.records[index],
         ...clone(record)
       };
-    } else {
-      this.records.push(
-        clone(record)
-      );
+
+      return clone(this.records[index]);
     }
 
-    return clone(record);
+    this.records.push(clone(record));
+
+    return clone(
+      this.records[this.records.length - 1]
+    );
   }
 
   list() {

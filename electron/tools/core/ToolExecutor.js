@@ -1,6 +1,4 @@
-import {
-  tool
-} from "ai";
+import { tool } from "ai";
 
 import {
   ToolAuditLog
@@ -47,9 +45,7 @@ function createRuntimeError(
   };
 }
 
-function createTimeoutError(
-  timeoutMs
-) {
+function createTimeoutError(timeoutMs) {
   const error = new Error(
     `工具执行超过 ${Math.round(timeoutMs / 1000)} 秒，已停止等待。`
   );
@@ -57,15 +53,24 @@ function createTimeoutError(
   return error;
 }
 
-function stableSignature(
-  name,
-  input
-) {
+function stableSignature(name, input) {
   try {
     return `${name}:${JSON.stringify(input)}`;
   } catch {
     return `${name}:${String(input)}`;
   }
+}
+
+function isCancelled(
+  error,
+  abortSignal
+) {
+  return Boolean(
+    abortSignal?.aborted ||
+    error?.name === "AbortError" ||
+    error?.code === "ABORT_ERR" ||
+    error?.code === "CANCELLED_BY_USER"
+  );
 }
 
 export class ToolExecutor {
@@ -80,41 +85,67 @@ export class ToolExecutor {
   } = {}) {
     this.context = context;
     this.onRecord = onRecord;
-    this.defaultTimeoutMs =
-      defaultTimeoutMs;
-    this.maxToolCalls =
-      maxToolCalls;
-    this.maxIdenticalCalls =
-      maxIdenticalCalls;
-    this.runTimeoutMs =
-      runTimeoutMs;
-    this.resultStore =
-      resultStore;
+    this.defaultTimeoutMs = defaultTimeoutMs;
+    this.maxToolCalls = maxToolCalls;
+    this.maxIdenticalCalls = maxIdenticalCalls;
+    this.runTimeoutMs = runTimeoutMs;
+    this.resultStore = resultStore;
     this.startedAt = Date.now();
     this.callCount = 0;
     this.signatures = new Map();
-    this.auditLog =
-      new ToolAuditLog();
+    this.auditLog = new ToolAuditLog();
   }
 
   emit(record) {
-    const normalized =
-      this.auditLog.upsert(record);
+    const merged = this.auditLog.upsert(record);
+    this.onRecord?.(merged);
+    return merged;
+  }
 
-    this.onRecord?.(normalized);
+  captureFailure(output, options = {}) {
+    if (this.resultStore) {
+      return this.resultStore.captureFailure(
+        output,
+        options
+      );
+    }
+
+    return {
+      value: output,
+      result: {
+        status: options.cancelled
+          ? "cancelled"
+          : "error",
+        summary:
+          output?.error?.message ??
+          "工具执行失败。",
+        preview: "",
+        error: output?.error,
+        truncated: false,
+        originalBytes: 0,
+        storedBytes: 0,
+        clipped: false
+      },
+      meta: {
+        outputBytes: 0,
+        storedBytes: 0,
+        truncated: false,
+        clipped: false
+      }
+    };
   }
 
   rejectBeforeExecution(
     definition,
     input,
     id,
-    startedAt
+    queuedAt
   ) {
     let output = null;
 
     if (
       this.runTimeoutMs > 0 &&
-      startedAt - this.startedAt >
+      queuedAt - this.startedAt >
         this.runTimeoutMs
     ) {
       output = createRuntimeError(
@@ -122,6 +153,7 @@ export class ToolExecutor {
         "本次 Agent 任务已超过允许的总运行时间。"
       );
     } else if (
+      definition.countsTowardLimit !== false &&
       this.callCount >=
       this.maxToolCalls
     ) {
@@ -130,23 +162,38 @@ export class ToolExecutor {
         `本次回复最多允许调用 ${this.maxToolCalls} 次工具。`
       );
     } else {
-      const signature =
-        stableSignature(
+      const planPermission =
+        this.context.planStore
+          ?.canRunTool?.(
+            definition.name,
+            input
+          );
+
+      if (
+        planPermission &&
+        planPermission.ok === false
+      ) {
+        output = createRuntimeError(
+          planPermission.code,
+          planPermission.message,
+          planPermission.retryable === true
+        );
+      } else if (definition.countsTowardLimit !== false) {
+        const signature = stableSignature(
           definition.name,
           input
         );
-      const count =
-        this.signatures.get(signature) ??
-        0;
+        const count =
+          this.signatures.get(signature) ?? 0;
 
-      if (
-        count >=
-        this.maxIdenticalCalls
-      ) {
-        output = createRuntimeError(
-          "REPEATED_TOOL_CALL",
-          `相同工具和参数已调用 ${count} 次，没有必要继续重复。`
-        );
+        if (
+          count >= this.maxIdenticalCalls
+        ) {
+          output = createRuntimeError(
+            "REPEATED_TOOL_CALL",
+            `相同工具和参数已调用 ${count} 次，没有必要继续重复。`
+          );
+        }
       }
     }
 
@@ -154,19 +201,34 @@ export class ToolExecutor {
       return null;
     }
 
+    const endedAt = Date.now();
+    const batch =
+      this.context.getActiveBatch
+        ?.() ?? null;
+    const captured = this.captureFailure(
+      output,
+      {
+        toolName: definition.name
+      }
+    );
+
     this.emit({
       id,
       name: definition.name,
       title: definition.title,
-      status: "error",
+      status: "failed",
+      batch,
       input,
-      output,
-      durationMs:
-        Math.max(
-          1,
-          Date.now() -
-          startedAt
-        )
+      output: captured.value,
+      result: captured.result,
+      meta: captured.meta,
+      queuedAt,
+      startedAt: null,
+      endedAt,
+      durationMs: Math.max(
+        1,
+        endedAt - queuedAt
+      )
     });
 
     return output;
@@ -177,165 +239,260 @@ export class ToolExecutor {
     input,
     options = {}
   ) {
-    const id =
-      String(
-        options.toolCallId ??
-        `${definition.name}-${Date.now()}`
-      );
-
-    const startedAt = Date.now();
+    const id = String(
+      options.toolCallId ??
+      `${definition.name}-${Date.now()}`
+    );
+    const queuedAt = Date.now();
+    const planStep =
+      this.context.planStore
+        ?.getExecutionState?.()
+        ?.active ?? null;
+    const batch =
+      this.context.getActiveBatch
+        ?.() ?? null;
     const timeoutMs =
       definition.timeoutMs ??
       this.defaultTimeoutMs;
+    const abortSignal =
+      options.abortSignal ??
+      this.context.abortSignal;
 
-    const rejected =
-      this.rejectBeforeExecution(
-        definition,
-        input,
-        id,
-        startedAt
-      );
+    this.emit({
+      id,
+      name: definition.name,
+      title: definition.title,
+      status: "queued",
+      batch,
+      planStep:
+        planStep
+          ? {
+              id: planStep.id,
+              title: planStep.title
+            }
+          : null,
+      input,
+      queuedAt,
+      startedAt: null,
+      endedAt: null,
+      durationMs: 0
+    });
+
+    const rejected = this.rejectBeforeExecution(
+      definition,
+      input,
+      id,
+      queuedAt
+    );
 
     if (rejected) {
       return rejected;
     }
 
-    this.callCount += 1;
-    const signature =
-      stableSignature(
+    if (definition.countsTowardLimit !== false) {
+      this.callCount += 1;
+      const signature = stableSignature(
         definition.name,
         input
       );
-    this.signatures.set(
-      signature,
-      (this.signatures.get(signature) ?? 0) + 1
-    );
+      this.signatures.set(
+        signature,
+        (this.signatures.get(signature) ?? 0) + 1
+      );
+    }
+
+    const startedAt = Date.now();
 
     this.emit({
       id,
       name: definition.name,
       title: definition.title,
       status: "running",
+      batch,
+      planStep:
+        planStep
+          ? {
+              id: planStep.id,
+              title: planStep.title
+            }
+          : null,
       input,
+      queuedAt,
+      startedAt,
+      endedAt: null,
       durationMs: 0
     });
 
     let timeoutId = null;
 
     try {
-      const execution =
-        Promise.resolve(
-          definition.execute(
-            input,
-            {
-              ...this.context,
-              toolCallId: id,
-              abortSignal:
-                options.abortSignal ??
-                this.context.abortSignal
-            }
-          )
-        );
+      const execution = Promise.resolve(
+        definition.execute(
+          input,
+          {
+            ...this.context,
+            toolCallId: id,
+            abortSignal
+          }
+        )
+      );
 
-      const timed =
-        timeoutMs > 0
-          ? Promise.race([
-              execution,
-              new Promise(
-                (_resolve, reject) => {
-                  timeoutId = setTimeout(
-                    () => {
-                      reject(
-                        createTimeoutError(
-                          timeoutMs
-                        )
-                      );
-                    },
-                    timeoutMs
-                  );
-                }
-              )
-            ])
-          : execution;
-
-      const normalizedOutput =
-        normalizeOutput(
-          await timed
-        );
-
-      const captured =
-        this.resultStore &&
-        normalizedOutput.ok !== false
-          ? this.resultStore.capture(
-              normalizedOutput,
-              {
-                toolName:
-                  definition.name
+      const timed = timeoutMs > 0
+        ? Promise.race([
+            execution,
+            new Promise(
+              (_resolve, reject) => {
+                timeoutId = setTimeout(
+                  () => {
+                    reject(
+                      createTimeoutError(
+                        timeoutMs
+                      )
+                    );
+                  },
+                  timeoutMs
+                );
               }
             )
-          : {
-              value:
-                normalizedOutput,
-              meta: {
-                outputBytes: 0,
-                truncated: false
+          ])
+        : execution;
+
+      const normalizedOutput = normalizeOutput(
+        await timed
+      );
+
+      const captured =
+        normalizedOutput.ok === false
+          ? this.captureFailure(
+              normalizedOutput,
+              {
+                toolName: definition.name
               }
-            };
+            )
+          : this.resultStore
+            ? this.resultStore.capture(
+                normalizedOutput,
+                {
+                  toolName: definition.name
+                }
+              )
+            : {
+                value: normalizedOutput,
+                result: {
+                  status: "success",
+                  summary:
+                    `${definition.title ?? definition.name}执行完成`,
+                  preview: "",
+                  data: normalizedOutput,
+                  truncated: false,
+                  originalBytes: 0,
+                  storedBytes: 0,
+                  clipped: false
+                },
+                meta: {
+                  outputBytes: 0,
+                  storedBytes: 0,
+                  truncated: false,
+                  clipped: false
+                }
+              };
 
-      const output =
-        captured.value;
+      const output = captured.value;
+      const endedAt = Date.now();
+      const status = output.ok === false
+        ? "failed"
+        : "completed";
 
-      const record = {
-        id,
-        name: definition.name,
-        title: definition.title,
-        status:
-          output.ok === false
-            ? "error"
-            : "complete",
-        input,
-        output,
-        meta:
-          captured.meta,
-        durationMs:
-          Math.max(
-            1,
-            Date.now() -
-            startedAt
-          )
-      };
-
-      this.emit(record);
-
-      return output;
-    } catch (error) {
-      const output = {
-        ok: false,
-        error: {
-          code:
-            error?.code ??
-            "TOOL_EXECUTION_FAILED",
-          message:
-            errorMessage(error),
-          retryable:
-            error?.code ===
-            "TOOL_TIMEOUT"
-        }
-      };
+      if (status === "completed") {
+        this.context.planStore
+          ?.noteToolExecution?.(
+            definition.name
+          );
+      }
 
       this.emit({
         id,
         name: definition.name,
         title: definition.title,
-        status: "error",
+        status,
+        batch,
+        planStep:
+          planStep
+            ? {
+                id: planStep.id,
+                title: planStep.title
+              }
+            : null,
         input,
         output,
-        durationMs:
-          Math.max(
-            1,
-            Date.now() -
-            startedAt
-          )
+        result: captured.result,
+        meta: captured.meta,
+        queuedAt,
+        startedAt,
+        endedAt,
+        durationMs: Math.max(
+          1,
+          endedAt - startedAt
+        )
+      });
+
+      return output;
+    } catch (error) {
+      const cancelled = isCancelled(
+        error,
+        abortSignal
+      );
+      const output = {
+        ok: false,
+        error: {
+          code: cancelled
+            ? "CANCELLED_BY_USER"
+            : error?.code ??
+              "TOOL_EXECUTION_FAILED",
+          message: cancelled
+            ? "工具调用已由用户取消。"
+            : errorMessage(error),
+          retryable:
+            !cancelled &&
+            error?.code ===
+              "TOOL_TIMEOUT"
+        }
+      };
+      const captured = this.captureFailure(
+        output,
+        {
+          toolName: definition.name,
+          cancelled
+        }
+      );
+      const endedAt = Date.now();
+
+      this.emit({
+        id,
+        name: definition.name,
+        title: definition.title,
+        batch,
+        status: cancelled
+          ? "cancelled"
+          : "failed",
+        planStep:
+          planStep
+            ? {
+                id: planStep.id,
+                title: planStep.title
+              }
+            : null,
+        input,
+        output: captured.value,
+        result: captured.result,
+        meta: captured.meta,
+        queuedAt,
+        startedAt,
+        endedAt,
+        durationMs: Math.max(
+          1,
+          endedAt - startedAt
+        )
       });
 
       return output;
@@ -348,27 +505,20 @@ export class ToolExecutor {
 
   buildToolSet(definitions) {
     return Object.fromEntries(
-      definitions.map(
-        (definition) => [
-          definition.name,
-          tool({
-            description:
-              definition.description,
-            inputSchema:
-              definition.inputSchema,
-            strict:
-              definition.strict ??
-              false,
-            execute:
-              (input, options) =>
-                this.execute(
-                  definition,
-                  input,
-                  options
-                )
-          })
-        ]
-      )
+      definitions.map((definition) => [
+        definition.name,
+        tool({
+          description: definition.description,
+          inputSchema: definition.inputSchema,
+          strict: definition.strict ?? false,
+          execute: (input, options) =>
+            this.execute(
+              definition,
+              input,
+              options
+            )
+        })
+      ])
     );
   }
 

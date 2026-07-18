@@ -588,7 +588,7 @@ describe(
   "ConversationManager pending questions",
   () => {
     it(
-      "persists a pending question and resolves it with the next user message",
+      "persists a pending question and resolves it in the same assistant turn",
       () => {
         const manager =
           createManager();
@@ -638,22 +638,16 @@ describe(
           "inspect"
         );
 
-        const answer =
-          manager.appendMessage({
-            conversationId:
-              conversation.id,
-            role: "user",
-            content: "src"
-          });
-
         const resolved =
           manager.resolvePendingQuestion({
             conversationId:
               conversation.id,
             messageId:
               assistant.id,
-            answerMessageId:
-              answer.id
+            answer: "src",
+            selectedOptionIds: [
+              "src"
+            ]
           });
 
         assert.equal(
@@ -665,6 +659,12 @@ describe(
             conversation.id
           ),
           null
+        );
+        assert.equal(
+          manager.getConversation(
+            conversation.id
+          ).messages.length,
+          1
         );
         assert.equal(
           manager.getConversation(

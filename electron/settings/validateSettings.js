@@ -93,7 +93,6 @@ const TOOL_MODES = [
 ];
 
 const TOOL_DETAIL_LEVELS = [
-  "compact",
   "detailed"
 ];
 
@@ -295,7 +294,7 @@ function sanitizeTypography(
         ? legacyResponse.lineHeight
         : undefined;
 
-    typography[windowId] = {
+    const sanitizedWindow = {
       fontSize: integerValue(
         sourceWindow.fontSize ??
           legacyFontSize,
@@ -310,12 +309,47 @@ function sanitizeTypography(
         1.1,
         2.4
       ),
+      letterSpacing: numberValue(
+        sourceWindow.letterSpacing,
+        fallback.letterSpacing ?? 0,
+        -0.05,
+        0.08
+      ),
       density: enumValue(
         sourceWindow.density,
         DENSITY_OPTIONS,
         fallback.density
       )
     };
+
+    if (windowId === "conversation") {
+      sanitizedWindow.contentWidth =
+        integerValue(
+          sourceWindow.contentWidth,
+          fallback.contentWidth,
+          560,
+          1080
+        );
+
+      sanitizedWindow.messageSpacing =
+        integerValue(
+          sourceWindow.messageSpacing,
+          fallback.messageSpacing,
+          16,
+          72
+        );
+
+      sanitizedWindow.paragraphSpacing =
+        numberValue(
+          sourceWindow.paragraphSpacing,
+          fallback.paragraphSpacing,
+          0.5,
+          1.8
+        );
+    }
+
+    typography[windowId] =
+      sanitizedWindow;
   }
 
   return typography;
@@ -903,6 +937,18 @@ function sanitizeToolSettings(
         defaults.runtime.maxSteps,
         1,
         12
+      ),
+      maxFinalizationAttempts: integerValue(
+        runtime.maxFinalizationAttempts,
+        defaults.runtime.maxFinalizationAttempts,
+        1,
+        3
+      ),
+      maxAskUserCalls: integerValue(
+        runtime.maxAskUserCalls,
+        defaults.runtime.maxAskUserCalls,
+        1,
+        10
       ),
       maxToolCalls: integerValue(
         runtime.maxToolCalls,

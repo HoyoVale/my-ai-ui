@@ -136,11 +136,15 @@ describe(
         );
         assert.match(
           source,
-          /窗口文字与密度/u
+          /窗口排版/u
         );
         assert.match(
           source,
           /WINDOW_OPTIONS/u
+        );
+        assert.match(
+          source,
+          /appearance-typography-window/u
         );
       }
     );

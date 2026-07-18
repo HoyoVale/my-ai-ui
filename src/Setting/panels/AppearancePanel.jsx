@@ -1,4 +1,8 @@
 import {
+  useState
+} from "react";
+
+import {
   ColorSwatches,
   Segmented,
   Select,
@@ -41,46 +45,13 @@ const DENSITY_OPTIONS = [
 ];
 
 const WINDOW_OPTIONS = [
-  { id: "conversation", label: "Conversation", description: "历史对话、Markdown 与上下文检查器。" },
-  { id: "response", label: "Response", description: "桌宠旁边的流式回复窗口。" },
-  { id: "input", label: "Input", description: "输入框文字与内部留白。" },
-  { id: "memory", label: "Memory", description: "记忆列表与编辑内容。" },
-  { id: "setting", label: "Setting", description: "设置项、说明和控件。" },
-  { id: "pet", label: "Pet menu", description: "桌宠右键菜单文字。" }
+  { value: "conversation", label: "对话窗口" },
+  { value: "response", label: "回复窗口" },
+  { value: "input", label: "输入窗口" },
+  { value: "memory", label: "记忆窗口" },
+  { value: "setting", label: "设置窗口" },
+  { value: "pet", label: "桌宠菜单" }
 ];
-
-const LINE_HEIGHT_PRESETS = {
-  conversation: {
-    compact: 1.5,
-    comfortable: 1.72,
-    spacious: 1.9
-  },
-  response: {
-    compact: 1.4,
-    comfortable: 1.55,
-    spacious: 1.75
-  },
-  input: {
-    compact: 1.3,
-    comfortable: 1.45,
-    spacious: 1.62
-  },
-  memory: {
-    compact: 1.4,
-    comfortable: 1.55,
-    spacious: 1.75
-  },
-  setting: {
-    compact: 1.35,
-    comfortable: 1.5,
-    spacious: 1.7
-  },
-  pet: {
-    compact: 1.3,
-    comfortable: 1.4,
-    spacious: 1.58
-  }
-};
 
 export function AppearancePanel({
   settings,
@@ -88,6 +59,14 @@ export function AppearancePanel({
 }) {
   const appearance =
     settings.appearance;
+
+  const [activeWindowId, setActiveWindowId] =
+    useState("conversation");
+
+  const typography =
+    appearance.typography[
+      activeWindowId
+    ];
 
   const updateWindowTypography =
     (windowId, patch) => {
@@ -106,10 +85,7 @@ export function AppearancePanel({
 
   return (
     <>
-      <SettingsSection
-        title="主题"
-        description="同时应用于所有窗口。"
-      >
+      <SettingsSection title="主题">
         <div className="settings-section__standalone">
           <Segmented
             value={appearance.theme}
@@ -121,10 +97,7 @@ export function AppearancePanel({
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        title="强调色"
-        description="用于按钮、焦点、进度和选中状态。"
-      >
+      <SettingsSection title="强调色">
         <div className="settings-section__standalone">
           <ColorSwatches
             value={appearance.accentColor}
@@ -136,14 +109,8 @@ export function AppearancePanel({
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        title="全局字体"
-        description="所有窗口使用同一套字体族，避免界面风格割裂。"
-      >
-        <SettingRow
-          title="字体族"
-          description="不会附带或下载字体；系统中不存在时会自动使用后备字体。"
-        >
+      <SettingsSection title="全局字体">
+        <SettingRow title="字体族">
           <Select
             testId="appearance-font-family"
             value={appearance.fontFamily}
@@ -155,10 +122,7 @@ export function AppearancePanel({
         </SettingRow>
 
         {appearance.fontFamily === "custom" && (
-          <SettingRow
-            title="自定义字体"
-            description="可以填写多个 CSS 字体名，例如 Segoe UI Variable, Microsoft YaHei UI。"
-          >
+          <SettingRow title="自定义字体">
             <TextInput
               testId="appearance-custom-font"
               value={appearance.customFontFamily}
@@ -173,67 +137,166 @@ export function AppearancePanel({
         )}
       </SettingsSection>
 
-      <SettingsSection
-        title="窗口文字与密度"
-        description="字号按窗口独立设置；密度同时调整行高和主要留白。"
-      >
-        {WINDOW_OPTIONS.map((windowOption) => {
-          const typography =
-            appearance.typography[
-              windowOption.id
-            ];
+      <SettingsSection title="窗口排版">
+        <div className="settings-section__standalone settings-typography-window-picker">
+          <Select
+            testId="appearance-typography-window"
+            value={activeWindowId}
+            options={WINDOW_OPTIONS}
+            onChange={setActiveWindowId}
+          />
+        </div>
 
-          return (
-            <SettingRow
-              key={windowOption.id}
-              title={windowOption.label}
-              description={windowOption.description}
-            >
-              <div className="settings-typography-control">
-                <Slider
-                  value={typography.fontSize}
-                  min={10}
-                  max={24}
-                  step={1}
-                  unit=" px"
-                  onChange={(fontSize) => {
-                    updateWindowTypography(
-                      windowOption.id,
-                      { fontSize }
-                    );
-                  }}
-                />
+        <SettingRow title="字号">
+          <Slider
+            value={typography.fontSize}
+            min={10}
+            max={28}
+            step={1}
+            unit=" px"
+            onChange={(fontSize) => {
+              updateWindowTypography(
+                activeWindowId,
+                { fontSize }
+              );
+            }}
+          />
+        </SettingRow>
 
-                <Select
-                  value={typography.density}
-                  options={DENSITY_OPTIONS}
-                  onChange={(density) => {
-                    updateWindowTypography(
-                      windowOption.id,
-                      {
-                        density,
-                        lineHeight:
-                          LINE_HEIGHT_PRESETS[
-                            windowOption.id
-                          ][density]
-                      }
-                    );
-                  }}
-                />
-              </div>
-            </SettingRow>
-          );
-        })}
+        <SettingRow title="行高">
+          <Slider
+            value={typography.lineHeight}
+            min={1.1}
+            max={2.4}
+            step={0.05}
+            formatValue={(value) =>
+              value.toFixed(2)
+            }
+            onChange={(lineHeight) => {
+              updateWindowTypography(
+                activeWindowId,
+                { lineHeight }
+              );
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow title="字距">
+          <Slider
+            value={typography.letterSpacing ?? 0}
+            min={-0.03}
+            max={0.05}
+            step={0.001}
+            formatValue={(value) =>
+              `${value.toFixed(3)} em`
+            }
+            onChange={(letterSpacing) => {
+              updateWindowTypography(
+                activeWindowId,
+                { letterSpacing }
+              );
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow title="界面间距">
+          <Segmented
+            testId="appearance-density"
+            value={typography.density}
+            options={DENSITY_OPTIONS}
+            onChange={(density) => {
+              updateWindowTypography(
+                activeWindowId,
+                { density }
+              );
+            }}
+          />
+        </SettingRow>
+
+        <div
+          className="settings-typography-preview"
+          style={{
+            fontSize:
+              `${typography.fontSize}px`,
+            lineHeight:
+              typography.lineHeight,
+            letterSpacing:
+              `${typography.letterSpacing ?? 0}em`
+          }}
+        >
+          <span>排版预览</span>
+          <p>
+            清晰、稳定的文字节奏，适合持续阅读长对话。
+          </p>
+        </div>
       </SettingsSection>
 
-      <SettingsSection
-        title="动画"
-        description="减少界面切换和弹出动画。"
-      >
-        <SettingRow
-          title="减少动态效果"
-          description="适合偏好稳定界面或对动画敏感的用户。"
-        >
+      <SettingsSection title="对话阅读布局">
+        <SettingRow title="内容宽度">
+          <Slider
+            value={
+              appearance.typography
+                .conversation
+                .contentWidth ?? 768
+            }
+            min={560}
+            max={1080}
+            step={8}
+            unit=" px"
+            onChange={(contentWidth) => {
+              updateWindowTypography(
+                "conversation",
+                { contentWidth }
+              );
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow title="消息间距">
+          <Slider
+            value={
+              appearance.typography
+                .conversation
+                .messageSpacing ?? 34
+            }
+            min={16}
+            max={72}
+            step={1}
+            unit=" px"
+            onChange={(messageSpacing) => {
+              updateWindowTypography(
+                "conversation",
+                { messageSpacing }
+              );
+            }}
+          />
+        </SettingRow>
+
+        <SettingRow title="段落间距">
+          <Slider
+            value={
+              appearance.typography
+                .conversation
+                .paragraphSpacing ?? 1
+            }
+            min={0.5}
+            max={1.8}
+            step={0.05}
+            formatValue={(value) =>
+              `${value.toFixed(2)} em`
+            }
+            onChange={(paragraphSpacing) => {
+              updateWindowTypography(
+                "conversation",
+                { paragraphSpacing }
+              );
+            }}
+          />
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title="动画">
+        <SettingRow title="减少动态效果">
           <Toggle
             checked={appearance.reducedMotion}
             label="减少动态效果"

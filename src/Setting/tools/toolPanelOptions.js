@@ -109,6 +109,12 @@ export const TOOLSET_OPTIONS = [
     risk: "Safe",
     tools: [
       {
+        name: "report_progress",
+        title: "报告任务进度",
+        description:
+          "在有意义的工具批次前后发布面向用户的简短进度说明。"
+      },
+      {
         name: "update_plan",
         title: "更新任务计划",
         description:
@@ -142,10 +148,6 @@ export const TOOL_MODE_OPTIONS = [
 ];
 
 export const TOOL_DETAIL_OPTIONS = [
-  {
-    value: "compact",
-    label: "简洁"
-  },
   {
     value: "detailed",
     label: "详细"

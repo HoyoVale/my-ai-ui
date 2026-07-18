@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useState
 } from "react";
@@ -10,6 +11,10 @@ import {
 import {
   ConversationMessageList
 } from "./components/MessageList.jsx";
+
+import {
+  ConversationTaskPanel
+} from "./components/TaskPanel.jsx";
 
 import {
   ConversationSidebar
@@ -76,6 +81,16 @@ export default function Conversation() {
     setContextOpen
   ] = useState(false);
 
+  const [
+    taskOpen,
+    setTaskOpen
+  ] = useState(false);
+
+  const [
+    taskTargetMessageId,
+    setTaskTargetMessageId
+  ] = useState(null);
+
   const [query, setQuery] =
     useState("");
 
@@ -112,6 +127,13 @@ export default function Conversation() {
       ]
     );
 
+  useEffect(() => {
+    setTaskOpen(false);
+    setTaskTargetMessageId(null);
+  }, [
+    history.current?.id
+  ]);
+
   const rootClassName =
     useMemo(
       () => {
@@ -128,7 +150,7 @@ export default function Conversation() {
           sidebarCollapsed
             ? "is-sidebar-collapsed"
             : "",
-          contextOpen
+          contextOpen || taskOpen
             ? "is-context-open"
             : "",
           isMaximized
@@ -145,6 +167,7 @@ export default function Conversation() {
           .appearance
           .reducedMotion,
         sidebarCollapsed,
+        taskOpen,
         theme
       ]
     );
@@ -194,6 +217,7 @@ export default function Conversation() {
           sidebarCollapsed
         }
         contextOpen={contextOpen}
+        taskOpen={taskOpen}
         isMaximized={isMaximized}
         onToggleSidebar={() => {
           setSidebarCollapsed(
@@ -202,9 +226,28 @@ export default function Conversation() {
           );
         }}
         onToggleContext={() => {
+          setTaskOpen(false);
           setContextOpen(
             (current) =>
               !current
+          );
+        }}
+        onToggleTask={() => {
+          setContextOpen(false);
+          setTaskOpen(
+            (current) =>
+              !current
+          );
+          setTaskTargetMessageId(
+            (current) =>
+              current ??
+              (agentStatus.conversationId ===
+                history.current?.id &&
+              ["running", "stopping"].includes(
+                agentStatus.state
+              )
+                ? "live"
+                : null)
           );
         }}
         onCreate={() => {
@@ -293,7 +336,26 @@ export default function Conversation() {
                 : null
             }
             busy={history.busy}
+            onOpenTaskPanel={(
+              messageId
+            ) => {
+              setContextOpen(false);
+              setTaskTargetMessageId(
+                messageId
+              );
+              setTaskOpen(true);
+            }}
             onOpenInput={openInput}
+            onAnswerQuestion={async (
+              response
+            ) => {
+              return window.api
+                ?.answerAgentQuestion?.({
+                  conversationId:
+                    history.current?.id ?? "",
+                  ...response
+                });
+            }}
             onRegenerate={(
               messageId
             ) => {
@@ -325,6 +387,35 @@ export default function Conversation() {
             }}
           />
         </main>
+
+        <ConversationTaskPanel
+          open={taskOpen}
+          conversation={history.current}
+          liveActivity={
+            agentStatus.conversationId ===
+              history.current?.id &&
+            ["running", "stopping"].includes(
+              agentStatus.state
+            )
+              ? agentStatus
+              : null
+          }
+          targetMessageId={
+            taskTargetMessageId
+          }
+          developerMode={
+            settings.general
+              .developerMode
+          }
+          detailLevel={
+            settings.tools
+              .display
+              .detailLevel
+          }
+          onClose={() => {
+            setTaskOpen(false);
+          }}
+        />
 
         <ConversationContextInspector
           open={contextOpen}

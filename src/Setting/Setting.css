@@ -3029,3 +3029,54 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Appearance typography editor */
+.settings-typography-window-picker {
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--setting-border);
+}
+
+.settings-typography-window-picker .settings-select {
+  width: min(240px, 100%);
+}
+
+.settings-typography-preview {
+  margin: 0 20px 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--setting-border);
+  border-radius: 12px;
+  color: var(--setting-text);
+  background: var(--setting-surface-soft);
+}
+
+.settings-typography-preview span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--setting-text-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-typography-preview p {
+  margin: 0;
+}
+
+.settings-row__control > .settings-segmented {
+  width: 300px;
+}
+
+@media (max-width: 760px) {
+  .settings-typography-window-picker {
+    justify-content: stretch;
+  }
+
+  .settings-typography-window-picker .settings-select,
+  .settings-row__control > .settings-segmented {
+    width: 100%;
+  }
+
+  .settings-typography-preview {
+    margin-inline: 14px;
+  }
+}

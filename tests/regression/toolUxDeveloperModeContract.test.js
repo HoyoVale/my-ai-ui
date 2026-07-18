@@ -32,7 +32,8 @@ describe(
         assert.match(panel, /Chat/u);
         assert.match(panel, /Coding/u);
         assert.match(panel, /添加工作区/u);
-        assert.match(panel, /tool-display-detail/u);
+        assert.match(panel, /展示层级/u);
+        assert.doesNotMatch(panel, /tool-display-detail/u);
         assert.doesNotMatch(
           panel,
           /启用工具调用/u
@@ -93,27 +94,37 @@ describe(
     );
 
     it(
-      "renders compact tool activity, developer raw details and persisted plans",
+      "renders one activity event stream in the thinking timeline and task panel",
       () => {
         const list = read(
           "../../src/Conversation/components/MessageList.jsx"
         );
+        const panel = read(
+          "../../src/Conversation/components/TaskPanel.jsx"
+        );
+        const activity = read(
+          "../../src/Conversation/utils/taskActivity.js"
+        );
 
         assert.match(
           list,
-          /已使用 \{toolCalls\.length\} 个工具/u
+          /conversation-thinking-timeline/u
         );
         assert.match(
           list,
-          /conversation-tool-call--developer/u
+          /createActivitySnapshot/u
         );
         assert.match(
-          list,
-          /AgentPlan/u
+          activity,
+          /activity\?\.events/u
         );
         assert.match(
-          list,
-          /message\.plan/u
+          panel,
+          /developerMode/u
+        );
+        assert.match(
+          panel,
+          /Model output/u
         );
       }
     );

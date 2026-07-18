@@ -32,12 +32,28 @@ export function createAgentToolSession({
   getAgentStatus = null,
   abortSignal = null,
   onRecord = null,
+  onPlanChange = null,
+  onQuestion = null,
+  activityStore = null,
   settings = {},
-  initialPlan = []
+  initialPlan = [],
+  answeredQuestions = [],
+  initialQuestionCount = 0
 } = {}) {
   const planStore =
     new RunPlanStore(
-      initialPlan
+      initialPlan,
+      {
+        onChange: onPlanChange,
+        onQuestion,
+        answeredQuestions,
+        initialQuestionCount,
+        maxQuestions:
+          settings.tools
+            ?.runtime
+            ?.maxAskUserCalls ??
+          3
+      }
     );
   const resultStore =
     new ToolResultStore();
@@ -79,7 +95,10 @@ export function createAgentToolSession({
     new ToolExecutor({
       context: {
         abortSignal,
-        planStore
+        planStore,
+        activityStore,
+        getActiveBatch: () =>
+          activityStore?.getActiveBatch?.() ?? null
       },
       onRecord,
       defaultTimeoutMs:

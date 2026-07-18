@@ -6,8 +6,10 @@ export function ConversationTopbar({
   sidebarCollapsed,
   isMaximized,
   contextOpen,
+  taskOpen,
   onToggleSidebar,
   onToggleContext,
+  onToggleTask,
   onCreate,
   onOpenInput,
   onMinimize,
@@ -40,6 +42,27 @@ export function ConversationTopbar({
       </div>
 
       <div className="conversation-topbar__right">
+        <button
+          type="button"
+          className={
+            `conversation-icon-button${
+              taskOpen
+                ? " is-active"
+                : ""
+            }`
+          }
+          data-testid="conversation-task-toggle"
+          title="任务活动"
+          aria-label="任务活动"
+          aria-pressed={taskOpen}
+          onClick={onToggleTask}
+        >
+          <ConversationIcon
+            name="activity"
+            size={17}
+          />
+        </button>
+
         <button
           type="button"
           className={

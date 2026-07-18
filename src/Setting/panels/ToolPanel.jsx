@@ -15,7 +15,6 @@ import {
 } from "../components/Controls.jsx";
 
 import {
-  TOOL_DETAIL_OPTIONS,
   TOOL_MODE_OPTIONS,
   TOOL_OVERRIDE_OPTIONS,
   TOOLSET_OPTIONS
@@ -333,30 +332,9 @@ export function ToolPanel({
         </div>
       </section>
 
-      <SettingsSection
-        title="显示"
-        description="控制模型回复中工具活动的呈现方式。"
-      >
-        <SettingRow
-          title="工具调用"
-          description="简洁模式只显示关键动作；详细模式增加路径、范围和耗时。"
-        >
-          <Segmented
-            value={
-              settings.display
-                .detailLevel
-            }
-            options={TOOL_DETAIL_OPTIONS}
-            testId="tool-display-detail"
-            onChange={(detailLevel) => {
-              onUpdate({
-                display: {
-                  ...settings.display,
-                  detailLevel
-                }
-              });
-            }}
-          />
+      <SettingsSection title="活动显示">
+        <SettingRow title="展示层级">
+          <span className="setting-static-value">详细</span>
         </SettingRow>
       </SettingsSection>
 
@@ -385,6 +363,36 @@ export function ToolPanel({
                     unit=" 步"
                     onChange={(maxSteps) => {
                       updateRuntime({ maxSteps });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="最终总结尝试"
+                  description="普通执行步数耗尽后，额外保留无工具的最终总结机会。"
+                >
+                  <Slider
+                    value={settings.runtime.maxFinalizationAttempts}
+                    min={1}
+                    max={3}
+                    unit=" 次"
+                    onChange={(maxFinalizationAttempts) => {
+                      updateRuntime({ maxFinalizationAttempts });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="用户问题上限"
+                  description="限制单个任务中 ask_user 可提出的问题数量，并阻止回答后立即连续追问。"
+                >
+                  <Slider
+                    value={settings.runtime.maxAskUserCalls}
+                    min={1}
+                    max={10}
+                    unit=" 个"
+                    onChange={(maxAskUserCalls) => {
+                      updateRuntime({ maxAskUserCalls });
                     }}
                   />
                 </SettingRow>

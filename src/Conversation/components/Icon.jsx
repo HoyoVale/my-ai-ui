@@ -68,6 +68,17 @@ export function ConversationIcon({
       <path d="m5 12 4 4L19 6" />
     ),
 
+    minus: (
+      <path d="M6 12h12" />
+    ),
+
+    warning: (
+      <>
+        <path d="M12 4 3.8 19h16.4L12 4Z" />
+        <path d="M12 9v4.5M12 16.8h.01" />
+      </>
+    ),
+
     context: (
       <>
         <circle cx="12" cy="12" r="8.5" />
@@ -119,6 +130,19 @@ export function ConversationIcon({
       <>
         <path d="M14.5 6.5a4 4 0 0 0 3.8 5.3l-7.5 7.5a2 2 0 0 1-2.8-2.8l7.5-7.5a4 4 0 0 0 5.3-3.8L18 8l-2-2 2.8-2.8a4 4 0 0 0-4.3 3.3Z" />
       </>
+    ),
+
+    activity: (
+      <>
+        <path d="M5 7.5h14M5 12h14M5 16.5h9" />
+        <circle cx="3" cy="7.5" r=".65" fill="currentColor" stroke="none" />
+        <circle cx="3" cy="12" r=".65" fill="currentColor" stroke="none" />
+        <circle cx="3" cy="16.5" r=".65" fill="currentColor" stroke="none" />
+      </>
+    ),
+
+    chevronRight: (
+      <path d="m10 7 5 5-5 5" />
     ),
 
     close: (

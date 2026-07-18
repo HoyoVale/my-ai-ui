@@ -157,6 +157,14 @@ export function applyConversationWindowSettings(
 
 }
 
+export function isConversationSender(webContents) {
+  return Boolean(
+    conversationWindow &&
+    !conversationWindow.isDestroyed() &&
+    conversationWindow.webContents === webContents
+  );
+}
+
 export function getConversationWindow() {
   return conversationWindow;
 }

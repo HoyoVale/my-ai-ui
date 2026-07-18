@@ -83,6 +83,8 @@ describe(
               },
               runtime: {
                 maxSteps: 999,
+                maxFinalizationAttempts: 999,
+                maxAskUserCalls: 999,
                 maxToolCalls: 999,
                 runTimeoutMs: 1,
                 defaultTimeoutMs: 50,
@@ -132,6 +134,16 @@ describe(
         assert.equal(
           settings.tools.display.detailLevel,
           "detailed"
+        );
+        assert.equal(
+          settings.tools.runtime
+            .maxFinalizationAttempts,
+          3
+        );
+        assert.equal(
+          settings.tools.runtime
+            .maxAskUserCalls,
+          10
         );
         assert.equal(
           settings.tools.runtime.maxToolCalls,

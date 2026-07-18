@@ -39,7 +39,7 @@ describe(
         );
         assert.match(
           source,
-          /hasToolCall/u
+          /getPendingQuestion\(\)/u
         );
         assert.match(
           source,

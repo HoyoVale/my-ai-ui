@@ -326,7 +326,9 @@ export class ConversationManager {
     plan = [],
     stopReason = "",
     pendingQuestion = null,
-    resumedFromMessageId = ""
+    resumedFromMessageId = "",
+    taskId = "",
+    activity = null
   }) {
     const data =
       this.ensureLoaded();
@@ -348,7 +350,19 @@ export class ConversationManager {
       String(content ?? "")
         .trim();
 
-    if (!normalizedContent) {
+    const canStoreEmptyAssistant =
+      role === "assistant" &&
+      (
+        Boolean(
+          pendingQuestion?.question
+        ) ||
+        Boolean(activity)
+      );
+
+    if (
+      !normalizedContent &&
+      !canStoreEmptyAssistant
+    ) {
       throw new Error(
         "Message content is empty."
       );
@@ -377,7 +391,9 @@ export class ConversationManager {
         plan,
         stopReason,
         pendingQuestion,
-        resumedFromMessageId
+        resumedFromMessageId,
+        taskId,
+        activity
       }
     );
 
@@ -513,7 +529,10 @@ export class ConversationManager {
     plan = [],
     stopReason = "",
     pendingQuestion = null,
-    resumedFromMessageId = ""
+    resumedFromMessageId = "",
+    taskId = "",
+    activity = null,
+    preserveCreatedAt = false
   }) {
     const conversation =
       this.findMutableConversation(
@@ -549,7 +568,16 @@ export class ConversationManager {
       String(content ?? "")
         .trim();
 
-    if (!normalizedContent) {
+    const canStoreEmptyAssistant =
+      Boolean(
+        pendingQuestion?.question
+      ) ||
+      Boolean(activity);
+
+    if (
+      !normalizedContent &&
+      !canStoreEmptyAssistant
+    ) {
       return {
         ok: false,
         code: "empty-message",
@@ -560,8 +588,11 @@ export class ConversationManager {
     message.content =
       normalizedContent;
     message.status = status;
-    message.createdAt =
-      this.now();
+
+    if (!preserveCreatedAt) {
+      message.createdAt =
+        this.now();
+    }
 
     delete message.durationMs;
     delete message.reasoningSummary;
@@ -570,6 +601,8 @@ export class ConversationManager {
     delete message.stopReason;
     delete message.pendingQuestion;
     delete message.resumedFromMessageId;
+    delete message.taskId;
+    delete message.activity;
 
     this.applyAssistantMetadata(
       message,
@@ -580,12 +613,16 @@ export class ConversationManager {
         plan,
         stopReason,
         pendingQuestion,
-        resumedFromMessageId
+        resumedFromMessageId,
+        taskId,
+        activity
       }
     );
 
     conversation.updatedAt =
-      message.createdAt;
+      preserveCreatedAt
+        ? this.now()
+        : message.createdAt;
 
     this.ensureLoaded()
       .conversations
@@ -612,7 +649,9 @@ export class ConversationManager {
       plan = [],
       stopReason = "",
       pendingQuestion = null,
-      resumedFromMessageId = ""
+      resumedFromMessageId = "",
+      taskId = "",
+      activity = null
     } = {}
   ) {
     if (
@@ -680,6 +719,19 @@ export class ConversationManager {
       message.resumedFromMessageId =
         String(resumedFromMessageId);
     }
+
+    if (taskId) {
+      message.taskId =
+        String(taskId);
+    }
+
+    if (
+      activity &&
+      typeof activity === "object"
+    ) {
+      message.activity =
+        clone(activity);
+    }
   }
 
   getPendingQuestion(
@@ -731,14 +783,25 @@ export class ConversationManager {
           message.pendingQuestion
         ),
       plan:
-        clone(message.plan ?? [])
+        clone(message.plan ?? []),
+      taskId:
+        message.taskId ??
+        message.activity?.taskId ??
+        message.id,
+      activity:
+        message.activity
+          ? clone(message.activity)
+          : null,
+      message: clone(message)
     };
   }
 
   resolvePendingQuestion({
     conversationId,
     messageId,
-    answerMessageId
+    answer = "",
+    selectedOptionIds = [],
+    otherText = ""
   }) {
     const conversation =
       this.findMutableConversation(
@@ -772,15 +835,72 @@ export class ConversationManager {
       };
     }
 
+    const answeredAt =
+      this.now();
+    const normalizedAnswer =
+      String(answer ?? "").trim();
+    const normalizedSelectedOptionIds =
+      Array.isArray(selectedOptionIds)
+        ? selectedOptionIds.map(String)
+        : [];
+
     message.pendingQuestion = {
       ...message.pendingQuestion,
       status: "answered",
-      answeredAt: this.now(),
-      answerMessageId:
-        String(
-          answerMessageId ?? ""
-        )
+      answeredAt,
+      answer: normalizedAnswer,
+      selectedOptionIds:
+        normalizedSelectedOptionIds,
+      otherText:
+        String(otherText ?? "").trim()
     };
+
+    if (
+      message.activity &&
+      Array.isArray(
+        message.activity.events
+      )
+    ) {
+      message.activity = {
+        ...message.activity,
+        status: "resumed",
+        events:
+          message.activity.events.map(
+            (event) => {
+              if (
+                event.type !==
+                "question"
+              ) {
+                return event;
+              }
+
+              return {
+                ...event,
+                status: "answered",
+                updatedAt:
+                  message.pendingQuestion
+                    .answeredAt,
+                question: {
+                  ...event.question,
+                  status: "answered",
+                  answeredAt:
+                    message.pendingQuestion
+                      .answeredAt,
+                  answer:
+                    message.pendingQuestion
+                      .answer,
+                  selectedOptionIds:
+                    message.pendingQuestion
+                      .selectedOptionIds,
+                  otherText:
+                    message.pendingQuestion
+                      .otherText
+                }
+              };
+            }
+          )
+      };
+    }
 
     conversation.updatedAt =
       message.pendingQuestion

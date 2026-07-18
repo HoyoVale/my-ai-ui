@@ -1,4 +1,15 @@
-const STORE_VERSION = 6;
+import {
+  createLegacyActivity,
+  deriveLegacyActivityFields,
+  sanitizeActivity,
+  sanitizeActivityTool
+} from "./activitySchema.js";
+
+import {
+  normalizeRunStopReason
+} from "../agent/runStopReasons.js";
+
+const STORE_VERSION = 9;
 
 const MESSAGE_ROLES =
   new Set([
@@ -10,22 +21,6 @@ const MESSAGE_STATUSES =
   new Set([
     "complete",
     "aborted"
-  ]);
-
-const STOP_REASONS =
-  new Set([
-    "completed",
-    "user_input_required",
-    "step_limit",
-    "tool_call_limit",
-    "run_timeout",
-    "tool_timeout",
-    "repeated_call",
-    "output_limit",
-    "content_filter",
-    "aborted",
-    "error",
-    "unknown"
   ]);
 
 const PENDING_QUESTION_STATUSES =
@@ -78,24 +73,6 @@ function booleanValue(
     : fallback;
 }
 
-function jsonValue(
-  value
-) {
-  if (
-    value === undefined
-  ) {
-    return undefined;
-  }
-
-  try {
-    return JSON.parse(
-      JSON.stringify(value)
-    );
-  } catch {
-    return String(value)
-      .slice(0, 200000);
-  }
-}
 
 function sanitizePendingQuestion(source) {
   if (
@@ -159,12 +136,32 @@ function sanitizePendingQuestion(source) {
 
   const result = {
     question,
+    decisionId: stringValue(
+      source.decisionId,
+      "",
+      160
+    ).trim(),
+    decisionKey: stringValue(
+      source.decisionKey,
+      "",
+      320
+    ).trim(),
     reason: stringValue(
       source.reason,
       "",
       500
     ).trim(),
     options,
+    selectionMode:
+      source.selectionMode ===
+        "multiple"
+        ? "multiple"
+        : "single",
+    allowOther:
+      typeof source.allowOther ===
+        "boolean"
+        ? source.allowOther
+        : options.length === 0,
     status
   };
 
@@ -174,12 +171,33 @@ function sanitizePendingQuestion(source) {
         source.answeredAt,
         0
       );
-    result.answerMessageId =
+    result.answer =
       stringValue(
-        source.answerMessageId,
+        source.answer,
         "",
-        100
-      );
+        2000
+      ).trim();
+    result.selectedOptionIds =
+      Array.isArray(
+        source.selectedOptionIds
+      )
+        ? source.selectedOptionIds
+            .map((id) =>
+              stringValue(
+                id,
+                "",
+                80
+              )
+            )
+            .filter(Boolean)
+            .slice(0, 6)
+        : [];
+    result.otherText =
+      stringValue(
+        source.otherText,
+        "",
+        2000
+      ).trim();
   }
 
   return result;
@@ -230,71 +248,10 @@ function sanitizeToolCall(
   source,
   index
 ) {
-  if (
-    !source ||
-    typeof source !== "object"
-  ) {
-    return null;
-  }
-
-  const name =
-    stringValue(
-      source.name,
-      "",
-      120
-    ).trim();
-
-  if (!name) {
-    return null;
-  }
-
-  const toolCall = {
-    id:
-      stringValue(
-        source.id,
-        `tool-${index + 1}`,
-        120
-      ) ||
-      `tool-${index + 1}`,
-    name,
-    status:
-      stringValue(
-        source.status,
-        "complete",
-        40
-      ) || "complete"
-  };
-
-  const input =
-    jsonValue(source.input);
-  const output =
-    jsonValue(source.output);
-  const durationMs =
-    timestampValue(
-      source.durationMs,
-      0
-    );
-  const meta =
-    jsonValue(source.meta);
-
-  if (input !== undefined) {
-    toolCall.input = input;
-  }
-
-  if (output !== undefined) {
-    toolCall.output = output;
-  }
-
-  if (durationMs > 0) {
-    toolCall.durationMs =
-      durationMs;
-  }
-
-  if (meta !== undefined) {
-    toolCall.meta = meta;
-  }
-
-  return toolCall;
+  return sanitizeActivityTool(
+    source,
+    index
+  );
 }
 
 export function createEmptyConversationData() {
@@ -329,9 +286,23 @@ export function sanitizeMessage(
       source.content
     ).trim();
 
+  const canStoreEmptyAssistant =
+    role === "assistant" &&
+    (
+      Boolean(
+        source.pendingQuestion
+      ) ||
+      Boolean(
+        source.activity
+      )
+    );
+
   if (
     !role ||
-    !content
+    (
+      !content &&
+      !canStoreEmptyAssistant
+    )
   ) {
     return null;
   }
@@ -384,14 +355,14 @@ export function sanitizeMessage(
         0
       );
 
-    const reasoningSummary =
+    const sourceReasoning =
       stringValue(
         source.reasoningSummary,
         "",
         100000
       ).trim();
 
-    const toolCalls =
+    const sourceToolCalls =
       Array.isArray(
         source.toolCalls
       )
@@ -403,7 +374,7 @@ export function sanitizeMessage(
             .slice(0, 100)
         : [];
 
-    const plan =
+    const sourcePlan =
       Array.isArray(source.plan)
         ? source.plan
             .map(sanitizePlanItem)
@@ -411,9 +382,83 @@ export function sanitizeMessage(
             .slice(0, 20)
         : [];
 
+    const pendingQuestion =
+      sanitizePendingQuestion(
+        source.pendingQuestion
+      );
+
+    const sourceTaskId =
+      stringValue(
+        source.taskId,
+        "",
+        120
+      );
+
+    const legacyStopReason =
+      normalizeRunStopReason(
+        source.stopReason,
+        status === "aborted"
+          ? "cancelled_by_user"
+          : "completed"
+      );
+
+    const hasLegacyActivity =
+      durationMs > 0 ||
+      Boolean(sourceReasoning) ||
+      sourceToolCalls.length > 0 ||
+      sourcePlan.length > 0 ||
+      Boolean(source.stopReason) ||
+      Boolean(pendingQuestion);
+
+    const activity =
+      sanitizeActivity(
+        source.activity
+      ) ??
+      (hasLegacyActivity
+        ? createLegacyActivity({
+            messageId:
+              message.id ?? fallbackId,
+            createdAt:
+              message.createdAt,
+            durationMs,
+            reasoningSummary:
+              sourceReasoning,
+            toolCalls:
+              sourceToolCalls,
+            plan: sourcePlan,
+            stopReason:
+              legacyStopReason,
+            pendingQuestion,
+            taskId:
+              sourceTaskId
+          })
+        : null);
+
+    const derived =
+      deriveLegacyActivityFields(
+        activity
+      );
+
+    const reasoningSummary =
+      sourceReasoning ||
+      derived.reasoningSummary;
+    const toolCalls =
+      sourceToolCalls.length > 0
+        ? sourceToolCalls
+        : derived.toolCalls;
+    const plan =
+      sourcePlan.length > 0
+        ? sourcePlan
+        : derived.plan;
+
     if (durationMs > 0) {
       message.durationMs =
         durationMs;
+    } else if (
+      activity?.durationMs > 0
+    ) {
+      message.durationMs =
+        activity.durationMs;
     }
 
     if (reasoningSummary) {
@@ -430,22 +475,19 @@ export function sanitizeMessage(
       message.plan = plan;
     }
 
-    const stopReason =
-      STOP_REASONS.has(
-        source.stopReason
-      )
-        ? source.stopReason
-        : "";
-
-    if (stopReason) {
+    if (activity) {
+      message.activity =
+        activity;
+      message.taskId =
+        activity.taskId ||
+        sourceTaskId ||
+        message.id;
       message.stopReason =
-        stopReason;
+        activity.stopReason;
+    } else {
+      message.stopReason =
+        legacyStopReason;
     }
-
-    const pendingQuestion =
-      sanitizePendingQuestion(
-        source.pendingQuestion
-      );
 
     if (pendingQuestion) {
       message.pendingQuestion =
