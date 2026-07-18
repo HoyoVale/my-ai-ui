@@ -18,18 +18,42 @@ describe(
   "safe agent tool session",
   () => {
     it(
-      "publishes the complete safe-core tool profile",
+      "publishes Chat tools by default and Coding tools when selected",
       () => {
-        const session =
+        const chatSession =
           createAgentToolSession({
             getAgentStatus: () => ({
               state: "running"
             })
           });
 
+        assert.equal(
+          "read_text_file" in
+            chatSession.tools,
+          false
+        );
+
+        const codingSession =
+          createAgentToolSession({
+            getAgentStatus: () => ({
+              state: "running"
+            }),
+            settings: {
+              tools: {
+                mode: "coding",
+                workspace: {},
+                runtime: {},
+                developer: {
+                  toolsetOverrides: {},
+                  toolOverrides: {}
+                }
+              }
+            }
+          });
+
         assert.deepEqual(
           Object.keys(
-            session.tools
+            codingSession.tools
           ).sort(),
           [...SAFE_TOOL_NAMES].sort()
         );

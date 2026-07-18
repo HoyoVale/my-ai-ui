@@ -1,4 +1,4 @@
-const STORE_VERSION = 4;
+const STORE_VERSION = 5;
 
 const MESSAGE_ROLES =
   new Set([
@@ -75,6 +75,48 @@ function jsonValue(
   }
 }
 
+
+function sanitizePlanItem(
+  source,
+  index
+) {
+  if (
+    !source ||
+    typeof source !== "object"
+  ) {
+    return null;
+  }
+
+  const title = stringValue(
+    source.title,
+    "",
+    200
+  ).trim();
+
+  if (!title) {
+    return null;
+  }
+
+  const status = [
+    "pending",
+    "in_progress",
+    "completed",
+    "blocked"
+  ].includes(source.status)
+    ? source.status
+    : "pending";
+
+  return {
+    id:
+      stringValue(
+        source.id,
+        `step-${index + 1}`,
+        80
+      ) || `step-${index + 1}`,
+    title,
+    status
+  };
+}
 function sanitizeToolCall(
   source,
   index
@@ -246,6 +288,14 @@ export function sanitizeMessage(
             .slice(0, 100)
         : [];
 
+    const plan =
+      Array.isArray(source.plan)
+        ? source.plan
+            .map(sanitizePlanItem)
+            .filter(Boolean)
+            .slice(0, 20)
+        : [];
+
     if (durationMs > 0) {
       message.durationMs =
         durationMs;
@@ -259,6 +309,10 @@ export function sanitizeMessage(
     if (toolCalls.length > 0) {
       message.toolCalls =
         toolCalls;
+    }
+
+    if (plan.length > 0) {
+      message.plan = plan;
     }
   }
 

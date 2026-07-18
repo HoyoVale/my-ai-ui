@@ -421,6 +421,13 @@ describe(
               },
               output: "ok"
             }
+          ],
+          plan: [
+            {
+              id: "inspect",
+              title: "Inspect project",
+              status: "completed"
+            }
           ]
         });
 
@@ -440,6 +447,10 @@ describe(
         assert.equal(
           message.toolCalls[0].name,
           "read_file"
+        );
+        assert.equal(
+          message.plan[0].status,
+          "completed"
         );
       }
     );

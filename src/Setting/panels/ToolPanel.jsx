@@ -10,57 +10,16 @@ import {
   Slider,
   TextInput,
   Toggle,
-  Segmented
+  Segmented,
+  Select
 } from "../components/Controls.jsx";
 
 import {
-  ALL_TOOL_NAMES,
-  TOOL_PROFILE_OPTIONS,
+  TOOL_DETAIL_OPTIONS,
+  TOOL_MODE_OPTIONS,
+  TOOL_OVERRIDE_OPTIONS,
   TOOLSET_OPTIONS
 } from "../tools/toolPanelOptions.js";
-
-function profilePatch(profile) {
-  if (profile === "chat") {
-    return {
-      profile,
-      toolsets: {
-        "core.runtime": true,
-        "workspace.read": false,
-        "agent.internal": true
-      },
-      overrides:
-        Object.fromEntries(
-          ALL_TOOL_NAMES.map(
-            (name) => [name, true]
-          )
-        )
-    };
-  }
-
-  if (profile === "workspace") {
-    return {
-      profile,
-      workspace: {
-        enabled: true
-      },
-      toolsets: {
-        "core.runtime": true,
-        "workspace.read": true,
-        "agent.internal": true
-      },
-      overrides:
-        Object.fromEntries(
-          ALL_TOOL_NAMES.map(
-            (name) => [name, true]
-          )
-        )
-    };
-  }
-
-  return {
-    profile: "custom"
-  };
-}
 
 function formatBytes(value) {
   if (value >= 1000000) {
@@ -70,46 +29,130 @@ function formatBytes(value) {
   return `${Math.round(value / 1000)} KB`;
 }
 
+function resolveActiveModel(modelSettings = {}) {
+  const provider =
+    modelSettings.providers?.[
+      modelSettings.activeProvider
+    ] ?? Object.values(
+      modelSettings.providers ?? {}
+    )[0];
+
+  const model =
+    provider?.models?.find(
+      (item) =>
+        item.id ===
+        provider.activeModelId
+    ) ?? provider?.models?.[0];
+
+  return {
+    providerName:
+      provider?.name ?? "未配置",
+    providerType:
+      provider?.type ?? "unknown",
+    modelName:
+      model?.name ?? "未配置",
+    modelId:
+      model?.modelId ?? "unknown"
+  };
+}
+
+function resolveToolsetEnabled(
+  settings,
+  toolsetId
+) {
+  let enabled =
+    toolsetId === "workspace.read"
+      ? settings.mode === "coding"
+      : true;
+
+  const override =
+    settings.developer
+      ?.toolsetOverrides?.[
+        toolsetId
+      ] ?? "inherit";
+
+  if (override === "enabled") {
+    enabled = true;
+  } else if (override === "disabled") {
+    enabled = false;
+  }
+
+  return enabled;
+}
+
+function resolveToolEnabled(
+  settings,
+  toolsetId,
+  toolName
+) {
+  if (
+    !resolveToolsetEnabled(
+      settings,
+      toolsetId
+    )
+  ) {
+    return false;
+  }
+
+  const override =
+    settings.developer
+      ?.toolOverrides?.[
+        toolName
+      ] ?? "inherit";
+
+  return override !== "disabled";
+}
+
+function hasDeveloperOverrides(
+  settings
+) {
+  return [
+    ...Object.values(
+      settings.developer
+        ?.toolsetOverrides ?? {}
+    ),
+    ...Object.values(
+      settings.developer
+        ?.toolOverrides ?? {}
+    )
+  ].some(
+    (value) =>
+      value !== "inherit"
+  );
+}
+
 export function ToolPanel({
   settings,
+  developerMode = false,
+  modelSettings,
   onUpdate
 }) {
   const [rootDraft, setRootDraft] =
     useState("");
 
+  const activeModel = useMemo(
+    () =>
+      resolveActiveModel(
+        modelSettings
+      ),
+    [modelSettings]
+  );
+
   const enabledTools = useMemo(
-    () => {
-      if (!settings.enabled) {
-        return 0;
-      }
-
-      return TOOLSET_OPTIONS.reduce(
-        (count, toolset) => {
-          if (
-            settings.toolsets[
-              toolset.id
-            ] === false ||
-            (
-              toolset.id ===
-                "workspace.read" &&
-              settings.workspace
-                .enabled === false
-            )
-          ) {
-            return count;
-          }
-
-          return count +
-            toolset.tools.filter(
-              (tool) =>
-                settings.overrides[
-                  tool.name
-                ] !== false
-            ).length;
-        },
+    () =>
+      TOOLSET_OPTIONS.reduce(
+        (count, toolset) =>
+          count +
+          toolset.tools.filter(
+            (tool) =>
+              resolveToolEnabled(
+                settings,
+                toolset.id,
+                tool.name
+              )
+          ).length,
         0
-      );
-    },
+      ),
     [settings]
   );
 
@@ -124,9 +167,17 @@ export function ToolPanel({
 
   const updateWorkspace = (patch) => {
     onUpdate({
-      profile: "custom",
       workspace: {
         ...settings.workspace,
+        ...patch
+      }
+    });
+  };
+
+  const updateDeveloper = (patch) => {
+    onUpdate({
+      developer: {
+        ...settings.developer,
         ...patch
       }
     });
@@ -166,531 +217,473 @@ export function ToolPanel({
     addRoot(result.paths[0]);
   };
 
-  const setProfile = (profile) => {
-    const patch = profilePatch(profile);
-
-    onUpdate({
-      ...patch,
-      workspace: patch.workspace
-        ? {
-            ...settings.workspace,
-            ...patch.workspace
-          }
-        : settings.workspace,
-      toolsets: patch.toolsets ??
-        settings.toolsets,
-      overrides: patch.overrides ??
-        settings.overrides
-    });
-  };
+  const coding =
+    settings.mode === "coding";
 
   return (
     <>
-      <div className="tool-overview-card">
-        <div>
-          <span className="tool-overview-card__eyebrow">
-            Safe Tool Runtime
-          </span>
-          <strong>
-            {settings.enabled
-              ? `${enabledTools} 个工具可用`
-              : "工具调用已关闭"}
-          </strong>
-          <p>
-            只向模型暴露当前策略允许的工具。文件工具保持只读，并继续阻止敏感路径和符号链接逃逸。
-          </p>
-        </div>
-
-        <Toggle
-          checked={settings.enabled}
-          label="启用工具调用"
-          testId="tools-enabled"
-          onChange={(enabled) => {
-            onUpdate({ enabled });
-          }}
-        />
-      </div>
-
       <SettingsSection
-        title="运行模式"
-        description="使用预设快速控制工具范围；修改任意工具后会切换为自定义。"
+        title="工作模式"
+        description="选择 Agent 当前需要的能力范围。"
       >
-        <SettingRow
-          title="工具预设"
-          description="对话模式不读取工作区；工作区模式启用当前全部低风险工具。"
-          disabled={!settings.enabled}
-        >
+        <div className="tool-mode-card">
           <Segmented
-            value={settings.profile}
-            options={TOOL_PROFILE_OPTIONS}
-            testId="tool-profile"
-            disabled={!settings.enabled}
-            onChange={setProfile}
-          />
-        </SettingRow>
-
-        <SettingRow
-          title="最大执行步数"
-          description="限制一次回复中模型、工具和工具结果之间的循环次数。"
-          disabled={!settings.enabled}
-        >
-          <Slider
-            value={settings.runtime.maxSteps}
-            min={1}
-            max={12}
-            unit=" 步"
-            disabled={!settings.enabled}
-            onChange={(maxSteps) => {
-              updateRuntime({ maxSteps });
-            }}
-          />
-        </SettingRow>
-
-        <SettingRow
-          title="单个工具超时"
-          description="超过时限后停止等待并把超时错误返回给模型。"
-          disabled={!settings.enabled}
-        >
-          <Slider
-            value={
-              settings.runtime
-                .defaultTimeoutMs /
-              1000
-            }
-            min={2}
-            max={120}
-            step={1}
-            unit=" 秒"
-            disabled={!settings.enabled}
-            onChange={(seconds) => {
-              updateRuntime({
-                defaultTimeoutMs:
-                  seconds * 1000
+            value={settings.mode}
+            options={TOOL_MODE_OPTIONS}
+            testId="tool-mode"
+            onChange={(mode) => {
+              onUpdate({
+                mode,
+                profile:
+                  mode === "coding"
+                    ? "workspace"
+                    : "chat"
               });
             }}
           />
-        </SettingRow>
 
-        <SettingRow
-          title="保存工具记录"
-          description="把工具名称、输入、结果和耗时保存在对应的 AI 消息中。"
-          disabled={!settings.enabled}
-        >
-          <Toggle
-            checked={
-              settings.runtime
-                .saveToolHistory
-            }
-            label="保存工具记录"
-            onChange={(saveToolHistory) => {
-              updateRuntime({
-                saveToolHistory
-              });
-            }}
-          />
-        </SettingRow>
+          <div
+            className="tool-mode-card__copy"
+            key={settings.mode}
+          >
+            <strong>
+              {coding
+                ? "分析授权项目"
+                : "聊天与通用任务"}
+            </strong>
+            <span>
+              {coding
+                ? "包含 Chat 能力，并允许读取和搜索授权工作区。"
+                : "用于时间、计算、规划和日常对话，不读取本地项目。"}
+            </span>
+          </div>
+
+          <div className="tool-mode-card__status">
+            <span>
+              {enabledTools} 个工具可用
+            </span>
+            {hasDeveloperOverrides(
+              settings
+            ) && (
+              <span>
+                开发者覆盖生效
+              </span>
+            )}
+          </div>
+        </div>
       </SettingsSection>
 
-      <SettingsSection
-        title="只读工作区"
-        description="只有这里授权的目录才能被工作区工具读取。环境变量中的工作区仍会作为附加来源。"
+      <section
+        className={`tool-workspace-reveal${
+          coding
+            ? " is-visible"
+            : ""
+        }`}
+        aria-hidden={!coding}
       >
-        <SettingRow
-          title="启用工作区工具"
-          description="关闭后不会向模型提供任何文件读取和搜索工具。"
-          disabled={!settings.enabled}
-        >
-          <Toggle
-            checked={settings.workspace.enabled}
-            label="启用工作区工具"
-            testId="workspace-tools-enabled"
-            onChange={(enabled) => {
-              updateWorkspace({ enabled });
-            }}
-          />
-        </SettingRow>
-
-        <SettingRow
-          title="包含应用启动目录"
-          description="开发时通常是当前项目根目录；打包后建议另外添加明确工作区。"
-          disabled={
-            !settings.enabled ||
-            !settings.workspace.enabled
-          }
-        >
-          <Toggle
-            checked={
-              settings.workspace
-                .includeProjectRoot
-            }
-            label="包含应用启动目录"
-            onChange={(includeProjectRoot) => {
-              updateWorkspace({
-                includeProjectRoot
-              });
-            }}
-          />
-        </SettingRow>
-
-        <div className="workspace-editor">
-          <div className="workspace-editor__header">
-            <div>
-              <strong>授权目录</strong>
-              <span>
-                使用相对路径时，工具会依次在这些目录中查找。
-              </span>
+        <div className="tool-workspace-reveal__inner">
+          <SettingsSection
+            title="Coding 工作区"
+            description="Agent 只能读取你明确授权的目录。"
+          >
+            <div className="workspace-simple-list">
+              {settings.workspace.roots.length === 0 ? (
+                <div className="workspace-simple-list__empty">
+                  尚未添加额外工作区
+                </div>
+              ) : (
+                settings.workspace.roots.map(
+                  (root) => (
+                    <div
+                      className="workspace-simple-item"
+                      key={root}
+                    >
+                      <code title={root}>
+                        {root}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateWorkspace({
+                            roots:
+                              settings.workspace.roots.filter(
+                                (item) =>
+                                  item !== root
+                              )
+                          });
+                        }}
+                      >
+                        移除
+                      </button>
+                    </div>
+                  )
+                )
+              )}
             </div>
+
             <ActionButton
-              disabled={
-                !settings.enabled ||
-                !settings.workspace.enabled
-              }
+              testId="add-workspace"
               onClick={() => {
                 void browseRoot();
               }}
             >
-              浏览…
+              添加工作区
             </ActionButton>
-          </div>
-
-          <div className="workspace-editor__add">
-            <TextInput
-              value={rootDraft}
-              placeholder="C:\\Projects\\Xixi"
-              disabled={
-                !settings.enabled ||
-                !settings.workspace.enabled
-              }
-              onChange={setRootDraft}
-            />
-            <ActionButton
-              disabled={
-                !rootDraft.trim() ||
-                !settings.enabled ||
-                !settings.workspace.enabled
-              }
-              onClick={() => {
-                addRoot(rootDraft);
-              }}
-            >
-              添加
-            </ActionButton>
-          </div>
-
-          <div className="workspace-root-list">
-            {settings.workspace.roots.length === 0 ? (
-              <div className="workspace-root-list__empty">
-                尚未添加额外目录
-              </div>
-            ) : (
-              settings.workspace.roots.map(
-                (root) => (
-                  <div
-                    className="workspace-root-item"
-                    key={root}
-                  >
-                    <code>{root}</code>
-                    <button
-                      type="button"
-                      aria-label={`移除 ${root}`}
-                      onClick={() => {
-                        updateWorkspace({
-                          roots:
-                            settings.workspace.roots.filter(
-                              (item) =>
-                                item !== root
-                            )
-                        });
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )
-              )
-            )}
-          </div>
+          </SettingsSection>
         </div>
-
-        <details className="settings-disclosure">
-          <summary>读取与搜索上限</summary>
-          <div className="settings-disclosure__body">
-            <SettingRow
-              title="文本文件上限"
-              description="超过此大小的文件不会按文本读取或搜索。"
-            >
-              <Slider
-                value={
-                  settings.workspace
-                    .maxTextFileBytes
-                }
-                min={250000}
-                max={20000000}
-                step={250000}
-                formatValue={formatBytes}
-                disabled={
-                  !settings.enabled ||
-                  !settings.workspace.enabled
-                }
-                onChange={(maxTextFileBytes) => {
-                  updateWorkspace({
-                    maxTextFileBytes
-                  });
-                }}
-              />
-            </SettingRow>
-            <SettingRow
-              title="单次读取行数"
-              description="限制 read_text_file 一次最多返回的行数。"
-            >
-              <Slider
-                value={
-                  settings.workspace
-                    .maxReadLines
-                }
-                min={50}
-                max={5000}
-                step={50}
-                unit=" 行"
-                disabled={
-                  !settings.enabled ||
-                  !settings.workspace.enabled
-                }
-                onChange={(maxReadLines) => {
-                  updateWorkspace({
-                    maxReadLines
-                  });
-                }}
-              />
-            </SettingRow>
-            <SettingRow
-              title="目录项目上限"
-              description="限制 list_directory 单次返回的项目数量。"
-            >
-              <Slider
-                value={
-                  settings.workspace
-                    .maxDirectoryEntries
-                }
-                min={20}
-                max={1000}
-                step={20}
-                unit=" 项"
-                disabled={
-                  !settings.enabled ||
-                  !settings.workspace.enabled
-                }
-                onChange={(maxDirectoryEntries) => {
-                  updateWorkspace({
-                    maxDirectoryEntries
-                  });
-                }}
-              />
-            </SettingRow>
-            <SettingRow
-              title="搜索结果上限"
-              description="限制文件搜索和文本搜索的单次结果数量。"
-            >
-              <Slider
-                value={
-                  settings.workspace
-                    .maxSearchResults
-                }
-                min={10}
-                max={500}
-                step={10}
-                unit=" 条"
-                disabled={
-                  !settings.enabled ||
-                  !settings.workspace.enabled
-                }
-                onChange={(maxSearchResults) => {
-                  updateWorkspace({
-                    maxSearchResults
-                  });
-                }}
-              />
-            </SettingRow>
-            <SettingRow
-              title="搜索深度"
-              description="限制递归进入子目录的层数。"
-            >
-              <Slider
-                value={
-                  settings.workspace
-                    .maxSearchDepth
-                }
-                min={1}
-                max={12}
-                unit=" 层"
-                disabled={
-                  !settings.enabled ||
-                  !settings.workspace.enabled
-                }
-                onChange={(maxSearchDepth) => {
-                  updateWorkspace({
-                    maxSearchDepth
-                  });
-                }}
-              />
-            </SettingRow>
-            <SettingRow
-              title="哈希文件上限"
-              description="超过此大小的文件不会整体读入内存计算 SHA-256。"
-            >
-              <Slider
-                value={
-                  settings.workspace
-                    .maxHashFileBytes
-                }
-                min={1000000}
-                max={200000000}
-                step={1000000}
-                formatValue={formatBytes}
-                disabled={
-                  !settings.enabled ||
-                  !settings.workspace.enabled
-                }
-                onChange={(maxHashFileBytes) => {
-                  updateWorkspace({
-                    maxHashFileBytes
-                  });
-                }}
-              />
-            </SettingRow>
-          </div>
-        </details>
-      </SettingsSection>
+      </section>
 
       <SettingsSection
-        title="工具权限"
-        description="先按 Toolset 控制一组能力，再按单个工具做精细调整。"
+        title="显示"
+        description="控制模型回复中工具活动的呈现方式。"
       >
-        <div className="toolset-grid">
-          {TOOLSET_OPTIONS.map(
-            (toolset) => {
-              const enabled =
-                settings.toolsets[
-                  toolset.id
-                ] !== false;
-
-              return (
-                <div
-                  className={`toolset-card${
-                    enabled
-                      ? " is-enabled"
-                      : ""
-                  }`}
-                  key={toolset.id}
-                >
-                  <div className="toolset-card__top">
-                    <div>
-                      <span>
-                        {toolset.risk}
-                      </span>
-                      <strong>
-                        {toolset.title}
-                      </strong>
-                    </div>
-                    <Toggle
-                      checked={enabled}
-                      disabled={!settings.enabled}
-                      label={`启用 ${toolset.title}`}
-                      onChange={(value) => {
-                        onUpdate({
-                          profile: "custom",
-                          toolsets: {
-                            ...settings.toolsets,
-                            [toolset.id]: value
-                          }
-                        });
-                      }}
-                    />
-                  </div>
-                  <p>{toolset.description}</p>
-                  <small>
-                    {toolset.tools.length} 个工具
-                  </small>
-                </div>
-              );
+        <SettingRow
+          title="工具调用"
+          description="简洁模式只显示关键动作；详细模式增加路径、范围和耗时。"
+        >
+          <Segmented
+            value={
+              settings.display
+                .detailLevel
             }
-          )}
-        </div>
+            options={TOOL_DETAIL_OPTIONS}
+            testId="tool-display-detail"
+            onChange={(detailLevel) => {
+              onUpdate({
+                display: {
+                  ...settings.display,
+                  detailLevel
+                }
+              });
+            }}
+          />
+        </SettingRow>
+      </SettingsSection>
 
-        <details className="settings-disclosure tool-list-disclosure">
-          <summary>单个工具</summary>
-          <div className="tool-list-groups">
-            {TOOLSET_OPTIONS.map(
-              (toolset) => (
-                <div
-                  className="tool-list-group"
-                  key={toolset.id}
+      {developerMode && (
+        <div className="developer-reveal">
+          <details
+            className="settings-disclosure developer-settings-disclosure"
+            data-testid="tool-developer-settings"
+          >
+            <summary>
+              开发者设置
+            </summary>
+
+            <div className="settings-disclosure__body">
+              <div className="developer-subsection">
+                <h3>Tool Runtime</h3>
+
+                <SettingRow
+                  title="最大 Agent 步数"
+                  description="限制模型与工具结果之间的循环次数。"
                 >
-                  <div className="tool-list-group__title">
-                    {toolset.title}
-                  </div>
-                  {toolset.tools.map(
-                    (tool) => (
-                      <div
-                        className="tool-list-item"
-                        key={tool.name}
-                      >
-                        <div>
-                          <strong>
-                            {tool.title}
-                          </strong>
-                          <code>
-                            {tool.name}
-                          </code>
-                          <p>
-                            {tool.description}
-                          </p>
-                        </div>
-                        <Toggle
-                          checked={
-                            settings.overrides[
-                              tool.name
-                            ] !== false
-                          }
-                          disabled={
-                            !settings.enabled ||
-                            settings.toolsets[
+                  <Slider
+                    value={settings.runtime.maxSteps}
+                    min={1}
+                    max={12}
+                    unit=" 步"
+                    onChange={(maxSteps) => {
+                      updateRuntime({ maxSteps });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="最大工具调用"
+                  description="达到上限后拒绝新的工具调用。"
+                >
+                  <Slider
+                    value={settings.runtime.maxToolCalls}
+                    min={1}
+                    max={50}
+                    unit=" 次"
+                    onChange={(maxToolCalls) => {
+                      updateRuntime({ maxToolCalls });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="任务总超时"
+                  description="限制一个 Agent Run 可持续的总时间。"
+                >
+                  <Slider
+                    value={settings.runtime.runTimeoutMs / 1000}
+                    min={10}
+                    max={600}
+                    step={10}
+                    unit=" 秒"
+                    onChange={(seconds) => {
+                      updateRuntime({
+                        runTimeoutMs:
+                          seconds * 1000
+                      });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="单工具超时"
+                  description="单次执行超过时限后返回标准化超时错误。"
+                >
+                  <Slider
+                    value={settings.runtime.defaultTimeoutMs / 1000}
+                    min={2}
+                    max={120}
+                    unit=" 秒"
+                    onChange={(seconds) => {
+                      updateRuntime({
+                        defaultTimeoutMs:
+                          seconds * 1000
+                      });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="重复调用限制"
+                  description="阻止模型持续使用完全相同的工具和参数。"
+                >
+                  <Slider
+                    value={settings.runtime.maxIdenticalCalls}
+                    min={1}
+                    max={5}
+                    unit=" 次"
+                    onChange={(maxIdenticalCalls) => {
+                      updateRuntime({ maxIdenticalCalls });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="保存详细记录"
+                  description="把工具输入、结果和耗时保存在 Assistant 消息中。"
+                >
+                  <Toggle
+                    checked={settings.runtime.saveToolHistory}
+                    label="保存详细工具记录"
+                    onChange={(saveToolHistory) => {
+                      updateRuntime({ saveToolHistory });
+                    }}
+                  />
+                </SettingRow>
+              </div>
+
+              <div className="developer-subsection">
+                <h3>Toolsets</h3>
+
+                {TOOLSET_OPTIONS.map(
+                  (toolset) => (
+                    <SettingRow
+                      key={toolset.id}
+                      title={toolset.title}
+                      description={toolset.description}
+                    >
+                      <Select
+                        value={
+                          settings.developer
+                            .toolsetOverrides[
                               toolset.id
-                            ] === false ||
-                            (
-                              toolset.id ===
-                                "workspace.read" &&
-                              !settings.workspace.enabled
-                            )
-                          }
-                          label={`启用 ${tool.title}`}
-                          testId={`tool-toggle-${tool.name}`}
-                          onChange={(value) => {
-                            onUpdate({
-                              profile: "custom",
-                              overrides: {
-                                ...settings.overrides,
-                                [tool.name]: value
+                            ] ?? "inherit"
+                        }
+                        options={TOOL_OVERRIDE_OPTIONS}
+                        onChange={(value) => {
+                          updateDeveloper({
+                            toolsetOverrides: {
+                              ...settings.developer.toolsetOverrides,
+                              [toolset.id]: value
+                            }
+                          });
+                        }}
+                      />
+                    </SettingRow>
+                  )
+                )}
+              </div>
+
+              <details className="developer-tool-list">
+                <summary>
+                  单个工具
+                </summary>
+
+                <div className="developer-tool-list__body">
+                  {TOOLSET_OPTIONS.flatMap(
+                    (toolset) =>
+                      toolset.tools.map(
+                        (tool) => (
+                          <div
+                            className="developer-tool-item"
+                            key={tool.name}
+                          >
+                            <div>
+                              <strong>
+                                {tool.title}
+                              </strong>
+                              <code>
+                                {tool.name}
+                              </code>
+                              <p>
+                                {tool.description}
+                              </p>
+                              <small>
+                                {toolset.title} · {toolset.risk}
+                              </small>
+                            </div>
+
+                            <Select
+                              value={
+                                settings.developer
+                                  .toolOverrides[
+                                    tool.name
+                                  ] ?? "inherit"
                               }
-                            });
-                          }}
-                        />
-                      </div>
-                    )
+                              options={TOOL_OVERRIDE_OPTIONS}
+                              testId={`tool-override-${tool.name}`}
+                              onChange={(value) => {
+                                updateDeveloper({
+                                  toolOverrides: {
+                                    ...settings.developer.toolOverrides,
+                                    [tool.name]: value
+                                  }
+                                });
+                              }}
+                            />
+                          </div>
+                        )
+                      )
                   )}
                 </div>
-              )
-            )}
-          </div>
-        </details>
+              </details>
 
-        <div className="tool-safety-note">
-          <strong>固定安全边界</strong>
-          <span>
-            当前版本不会在 Setting 中开放敏感文件、符号链接逃逸、写文件、命令执行或任意联网权限。这些保护不受预设和单工具开关影响。
-          </span>
+              <details className="developer-tool-list">
+                <summary>
+                  工作区高级限制
+                </summary>
+
+                <div className="developer-tool-list__body">
+                  <SettingRow
+                    title="包含应用启动目录"
+                    description="开发时通常是当前项目根目录。"
+                  >
+                    <Toggle
+                      checked={settings.workspace.includeProjectRoot}
+                      label="包含应用启动目录"
+                      onChange={(includeProjectRoot) => {
+                        updateWorkspace({ includeProjectRoot });
+                      }}
+                    />
+                  </SettingRow>
+
+                  <div className="workspace-developer-add">
+                    <TextInput
+                      value={rootDraft}
+                      placeholder="手动输入工作区路径"
+                      onChange={setRootDraft}
+                    />
+                    <ActionButton
+                      disabled={!rootDraft.trim()}
+                      onClick={() => {
+                        addRoot(rootDraft);
+                      }}
+                    >
+                      添加
+                    </ActionButton>
+                  </div>
+
+                  <SettingRow title="文本文件上限">
+                    <Slider
+                      value={settings.workspace.maxTextFileBytes}
+                      min={250000}
+                      max={20000000}
+                      step={250000}
+                      formatValue={formatBytes}
+                      onChange={(maxTextFileBytes) => {
+                        updateWorkspace({ maxTextFileBytes });
+                      }}
+                    />
+                  </SettingRow>
+
+                  <SettingRow title="单次读取行数">
+                    <Slider
+                      value={settings.workspace.maxReadLines}
+                      min={50}
+                      max={5000}
+                      step={50}
+                      unit=" 行"
+                      onChange={(maxReadLines) => {
+                        updateWorkspace({ maxReadLines });
+                      }}
+                    />
+                  </SettingRow>
+
+                  <SettingRow title="搜索结果上限">
+                    <Slider
+                      value={settings.workspace.maxSearchResults}
+                      min={10}
+                      max={500}
+                      step={10}
+                      unit=" 条"
+                      onChange={(maxSearchResults) => {
+                        updateWorkspace({ maxSearchResults });
+                      }}
+                    />
+                  </SettingRow>
+
+                  <SettingRow title="搜索深度">
+                    <Slider
+                      value={settings.workspace.maxSearchDepth}
+                      min={1}
+                      max={12}
+                      unit=" 层"
+                      onChange={(maxSearchDepth) => {
+                        updateWorkspace({ maxSearchDepth });
+                      }}
+                    />
+                  </SettingRow>
+                </div>
+              </details>
+
+              <div className="developer-model-capability">
+                <div>
+                  <span>当前模型</span>
+                  <strong>
+                    {activeModel.providerName} / {activeModel.modelName}
+                  </strong>
+                  <small>
+                    {activeModel.modelId}
+                  </small>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Provider</dt>
+                    <dd>{activeModel.providerType}</dd>
+                  </div>
+                  <div>
+                    <dt>工具接口</dt>
+                    <dd>AI SDK</dd>
+                  </div>
+                  <div>
+                    <dt>当前可见</dt>
+                    <dd>{enabledTools} 个</dd>
+                  </div>
+                  <div>
+                    <dt>能力验证</dt>
+                    <dd>请求时完成</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="tool-safety-note">
+                <strong>固定安全边界</strong>
+                <span>
+                  开发者模式不会开放敏感文件、工作区逃逸、写文件、命令执行或任意联网。
+                </span>
+              </div>
+            </div>
+          </details>
         </div>
-      </SettingsSection>
+      )}
     </>
   );
 }

@@ -5,7 +5,8 @@ import {
 export const DEFAULT_SETTINGS = {
   general: {
     launchAtLogin: false,
-    rememberPetPosition: true
+    rememberPetPosition: true,
+    developerMode: false
   },
 
   pet: {
@@ -107,6 +108,7 @@ export const DEFAULT_SETTINGS = {
       includeLocale: true,
       includeSystem: true,
       includeApplication: true,
+      includeRuntimeVersions: false,
       includeModel: true,
       includeWorkspace: true,
       includeTools: true,
@@ -117,10 +119,17 @@ export const DEFAULT_SETTINGS = {
 
   tools: {
     enabled: true,
+    mode: "coding",
     profile: "workspace",
+    display: {
+      detailLevel: "compact"
+    },
     runtime: {
       maxSteps: 6,
+      maxToolCalls: 12,
+      runTimeoutMs: 120000,
       defaultTimeoutMs: 15000,
+      maxIdenticalCalls: 2,
       saveToolHistory: true
     },
     workspace: {
@@ -133,6 +142,14 @@ export const DEFAULT_SETTINGS = {
       maxSearchResults: 100,
       maxSearchDepth: 6,
       maxHashFileBytes: 50000000
+    },
+    developer: {
+      toolsetOverrides: {
+        "core.runtime": "inherit",
+        "workspace.read": "inherit",
+        "agent.internal": "inherit"
+      },
+      toolOverrides: {}
     },
     toolsets: {
       "core.runtime": true,

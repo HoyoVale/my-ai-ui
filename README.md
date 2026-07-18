@@ -454,7 +454,7 @@ Setting → AI → Personality 现在可以配置：
 
 Personality 只定义助手是谁、如何回答；用户事实仍应保存在长期记忆中，会话内容仍由短期上下文管理。
 
-Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversation 新增上下文检查器，显示预计总 Token、输出预留，以及基础提示词、Personality、长期记忆、固定消息和最近对话的分项占用。详细说明见 `docs/SHORT_TERM_CONTEXT.md`。
+Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversation 新增上下文检查器，以当前输入占用作为主指标，并辅助显示最大输出预留、最坏情况预算，以及基础提示词、运行环境、Personality、长期记忆、固定消息和最近对话的分项占用。详细说明见 `docs/SHORT_TERM_CONTEXT.md`。
 
 ### Conversation / Response 阅读体验
 
@@ -470,4 +470,4 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - 每轮请求的实时运行环境注入
 - [第一版低风险工具系统](docs/SAFE_TOOLS.md)
 
-工具仅提供时间、计算、运行状态、任务计划和授权工作区只读能力。可在 `Setting → AI → Tools` 中配置 Tool Runtime、工作区、Toolset 和单工具开关；运行环境注入位于 `Setting → AI → Context`。Shell、写文件、任意网络请求、浏览器自动化和 MCP 尚未开放。
+工具仅提供时间、计算、运行状态、任务计划和授权工作区只读能力。普通设置通过 `Chat / Coding` 两种工作模式与工作区完成配置；开启 `Setting → General → Developer mode` 后，才显示 Tool Runtime、Toolset、单工具 description、三态覆盖和诊断信息。Conversation 使用轻量工具活动卡片和持久化计划展示工具过程；运行环境注入位于 `Setting → AI → Context`。Shell、写文件、任意网络请求、浏览器自动化和 MCP 尚未开放。

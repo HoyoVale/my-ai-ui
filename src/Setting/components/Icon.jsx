@@ -101,6 +101,14 @@ export function Icon({
       </>
     ),
 
+    developer: (
+      <>
+        <path d="m8 8-4 4 4 4" />
+        <path d="m16 8 4 4-4 4" />
+        <path d="m14 5-4 14" />
+      </>
+    ),
+
     model: (
       <>
         <rect

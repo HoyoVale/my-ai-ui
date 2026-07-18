@@ -525,7 +525,11 @@ export class AgentRuntime {
           ?.saveToolHistory === false
           ? []
           : this.activeRun
-              .toolCalls
+              .toolCalls,
+      plan:
+        this.activeRun
+          .toolSession
+          ?.getPlan?.() ?? []
     };
 
     if (
@@ -850,8 +854,13 @@ export class AgentRuntime {
 
           timeout: {
             totalMs:
-              modelSettings
-                .timeoutMs,
+              Math.min(
+                modelSettings.timeoutMs,
+                settings.tools
+                  ?.runtime
+                  ?.runTimeoutMs ??
+                modelSettings.timeoutMs
+              ),
 
             chunkMs:
               Math.min(

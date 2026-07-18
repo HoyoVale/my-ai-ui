@@ -23,6 +23,7 @@ describe(
                 enabled: false,
                 profile: "invalid",
                 includeTime: false,
+                includeRuntimeVersions: true,
                 includeWorkspace: true,
                 workspaceDetail: "full",
                 toolDetail: "names"
@@ -44,6 +45,11 @@ describe(
           settings.context
             .environment.includeTime,
           false
+        );
+        assert.equal(
+          settings.context
+            .environment.includeRuntimeVersions,
+          true
         );
         assert.equal(
           settings.context
@@ -71,9 +77,16 @@ describe(
             tools: {
               enabled: true,
               profile: "custom",
+              mode: "coding",
+              display: {
+                detailLevel: "detailed"
+              },
               runtime: {
                 maxSteps: 999,
+                maxToolCalls: 999,
+                runTimeoutMs: 1,
                 defaultTimeoutMs: 50,
+                maxIdenticalCalls: 99,
                 saveToolHistory: false
               },
               workspace: {
@@ -96,6 +109,14 @@ describe(
               },
               overrides: {
                 calculator: false
+              },
+              developer: {
+                toolsetOverrides: {
+                  "workspace.read": "disabled"
+                },
+                toolOverrides: {
+                  calculator: "disabled"
+                }
               }
             }
           });
@@ -103,6 +124,26 @@ describe(
         assert.equal(
           settings.tools.runtime.maxSteps,
           12
+        );
+        assert.equal(
+          settings.tools.mode,
+          "coding"
+        );
+        assert.equal(
+          settings.tools.display.detailLevel,
+          "detailed"
+        );
+        assert.equal(
+          settings.tools.runtime.maxToolCalls,
+          50
+        );
+        assert.equal(
+          settings.tools.runtime.runTimeoutMs,
+          10000
+        );
+        assert.equal(
+          settings.tools.runtime.maxIdenticalCalls,
+          5
         );
         assert.equal(
           settings.tools.runtime
@@ -166,6 +207,47 @@ describe(
           settings.tools.overrides
             .get_current_time,
           true
+        );
+        assert.equal(
+          settings.tools.developer
+            .toolsetOverrides[
+              "workspace.read"
+            ],
+          "disabled"
+        );
+        assert.equal(
+          settings.tools.developer
+            .toolOverrides.calculator,
+          "disabled"
+        );
+      }
+    );
+
+    it(
+      "migrates legacy custom Toolset switches into developer overrides",
+      () => {
+        const settings = sanitizeSettings({
+          tools: {
+            profile: "custom",
+            toolsets: {
+              "core.runtime": true,
+              "workspace.read": false,
+              "agent.internal": true
+            },
+            overrides: {
+              calculator: false
+            }
+          }
+        });
+
+        assert.equal(
+          settings.tools.mode,
+          "chat"
+        );
+        assert.equal(
+          settings.tools.developer
+            .toolOverrides.calculator,
+          "disabled"
         );
       }
     );

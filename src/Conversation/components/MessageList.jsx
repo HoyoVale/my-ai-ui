@@ -13,6 +13,10 @@ import {
   MarkdownContent
 } from "./MarkdownContent.jsx";
 
+import {
+  TOOL_METADATA
+} from "../../Setting/tools/toolPanelOptions.js";
+
 const TIME_FORMATTER =
   new Intl.DateTimeFormat(
     "zh-CN",
@@ -119,6 +123,8 @@ export function ConversationMessageList({
   loading,
   conversation,
   busy = false,
+  developerMode = false,
+  toolDetailLevel = "compact",
   onOpenInput,
   onUpdateMessageContext,
   onRegenerate
@@ -274,6 +280,8 @@ export function ConversationMessageList({
                   {isAssistant && (
                     <AssistantActivity
                       message={message}
+                      developerMode={developerMode}
+                      detailLevel={toolDetailLevel}
                     />
                   )}
 
@@ -404,8 +412,122 @@ export function ConversationMessageList({
   );
 }
 
+function toolTitle(toolCall) {
+  return (
+    TOOL_METADATA[
+      toolCall.name
+    ]?.title ??
+    toolCall.title ??
+    toolCall.name ??
+    "工具调用"
+  );
+}
+
+function toolStatusLabel(status) {
+  if (status === "error") {
+    return "失败";
+  }
+
+  if (status === "running") {
+    return "进行中";
+  }
+
+  return "完成";
+}
+
+function toolStatusMark(status) {
+  if (status === "error") {
+    return "!";
+  }
+
+  if (status === "running") {
+    return "…";
+  }
+
+  return "✓";
+}
+
+function describeToolCall(
+  toolCall
+) {
+  const input =
+    toolCall.input ?? {};
+
+  const path =
+    input.path ??
+    input.directory ??
+    input.root ??
+    input.query ??
+    input.expression ??
+    input.timezone ??
+    input.targetTimezone;
+
+  if (!path) {
+    return "";
+  }
+
+  const normalized =
+    String(path);
+
+  return normalized.length > 72
+    ? `${normalized.slice(0, 34)}…${normalized.slice(-30)}`
+    : normalized;
+}
+
+function AgentPlan({ plan }) {
+  if (!Array.isArray(plan) || plan.length === 0) {
+    return null;
+  }
+
+  const completed =
+    plan.filter(
+      (item) =>
+        item.status === "completed"
+    ).length;
+
+  const active =
+    plan.find(
+      (item) =>
+        item.status === "in_progress"
+    );
+
+  return (
+    <details className="conversation-plan">
+      <summary>
+        <span>
+          {active
+            ? "任务计划"
+            : `已完成 ${completed} 个步骤`}
+        </span>
+      </summary>
+
+      <div className="conversation-plan__items">
+        {plan.map((item) => (
+          <div
+            className={`conversation-plan__item is-${item.status}`}
+            key={item.id}
+          >
+            <span>
+              {item.status === "completed"
+                ? "✓"
+                : item.status === "in_progress"
+                  ? "●"
+                  : item.status === "blocked"
+                    ? "!"
+                    : "○"}
+            </span>
+            <strong>{item.title}</strong>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function AssistantActivity({
-  message
+  message,
+  developerMode,
+  detailLevel
 }) {
   const reasoning =
     String(
@@ -419,96 +541,155 @@ function AssistantActivity({
       ? message.toolCalls
       : [];
 
+  const plan =
+    Array.isArray(message.plan)
+      ? message.plan
+      : [];
+
   const duration =
     Number(message.durationMs) || 0;
 
   if (
     !duration &&
     !reasoning &&
-    toolCalls.length === 0
+    toolCalls.length === 0 &&
+    plan.length === 0
   ) {
     return null;
   }
 
-  return (
-    <details className="conversation-activity">
-      <summary>
-        <ConversationIcon
-          name="clock"
-          size={14}
-        />
-        <span>
-          {duration
-            ? `思考了 ${formatDuration(duration)}`
-            : "思考与工具"}
-        </span>
-        <ConversationIcon
-          name="chevron"
-          size={13}
-        />
-      </summary>
+  const showDetails =
+    developerMode ||
+    detailLevel === "detailed";
 
-      <div className="conversation-activity__content">
-        {reasoning ? (
-          <section className="conversation-reasoning">
-            <strong>思考摘要</strong>
+  return (
+    <div className="conversation-agent-activity">
+      <AgentPlan plan={plan} />
+
+      {toolCalls.length > 0 && (
+        <details className="conversation-activity">
+          <summary>
+            <span>
+              已使用 {toolCalls.length} 个工具
+            </span>
+            {duration > 0 && (
+              <small>
+                {formatDuration(duration)}
+              </small>
+            )}
+          </summary>
+
+          <div className="conversation-activity__content">
+            <div className="conversation-tool-list">
+              {toolCalls.map(
+                (toolCall, index) => {
+                  const title =
+                    toolTitle(toolCall);
+                  const description =
+                    describeToolCall(
+                      toolCall
+                    );
+                  const key =
+                    toolCall.id ??
+                    `${toolCall.name}-${index}`;
+
+                  if (developerMode) {
+                    return (
+                      <details
+                        className="conversation-tool-call conversation-tool-call--developer"
+                        key={key}
+                      >
+                        <summary>
+                          <span className={`conversation-tool-mark is-${toolCall.status ?? "complete"}`}>
+                            {toolStatusMark(toolCall.status)}
+                          </span>
+                          <span>
+                            <strong>{title}</strong>
+                            <code>{toolCall.name}</code>
+                          </span>
+                          <em>
+                            {toolStatusLabel(toolCall.status)}
+                            {toolCall.durationMs
+                              ? ` · ${formatDuration(toolCall.durationMs)}`
+                              : ""}
+                          </em>
+                        </summary>
+
+                        <div className="conversation-tool-call__content">
+                          {toolCall.input !== undefined && (
+                            <ToolCallSection
+                              title="输入"
+                              value={toolCall.input}
+                            />
+                          )}
+
+                          {toolCall.output !== undefined && (
+                            <ToolCallSection
+                              title="输出"
+                              value={toolCall.output}
+                            />
+                          )}
+                        </div>
+                      </details>
+                    );
+                  }
+
+                  return (
+                    <div
+                      className="conversation-tool-row"
+                      key={key}
+                    >
+                      <span className={`conversation-tool-mark is-${toolCall.status ?? "complete"}`}>
+                        {toolStatusMark(toolCall.status)}
+                      </span>
+                      <div>
+                        <strong>{title}</strong>
+                        {showDetails && description && (
+                          <small>{description}</small>
+                        )}
+                      </div>
+                      {showDetails && toolCall.durationMs > 0 && (
+                        <em>
+                          {formatDuration(toolCall.durationMs)}
+                        </em>
+                      )}
+                    </div>
+                  );
+                }
+              )}
+            </div>
+
+            {reasoning && (
+              <details className="conversation-reasoning">
+                <summary>思考摘要</summary>
+                <MarkdownContent
+                  content={reasoning}
+                  compact
+                />
+              </details>
+            )}
+          </div>
+        </details>
+      )}
+
+      {toolCalls.length === 0 && reasoning && (
+        <details className="conversation-activity">
+          <summary>
+            <span>
+              {duration
+                ? `思考了 ${formatDuration(duration)}`
+                : "思考摘要"}
+            </span>
+          </summary>
+          <div className="conversation-activity__content">
             <MarkdownContent
               content={reasoning}
               compact
             />
-          </section>
-        ) : (
-          <p className="conversation-activity__empty">
-            当前回复没有可展示的思考摘要。
-          </p>
-        )}
-
-        {toolCalls.map(
-          (toolCall, index) => (
-            <details
-              className="conversation-tool-call"
-              key={
-                toolCall.id ??
-                `${toolCall.name}-${index}`
-              }
-            >
-              <summary>
-                <ConversationIcon
-                  name="tool"
-                  size={14}
-                />
-                <span>
-                  {toolCall.name ||
-                    "工具调用"}
-                </span>
-                <em>
-                  {toolCall.status ||
-                    "完成"}
-                </em>
-              </summary>
-
-              <div className="conversation-tool-call__content">
-                {toolCall.input !==
-                  undefined && (
-                  <ToolCallSection
-                    title="输入"
-                    value={toolCall.input}
-                  />
-                )}
-
-                {toolCall.output !==
-                  undefined && (
-                  <ToolCallSection
-                    title="输出"
-                    value={toolCall.output}
-                  />
-                )}
-              </div>
-            </details>
-          )
-        )}
-      </div>
-    </details>
+          </div>
+        </details>
+      )}
+    </div>
   );
 }
 

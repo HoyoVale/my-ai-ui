@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useState
 } from "react";
 
@@ -59,6 +60,18 @@ export default function Setting() {
     updateSection,
     resetAll
   } = useSettings();
+
+  useEffect(() => {
+    if (
+      !settings.general.developerMode &&
+      activeTab === "developer"
+    ) {
+      setActiveTab("general");
+    }
+  }, [
+    activeTab,
+    settings.general.developerMode
+  ]);
 
   const theme =
     useResolvedTheme(
@@ -130,6 +143,10 @@ export default function Setting() {
         <SettingsSidebar
           collapsed={collapsed}
           activeTab={activeTab}
+          developerMode={
+            settings.general
+              .developerMode
+          }
           onTabChange={
             setActiveTab
           }

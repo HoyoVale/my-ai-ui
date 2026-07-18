@@ -74,7 +74,19 @@ export function createAgentToolSession({
       defaultTimeoutMs:
         toolSettings.runtime
           ?.defaultTimeoutMs ??
-        15000
+        15000,
+      maxToolCalls:
+        toolSettings.runtime
+          ?.maxToolCalls ??
+        12,
+      maxIdenticalCalls:
+        toolSettings.runtime
+          ?.maxIdenticalCalls ??
+        2,
+      runTimeoutMs:
+        toolSettings.runtime
+          ?.runTimeoutMs ??
+        120000
     });
 
   return {

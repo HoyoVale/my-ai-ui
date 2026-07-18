@@ -862,6 +862,31 @@ async function main() {
 
     await setting
       .locator(
+        '[data-testid="setting-tab-general"]'
+      )
+      .click();
+
+    setting.once(
+      "dialog",
+      (dialog) => {
+        void dialog.accept();
+      }
+    );
+
+    const developerToggle =
+      setting.locator(
+        '[data-testid="developer-mode"]'
+      );
+
+    await developerToggle.click();
+    await waitForAttribute(
+      developerToggle,
+      "aria-checked",
+      "true"
+    );
+
+    await setting
+      .locator(
         '[data-testid="setting-tab-tools"]'
       )
       .click();
@@ -873,36 +898,55 @@ async function main() {
       "工具"
     );
 
+    const toolMode =
+      setting.locator(
+        '[data-testid="tool-mode"]'
+      );
+
+    await toolMode
+      .getByRole(
+        "button",
+        { name: "Chat" }
+      )
+      .click();
+
+    await toolMode
+      .getByRole(
+        "button",
+        { name: "Coding" }
+      )
+      .click();
+
     await waitForText(
       setting.locator(
-        ".tool-overview-card"
+        ".tool-mode-card"
       ),
-      "Safe Tool Runtime"
+      "分析授权项目"
     );
 
     await setting
       .locator(
-        "details.tool-list-disclosure summary"
+        '[data-testid="tool-developer-settings"] summary'
       )
+      .first()
       .click();
 
-    const calculatorToggle =
+    await setting
+      .locator(
+        "details.developer-tool-list summary"
+      )
+      .first()
+      .click();
+
+    const calculatorOverride =
       setting.locator(
-        '[data-testid="tool-toggle-calculator"]'
+        '[data-testid="tool-override-calculator"]'
       );
 
-    await calculatorToggle.click();
-    await waitForAttribute(
-      calculatorToggle,
-      "aria-checked",
-      "false"
-    );
-    await calculatorToggle.click();
-    await waitForAttribute(
-      calculatorToggle,
-      "aria-checked",
-      "true"
-    );
+    await calculatorOverride
+      .selectOption("disabled");
+    await calculatorOverride
+      .selectOption("inherit");
 
     await setting
       .locator(
@@ -924,24 +968,19 @@ async function main() {
       "运行环境上下文"
     );
 
-    await setting
-      .locator(
-        '[data-testid="runtime-context-profile"]'
-      )
-      .getByRole(
-        "button",
-        { name: "精简" }
-      )
-      .click();
+    const sharePaths =
+      setting.locator(
+        '[data-testid="share-workspace-paths"]'
+      );
+
+    await sharePaths.click();
+    await sharePaths.click();
 
     await setting
       .locator(
-        '[data-testid="runtime-context-profile"]'
+        '[data-testid="context-developer-settings"] summary'
       )
-      .getByRole(
-        "button",
-        { name: "标准" }
-      )
+      .first()
       .click();
 
     await setting

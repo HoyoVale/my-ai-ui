@@ -20,6 +20,7 @@ const DEFAULT_ENVIRONMENT = {
   includeLocale: true,
   includeSystem: true,
   includeApplication: true,
+  includeRuntimeVersions: false,
   includeModel: true,
   includeWorkspace: true,
   includeTools: true,
@@ -274,8 +275,7 @@ export function buildRuntimeContextSection({
     );
 
     if (
-      environment.profile ===
-      "detailed"
+      environment.includeRuntimeVersions
     ) {
       lines.push(
         `运行时：Node ${snapshot.runtime.node}；Electron ${snapshot.runtime.electron ?? "未知"}；Chromium ${snapshot.runtime.chromium ?? "未知"}`

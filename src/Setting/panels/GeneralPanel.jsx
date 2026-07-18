@@ -75,6 +75,39 @@ export function GeneralPanel({
         </SettingRow>
       </SettingsSection>
 
+
+      <SettingsSection
+        title="开发者"
+        description="在保持默认安全边界的前提下显示高级设置与诊断信息。"
+      >
+        <SettingRow
+          title="开发者模式"
+          description="显示模型、上下文、工具运行时和诊断设置。"
+        >
+          <Toggle
+            checked={
+              general.developerMode
+            }
+            label="开发者模式"
+            testId="developer-mode"
+            onChange={(value) => {
+              if (
+                value &&
+                !window.confirm(
+                  "开发者模式用于模型适配、工具调试和插件开发。它不会解除应用的固定安全保护。"
+                )
+              ) {
+                return;
+              }
+
+              onUpdate({
+                developerMode: value
+              });
+            }}
+          />
+        </SettingRow>
+      </SettingsSection>
+
       <SettingsSection
         title="恢复默认"
         description="恢复所有窗口和外观设置。"

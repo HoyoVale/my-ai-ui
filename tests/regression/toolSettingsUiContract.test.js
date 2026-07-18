@@ -37,11 +37,11 @@ describe(
         );
         assert.match(
           panel,
-          /Safe Tool Runtime/u
+          /TOOL_MODE_OPTIONS/u
         );
         assert.match(
           panel,
-          /读取与搜索上限/u
+          /developerMode/u
         );
         assert.match(
           panel,
@@ -67,7 +67,7 @@ describe(
         );
         assert.match(
           panel,
-          /runtime-context-profile/u
+          /context-developer-settings/u
         );
         assert.match(
           panel,

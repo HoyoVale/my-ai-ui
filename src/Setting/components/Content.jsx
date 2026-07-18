@@ -16,6 +16,10 @@ import {
 
 
 import {
+  DeveloperPanel
+} from "../panels/DeveloperPanel.jsx";
+
+import {
   GeneralPanel
 } from "../panels/GeneralPanel.jsx";
 
@@ -150,6 +154,10 @@ export function SettingsContent({
 
     conversation: (
       <ConversationPanel
+        developerMode={
+          settings.general
+            .developerMode
+        }
         conversationSettings={
           settings.conversation
         }
@@ -174,12 +182,23 @@ export function SettingsContent({
     tools: (
       <ToolPanel
         settings={settings.tools}
+        developerMode={
+          settings.general
+            .developerMode
+        }
+        modelSettings={settings.model}
         onUpdate={(patch) => {
           onUpdateSection(
             "tools",
             patch
           );
         }}
+      />
+    ),
+
+    developer: (
+      <DeveloperPanel
+        settings={settings}
       />
     ),
 

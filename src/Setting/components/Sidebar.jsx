@@ -9,6 +9,7 @@ import {
 export function SettingsSidebar({
   collapsed,
   activeTab,
+  developerMode = false,
   onTabChange
 }) {
   return (
@@ -29,7 +30,13 @@ export function SettingsSidebar({
         className="setting-sidebar__nav"
         aria-label="Settings navigation"
       >
-        {SETTING_GROUPS.map(
+        {SETTING_GROUPS
+          .filter(
+            (group) =>
+              !group.developerOnly ||
+              developerMode
+          )
+          .map(
           (group) => (
             <div
               className="setting-sidebar__group"

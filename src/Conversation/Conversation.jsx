@@ -263,6 +263,15 @@ export default function Conversation() {
 
           <ConversationMessageList
             loading={history.loading}
+            developerMode={
+              settings.general
+                .developerMode
+            }
+            toolDetailLevel={
+              settings.tools
+                .display
+                .detailLevel
+            }
             conversation={
               history.current
             }

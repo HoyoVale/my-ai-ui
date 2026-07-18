@@ -322,7 +322,8 @@ export class ConversationManager {
     status = "complete",
     durationMs = 0,
     reasoningSummary = "",
-    toolCalls = []
+    toolCalls = [],
+    plan = []
   }) {
     const data =
       this.ensureLoaded();
@@ -369,7 +370,8 @@ export class ConversationManager {
       {
         durationMs,
         reasoningSummary,
-        toolCalls
+        toolCalls,
+        plan
       }
     );
 
@@ -501,7 +503,8 @@ export class ConversationManager {
     status = "complete",
     durationMs = 0,
     reasoningSummary = "",
-    toolCalls = []
+    toolCalls = [],
+    plan = []
   }) {
     const conversation =
       this.findMutableConversation(
@@ -554,13 +557,15 @@ export class ConversationManager {
     delete message.durationMs;
     delete message.reasoningSummary;
     delete message.toolCalls;
+    delete message.plan;
 
     this.applyAssistantMetadata(
       message,
       {
         durationMs,
         reasoningSummary,
-        toolCalls
+        toolCalls,
+        plan
       }
     );
 
@@ -588,7 +593,8 @@ export class ConversationManager {
     {
       durationMs = 0,
       reasoningSummary = "",
-      toolCalls = []
+      toolCalls = [],
+      plan = []
     } = {}
   ) {
     if (
@@ -626,6 +632,13 @@ export class ConversationManager {
     ) {
       message.toolCalls =
         clone(toolCalls);
+    }
+
+    if (
+      Array.isArray(plan) &&
+      plan.length > 0
+    ) {
+      message.plan = clone(plan);
     }
   }
 

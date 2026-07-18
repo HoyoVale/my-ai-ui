@@ -91,6 +91,21 @@ export const SETTING_GROUPS = [
   },
 
   {
+    id: "developer",
+    label: "开发者",
+    developerOnly: true,
+    tabs: [
+      {
+        id: "developer",
+        label: "Developer",
+        title: "开发者",
+        description:
+          "查看 Agent Runtime、工具和模型诊断信息。"
+      }
+    ]
+  },
+
+  {
     id: "other",
     label: "其他",
     tabs: [

@@ -4,8 +4,7 @@ import {
 
 import {
   SAFE_TOOL_NAMES,
-  TOOLSET_IDS,
-  resolveToolProfileId
+  TOOLSET_IDS
 } from "../tools/toolCatalog.js";
 
 const PROVIDER_TYPES = [
@@ -88,10 +87,20 @@ const TOOL_DETAIL_OPTIONS = [
   "names"
 ];
 
-const TOOL_PROFILES = [
+const TOOL_MODES = [
   "chat",
-  "workspace",
-  "custom"
+  "coding"
+];
+
+const TOOL_DETAIL_LEVELS = [
+  "compact",
+  "detailed"
+];
+
+const TOOL_OVERRIDE_VALUES = [
+  "inherit",
+  "enabled",
+  "disabled"
 ];
 
 function clamp(value, min, max) {
@@ -733,6 +742,10 @@ function sanitizeContextSettings(
         environment.includeApplication,
         fallback.includeApplication
       ),
+      includeRuntimeVersions: booleanValue(
+        environment.includeRuntimeVersions,
+        fallback.includeRuntimeVersions
+      ),
       includeModel: booleanValue(
         environment.includeModel,
         fallback.includeModel
@@ -765,37 +778,125 @@ function sanitizeToolSettings(
 ) {
   const runtime = tools?.runtime ?? {};
   const workspace = tools?.workspace ?? {};
-  const sourceToolsets =
-    tools?.toolsets ?? {};
-  const sourceOverrides =
-    tools?.overrides ?? {};
+  const display = tools?.display ?? {};
+  const developer = tools?.developer ?? {};
+  const sourceToolsetOverrides =
+    developer.toolsetOverrides ?? {};
+  const sourceToolOverrides =
+    developer.toolOverrides ?? {};
 
-  const toolsets = {};
+  const legacyCustom =
+    tools?.profile === "custom";
+
+  const legacyMode =
+    tools?.profile === "workspace"
+      ? "coding"
+      : tools?.profile === "chat"
+        ? "chat"
+        : legacyCustom
+          ? tools?.toolsets?.[
+              "workspace.read"
+            ] === false
+            ? "chat"
+            : "coding"
+          : defaults.mode;
+
+  const mode = enumValue(
+    tools?.mode === undefined
+      ? legacyMode
+      : tools.mode,
+    TOOL_MODES,
+    legacyMode
+  );
+
+  const toolsetOverrides = {};
   for (const id of TOOLSET_IDS) {
-    toolsets[id] = booleanValue(
-      sourceToolsets[id],
+    const explicit =
+      sourceToolsetOverrides[id];
+
+    if (explicit !== undefined) {
+      toolsetOverrides[id] = enumValue(
+        explicit,
+        TOOL_OVERRIDE_VALUES,
+        "inherit"
+      );
+      continue;
+    }
+
+    const baseEnabled =
+      id === "workspace.read"
+        ? mode === "coding"
+        : true;
+    const legacyEnabled =
+      tools?.toolsets?.[id];
+
+    toolsetOverrides[id] =
+      legacyCustom &&
+      typeof legacyEnabled === "boolean" &&
+      legacyEnabled !== baseEnabled
+        ? legacyEnabled
+          ? "enabled"
+          : "disabled"
+        : "inherit";
+  }
+
+  const toolOverrides = {};
+  for (const name of SAFE_TOOL_NAMES) {
+    const explicit =
+      sourceToolOverrides[name];
+
+    if (explicit !== undefined) {
+      toolOverrides[name] = enumValue(
+        explicit,
+        TOOL_OVERRIDE_VALUES,
+        "inherit"
+      );
+      continue;
+    }
+
+    if (
+      (tools?.mode === undefined || legacyCustom) &&
+      typeof tools?.overrides?.[name] ===
+        "boolean" &&
+      tools.overrides[name] === false
+    ) {
+      toolOverrides[name] = "disabled";
+    }
+  }
+
+  const legacyToolsets = {};
+  for (const id of TOOLSET_IDS) {
+    legacyToolsets[id] = booleanValue(
+      tools?.toolsets?.[id],
       defaults.toolsets[id]
     );
   }
 
-  const overrides = {};
+  const legacyOverrides = {};
   for (const name of SAFE_TOOL_NAMES) {
-    overrides[name] = booleanValue(
-      sourceOverrides[name],
+    legacyOverrides[name] = booleanValue(
+      tools?.overrides?.[name],
       defaults.overrides[name]
     );
   }
 
-  const sanitized = {
+  return {
     enabled: booleanValue(
       tools?.enabled,
       defaults.enabled
     ),
-    profile: enumValue(
-      tools?.profile,
-      TOOL_PROFILES,
-      defaults.profile
-    ),
+    mode,
+    profile:
+      mode === "coding"
+        ? "workspace"
+        : "chat",
+    display: {
+      detailLevel: enumValue(
+        display.detailLevel,
+        TOOL_DETAIL_LEVELS,
+        defaults.display.detailLevel
+      )
+    },
     runtime: {
       maxSteps: integerValue(
         runtime.maxSteps,
@@ -803,11 +904,29 @@ function sanitizeToolSettings(
         1,
         12
       ),
+      maxToolCalls: integerValue(
+        runtime.maxToolCalls,
+        defaults.runtime.maxToolCalls,
+        1,
+        50
+      ),
+      runTimeoutMs: integerValue(
+        runtime.runTimeoutMs,
+        defaults.runtime.runTimeoutMs,
+        10000,
+        600000
+      ),
       defaultTimeoutMs: integerValue(
         runtime.defaultTimeoutMs,
         defaults.runtime.defaultTimeoutMs,
         2000,
         120000
+      ),
+      maxIdenticalCalls: integerValue(
+        runtime.maxIdenticalCalls,
+        defaults.runtime.maxIdenticalCalls,
+        1,
+        5
       ),
       saveToolHistory: booleanValue(
         runtime.saveToolHistory,
@@ -815,10 +934,7 @@ function sanitizeToolSettings(
       )
     },
     workspace: {
-      enabled: booleanValue(
-        workspace.enabled,
-        defaults.workspace.enabled
-      ),
+      enabled: true,
       includeProjectRoot: booleanValue(
         workspace.includeProjectRoot,
         defaults.workspace.includeProjectRoot
@@ -864,16 +980,13 @@ function sanitizeToolSettings(
         200000000
       )
     },
-    toolsets,
-    overrides
+    developer: {
+      toolsetOverrides,
+      toolOverrides
+    },
+    toolsets: legacyToolsets,
+    overrides: legacyOverrides
   };
-
-  sanitized.profile =
-    resolveToolProfileId(
-      sanitized
-    );
-
-  return sanitized;
 }
 
 export function sanitizeSettings(
@@ -921,7 +1034,11 @@ export function sanitizeSettings(
           general.rememberPetPosition,
           defaults.general
             .rememberPetPosition
-        )
+        ),
+      developerMode: booleanValue(
+        general.developerMode,
+        defaults.general.developerMode
+      )
     },
 
     pet: {

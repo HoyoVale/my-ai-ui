@@ -129,6 +129,65 @@ describe(
     );
 
     it(
+      "stops repeated calls and enforces the total tool-call budget",
+      async () => {
+        const repeatedExecutor =
+          new ToolExecutor({
+            maxIdenticalCalls: 1,
+            maxToolCalls: 4
+          });
+
+        const definition = {
+          name: "echo_tool",
+          title: "Echo tool",
+          async execute(input) {
+            return input;
+          }
+        };
+
+        const first =
+          await repeatedExecutor.execute(
+            definition,
+            { value: 1 }
+          );
+        const repeated =
+          await repeatedExecutor.execute(
+            definition,
+            { value: 1 }
+          );
+
+        assert.equal(first.ok, true);
+        assert.equal(repeated.ok, false);
+        assert.equal(
+          repeated.error.code,
+          "REPEATED_TOOL_CALL"
+        );
+
+        const limitedExecutor =
+          new ToolExecutor({
+            maxToolCalls: 1,
+            maxIdenticalCalls: 5
+          });
+
+        await limitedExecutor.execute(
+          definition,
+          { value: 1 }
+        );
+        const limited =
+          await limitedExecutor.execute(
+            definition,
+            { value: 2 }
+          );
+
+        assert.equal(limited.ok, false);
+        assert.equal(
+          limited.error.code,
+          "TOOL_CALL_LIMIT"
+        );
+      }
+    );
+
+    it(
       "uses configured workspace roots and read limits",
       async () => {
         const root = fs.mkdtempSync(

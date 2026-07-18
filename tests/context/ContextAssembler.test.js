@@ -129,7 +129,7 @@ describe(
           result.metadata
             .runtime
             .toolProfile,
-          "workspace"
+          "chat"
         );
         assert.equal(
           result.budget.sections
