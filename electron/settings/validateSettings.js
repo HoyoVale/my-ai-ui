@@ -935,6 +935,13 @@ function normalizeWorkspacePath(value) {
     return path.win32.normalize(requested);
   }
 
+  // A stored POSIX absolute path must stay POSIX even when settings are
+  // validated on Windows. path.resolve("/projects/alpha") on Windows would
+  // otherwise rewrite it to the current drive, changing workspace identity.
+  if (requested.startsWith("/")) {
+    return path.posix.normalize(requested);
+  }
+
   return path.resolve(requested);
 }
 
