@@ -644,11 +644,15 @@ export function ModelPanel({
 
           <div className="model-runtime-summary__actions">
             <Select
+              testId="model-provider-template-select"
               value={providerTemplateId}
               options={templateOptions}
               onChange={setProviderTemplateId}
             />
-            <ActionButton onClick={addProvider}>
+            <ActionButton
+              testId="model-provider-add"
+              onClick={addProvider}
+            >
               添加提供商
             </ActionButton>
           </div>
@@ -727,7 +731,10 @@ export function ModelPanel({
 </div>
       </div>
 
-      <details className="model-config-card">
+      <details
+        className="model-config-card"
+        data-testid="model-provider-add-section"
+      >
         <summary>
           <span>
             <strong>添加提供商</strong>
@@ -738,6 +745,7 @@ export function ModelPanel({
           <SettingRow title="Provider 模板">
             <div className="settings-credential-control">
               <Select
+                testId="model-provider-template-select"
                 value={providerTemplateId}
                 options={Object.values(MODEL_PROVIDER_TEMPLATES).map((item) => ({
                   value: item.id,
@@ -745,7 +753,10 @@ export function ModelPanel({
                 }))}
                 onChange={setProviderTemplateId}
               />
-              <ActionButton onClick={addProvider}>
+              <ActionButton
+                testId="model-provider-add"
+                onClick={addProvider}
+              >
                 添加
               </ActionButton>
             </div>

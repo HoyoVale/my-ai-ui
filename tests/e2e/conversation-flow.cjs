@@ -225,6 +225,83 @@ async function waitForCount(
   );
 }
 
+async function ensureModelProvider(
+  setting,
+  providerId
+) {
+  const providerSelect =
+    setting.locator(
+      '[data-testid="model-provider-select"]'
+    );
+
+  if (
+    await providerSelect.count() > 0
+  ) {
+    const configuredProviders =
+      await providerSelect
+        .locator("option")
+        .evaluateAll(
+          (options) =>
+            options.map(
+              (option) =>
+                option.value
+            )
+        );
+
+    if (
+      configuredProviders.includes(
+        providerId
+      )
+    ) {
+      await providerSelect
+        .selectOption(providerId);
+
+      return;
+    }
+
+    const addSection =
+      setting.locator(
+        '[data-testid="model-provider-add-section"]'
+      );
+
+    if (
+      await addSection.count() > 0 &&
+      await addSection.getAttribute("open") === null
+    ) {
+      await addSection
+        .locator("summary")
+        .click();
+    }
+  }
+
+  const templateSelect =
+    setting.locator(
+      '[data-testid="model-provider-template-select"]'
+    );
+
+  await templateSelect.waitFor({
+    state: "visible",
+    timeout: 15000
+  });
+
+  await templateSelect
+    .selectOption(providerId);
+
+  await setting
+    .locator(
+      '[data-testid="model-provider-add"]'
+    )
+    .click();
+
+  await providerSelect.waitFor({
+    state: "visible",
+    timeout: 15000
+  });
+
+  await providerSelect
+    .selectOption(providerId);
+}
+
 async function waitForWindowVisible(
   electronApp,
   page,
@@ -1155,11 +1232,10 @@ async function main() {
       "模型"
     );
 
-    await setting
-      .locator(
-        '[data-testid="model-provider-select"]'
-      )
-      .selectOption("ollama");
+    await ensureModelProvider(
+      setting,
+      "ollama"
+    );
 
     await delay(250);
 

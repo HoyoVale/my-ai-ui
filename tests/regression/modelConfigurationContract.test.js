@@ -49,6 +49,33 @@ describe(
     );
 
     it(
+      "keeps provider onboarding addressable from a clean settings state",
+      () => {
+        const panelSource =
+          read(
+            "../../src/Setting/panels/ModelPanel.jsx"
+          );
+        const e2eSource =
+          read(
+            "../e2e/conversation-flow.cjs"
+          );
+
+        assert.match(
+          panelSource,
+          /model-provider-template-select/u
+        );
+        assert.match(
+          panelSource,
+          /model-provider-add/u
+        );
+        assert.match(
+          e2eSource,
+          /ensureModelProvider/u
+        );
+      }
+    );
+
+    it(
       "removes the context token control from the Context panel",
       () => {
         const source =
