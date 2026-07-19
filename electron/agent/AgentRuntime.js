@@ -587,6 +587,22 @@ export class AgentRuntime {
     void run.toolSession
       ?.closePersistence?.();
 
+    /*
+     * Response 窗口需要在 activeRun 被释放前收到最后一份结构化快照。
+     * 否则错误兜底或本地总结只存在于旧的文本流中，工具活动与最终回复
+     * 无法分区渲染。
+     */
+    this.setStatus({
+      state: state.runtimeState,
+      runId,
+      conversationId,
+      startedAt: run.startedAt,
+      lastError: state.lastError || null,
+      stopReason: state.executionStopReason,
+      outcome: state.outcome,
+      resumable: state.resumable
+    });
+
     if (closeResponse) {
       endResponseStream();
     }

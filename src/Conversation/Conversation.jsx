@@ -13,6 +13,10 @@ import {
 } from "./components/MessageList.jsx";
 
 import {
+  ConversationPlanDock
+} from "./components/PlanDock.jsx";
+
+import {
   ConversationTaskPanel
 } from "./components/TaskPanel.jsx";
 
@@ -104,6 +108,15 @@ export default function Conversation() {
 
   const currentConversationId =
     history.current?.id ?? "";
+
+  const currentLiveActivity =
+    agentStatus.conversationId ===
+      history.current?.id &&
+    ["running", "stopping", "cancelling"].includes(
+      agentStatus.state
+    )
+      ? agentStatus
+      : null;
 
   useEffect(() => {
     if (history.current?.mode) {
@@ -318,15 +331,7 @@ export default function Conversation() {
             conversation={
               history.current
             }
-            liveActivity={
-              agentStatus.conversationId ===
-                history.current?.id &&
-              ["running", "stopping", "cancelling"].includes(
-                agentStatus.state
-              )
-                ? agentStatus
-                : null
-            }
+            liveActivity={currentLiveActivity}
             busy={history.busy}
             onOpenTaskPanel={(
               messageId
@@ -368,20 +373,16 @@ export default function Conversation() {
                 });
             }}
           />
+
+          <ConversationPlanDock
+            activity={currentLiveActivity}
+          />
         </main>
 
         <ConversationTaskPanel
           open={taskOpen}
           conversation={history.current}
-          liveActivity={
-            agentStatus.conversationId ===
-              history.current?.id &&
-            ["running", "stopping", "cancelling"].includes(
-              agentStatus.state
-            )
-              ? agentStatus
-              : null
-          }
+          liveActivity={currentLiveActivity}
           targetMessageId={
             taskTargetMessageId
           }

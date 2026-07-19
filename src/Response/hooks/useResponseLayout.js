@@ -4,7 +4,8 @@ import {
 } from "react";
 
 export function useResponseLayout({
-  text,
+  hasContent,
+  contentKey,
   streamId,
   shellRef,
   contentRef
@@ -16,9 +17,6 @@ export function useResponseLayout({
 
   const stickToBottomRef =
     useRef(true);
-
-  const hasText =
-    Boolean(text);
 
   useLayoutEffect(() => {
     lastSizeRef.current = {
@@ -33,7 +31,7 @@ export function useResponseLayout({
   useLayoutEffect(() => {
     const shell = shellRef.current;
 
-    if (!shell || !hasText) {
+    if (!shell || !hasContent) {
       return undefined;
     }
 
@@ -98,7 +96,7 @@ export function useResponseLayout({
       }
     };
   }, [
-    hasText,
+    hasContent,
     shellRef
   ]);
 
@@ -115,7 +113,7 @@ export function useResponseLayout({
 
     content.scrollTop =
       content.scrollHeight;
-  }, [text, contentRef]);
+  }, [contentKey, contentRef]);
 
   const handleScroll = () => {
     const content =

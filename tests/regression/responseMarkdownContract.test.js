@@ -22,7 +22,7 @@ describe(
   "Response markdown contract",
   () => {
     it(
-      "renders streamed response text through the shared Markdown component",
+      "renders the final response separately through the shared Markdown component",
       () => {
         const source =
           read(
@@ -35,7 +35,11 @@ describe(
         );
         assert.match(
           source,
-          /content=\{text\}/u
+          /content=\{answerText\}/u
+        );
+        assert.match(
+          source,
+          /ResponseActivityFlow/u
         );
       }
     );
@@ -64,7 +68,7 @@ describe(
     );
 
     it(
-      "styles code blocks and tables inside the response bubble",
+      "styles code blocks, tables and structured activity inside the response bubble",
       () => {
         const source =
           read(
@@ -78,6 +82,14 @@ describe(
         assert.match(
           source,
           /response-bubble \.markdown-table-card/u
+        );
+        assert.match(
+          source,
+          /response-activity__events/u
+        );
+        assert.match(
+          source,
+          /response-bubble__answer\.has-activity/u
         );
       }
     );

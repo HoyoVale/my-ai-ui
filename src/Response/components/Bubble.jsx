@@ -2,10 +2,16 @@ import {
   MarkdownContent
 } from "../../Conversation/components/MarkdownContent.jsx";
 
+import {
+  ResponseActivityFlow
+} from "./ActivityFlow.jsx";
+
 export function ResponseBubble({
   shellRef,
   contentRef,
-  text,
+  answerText,
+  liveText,
+  agentStatus,
   streaming,
   side,
   theme,
@@ -14,6 +20,9 @@ export function ResponseBubble({
   onScroll,
   onDismiss
 }) {
+  const hasAnswer =
+    Boolean(String(answerText).trim());
+
   return (
     <div
       ref={shellRef}
@@ -39,6 +48,10 @@ export function ResponseBubble({
           `response-bubble${
             streaming
               ? " is-streaming"
+              : ""
+          }${
+            agentStatus?.runId
+              ? " has-activity"
               : ""
           }`
         }
@@ -73,21 +86,29 @@ export function ResponseBubble({
           className="response-bubble__content"
           onScroll={onScroll}
         >
-          <div
-            className="response-bubble__text"
-            data-testid="response-text"
-          >
-            <MarkdownContent
-              content={text}
-              compact
-            />
-          </div>
+          <ResponseActivityFlow
+            status={agentStatus}
+            streaming={streaming}
+            liveText={liveText}
+          />
 
-          {streaming && (
-            <span
-              className="response-bubble__cursor"
-              aria-hidden="true"
-            />
+          {hasAnswer && (
+            <div
+              className={`response-bubble__answer${agentStatus?.runId ? " has-activity" : ""}`}
+              data-testid="response-text"
+            >
+              <MarkdownContent
+                content={answerText}
+                compact
+              />
+
+              {streaming && (
+                <span
+                  className="response-bubble__cursor"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
           )}
         </div>
       </article>

@@ -244,11 +244,6 @@
     transparent;
 }
 
-.response-bubble__text {
-  display: block;
-  min-width: 0;
-}
-
 .response-bubble__cursor {
   display: inline-block;
 
@@ -580,4 +575,214 @@
 .response-bubble,
 .response-content {
   font-family: var(--app-font-family);
+}
+
+/* ============================================================
+   Structured Response activity + final answer
+   ============================================================ */
+
+.response-bubble.has-activity {
+  width: min(
+    340px,
+    var(--response-max-width)
+  );
+}
+
+.response-bubble.has-activity
+.response-bubble__content {
+  width: 100%;
+}
+
+.response-activity {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 1px 0 10px;
+}
+
+.response-activity__header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--bubble-dim);
+}
+
+.response-activity__header strong {
+  overflow: hidden;
+  color: var(--bubble-text);
+  font-size: 11px;
+  font-weight: 620;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.response-activity__header small {
+  color: var(--bubble-dim);
+  font-size: 9.5px;
+  line-height: 1;
+}
+
+.response-activity__pulse,
+.response-activity__done {
+  width: 13px;
+  height: 13px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.response-activity__pulse {
+  border: 1.5px solid
+    color-mix(
+      in srgb,
+      var(--accent) 28%,
+      transparent
+    );
+  border-top-color: var(--accent);
+  animation: response-activity-spin 0.85s linear infinite;
+}
+
+.response-activity__done {
+  color: var(--accent);
+  background:
+    color-mix(
+      in srgb,
+      var(--accent) 12%,
+      transparent
+    );
+}
+
+.response-activity__progress {
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--conversation-soft-surface);
+}
+
+.response-activity__progress span {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.response-activity__events {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.response-activity__event {
+  min-width: 0;
+  min-height: 24px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  padding: 3px 5px;
+  border-radius: 7px;
+  color: var(--bubble-dim);
+  background: transparent;
+}
+
+.response-activity__event.is-running {
+  color: var(--accent);
+  background:
+    color-mix(
+      in srgb,
+      var(--accent) 7%,
+      transparent
+    );
+}
+
+.response-activity__event.is-error {
+  color: #d92d3d;
+}
+
+.response-shell.theme-dark
+.response-activity__event.is-error {
+  color: #ff737d;
+}
+
+.response-activity__mark {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: currentColor;
+}
+
+.response-activity__event strong {
+  overflow: hidden;
+  padding-top: 1px;
+  color: var(--bubble-text);
+  font-size: 10.5px;
+  font-weight: 560;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.response-activity__commentary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--bubble-dim);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.response-activity__commentary .markdown-content {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.response-activity__commentary .markdown-content p {
+  margin: 0;
+}
+
+.response-activity__live {
+  min-width: 0;
+  max-height: 74px;
+  overflow: hidden;
+  padding: 7px 9px;
+  border: 1px solid var(--bubble-border);
+  border-radius: 9px;
+  color: var(--bubble-dim);
+  background: var(--conversation-soft-surface);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.response-activity__live .markdown-content {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.response-activity__live .markdown-content p {
+  margin: 0;
+}
+
+.response-bubble__answer {
+  min-width: 0;
+}
+
+.response-bubble__answer.has-activity {
+  padding-top: 10px;
+  border-top: 1px solid var(--bubble-border);
+}
+
+@keyframes response-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

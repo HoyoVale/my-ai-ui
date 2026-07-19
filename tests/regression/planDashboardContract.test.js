@@ -13,32 +13,41 @@ function read(relativePath) {
   );
 }
 
-describe("automatic plan dashboard", () => {
-  it("opens for a live run as soon as a plan exists", () => {
-    const source = read(
+describe("compact plan dock", () => {
+  it("renders the live plan as a bottom dock outside the message stream", () => {
+    const conversation = read(
+      "../../src/Conversation/Conversation.jsx"
+    );
+    const messageList = read(
       "../../src/Conversation/components/MessageList.jsx"
     );
+    const dock = read(
+      "../../src/Conversation/components/PlanDock.jsx"
+    );
 
-    assert.match(source, /function PlanDashboard/u);
-    assert.match(source, /conversation-plan-dashboard/u);
-    assert.match(source, /snapshot\.plan\.length > 0/u);
-    assert.match(source, /setPlanDismissed\(false\)/u);
+    assert.match(conversation, /<ConversationPlanDock/u);
+    assert.match(conversation, /activity=\{currentLiveActivity\}/u);
+    assert.match(dock, /conversation-plan-dock/u);
+    assert.match(dock, /setCollapsed/u);
+    assert.match(dock, /aria-expanded=\{!collapsed\}/u);
+    assert.doesNotMatch(messageList, /PlanDashboard|conversation-plan-dashboard/u);
   });
 
-  it("renders completed, in-progress, pending, blocked and needs-input states", () => {
+  it("renders progress and all plan states in a manually collapsible panel", () => {
     const source = read(
-      "../../src/Conversation/components/MessageList.jsx"
+      "../../src/Conversation/components/PlanDock.jsx"
     );
     const css = read(
       "../../src/Conversation/Conversation.css"
     );
 
     assert.match(source, /is-\$\{item\.status\}/u);
-    assert.match(source, /item\.status === "completed"/u);
-    assert.match(source, /item\.status === "in_progress"/u);
-    assert.match(source, /\["blocked", "needs_input"\]\.includes\(item\.status\)/u);
-    assert.match(css, /conversation-plan-dashboard__progress/u);
-    assert.match(css, /is-in_progress/u);
+    assert.match(source, /status === "completed"/u);
+    assert.match(source, /status === "in_progress"/u);
+    assert.match(source, /\["blocked", "needs_input"\]\.includes\(status\)/u);
+    assert.match(css, /conversation-plan-dock__progress/u);
+    assert.match(css, /conversation-plan-dock\.is-collapsed/u);
+    assert.match(css, /conversation-plan-dock__content/u);
     assert.match(css, /is-needs_input/u);
   });
 

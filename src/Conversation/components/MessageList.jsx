@@ -702,12 +702,6 @@ function LiveAgentActivity({
         live: true
       }
     );
-  const [planDismissed, setPlanDismissed] =
-    useState(false);
-
-  useEffect(() => {
-    setPlanDismissed(false);
-  }, [snapshot.runId]);
 
   return (
     <article
@@ -745,82 +739,9 @@ function LiveAgentActivity({
             </div>
           )}
 
-          {snapshot.plan.length > 0 &&
-            !planDismissed && (
-            <PlanDashboard
-              snapshot={snapshot}
-              onClose={() => {
-                setPlanDismissed(true);
-              }}
-            />
-          )}
         </div>
       </div>
     </article>
-  );
-}
-
-function PlanDashboard({
-  snapshot,
-  onClose
-}) {
-  return (
-    <section
-      className="conversation-plan-dashboard"
-      data-testid="conversation-plan-dashboard"
-      data-run-id={snapshot.runId}
-    >
-      <header>
-        <div>
-          <strong>计划</strong>
-          <span>
-            {snapshot.planStats.completed}/
-            {snapshot.planStats.total}
-          </span>
-        </div>
-        <button
-          type="button"
-          aria-label="收起计划"
-          title="收起计划"
-          onClick={onClose}
-        >
-          <ConversationIcon name="close" size={14} />
-        </button>
-      </header>
-
-      <div className="conversation-plan-dashboard__progress">
-        <span
-          style={{
-            width: `${Math.round(
-              snapshot.planStats.ratio * 100
-            )}%`
-          }}
-        />
-      </div>
-
-      <div className="conversation-plan-dashboard__items">
-        {snapshot.plan.map((item, index) => (
-          <div
-            className={`conversation-plan-dashboard__item is-${item.status}`}
-            key={item.id ?? `${item.title}-${index}`}
-          >
-            <span className="conversation-plan-dashboard__mark">
-              {item.status === "completed" && (
-                <ConversationIcon name="check" size={12} />
-              )}
-              {["blocked", "needs_input"].includes(item.status) && (
-                <ConversationIcon name="warning" size={12} />
-              )}
-              {item.status === "in_progress" && <span />}
-              {["skipped", "cancelled", "superseded"].includes(item.status) && (
-                <ConversationIcon name="minus" size={12} />
-              )}
-            </span>
-            <strong>{item.title}</strong>
-          </div>
-        ))}
-      </div>
-    </section>
   );
 }
 

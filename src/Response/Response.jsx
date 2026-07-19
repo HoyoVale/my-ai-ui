@@ -1,4 +1,5 @@
 import {
+  useMemo,
   useRef
 } from "react";
 
@@ -21,6 +22,10 @@ import {
 import {
   useResponseStream
 } from "./hooks/useResponseStream.js";
+
+import {
+  createActivitySnapshot
+} from "../Conversation/utils/taskActivity.js";
 
 import {
   getWindowTypographyStyle
@@ -47,21 +52,102 @@ export default function Response() {
 
   const {
     text,
+    agentStatus,
     streaming,
     side,
     streamId
   } = useResponseStream();
 
+  const presentation =
+    useMemo(() => {
+      if (!agentStatus?.runId) {
+        return {
+          answerText: text,
+          liveText: "",
+          hasActivity: false,
+          activityRevision: ""
+        };
+      }
+
+      const snapshot =
+        createActivitySnapshot(
+          agentStatus,
+          {
+            live: streaming
+          }
+        );
+
+      const hasActivity =
+        snapshot.events.some((event) =>
+          ["commentary", "tool"].includes(event.type)
+        ) ||
+        snapshot.planStats.total > 0;
+
+      const finalText =
+        String(
+          agentStatus.finalText ?? ""
+        ).trim();
+
+      const currentText =
+        String(
+          agentStatus.liveStepText ?? ""
+        );
+
+      return {
+        /*
+         * 有工具/计划时，最终回复与执行过程严格分区。
+         * 没有工具的普通聊天则直接把当前流式文本当作回复展示。
+         */
+        answerText:
+          finalText ||
+          (!hasActivity
+            ? currentText || text
+            : ""),
+        liveText:
+          hasActivity && !finalText
+            ? currentText
+            : "",
+        hasActivity,
+        activityRevision: [
+          snapshot.events.length,
+          snapshot.events.at(-1)?.updatedAt ?? "",
+          snapshot.plan
+            .map((item) => `${item.id}:${item.status}`)
+            .join("|")
+        ].join(":")
+      };
+    }, [
+      agentStatus,
+      streaming,
+      text
+    ]);
+
+  const hasContent =
+    Boolean(
+      String(presentation.answerText).trim() ||
+      String(presentation.liveText).trim() ||
+      presentation.hasActivity ||
+      agentStatus?.runId
+    );
+
+  const contentKey = [
+    presentation.answerText,
+    presentation.liveText,
+    presentation.activityRevision,
+    streaming
+  ].join("\u0000");
+
   const {
     handleScroll
   } = useResponseLayout({
-    text,
+    hasContent,
+    contentKey,
     streamId,
     shellRef,
     contentRef
   });
 
-  if (!text) {
+  if (!hasContent) {
     return null;
   }
 
@@ -72,7 +158,9 @@ export default function Response() {
     <ResponseBubble
       shellRef={shellRef}
       contentRef={contentRef}
-      text={text}
+      answerText={presentation.answerText}
+      liveText={presentation.liveText}
+      agentStatus={agentStatus}
       streaming={streaming}
       side={side}
       theme={theme}
