@@ -38,6 +38,10 @@ describe(
           panel,
           /启用工具调用|当前模型|固定安全边界/u
         );
+        assert.doesNotMatch(
+          panel,
+          /包含应用启动目录|includeProjectRoot/u
+        );
       }
     );
 

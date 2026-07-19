@@ -50,7 +50,6 @@ describe(
                 },
                 workspace: {
                   enabled: true,
-                  includeProjectRoot: true,
                   roots: []
                 },
                 toolsets: {
@@ -202,7 +201,6 @@ describe(
         const definitions =
           createWorkspaceToolDefinitions({
             enabled: true,
-            includeProjectRoot: false,
             roots: [root],
             maxTextFileBytes: 100000,
             maxReadLines: 2,

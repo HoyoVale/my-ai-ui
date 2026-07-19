@@ -240,7 +240,6 @@ export const FALLBACK_SETTINGS = {
     },
     workspace: {
       enabled: true,
-      includeProjectRoot: true,
       roots: [],
       maxTextFileBytes: 2000000,
       maxReadLines: 1000,

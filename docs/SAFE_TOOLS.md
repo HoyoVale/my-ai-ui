@@ -10,11 +10,7 @@ Xixi 当前工具系统只开放确定性、Agent 内部状态和授权工作区
 Setting → AI → Tools
 ```
 
-普通模式只显示三类设置：
-
-1. Chat / Coding 工作模式；
-2. Coding 授权工作区；
-3. 工具调用的简洁 / 详细显示。
+普通模式显示 Chat / Coding 工作模式和 Coding 授权工作区。工具活动由普通模式与开发者模式统一控制，不再提供额外展示层级。
 
 ### Chat
 
@@ -133,14 +129,9 @@ AgentRuntime
 
 ## Workspace policy
 
-推荐在 Tools 页面使用 Electron 原生目录选择器添加一个或多个只读工作区。仍兼容：
+必须在 Tools 页面使用 Electron 原生目录选择器，或在开发者设置中手动添加一个或多个只读工作区。应用启动目录、进程当前目录和环境变量不会自动成为工作区。没有用户明确授权的目录时，工作区状态为 `null`，文件工具不会注册到本轮 Agent。
 
-```text
-XIXI_WORKSPACE_ROOT=C:\Projects\one
-XIXI_WORKSPACE_ROOTS=C:\Projects\one;D:\Projects\two
-```
-
-所有文件工具都会：
+所有已注册的文件工具都会：
 
 1. 规范化路径；
 2. 检查授权根目录；

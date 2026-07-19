@@ -1005,10 +1005,6 @@ function sanitizeToolSettings(
     },
     workspace: {
       enabled: true,
-      includeProjectRoot: booleanValue(
-        workspace.includeProjectRoot,
-        defaults.workspace.includeProjectRoot
-      ),
       roots: stringArrayValue(
         workspace.roots,
         defaults.workspace.roots

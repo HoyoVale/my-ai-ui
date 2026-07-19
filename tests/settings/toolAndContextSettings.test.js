@@ -95,7 +95,7 @@ describe(
               },
               workspace: {
                 enabled: true,
-                includeProjectRoot: false,
+                includeProjectRoot: true,
                 roots: [
                   " C:\\Projects\\One ",
                   "C:\\Projects\\One",
@@ -194,6 +194,13 @@ describe(
             "C:\\Projects\\One",
             "D:\\Notes"
           ]
+        );
+        assert.equal(
+          Object.hasOwn(
+            settings.tools.workspace,
+            "includeProjectRoot"
+          ),
+          false
         );
         assert.equal(
           settings.tools.workspace

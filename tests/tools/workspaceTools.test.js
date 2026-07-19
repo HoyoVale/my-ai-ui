@@ -17,21 +17,17 @@ import {
 } from "../../electron/tools/workspace/workspaceTools.js";
 
 let root;
-let previousRoots;
 
 function getTool(name) {
-  return createWorkspaceToolDefinitions()
-    .find(
-      (tool) =>
-        tool.name === name
-    );
+  return createWorkspaceToolDefinitions({
+    roots: [root]
+  }).find(
+    (tool) =>
+      tool.name === name
+  );
 }
 
 beforeEach(() => {
-  previousRoots =
-    process.env
-      .XIXI_WORKSPACE_ROOTS;
-
   root = fs.mkdtempSync(
     path.join(
       os.tmpdir(),
@@ -69,22 +65,9 @@ beforeEach(() => {
     "SECRET=value\n",
     "utf8"
   );
-
-  process.env
-    .XIXI_WORKSPACE_ROOTS =
-    root;
 });
 
 afterEach(() => {
-  if (previousRoots === undefined) {
-    delete process.env
-      .XIXI_WORKSPACE_ROOTS;
-  } else {
-    process.env
-      .XIXI_WORKSPACE_ROOTS =
-      previousRoots;
-  }
-
   fs.rmSync(root, {
     recursive: true,
     force: true

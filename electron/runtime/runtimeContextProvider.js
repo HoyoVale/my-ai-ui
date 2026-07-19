@@ -111,9 +111,18 @@ export function createRuntimeSnapshot({
       )
       ?.value ?? "GMT";
 
+  const workspace =
+    workspaceSummary ??
+    getWorkspacePolicySummary(
+      workspaceSettings
+    );
   const enabledTools =
     resolveEnabledToolCatalog(
       toolSettings
+    ).filter(
+      (item) =>
+        item.toolset !== "workspace.read" ||
+        workspace !== null
     );
 
   return {
@@ -164,11 +173,7 @@ export function createRuntimeSnapshot({
                 .contextTokenBudget
           }
         : null,
-    workspace:
-      workspaceSummary ??
-      getWorkspacePolicySummary(
-        workspaceSettings
-      ),
+    workspace,
     toolProfile: {
       id: resolveToolProfileId(
         toolSettings
@@ -193,7 +198,7 @@ function workspaceLine(
   }
 
   const roots =
-    snapshot.workspace.roots ?? [];
+    snapshot.workspace?.roots ?? [];
 
   if (detail === "full") {
     return `只读工作区：${roots.join("; ") || "未配置"}`;

@@ -27,7 +27,12 @@ export function createRuntimeToolDefinitions({
   const workspaceSettings =
     toolSettings.workspace ?? {};
 
-  return [
+  const workspaceSummary =
+    getWorkspacePolicySummary(
+      workspaceSettings
+    );
+
+  const definitions = [
     {
       name: "get_runtime_info",
       title: "Get runtime info",
@@ -81,18 +86,21 @@ export function createRuntimeToolDefinitions({
             )
         };
       }
-    },
-    {
+    }
+  ];
+
+  if (workspaceSummary) {
+    definitions.push({
       name: "get_workspace_info",
       title: "Get workspace info",
       description:
         "Get the authorized read-only workspace roots and security restrictions. Does not enumerate files.",
       inputSchema: z.object({}),
       async execute() {
-        return getWorkspacePolicySummary(
-          workspaceSettings
-        );
+        return workspaceSummary;
       }
-    }
-  ];
+    });
+  }
+
+  return definitions;
 }

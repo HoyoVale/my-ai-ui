@@ -50,6 +50,10 @@ import {
   createWorkspaceToolDefinitions
 } from "./workspace/workspaceTools.js";
 
+import {
+  getWorkspaceRoots
+} from "./workspace/workspacePolicy.js";
+
 export function createAgentToolSession({
   activeModel = null,
   getAgentStatus = null,
@@ -82,6 +86,10 @@ export function createAgentToolSession({
     settings.tools ?? {};
   const workspaceSettings =
     toolSettings.workspace ?? {};
+  const hasWorkspace =
+    getWorkspaceRoots(
+      workspaceSettings
+    ).length > 0;
 
   const registry = new ToolRegistry()
     .registerMany(
@@ -108,9 +116,11 @@ export function createAgentToolSession({
       }
     )
     .registerMany(
-      createWorkspaceToolDefinitions(
-        workspaceSettings
-      ),
+      hasWorkspace
+        ? createWorkspaceToolDefinitions(
+            workspaceSettings
+          )
+        : [],
       {
         source: "builtin.workspace",
         toolset: "workspace.read",

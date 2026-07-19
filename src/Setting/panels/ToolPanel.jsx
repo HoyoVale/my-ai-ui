@@ -179,7 +179,7 @@ export function ToolPanel({
             <div className="workspace-simple-list">
               {settings.workspace.roots.length === 0 ? (
                 <div className="workspace-simple-list__empty">
-                  尚未添加额外工作区
+                  尚未添加工作区，文件工具不可用
                 </div>
               ) : (
                 settings.workspace.roots.map(
@@ -535,19 +535,6 @@ export function ToolPanel({
                 </summary>
 
                 <div className="developer-tool-list__body">
-                  <SettingRow
-                    title="包含应用启动目录"
-                    description="开发时通常是当前项目根目录。"
-                  >
-                    <Toggle
-                      checked={settings.workspace.includeProjectRoot}
-                      label="包含应用启动目录"
-                      onChange={(includeProjectRoot) => {
-                        updateWorkspace({ includeProjectRoot });
-                      }}
-                    />
-                  </SettingRow>
-
                   <div className="workspace-developer-add">
                     <TextInput
                       value={rootDraft}

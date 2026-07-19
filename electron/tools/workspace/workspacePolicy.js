@@ -37,20 +37,6 @@ function unique(values) {
   return [...new Set(values)];
 }
 
-function environmentRoots() {
-  const source =
-    process.env
-      .XIXI_WORKSPACE_ROOTS ??
-    process.env
-      .XIXI_WORKSPACE_ROOT ??
-    "";
-
-  return String(source)
-    .split(path.delimiter)
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
 function configuredRoots(
   workspaceSettings = {}
 ) {
@@ -60,30 +46,19 @@ function configuredRoots(
     return [];
   }
 
-  const roots = [
-    ...(Array.isArray(
+  return unique(
+    (Array.isArray(
       workspaceSettings.roots
     )
       ? workspaceSettings.roots
-      : []),
-    ...environmentRoots()
-  ];
-
-  if (
-    workspaceSettings
-      .includeProjectRoot !== false
-  ) {
-    roots.push(process.cwd());
-  }
-
-  return unique(
-    roots
+      : [])
       .map((value) =>
-        path.resolve(
-          String(value).trim()
-        )
+        String(value ?? "").trim()
       )
       .filter(Boolean)
+      .map((value) =>
+        path.resolve(value)
+      )
   );
 }
 
@@ -145,13 +120,17 @@ export function getWorkspaceRoots(
 export function getWorkspacePolicySummary(
   workspaceSettings = {}
 ) {
+  const roots = getWorkspaceRoots(
+    workspaceSettings
+  );
+
+  if (roots.length === 0) {
+    return null;
+  }
+
   return {
-    enabled:
-      workspaceSettings.enabled !==
-      false,
-    roots: getWorkspaceRoots(
-      workspaceSettings
-    ),
+    enabled: true,
+    roots,
     mode: "read-only",
     excludes: [
       ...EXCLUDED_DIRECTORIES

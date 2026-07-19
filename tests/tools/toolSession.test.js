@@ -1,10 +1,15 @@
 import {
+  afterEach,
   describe,
   it
 } from "node:test";
 
 import assert
   from "node:assert/strict";
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   createAgentToolSession
@@ -14,11 +19,22 @@ import {
   SAFE_TOOL_NAMES
 } from "../../electron/tools/toolCatalog.js";
 
+const temporaryRoots = [];
+
+afterEach(() => {
+  for (const root of temporaryRoots.splice(0)) {
+    fs.rmSync(root, {
+      recursive: true,
+      force: true
+    });
+  }
+});
+
 describe(
   "safe agent tool session",
   () => {
     it(
-      "publishes Chat tools by default and Coding tools when selected",
+      "publishes workspace tools only when Coding has an explicit workspace",
       () => {
         const chatSession =
           createAgentToolSession({
@@ -33,6 +49,45 @@ describe(
           false
         );
 
+        const noWorkspaceSession =
+          createAgentToolSession({
+            getAgentStatus: () => ({
+              state: "running"
+            }),
+            settings: {
+              tools: {
+                mode: "coding",
+                workspace: {
+                  roots: []
+                },
+                runtime: {},
+                developer: {
+                  toolsetOverrides: {},
+                  toolOverrides: {}
+                }
+              }
+            }
+          });
+
+        assert.equal(
+          "get_workspace_info" in
+            noWorkspaceSession.tools,
+          false
+        );
+        assert.equal(
+          "read_text_file" in
+            noWorkspaceSession.tools,
+          false
+        );
+
+        const root = fs.mkdtempSync(
+          path.join(
+            os.tmpdir(),
+            "xixi-tool-session-"
+          )
+        );
+        temporaryRoots.push(root);
+
         const codingSession =
           createAgentToolSession({
             getAgentStatus: () => ({
@@ -41,7 +96,9 @@ describe(
             settings: {
               tools: {
                 mode: "coding",
-                workspace: {},
+                workspace: {
+                  roots: [root]
+                },
                 runtime: {},
                 developer: {
                   toolsetOverrides: {},
@@ -120,5 +177,5 @@ describe(
       }
     );
 
-}
+  }
 );
