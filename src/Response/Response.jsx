@@ -31,6 +31,10 @@ import {
   getWindowTypographyStyle
 } from "../shared/typography.js";
 
+import {
+  resolveResponsePresentation
+} from "./utils/responsePresentation.js";
+
 import "./Response.css";
 
 export default function Response() {
@@ -93,20 +97,18 @@ export default function Response() {
           agentStatus.liveStepText ?? ""
         );
 
+      const responseText =
+        resolveResponsePresentation({
+          text,
+          finalText,
+          liveStepText:
+            currentText,
+          hasActivity,
+          streaming
+        });
+
       return {
-        /*
-         * 有工具/计划时，最终回复与执行过程严格分区。
-         * 没有工具的普通聊天则直接把当前流式文本当作回复展示。
-         */
-        answerText:
-          finalText ||
-          (!hasActivity
-            ? currentText || text
-            : ""),
-        liveText:
-          hasActivity && !finalText
-            ? currentText
-            : "",
+        ...responseText,
         hasActivity,
         activityRevision: [
           snapshot.events.length,

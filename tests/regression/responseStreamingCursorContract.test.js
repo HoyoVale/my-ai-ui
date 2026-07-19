@@ -38,6 +38,10 @@ describe(
         );
         assert.match(
           source,
+          /host\.appendChild/u
+        );
+        assert.doesNotMatch(
+          source,
           /createPortal/u
         );
         assert.match(
