@@ -172,10 +172,21 @@ export function createAgentToolSession({
             : { decision: "allow" };
         }
       }),
-      getRecordMetadata: () => {
+      getRecordMetadata: ({ definition } = {}) => {
         const active = planStore.getExecutionState().active;
+        let batch = activityStore?.getActiveBatch?.() ?? null;
+
+        if (!batch) {
+          batch = activityStore?.beginBatch?.(
+            active?.title ??
+            definition?.title ??
+            definition?.name ??
+            "工具执行"
+          ) ?? null;
+        }
+
         return {
-          batch: activityStore?.getActiveBatch?.() ?? null,
+          batch,
           planStep: active
             ? { id: active.id, title: active.title }
             : null
@@ -209,6 +220,14 @@ export function createAgentToolSession({
         toolSettings.runtime
           ?.maxIdenticalCalls ??
         3,
+      maxToolCallsPerStep:
+        toolSettings.runtime
+          ?.maxToolCallsPerStep ??
+        16,
+      maxToolCallsPerBatch:
+        toolSettings.runtime
+          ?.maxToolCallsPerBatch ??
+        24,
       runTimeoutMs:
         toolSettings.runtime
           ?.runTimeoutMs ??
@@ -257,6 +276,14 @@ export function createAgentToolSession({
     getBudget: () =>
       runtime.getBudget(),
     getEvents: () =>
-      runtime.getEvents()
+      runtime.getEvents(),
+    beginStep: (scope) =>
+      executor.beginStep(scope),
+    endStep: (stepId) =>
+      executor.endStep(stepId),
+    flushPersistence: () =>
+      executor.eventStore.flush(),
+    closePersistence: () =>
+      executor.eventStore.close()
   };
 }

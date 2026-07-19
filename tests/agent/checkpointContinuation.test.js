@@ -104,4 +104,41 @@ describe("segment-boundary task continuation", () => {
     assert.equal(continuation.checkpoint.stopReason, "tool_call_limit");
   });
 
+  it("does not inherit ordinary follow-up messages without an explicit continue intent", () => {
+    assert.equal(
+      resolveCheckpointContinuation({
+        conversation: resumableConversation(),
+        message: "Docker Desktop 为什么占用这么多内存？"
+      }),
+      null
+    );
+
+    assert.equal(
+      resolveCheckpointContinuation({
+        conversation: resumableConversation(),
+        message: "好的"
+      }),
+      null
+    );
+  });
+
+  it("recognizes a direct reference to the previous recommendation as continuation", () => {
+    const continuation = resolveCheckpointContinuation({
+      conversation: resumableConversation(),
+      message: "按你的建议做"
+    });
+
+    assert.equal(continuation.messageId, "assistant-1");
+  });
+
+  it("supports an explicit continuation flag for a future Continue Task button", () => {
+    const continuation = resolveCheckpointContinuation({
+      conversation: resumableConversation(),
+      message: "按建议处理",
+      explicit: true
+    });
+
+    assert.equal(continuation.messageId, "assistant-1");
+  });
+
 });

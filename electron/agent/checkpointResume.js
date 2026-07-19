@@ -7,15 +7,34 @@ const NEW_TASK_PATTERNS = [
   /^(?:换个|换一个|聊点|说点)(?:别的|其他的)(?:吧|，|,|。|\s|$)/u,
   /^(?:另一个|另外一个)(?:问题|任务)(?:是|：|:|，|,|。|\s|$)/u,
   /^(?:不继续了|先不继续|停止|放弃|结束)(?:这个|当前)?任务(?:吧|，|,|。|\s|$)/u,
-  /^(?:new task|new topic|different question|stop this task|do not continue|don''t continue)\b/iu
+  /^(?:new task|new topic|different question|stop this task|do not continue|don't continue)\b/iu
 ];
 
-function isExplicitNewTask(message) {
+const CONTINUATION_PATTERNS = [
+  /^(?:请)?(?:继续|接着|继续做|接着做|继续执行|接着执行|继续完成|完成剩余|完成余下|执行下一步|继续下一步)(?:吧|下去|剩余部分|余下部分|这个任务|当前任务|，|,|。|\s|$)/u,
+  /^(?:按|照)(?:你|你的|刚才|之前|上面|这个|该)?(?:的)?(?:方案|计划|建议|步骤)(?:继续|接着|执行|完成|做|处理)(?:吧|，|,|。|\s|$)/u,
+  /^(?:继续|接着)(?:，|,)?(?:但|不过|同时|并且|先|请)(?:.|\s)+/u,
+  /^(?:continue|go on|proceed|resume|keep going|continue the task|continue with the plan)\b/iu
+];
+
+export function isExplicitNewTask(message) {
   const normalized = String(message ?? "").trim();
 
   return Boolean(
     normalized &&
     NEW_TASK_PATTERNS.some((pattern) =>
+      pattern.test(normalized)
+    )
+  );
+}
+
+export function isExplicitContinuationMessage(message) {
+  const normalized = String(message ?? "").trim();
+
+  return Boolean(
+    normalized &&
+    !isExplicitNewTask(normalized) &&
+    CONTINUATION_PATTERNS.some((pattern) =>
       pattern.test(normalized)
     )
   );
@@ -90,8 +109,16 @@ export function findLatestResumableCheckpoint(
 
 export function resolveCheckpointContinuation({
   conversation,
-  message
+  message,
+  explicit = false
 } = {}) {
+  if (
+    !explicit &&
+    !isExplicitContinuationMessage(message)
+  ) {
+    return null;
+  }
+
   if (isExplicitNewTask(message)) {
     return null;
   }

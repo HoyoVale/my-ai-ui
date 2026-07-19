@@ -1,5 +1,6 @@
 import {
-  ToolBudget
+  ToolBudget,
+  ToolScopeBudget
 } from "./ToolBudget.js";
 import {
   ToolConcurrencyGuard
@@ -226,6 +227,8 @@ export class ToolExecutor {
     resultStore = null,
     maxRetries = 1,
     maxConcurrent = 4,
+    maxToolCallsPerStep = 16,
+    maxToolCallsPerBatch = 24,
     budget = null,
     eventStore = null
   } = {}) {
@@ -251,7 +254,26 @@ export class ToolExecutor {
     });
     this.policyEngine = policyEngine ?? new ToolPolicyEngine();
     this.concurrency = new ToolConcurrencyGuard({ maxConcurrent });
+    this.scopeBudget = new ToolScopeBudget({
+      maxPerStep: maxToolCallsPerStep,
+      maxPerBatch: maxToolCallsPerBatch
+    });
     this.eventStore = eventStore ?? new ToolEventStore();
+  }
+
+  beginStep({
+    stepId = "",
+    segmentId = ""
+  } = {}) {
+    const normalizedStepId =
+      String(stepId ?? "").trim() ||
+      `${String(segmentId ?? this.context.segmentId ?? "run").trim() || "run"}:step`;
+
+    return this.scopeBudget.beginStep(normalizedStepId);
+  }
+
+  endStep(stepId = "") {
+    this.scopeBudget.endStep(stepId);
   }
 
   emit(record) {
@@ -398,6 +420,47 @@ export class ToolExecutor {
       attempt: 0,
       maxAttempts: 0
     };
+    const scopeCheck = this.scopeBudget.inspect({
+      stepId:
+        options.stepId ??
+        this.scopeBudget.currentStepId,
+      batchId:
+        recordMetadata.batch?.id ??
+        options.batchId ??
+        segmentId
+    });
+    baseRecord.stepId = scopeCheck.stepId;
+    baseRecord.batchId = scopeCheck.batchId;
+    baseRecord.scope = {
+      stepCount: scopeCheck.stepCount,
+      batchCount: scopeCheck.batchCount
+    };
+    if (scopeCheck.code) {
+      const scopedError = createRuntimeError(
+        scopeCheck.code,
+        scopeCheck.message,
+        false,
+        TOOL_ERROR_TYPES.EXECUTION_FAILED,
+        "budget_exceeded",
+        {
+          stepId: scopeCheck.stepId,
+          batchId: scopeCheck.batchId,
+          stepCount: scopeCheck.stepCount,
+          batchCount: scopeCheck.batchCount
+        }
+      );
+
+      if (scopeCheck.suppressed) {
+        return scopedError;
+      }
+
+      this.emit({ ...baseRecord, status: "queued" });
+      return this.finishRejected(
+        baseRecord,
+        scopedError
+      );
+    }
+
     this.emit({ ...baseRecord, status: "queued" });
 
     const budgetCheck = this.budget.inspectRequest(
@@ -804,7 +867,10 @@ export class ToolExecutor {
   }
 
   getBudget() {
-    return this.budget.snapshot();
+    return {
+      ...this.budget.snapshot(),
+      scopes: this.scopeBudget.snapshot()
+    };
   }
 
   getCallCount() {

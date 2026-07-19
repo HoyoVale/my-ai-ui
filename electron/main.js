@@ -25,6 +25,10 @@ import {
 } from "./conversation/index.js";
 
 import {
+  flushAllPersistenceQueues
+} from "./persistence/AsyncPersistenceQueue.js";
+
+import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
 
@@ -98,5 +102,24 @@ app.on(
     ) {
       app.quit();
     }
+  }
+);
+
+let persistenceFlushInProgress = false;
+
+app.on(
+  "before-quit",
+  (event) => {
+    if (persistenceFlushInProgress) {
+      return;
+    }
+
+    event.preventDefault();
+    persistenceFlushInProgress = true;
+
+    void flushAllPersistenceQueues()
+      .finally(() => {
+        app.quit();
+      });
   }
 );

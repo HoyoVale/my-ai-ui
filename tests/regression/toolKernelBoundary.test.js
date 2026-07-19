@@ -49,5 +49,17 @@ describe("Tool Runtime Kernel dependency boundary", () => {
       rendererRuntime.maxNoProgressSegments,
       electronRuntime.maxNoProgressSegments
     );
+    assert.equal(
+      rendererRuntime.finalizationTimeoutMs,
+      electronRuntime.finalizationTimeoutMs
+    );
+    assert.equal(
+      rendererRuntime.maxToolCallsPerStep,
+      electronRuntime.maxToolCallsPerStep
+    );
+    assert.equal(
+      rendererRuntime.maxToolCallsPerBatch,
+      electronRuntime.maxToolCallsPerBatch
+    );
   });
 });

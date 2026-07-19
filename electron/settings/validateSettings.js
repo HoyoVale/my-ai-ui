@@ -956,11 +956,29 @@ function sanitizeToolSettings(
         1,
         3
       ),
+      finalizationTimeoutMs: integerValue(
+        runtime.finalizationTimeoutMs,
+        defaults.runtime.finalizationTimeoutMs,
+        5000,
+        120000
+      ),
       maxToolCalls: integerValue(
         runtime.maxToolCalls,
         defaults.runtime.maxToolCalls,
         1,
         500
+      ),
+      maxToolCallsPerStep: integerValue(
+        runtime.maxToolCallsPerStep,
+        defaults.runtime.maxToolCallsPerStep,
+        1,
+        64
+      ),
+      maxToolCallsPerBatch: integerValue(
+        runtime.maxToolCallsPerBatch,
+        defaults.runtime.maxToolCallsPerBatch,
+        1,
+        128
       ),
       maxTotalToolCalls: integerValue(
         runtime.maxTotalToolCalls,

@@ -332,7 +332,7 @@ describe("Tool Runtime Kernel v2", () => {
     assert.equal(events.every((event) => event.callId === "event-1"), true);
   });
 
-  it("reopens persisted append-only events after restart", () => {
+  it("reopens persisted append-only events after restart", async () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "tool-event-store-")
     );
@@ -341,6 +341,7 @@ describe("Tool Runtime Kernel v2", () => {
     const first = new ToolEventStore({ storageFile });
     first.append({ type: "tool_lifecycle", status: "queued" });
     first.append({ type: "tool_lifecycle", status: "completed" });
+    await first.close();
     const reopened = new ToolEventStore({ storageFile });
 
     assert.deepEqual(

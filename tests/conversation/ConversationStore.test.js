@@ -16,6 +16,7 @@ import {
 } from "../../electron/conversation/ConversationStore.js";
 
 const temporaryDirectories = [];
+const stores = [];
 
 function createStore() {
   const directory =
@@ -36,18 +37,25 @@ function createStore() {
       "conversations.json"
     );
 
+  const store =
+    new ConversationStore({
+      getFilePath: () =>
+        filePath
+    });
+
+  stores.push(store);
+
   return {
     filePath,
-
-    store:
-      new ConversationStore({
-        getFilePath: () =>
-          filePath
-      })
+    store
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(
+    stores.splice(0).map((store) => store.flush())
+  );
+
   for (
     const directory
     of temporaryDirectories.splice(0)
@@ -67,7 +75,7 @@ describe(
   () => {
     it(
       "creates a valid empty store when the file does not exist",
-      () => {
+      async () => {
         const {
           filePath,
           store
@@ -83,6 +91,8 @@ describe(
           }
         );
 
+        await store.flush();
+
         assert.equal(
           fs.existsSync(
             filePath
@@ -94,7 +104,7 @@ describe(
 
     it(
       "persists and reloads sanitized data",
-      () => {
+      async () => {
         const {
           filePath,
           store
@@ -127,11 +137,15 @@ describe(
           ]
         });
 
+        await store.flush();
+
         const secondStore =
           new ConversationStore({
             getFilePath: () =>
               filePath
           });
+
+        stores.push(secondStore);
 
         const loaded =
           secondStore.load();

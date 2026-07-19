@@ -86,7 +86,10 @@ describe(
                 maxSegments: 999,
                 maxNoProgressSegments: 999,
                 maxFinalizationAttempts: 999,
+                finalizationTimeoutMs: 999999,
                 maxToolCalls: 999,
+                maxToolCallsPerStep: 999,
+                maxToolCallsPerBatch: 999,
                 maxTotalToolCalls: 99999,
                 runTimeoutMs: 1,
                 defaultTimeoutMs: 50,
@@ -151,8 +154,20 @@ describe(
           3
         );
         assert.equal(
+          settings.tools.runtime.finalizationTimeoutMs,
+          120000
+        );
+        assert.equal(
           settings.tools.runtime.maxToolCalls,
           500
+        );
+        assert.equal(
+          settings.tools.runtime.maxToolCallsPerStep,
+          64
+        );
+        assert.equal(
+          settings.tools.runtime.maxToolCallsPerBatch,
+          128
         );
         assert.equal(
           settings.tools.runtime.maxTotalToolCalls,

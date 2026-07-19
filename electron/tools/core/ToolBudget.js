@@ -152,3 +152,115 @@ export class ToolBudget {
     };
   }
 }
+
+export class ToolScopeBudget {
+  constructor({
+    maxPerStep = 16,
+    maxPerBatch = 24
+  } = {}) {
+    this.maxPerStep = Math.max(1, Number(maxPerStep) || 16);
+    this.maxPerBatch = Math.max(1, Number(maxPerBatch) || 24);
+    this.currentStepId = "";
+    this.stepCounts = new Map();
+    this.batchCounts = new Map();
+    this.trippedSteps = new Set();
+    this.trippedBatches = new Set();
+  }
+
+  beginStep(stepId) {
+    this.currentStepId = String(stepId ?? "").trim();
+    return this.currentStepId;
+  }
+
+  endStep(stepId = this.currentStepId) {
+    const normalized = String(stepId ?? "").trim();
+
+    if (!normalized || normalized === this.currentStepId) {
+      this.currentStepId = "";
+    }
+  }
+
+  inspect({
+    stepId = this.currentStepId,
+    batchId = ""
+  } = {}) {
+    const normalizedStep = String(stepId ?? "").trim() || "unscoped-step";
+    const normalizedBatch = String(batchId ?? "").trim() || normalizedStep;
+
+    if (this.trippedSteps.has(normalizedStep)) {
+      return {
+        code: "TOOL_STEP_LIMIT",
+        message: `单个模型步骤最多允许 ${this.maxPerStep} 个工具调用。`,
+        stepId: normalizedStep,
+        batchId: normalizedBatch,
+        stepCount: this.stepCounts.get(normalizedStep) ?? this.maxPerStep + 1,
+        batchCount: this.batchCounts.get(normalizedBatch) ?? 0,
+        suppressed: true
+      };
+    }
+
+    if (this.trippedBatches.has(normalizedBatch)) {
+      return {
+        code: "TOOL_BATCH_LIMIT",
+        message: `单个工具批次最多允许 ${this.maxPerBatch} 个工具调用。`,
+        stepId: normalizedStep,
+        batchId: normalizedBatch,
+        stepCount: this.stepCounts.get(normalizedStep) ?? 0,
+        batchCount: this.batchCounts.get(normalizedBatch) ?? this.maxPerBatch + 1,
+        suppressed: true
+      };
+    }
+
+    const stepCount = (this.stepCounts.get(normalizedStep) ?? 0) + 1;
+    const batchCount = (this.batchCounts.get(normalizedBatch) ?? 0) + 1;
+
+    this.stepCounts.set(normalizedStep, stepCount);
+    this.batchCounts.set(normalizedBatch, batchCount);
+
+    if (stepCount > this.maxPerStep) {
+      this.trippedSteps.add(normalizedStep);
+      return {
+        code: "TOOL_STEP_LIMIT",
+        message: `单个模型步骤最多允许 ${this.maxPerStep} 个工具调用。`,
+        stepId: normalizedStep,
+        batchId: normalizedBatch,
+        stepCount,
+        batchCount,
+        firstBoundary: true
+      };
+    }
+
+    if (batchCount > this.maxPerBatch) {
+      this.trippedBatches.add(normalizedBatch);
+      return {
+        code: "TOOL_BATCH_LIMIT",
+        message: `单个工具批次最多允许 ${this.maxPerBatch} 个工具调用。`,
+        stepId: normalizedStep,
+        batchId: normalizedBatch,
+        stepCount,
+        batchCount,
+        firstBoundary: true
+      };
+    }
+
+    return {
+      code: "",
+      stepId: normalizedStep,
+      batchId: normalizedBatch,
+      stepCount,
+      batchCount
+    };
+  }
+
+  snapshot() {
+    return {
+      currentStepId: this.currentStepId,
+      maxPerStep: this.maxPerStep,
+      maxPerBatch: this.maxPerBatch,
+      stepCounts: Object.fromEntries(this.stepCounts),
+      batchCounts: Object.fromEntries(this.batchCounts),
+      trippedSteps: [...this.trippedSteps],
+      trippedBatches: [...this.trippedBatches]
+    };
+  }
+}

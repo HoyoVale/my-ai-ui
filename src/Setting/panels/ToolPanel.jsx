@@ -415,6 +415,24 @@ export function ToolPanel({
                 </SettingRow>
 
                 <SettingRow
+                  title="最终总结超时"
+                  description="最终总结使用独立时间预算；超时后立即使用本地进展摘要，不延长主任务等待。"
+                >
+                  <Slider
+                    value={settings.runtime.finalizationTimeoutMs / 1000}
+                    min={5}
+                    max={120}
+                    unit=" 秒"
+                    onChange={(seconds) => {
+                      updateRuntime({
+                        finalizationTimeoutMs:
+                          seconds * 1000
+                      });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
                   title="受限工具调用"
                   description="仅统计写入、外部操作或较高风险工具；本地低风险读取不消耗该配额。"
                 >
@@ -425,6 +443,36 @@ export function ToolPanel({
                     unit=" 次"
                     onChange={(maxToolCalls) => {
                       updateRuntime({ maxToolCalls });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="单 Step 工具数量"
+                  description="限制模型一次 Step 内生成的工具调用总数，避免异常并发请求淹没执行队列。"
+                >
+                  <Slider
+                    value={settings.runtime.maxToolCallsPerStep}
+                    min={1}
+                    max={64}
+                    unit=" 次"
+                    onChange={(maxToolCallsPerStep) => {
+                      updateRuntime({ maxToolCallsPerStep });
+                    }}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="单批工具数量"
+                  description="限制同一工作批次累计的工具调用；达到边界后整理当前结果并自然收尾。"
+                >
+                  <Slider
+                    value={settings.runtime.maxToolCallsPerBatch}
+                    min={1}
+                    max={128}
+                    unit=" 次"
+                    onChange={(maxToolCallsPerBatch) => {
+                      updateRuntime({ maxToolCallsPerBatch });
                     }}
                   />
                 </SettingRow>

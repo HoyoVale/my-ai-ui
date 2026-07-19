@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  AsyncPersistenceQueue
+} from "../../persistence/AsyncPersistenceQueue.js";
+
+import {
   redactSensitiveValue
 } from "./redaction.js";
 
@@ -9,8 +13,26 @@ function clone(value) {
   return structuredClone(value);
 }
 
+async function appendText(filePath, content) {
+  await fs.promises.mkdir(
+    path.dirname(filePath),
+    {
+      recursive: true
+    }
+  );
+  await fs.promises.appendFile(
+    filePath,
+    content,
+    "utf8"
+  );
+}
+
 export class ToolEventStore {
-  constructor({ storageFile = "", redact = null } = {}) {
+  constructor({
+    storageFile = "",
+    redact = null,
+    writeDelayMs = 50
+  } = {}) {
     this.events = [];
     this.sequence = 0;
     this.storageFile = String(storageFile ?? "").trim();
@@ -18,6 +40,16 @@ export class ToolEventStore {
       typeof redact === "function"
         ? redact
         : redactSensitiveValue;
+    this.pendingLines = [];
+    this.writeQueue = this.storageFile
+      ? new AsyncPersistenceQueue({
+          delayMs: writeDelayMs,
+          write: () => this.flushPendingLines(),
+          onError: (error) => {
+            console.warn("无法持久化工具事件日志：", error);
+          }
+        })
+      : null;
     this.load();
   }
 
@@ -40,15 +72,42 @@ export class ToolEventStore {
   }
 
   persist(event) {
-    if (!this.storageFile) {
+    if (!this.writeQueue) {
       return;
     }
-    try {
-      fs.mkdirSync(path.dirname(this.storageFile), { recursive: true });
-      fs.appendFileSync(this.storageFile, `${JSON.stringify(event)}\n`, "utf8");
-    } catch (error) {
-      console.warn("无法持久化工具事件日志：", error);
+
+    this.pendingLines.push(
+      `${JSON.stringify(event)}\n`
+    );
+    this.writeQueue.enqueue(true);
+  }
+
+  async flushPendingLines() {
+    if (!this.storageFile || this.pendingLines.length === 0) {
+      return;
     }
+
+    const lines = this.pendingLines;
+    const content = lines.join("");
+    this.pendingLines = [];
+
+    try {
+      await appendText(this.storageFile, content);
+    } catch (error) {
+      this.pendingLines = [
+        ...lines,
+        ...this.pendingLines
+      ];
+      throw error;
+    }
+  }
+
+  flush() {
+    return this.writeQueue?.flush() ?? Promise.resolve();
+  }
+
+  close() {
+    return this.writeQueue?.close() ?? Promise.resolve();
   }
 
   append(event) {

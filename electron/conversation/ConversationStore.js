@@ -6,14 +6,36 @@ import {
   sanitizeConversationData
 } from "./conversationSchema.js";
 
+import {
+  AsyncPersistenceQueue
+} from "../persistence/AsyncPersistenceQueue.js";
+
 function clone(value) {
   return structuredClone(value);
+}
+
+async function callFileSystem(
+  fileSystem,
+  method,
+  syncMethod,
+  ...args
+) {
+  const asyncMethod = fileSystem.promises?.[method];
+
+  if (typeof asyncMethod === "function") {
+    return asyncMethod.call(fileSystem.promises, ...args);
+  }
+
+  return Promise.resolve().then(() =>
+    fileSystem[syncMethod](...args)
+  );
 }
 
 export class ConversationStore {
   constructor({
     getFilePath,
-    fileSystem = fs
+    fileSystem = fs,
+    writeDelayMs = 150
   }) {
     if (
       typeof getFilePath !==
@@ -31,6 +53,18 @@ export class ConversationStore {
       fileSystem;
 
     this.cache = null;
+    this.writeQueue =
+      new AsyncPersistenceQueue({
+        delayMs: writeDelayMs,
+        write: (data) =>
+          this.writeAsync(data),
+        onError: (error) => {
+          console.warn(
+            "写入会话文件失败：",
+            error
+          );
+        }
+      });
   }
 
   getPath() {
@@ -73,7 +107,7 @@ export class ConversationStore {
         createEmptyConversationData();
     }
 
-    this.write(
+    this.scheduleWrite(
       this.cache
     );
 
@@ -88,7 +122,7 @@ export class ConversationStore {
         data
       );
 
-    this.write(
+    this.scheduleWrite(
       this.cache
     );
 
@@ -97,11 +131,19 @@ export class ConversationStore {
     );
   }
 
+  flush() {
+    return this.writeQueue.flush();
+  }
+
   clearCache() {
     this.cache = null;
   }
 
-  write(data) {
+  scheduleWrite(data) {
+    this.writeQueue.enqueue(data);
+  }
+
+  async writeAsync(data) {
     const filePath =
       this.getPath();
 
@@ -113,7 +155,10 @@ export class ConversationStore {
     const temporaryPath =
       `${filePath}.tmp`;
 
-    this.fileSystem.mkdirSync(
+    await callFileSystem(
+      this.fileSystem,
+      "mkdir",
+      "mkdirSync",
       directory,
       {
         recursive: true
@@ -127,14 +172,20 @@ export class ConversationStore {
         2
       );
 
-    this.fileSystem.writeFileSync(
+    await callFileSystem(
+      this.fileSystem,
+      "writeFile",
+      "writeFileSync",
       temporaryPath,
       content,
       "utf8"
     );
 
     try {
-      this.fileSystem.renameSync(
+      await callFileSystem(
+        this.fileSystem,
+        "rename",
+        "renameSync",
         temporaryPath,
         filePath
       );
@@ -146,14 +197,20 @@ export class ConversationStore {
         throw error;
       }
 
-      this.fileSystem.rmSync(
+      await callFileSystem(
+        this.fileSystem,
+        "rm",
+        "rmSync",
         filePath,
         {
           force: true
         }
       );
 
-      this.fileSystem.renameSync(
+      await callFileSystem(
+        this.fileSystem,
+        "rename",
+        "renameSync",
         temporaryPath,
         filePath
       );
