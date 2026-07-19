@@ -209,7 +209,7 @@
   max-width:
     calc(
       var(--response-max-width) -
-      28px
+      49px
     );
 
   max-height:
@@ -586,10 +586,8 @@
    ============================================================ */
 
 .response-bubble.has-activity {
-  width: min(
-    340px,
-    var(--response-max-width)
-  );
+  max-width:
+    var(--response-max-width);
 }
 
 .response-bubble.has-activity

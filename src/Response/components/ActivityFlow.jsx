@@ -91,10 +91,14 @@ function FlowEvent({ event }) {
 
 export function ResponseActivityFlow({
   status,
+  visible = false,
   streaming,
   liveText = ""
 }) {
-  if (!status?.runId) {
+  if (
+    !visible ||
+    !status?.runId
+  ) {
     return null;
   }
 
@@ -111,24 +115,6 @@ export function ResponseActivityFlow({
     snapshot.planStats.total > 0;
   const hasLiveText =
     Boolean(String(liveText).trim());
-
-  if (
-    events.length === 0 &&
-    !hasPlan &&
-    !hasLiveText
-  ) {
-    return (
-      <section
-        className="response-activity"
-        data-testid="response-activity-flow"
-      >
-        <div className="response-activity__header">
-          <span className="response-activity__pulse" />
-          <strong>正在准备</strong>
-        </div>
-      </section>
-    );
-  }
 
   return (
     <section

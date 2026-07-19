@@ -12,6 +12,7 @@ export function ResponseBubble({
   answerText,
   liveText,
   agentStatus,
+  hasActivity,
   streaming,
   side,
   theme,
@@ -50,7 +51,7 @@ export function ResponseBubble({
               ? " is-streaming"
               : ""
           }${
-            agentStatus?.runId
+            hasActivity
               ? " has-activity"
               : ""
           }`
@@ -88,13 +89,14 @@ export function ResponseBubble({
         >
           <ResponseActivityFlow
             status={agentStatus}
+            visible={hasActivity}
             streaming={streaming}
             liveText={liveText}
           />
 
           {hasAnswer && (
             <div
-              className={`response-bubble__answer${agentStatus?.runId ? " has-activity" : ""}`}
+              className={`response-bubble__answer${hasActivity ? " has-activity" : ""}`}
               data-testid="response-text"
             >
               <StreamingMarkdown

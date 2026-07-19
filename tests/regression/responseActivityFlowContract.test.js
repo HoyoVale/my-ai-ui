@@ -6,6 +6,10 @@ import {
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import {
+  hasResponseActivity
+} from "../../src/Response/utils/responsePresentation.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -41,6 +45,59 @@ describe("structured Response activity flow", () => {
     assert.match(flow, /getToolTitle/u);
     assert.match(flow, /createActivitySnapshot/u);
   });
+
+  it("does not render a processing header for an ordinary reply without plan or tool activity", () => {
+    assert.equal(
+      hasResponseActivity({
+        events: [],
+        planStats: {
+          total: 0
+        }
+      }),
+      false
+    );
+
+    const response = read(
+      "../../src/Response/Response.jsx"
+    );
+    const bubble = read(
+      "../../src/Response/components/Bubble.jsx"
+    );
+    const flow = read(
+      "../../src/Response/components/ActivityFlow.jsx"
+    );
+
+    assert.match(response, /hasResponseActivity/u);
+    assert.match(bubble, /visible=\{hasActivity\}/u);
+    assert.doesNotMatch(flow, /正在准备/u);
+  });
+
+  it("keeps the activity flow visible for a plan or a tool run", () => {
+    assert.equal(
+      hasResponseActivity({
+        events: [
+          {
+            type: "tool"
+          }
+        ],
+        planStats: {
+          total: 0
+        }
+      }),
+      true
+    );
+
+    assert.equal(
+      hasResponseActivity({
+        events: [],
+        planStats: {
+          total: 2
+        }
+      }),
+      true
+    );
+  });
+
   it("publishes the final structured snapshot before releasing the active run", () => {
     const runtime = read(
       "../../electron/agent/AgentRuntime.js"

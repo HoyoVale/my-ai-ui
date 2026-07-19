@@ -2,6 +2,30 @@ function textValue(value) {
   return String(value ?? "");
 }
 
+export function hasResponseActivity(
+  snapshot
+) {
+  if (!snapshot) {
+    return false;
+  }
+
+  const hasVisibleEvents =
+    Array.isArray(snapshot.events) &&
+    snapshot.events.some((event) =>
+      [
+        "commentary",
+        "tool"
+      ].includes(event?.type)
+    );
+
+  return (
+    hasVisibleEvents ||
+    Number(
+      snapshot.planStats?.total ?? 0
+    ) > 0
+  );
+}
+
 export function resolveResponsePresentation({
   text,
   finalText,

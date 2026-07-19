@@ -973,48 +973,63 @@ async function main() {
       "工具"
     );
 
-    const toolMode =
-      setting.locator(
-        '[data-testid="tool-mode"]'
-      );
-
-    await toolMode
-      .getByRole(
-        "button",
-        { name: "Chat" }
-      )
-      .click();
-
-    await toolMode
-      .getByRole(
-        "button",
-        { name: "Coding" }
+    await setting
+      .locator(
+        '[data-testid="setting-tab-workspace"]'
       )
       .click();
 
     await waitForText(
       setting.locator(
-        ".tool-mode-card"
+        ".setting-page__header"
       ),
-      "分析授权项目"
+      "工作上下文"
+    );
+
+    const modeCards =
+      setting.locator(
+        ".tool-mode-card"
+      );
+
+    await waitForCount(
+      modeCards,
+      2
+    );
+
+    await waitForText(
+      modeCards.first(),
+      "Chat"
+    );
+
+    await waitForText(
+      modeCards.nth(1),
+      "Coding"
     );
 
     await setting
       .locator(
-        '[data-testid="tool-developer-settings"] summary'
+        '[data-testid="setting-tab-tools"]'
       )
+      .click();
+
+    const developerSettings =
+      setting.locator(
+        '[data-testid="tool-developer-settings"]'
+      );
+
+    await developerSettings
+      .locator("summary")
       .first()
       .click();
 
-    await setting
+    await developerSettings
       .locator(
-        "details.developer-tool-list summary"
+        '[data-testid="tool-developer-overrides"] > summary'
       )
-      .first()
       .click();
 
     const calculatorOverride =
-      setting.locator(
+      developerSettings.locator(
         '[data-testid="tool-override-calculator"]'
       );
 

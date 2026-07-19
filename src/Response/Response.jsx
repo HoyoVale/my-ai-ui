@@ -32,6 +32,7 @@ import {
 } from "../shared/typography.js";
 
 import {
+  hasResponseActivity,
   resolveResponsePresentation
 } from "./utils/responsePresentation.js";
 
@@ -82,10 +83,9 @@ export default function Response() {
         );
 
       const hasActivity =
-        snapshot.events.some((event) =>
-          ["commentary", "tool"].includes(event.type)
-        ) ||
-        snapshot.planStats.total > 0;
+        hasResponseActivity(
+          snapshot
+        );
 
       const finalText =
         String(
@@ -128,8 +128,7 @@ export default function Response() {
     Boolean(
       String(presentation.answerText).trim() ||
       String(presentation.liveText).trim() ||
-      presentation.hasActivity ||
-      agentStatus?.runId
+      presentation.hasActivity
     );
 
   const contentKey = [
@@ -163,6 +162,9 @@ export default function Response() {
       answerText={presentation.answerText}
       liveText={presentation.liveText}
       agentStatus={agentStatus}
+      hasActivity={
+        presentation.hasActivity
+      }
       streaming={streaming}
       side={side}
       theme={theme}

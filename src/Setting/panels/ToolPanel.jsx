@@ -375,7 +375,10 @@ export function ToolPanel({
                 ))}
               </div>
 
-              <details className="developer-tool-list">
+              <details
+                className="developer-tool-list"
+                data-testid="tool-developer-overrides"
+              >
                 <summary>单工具强制覆盖</summary>
                 <div className="developer-tool-list__body">
                   {TOOLSET_OPTIONS.flatMap((toolset) =>
@@ -386,6 +389,7 @@ export function ToolPanel({
                         description={tool.name}
                       >
                         <Select
+                          testId={`tool-override-${tool.name}`}
                           value={settings.developer.toolOverrides?.[tool.name] ?? "inherit"}
                           options={TOOL_OVERRIDE_OPTIONS}
                           onChange={(value) => updateDeveloper({
