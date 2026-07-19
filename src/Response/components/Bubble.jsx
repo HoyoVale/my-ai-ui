@@ -1,10 +1,10 @@
 import {
-  MarkdownContent
-} from "../../Conversation/components/MarkdownContent.jsx";
-
-import {
   ResponseActivityFlow
 } from "./ActivityFlow.jsx";
+
+import {
+  StreamingMarkdown
+} from "./StreamingMarkdown.jsx";
 
 export function ResponseBubble({
   shellRef,
@@ -97,17 +97,11 @@ export function ResponseBubble({
               className={`response-bubble__answer${agentStatus?.runId ? " has-activity" : ""}`}
               data-testid="response-text"
             >
-              <MarkdownContent
+              <StreamingMarkdown
                 content={answerText}
                 compact
+                cursor={streaming}
               />
-
-              {streaming && (
-                <span
-                  className="response-bubble__cursor"
-                  aria-hidden="true"
-                />
-              )}
             </div>
           )}
         </div>

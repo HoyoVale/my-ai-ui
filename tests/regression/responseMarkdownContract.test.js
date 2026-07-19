@@ -28,9 +28,17 @@ describe(
           read(
             "../../src/Response/components/Bubble.jsx"
           );
+        const streamingMarkdown =
+          read(
+            "../../src/Response/components/StreamingMarkdown.jsx"
+          );
 
         assert.match(
           source,
+          /StreamingMarkdown/u
+        );
+        assert.match(
+          streamingMarkdown,
           /MarkdownContent/u
         );
         assert.match(

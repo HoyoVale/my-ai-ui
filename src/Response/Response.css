@@ -392,6 +392,10 @@
 }
 
 /* Response 使用与 Conversation 一致的安全 Markdown 渲染。 */
+.response-streaming-markdown {
+  min-width: 0;
+}
+
 .response-bubble .markdown-content {
   min-width: 0;
   word-break: break-word;

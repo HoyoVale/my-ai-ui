@@ -7,6 +7,10 @@ import {
 } from "../../Conversation/components/MarkdownContent.jsx";
 
 import {
+  StreamingMarkdown
+} from "./StreamingMarkdown.jsx";
+
+import {
   createActivitySnapshot,
   describeToolBatch,
   getToolTitle,
@@ -173,9 +177,10 @@ export function ResponseActivityFlow({
           className="response-activity__live"
           data-testid="response-live-step-text"
         >
-          <MarkdownContent
+          <StreamingMarkdown
             content={liveText}
             compact
+            cursor={streaming}
           />
         </div>
       )}

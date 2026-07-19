@@ -169,22 +169,27 @@ export function isActivityEventVisible(
     return true;
   }
 
+  /*
+   * 工具、说明、计划和批次属于用户可见的执行流程。
+   * activityVisibility="developer" 只限制运行时诊断状态和原始详情，
+   * 不能让普通模式下的整个工具流消失。
+   */
+  if (
+    [
+      "commentary",
+      "tool",
+      "plan",
+      "batch"
+    ].includes(event.type)
+  ) {
+    return true;
+  }
+
   if (developerMode) {
     return true;
   }
 
-  if (event.activityVisibility === "developer") {
-    return false;
-  }
-
-  if (
-    event.type === "tool" &&
-    event.tool?.activityVisibility === "developer"
-  ) {
-    return false;
-  }
-
-  return true;
+  return event.activityVisibility !== "developer";
 }
 
 function eventBatchId(event) {
