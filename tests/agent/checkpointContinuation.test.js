@@ -10,7 +10,7 @@ import {
   resolveCheckpointContinuation
 } from "../../electron/agent/checkpointResume.js";
 
-function resumableConversation() {
+function resumableConversation(stopReason = "agent_segment_limit") {
   return {
     messages: [
       {
@@ -26,7 +26,7 @@ function resumableConversation() {
           taskId: "task-1",
           runId: "run-1",
           status: "checkpoint_ready",
-          stopReason: "agent_segment_limit",
+          stopReason,
           resumable: true,
           checkpoint: {
             goalId: "goal-1",
@@ -37,7 +37,7 @@ function resumableConversation() {
             continuationCount: 1,
             previousSegmentCount: 12,
             phase: "checkpoint_ready",
-            stopReason: "agent_segment_limit",
+            stopReason,
             plan: [
               {
                 id: "inspect",
@@ -94,4 +94,14 @@ describe("segment-boundary task continuation", () => {
       null
     );
   });
+  it("inherits checkpoints from any graceful internal boundary", () => {
+    const continuation = resolveCheckpointContinuation({
+      conversation: resumableConversation("tool_call_limit"),
+      message: "继续"
+    });
+
+    assert.equal(continuation.messageId, "assistant-1");
+    assert.equal(continuation.checkpoint.stopReason, "tool_call_limit");
+  });
+
 });

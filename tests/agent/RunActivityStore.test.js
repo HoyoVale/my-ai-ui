@@ -60,4 +60,32 @@ describe("RunActivityStore", () => {
     assert.equal(second.id, "progress:run-3:2");
     assert.equal(progress[1].status, "completed");
   });
+  it("persists the internal reason separately from the public run outcome", () => {
+    const store = new RunActivityStore({
+      taskId: "task-boundary",
+      runId: "run-boundary",
+      startedAt: 100
+    });
+    store.updateCheckpoint({
+      taskId: "task-boundary",
+      runId: "run-boundary",
+      phase: "checkpoint_ready",
+      stopReason: "tool_call_limit"
+    });
+    const snapshot = store.finalize(
+      "tool_call_limit",
+      150,
+      {
+        status: "checkpoint_ready",
+        outcome: "continuable",
+        resumable: true
+      }
+    );
+
+    assert.equal(snapshot.stopReason, "tool_call_limit");
+    assert.equal(snapshot.status, "checkpoint_ready");
+    assert.equal(snapshot.outcome, "continuable");
+    assert.equal(snapshot.resumable, true);
+  });
+
 });

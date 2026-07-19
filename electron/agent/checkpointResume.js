@@ -1,5 +1,5 @@
 import {
-  RUN_STOP_REASONS
+  isGracefulRunBoundary
 } from "./runStopReasons.js";
 
 const NEW_TASK_PATTERNS = [
@@ -46,7 +46,7 @@ export function isResumableCheckpointActivity(
     checkpoint.stopReason || activity.stopReason;
 
   return (
-    stopReason === RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT &&
+    isGracefulRunBoundary(stopReason) &&
     (
       activity.status === "checkpoint_ready" ||
       checkpoint.phase === "checkpoint_ready" ||

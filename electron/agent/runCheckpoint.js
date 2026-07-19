@@ -102,6 +102,9 @@ export function createRunCheckpoint({
   resumedFromMessageId = "",
   objective = "",
   phase = "executing",
+  outcome = "running",
+  resumable = false,
+  publicStatus = "running",
   plan = [],
   records = [],
   stopReason = "",
@@ -154,6 +157,9 @@ export function createRunCheckpoint({
       Math.round(Number(previousSegmentCount) || 0)
     ),
     phase: text(phase, 40),
+    outcome: text(outcome, 40),
+    resumable: resumable === true,
+    publicStatus: text(publicStatus, 40),
     stopReason: text(
       stopReason,
       80

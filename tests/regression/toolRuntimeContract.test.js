@@ -28,6 +28,10 @@ describe(
           read(
             "../../electron/agent/AgentRuntime.js"
           );
+        const segmentLoop =
+          read(
+            "../../electron/agent/orchestration/SegmentExecutionLoop.js"
+          );
 
         assert.match(
           source,
@@ -42,8 +46,8 @@ describe(
           /new LongTaskOrchestrator/u
         );
         assert.match(
-          source,
-          /segmentOutcome\.decision === "continue"/u
+          segmentLoop,
+          /segmentOutcome\.decision !== "continue"/u
         );
         assert.match(
           source,

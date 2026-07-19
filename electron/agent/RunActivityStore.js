@@ -83,6 +83,8 @@ export class RunActivityStore {
     this.startedAt = nowValue(startedAt);
     this.endedAt = null;
     this.status = "running";
+    this.outcome = "running";
+    this.resumable = false;
     this.stopReason = "";
     this.events = [];
     this.sequence = 0;
@@ -435,9 +437,19 @@ export class RunActivityStore {
     });
   }
 
-  finalize(stopReason, endedAt = Date.now()) {
+  finalize(
+    stopReason,
+    endedAt = Date.now(),
+    {
+      status = "",
+      outcome = "",
+      resumable = false
+    } = {}
+  ) {
     this.stopReason = normalizeRunStopReason(stopReason);
-    this.status = runStatusFromStopReason(this.stopReason);
+    this.status = String(status || runStatusFromStopReason(this.stopReason));
+    this.outcome = String(outcome || this.status);
+    this.resumable = resumable === true;
     this.endedAt = nowValue(endedAt);
 
     if (this.activeBatchId) {
@@ -473,7 +485,7 @@ export class RunActivityStore {
     const endedAt = this.endedAt;
     const currentEnd = endedAt ?? Date.now();
     const resumable =
-      this.status === "checkpoint_ready" &&
+      this.resumable &&
       Boolean(this.checkpoint);
 
     return {
@@ -481,6 +493,7 @@ export class RunActivityStore {
       taskId: this.taskId,
       runId: this.runId,
       status: this.status,
+      outcome: this.outcome,
       startedAt: this.startedAt,
       endedAt,
       durationMs: Math.max(0, currentEnd - this.startedAt),

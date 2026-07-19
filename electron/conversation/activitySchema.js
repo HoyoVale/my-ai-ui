@@ -512,6 +512,18 @@ function sanitizeCheckpoint(source) {
       "executing",
       40
     ),
+    outcome: stringValue(
+      checkpoint.outcome,
+      "running",
+      40
+    ),
+    resumable:
+      checkpoint.resumable === true,
+    publicStatus: stringValue(
+      checkpoint.publicStatus,
+      "running",
+      40
+    ),
     stopReason: stringValue(
       checkpoint.stopReason,
       "",
@@ -576,6 +588,13 @@ export function sanitizeActivity(source) {
       120
     ),
     status,
+    outcome: stringValue(
+      source.outcome,
+      status === "checkpoint_ready"
+        ? "continuable"
+        : status,
+      40
+    ),
     startedAt: timestampValue(
       source.startedAt,
       0

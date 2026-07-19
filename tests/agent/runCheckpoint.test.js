@@ -70,4 +70,21 @@ describe("persisted run checkpoints", () => {
     assert.equal(checkpoint.continuationCount, 2);
     assert.equal(checkpoint.previousSegmentCount, 24);
   });
+  it("keeps execution reason and public outcome as separate checkpoint fields", () => {
+    const checkpoint = createRunCheckpoint({
+      taskId: "task",
+      runId: "run",
+      phase: "checkpoint_ready",
+      outcome: "continuable",
+      resumable: true,
+      publicStatus: "complete",
+      stopReason: "tool_call_limit"
+    });
+
+    assert.equal(checkpoint.stopReason, "tool_call_limit");
+    assert.equal(checkpoint.outcome, "continuable");
+    assert.equal(checkpoint.resumable, true);
+    assert.equal(checkpoint.publicStatus, "complete");
+  });
+
 });

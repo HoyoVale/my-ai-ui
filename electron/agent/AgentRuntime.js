@@ -112,6 +112,15 @@ import {
   LongTaskOrchestrator
 } from "./orchestration/LongTaskOrchestrator.js";
 
+import {
+  RunStateMachine,
+  RUN_OUTCOMES
+} from "./RunStateMachine.js";
+
+import {
+  SegmentExecutionLoop
+} from "./orchestration/SegmentExecutionLoop.js";
+
 
 
 
@@ -218,6 +227,23 @@ async function settleResultValue(
   }
 }
 
+function createRunStateFields(startedAt) {
+  const stateMachine = new RunStateMachine({
+    startedAt
+  });
+  const state = stateMachine.snapshot();
+
+  return {
+    stateMachine,
+    phase: state.phase,
+    outcome: state.outcome,
+    executionStopReason: state.executionStopReason || null,
+    stopReason: state.executionStopReason || null,
+    resumable: state.resumable,
+    publicStatus: state.messageStatus
+  };
+}
+
 export class AgentRuntime {
   constructor() {
     this.activeRun = null;
@@ -229,6 +255,53 @@ export class AgentRuntime {
       startedAt: null,
       lastError: null
     };
+  }
+
+  applyRunState(state) {
+    if (!this.activeRun || !state) {
+      return state;
+    }
+
+    this.activeRun.phase = state.phase;
+    this.activeRun.outcome = state.outcome;
+    this.activeRun.executionStopReason =
+      state.executionStopReason || null;
+    this.activeRun.stopReason =
+      state.executionStopReason || null;
+    this.activeRun.resumable =
+      state.resumable === true;
+    this.activeRun.publicStatus =
+      state.messageStatus;
+
+    return state;
+  }
+
+  markRunExecuting() {
+    return this.applyRunState(
+      this.activeRun
+        ?.stateMachine
+        ?.markExecuting()
+    );
+  }
+
+  beginRunFinalization(
+    executionStopReason
+  ) {
+    return this.applyRunState(
+      this.activeRun
+        ?.stateMachine
+        ?.beginFinalization(
+          executionStopReason
+        )
+    );
+  }
+
+  requestRunCancellation() {
+    return this.applyRunState(
+      this.activeRun
+        ?.stateMachine
+        ?.requestCancellation()
+    );
   }
 
   getStatus() {
@@ -286,6 +359,21 @@ export class AgentRuntime {
       phase:
         this.activeRun
           ?.phase ?? "idle",
+      outcome:
+        this.activeRun
+          ?.outcome ??
+        this.status.outcome ?? "idle",
+      executionStopReason:
+        this.activeRun
+          ?.executionStopReason ??
+        this.status.stopReason ?? null,
+      resumable:
+        this.activeRun
+          ?.resumable ??
+        this.status.resumable ?? false,
+      publicStatus:
+        this.activeRun
+          ?.publicStatus ?? "complete",
       finalizationAttemptCount:
         this.activeRun
           ?.finalizationAttemptCount ?? 0,
@@ -322,6 +410,12 @@ export class AgentRuntime {
         this.activeRun.objective ?? "",
       phase:
         this.activeRun.phase ?? "executing",
+      outcome:
+        this.activeRun.outcome ?? "running",
+      resumable:
+        this.activeRun.resumable === true,
+      publicStatus:
+        this.activeRun.publicStatus ?? "running",
       plan:
         this.activeRun.toolSession
           ?.getPlan?.() ??
@@ -415,6 +509,82 @@ export class AgentRuntime {
     });
   }
 
+  finalizeRun({
+    runId,
+    conversationId,
+    executionStopReason,
+    outcome,
+    content = "",
+    lastError = "",
+    closeResponse = true
+  } = {}) {
+    if (!this.isCurrentRun(runId)) {
+      return null;
+    }
+
+    const run = this.activeRun;
+    const state = this.applyRunState(
+      run.stateMachine.finalize({
+        executionStopReason,
+        outcome,
+        lastError
+      })
+    );
+
+    const orchestration =
+      run.orchestrator?.snapshot?.();
+    if (
+      orchestration?.task?.status === "running" &&
+      state.outcome !== RUN_OUTCOMES.COMPLETED
+    ) {
+      run.orchestrator.terminate(
+        state.executionStopReason
+      );
+    }
+
+    run.finalText = String(content ?? "").trim();
+    run.activityStore?.finalize(
+      state.executionStopReason,
+      state.endedAt,
+      {
+        status: state.activityStatus,
+        outcome: state.outcome,
+        resumable: state.resumable
+      }
+    );
+    run.activityStore?.updateCheckpoint(
+      this.buildActiveCheckpoint()
+    );
+
+    this.persistAssistantResponse({
+      conversationId,
+      content: run.finalText,
+      status: state.messageStatus
+    });
+
+    if (closeResponse) {
+      endResponseStream();
+    }
+
+    const finalState = {
+      ...state
+    };
+    this.activeRun = null;
+
+    this.setStatus({
+      state: state.runtimeState,
+      runId: null,
+      conversationId,
+      startedAt: null,
+      lastError: state.lastError || null,
+      stopReason: state.executionStopReason,
+      outcome: state.outcome,
+      resumable: state.resumable
+    });
+
+    return finalState;
+  }
+
   finishCancelledRun({
     runId,
     conversationId
@@ -431,34 +601,13 @@ export class AgentRuntime {
       ? this.activeRun.finalText.trim()
       : "";
 
-    this.activeRun.phase = "cancelled";
-    this.activeRun.stopReason =
-      RUN_STOP_REASONS.CANCELLED_BY_USER;
-    this.activeRun.orchestrator?.terminate(
-      this.activeRun.stopReason
-    );
-    this.activeRun.activityStore
-      ?.finalize(
-        this.activeRun.stopReason
-      );
-    this.persistActiveRunCheckpoint({
-      status: "aborted"
-    });
-    this.persistAssistantResponse({
+    this.finalizeRun({
+      runId,
       conversationId,
-      content,
-      status: "aborted"
-    });
-
-    this.activeRun = null;
-    this.setStatus({
-      state: "idle",
-      runId: null,
-      conversationId,
-      startedAt: null,
-      lastError: null,
-      stopReason:
-        RUN_STOP_REASONS.CANCELLED_BY_USER
+      executionStopReason:
+        RUN_STOP_REASONS.CANCELLED_BY_USER,
+      outcome: RUN_OUTCOMES.CANCELLED,
+      content
     });
   }
 
@@ -667,12 +816,10 @@ export class AgentRuntime {
       resumedFromMessageId:
         continuationState?.resumedFromMessageId ?? "",
       resumeInPlace: false,
-      phase: "executing",
       finalizationAttemptCount: 0,
       contextCompactionCount:
         continuationState?.contextCompactionCount ?? 0,
-      executionStopReason: null,
-      stopReason: null
+      ...createRunStateFields(startedAt)
     };
 
     this.ensureActiveAssistantMessage(
@@ -847,11 +994,9 @@ export class AgentRuntime {
       initialPlan: [],
       resumedFromMessageId: "",
       resumeInPlace: false,
-      phase: "executing",
       finalizationAttemptCount: 0,
       contextCompactionCount: 0,
-      executionStopReason: null,
-      stopReason: null
+      ...createRunStateFields(startedAt)
     };
 
     this.ensureActiveAssistantMessage(
@@ -1059,13 +1204,12 @@ export class AgentRuntime {
         this.activeRun
           .initialPlan ?? [],
       stopReason:
-        this.activeRun
-          .stopReason ??
+        this.activeRun.executionStopReason ??
         (status === "aborted"
-          ? RUN_STOP_REASONS
-              .CANCELLED_BY_USER
-          : RUN_STOP_REASONS
-              .COMPLETED),
+          ? RUN_STOP_REASONS.CANCELLED_BY_USER
+          : status === "running"
+            ? ""
+            : RUN_STOP_REASONS.COMPLETED),
       resumedFromMessageId:
         this.activeRun
           .resumedFromMessageId,
@@ -1117,8 +1261,7 @@ export class AgentRuntime {
       };
     }
 
-    this.activeRun.phase =
-      "cancelling";
+    this.requestRunCancellation();
     this.activeRun.activityStore
       ?.markStatus(
         "cancelling",
@@ -1277,16 +1420,19 @@ export class AgentRuntime {
         }
       });
 
-      endResponseStream();
-
       if (
         abortController
           .signal
-          .aborted ||
-        !this.isCurrentRun(
-          runId
-        )
+          .aborted
       ) {
+        this.finishCancelledRun({
+          runId,
+          conversationId
+        });
+        return;
+      }
+
+      if (!this.isCurrentRun(runId)) {
         return;
       }
 
@@ -1295,40 +1441,16 @@ export class AgentRuntime {
           .finalText
           .trim();
 
-      if (assistantText) {
-        this.activeRun.stopReason =
-          RUN_STOP_REASONS
-            .COMPLETED;
-        this.activeRun
-          .activityStore
-          ?.finalize(
-            this.activeRun
-              .stopReason
-          );
-        this.activeRun.activityStore
-          ?.updateCheckpoint(
-            this.buildActiveCheckpoint()
-          );
-        this.persistAssistantResponse({
-          conversationId,
-          content:
-            assistantText,
-          status: "complete"
-        });
-      }
-
-      this.activeRun = null;
-
-      this.setStatus({
-        state: "idle",
-        runId: null,
+      this.finalizeRun({
+        runId,
         conversationId,
-        startedAt: null,
-        lastError: null
+        executionStopReason:
+          RUN_STOP_REASONS.COMPLETED,
+        outcome: RUN_OUTCOMES.COMPLETED,
+        content:
+          assistantText || "任务已处理完成。"
       });
     } catch (error) {
-      endResponseStream();
-
       if (
         abortController
           .signal
@@ -1342,7 +1464,20 @@ export class AgentRuntime {
         return;
       }
 
-      throw error;
+      if (this.isCurrentRun(runId)) {
+        const friendlyMessage = formatAgentError(error);
+        const errorText = `⚠ ${friendlyMessage}`;
+        appendResponseChunk(errorText);
+        this.finalizeRun({
+          runId,
+          conversationId,
+          executionStopReason:
+            RUN_STOP_REASONS.MODEL_ERROR,
+          outcome: RUN_OUTCOMES.FAILED,
+          content: errorText,
+          lastError: friendlyMessage
+        });
+      }
     }
   }
 
@@ -1367,10 +1502,14 @@ export class AgentRuntime {
         ?.maxFinalizationAttempts ??
       2;
 
-    this.activeRun.phase =
-      "finalizing";
+    this.beginRunFinalization(
+      executionStopReason
+    );
     this.activeRun.currentStepText =
       "";
+    this.persistActiveRunCheckpoint({
+      status: "running"
+    });
 
     this.setStatus({
       ...this.status
@@ -1512,9 +1651,6 @@ export class AgentRuntime {
         this.activeRun
           .currentStepText =
           "";
-        this.activeRun.phase =
-          "completed";
-
         if (bufferProgressHandoff) {
           appendResponseChunk(
             normalized
@@ -1544,9 +1680,6 @@ export class AgentRuntime {
       fallback;
     this.activeRun.currentStepText =
       "";
-    this.activeRun.phase =
-      "completed";
-
     if (fallback) {
       appendResponseChunk(
         fallback
@@ -1565,6 +1698,147 @@ export class AgentRuntime {
     };
   }
 
+  async executeAgentSegment({
+    runId,
+    segment,
+    segmentSystem,
+    context,
+    runtime,
+    modelSettings,
+    toolSession,
+    maxSteps,
+    abortController,
+    remainingRunMs
+  }) {
+    const result = streamText({
+      model: runtime.model,
+      system: segmentSystem,
+      messages: context.messages,
+      tools: toolSession.tools,
+      stopWhen: stepCountIs(maxSteps),
+      ...runtime.requestOptions,
+      abortSignal: abortController.signal,
+      timeout: {
+        totalMs: Math.max(
+          1,
+          Math.min(modelSettings.timeoutMs, remainingRunMs)
+        ),
+        chunkMs: Math.min(45000, modelSettings.timeoutMs)
+      },
+      prepareStep: ({
+        stepNumber,
+        initialMessages,
+        responseMessages
+      }) => {
+        if (
+          stepNumber < 4 ||
+          !this.isCurrentRun(runId)
+        ) {
+          return undefined;
+        }
+
+        const compacted = compactRunStepContext({
+          initialMessages,
+          responseMessages,
+          checkpoint: this.buildActiveCheckpoint(),
+          contextTokenBudget:
+            modelSettings.contextTokenBudget,
+          outputReserve:
+            modelSettings.maxOutputTokens ?? 4096
+        });
+
+        if (!compacted.compacted) {
+          return undefined;
+        }
+
+        this.activeRun.contextCompactionCount += 1;
+        this.persistActiveRunCheckpoint({
+          status: "running"
+        });
+
+        return {
+          messages: compacted.messages,
+          instructions: [
+            segmentSystem,
+            compacted.checkpointInstruction,
+            "Earlier tool details were compacted to protect the context budget. Use the checkpoint and result references; do not repeat completed work."
+          ].filter(Boolean).join("\n\n")
+        };
+      },
+      onStepStart: ({ stepNumber }) => {
+        if (!this.isCurrentRun(runId)) {
+          return;
+        }
+
+        this.activeRun.currentStepText = "";
+        this.activeRun.stepNumber =
+          Number(stepNumber) || 0;
+        this.setStatus({
+          ...this.status
+        });
+      },
+      onStepEnd: (step) => {
+        this.handleStepEnd(runId, step);
+      },
+      onError: ({ error }) => {
+        console.error(
+          "模型流式请求错误：",
+          error
+        );
+      }
+    });
+
+    for await (const textPart of result.textStream) {
+      if (!this.isCurrentRun(runId)) {
+        break;
+      }
+
+      if (textPart) {
+        this.activeRun.currentStepText += textPart;
+        appendResponseChunk(textPart);
+        this.setStatus({
+          ...this.status
+        });
+      }
+    }
+
+    const records = toolSession.getRecords();
+    const finishReason = await settleResultValue(
+      result.finishReason,
+      "unknown"
+    );
+    const steps = await settleResultValue(
+      result.steps,
+      []
+    );
+    const plan = toolSession.getPlan();
+    const executionStopReason = inferRunStopReason({
+      records,
+      finishReason,
+      steps,
+      maxSteps,
+      plan
+    });
+    const segmentRecords = records.filter(
+      (record) => record?.segmentId === segment.id
+    );
+    const batchFailed = segmentRecords.some(
+      (record) => ["failed", "error"].includes(record?.status)
+    );
+    this.activeRun.activityStore?.closeBatch(
+      batchFailed ? "failed" : "completed"
+    );
+
+    return {
+      records,
+      finishReason,
+      steps,
+      plan,
+      executionStopReason,
+      finalText: this.activeRun.finalText
+    };
+  }
+
   async runMessage({
     runId,
     conversationId,
@@ -1572,90 +1846,61 @@ export class AgentRuntime {
     abortController
   }) {
     try {
-      const settings =
-        getSettings();
-
-      const modelSettings =
-        resolveActiveModelSettings(
-          settings.model
-        );
-
-      const runtime =
-        createModelRuntime(
-          modelSettings
-        );
-
-      const runtimeSettings =
-        settings.tools?.runtime ?? {};
-      const orchestrator =
-        new LongTaskOrchestrator({
-          goalId: this.activeRun.goalId,
-          taskId: this.activeRun.taskId,
-          runId,
-          objective: this.activeRun.objective,
-          maxSegmentSteps: runtimeSettings.maxSteps ?? 6,
-          maxSegments: runtimeSettings.maxSegments ?? 6,
-          maxNoProgressSegments:
-            runtimeSettings.maxNoProgressSegments ?? 2,
-          startedAt: this.activeRun.startedAt
-        });
+      const settings = getSettings();
+      const modelSettings = resolveActiveModelSettings(
+        settings.model
+      );
+      const runtime = createModelRuntime(modelSettings);
+      const runtimeSettings = settings.tools?.runtime ?? {};
+      const orchestrator = new LongTaskOrchestrator({
+        goalId: this.activeRun.goalId,
+        taskId: this.activeRun.taskId,
+        runId,
+        objective: this.activeRun.objective,
+        maxSegmentSteps: runtimeSettings.maxSteps ?? 6,
+        maxSegments: runtimeSettings.maxSegments ?? 6,
+        maxNoProgressSegments:
+          runtimeSettings.maxNoProgressSegments ?? 2,
+        startedAt: this.activeRun.startedAt
+      });
       this.activeRun.orchestrator = orchestrator;
 
-      const toolSession =
-        createAgentToolSession({
-          activeModel:
-            modelSettings,
-          getAgentStatus: () =>
-            this.getStatus(),
-          abortSignal:
-            abortController.signal,
-          onRecord: (record) => {
-            this.upsertToolRecord(
-              runId,
-              record
-            );
-          },
-          onPlanChange: (plan, change) => {
-            if (
-              this.isCurrentRun(
-                runId
-              )
-            ) {
-              this.activeRun
-                .activityStore
-                ?.recordPlan(
-                  plan,
-                  Date.now(),
-                  change
-                );
-              this.persistActiveRunCheckpoint({
-                status: "running"
-              });
-              this.setStatus({
-                ...this.status
-              });
-            }
-          },
-          activityStore:
-            this.activeRun.activityStore,
-          settings,
-          initialPlan:
-            this.activeRun
-              .initialPlan,
-          resultStoreDirectory:
-            getTaskResultDirectory(
-              this.activeRun.taskId
-            ),
-          taskId:
-            this.activeRun.taskId,
-          getSegmentId: () =>
-            orchestrator.currentSegmentId(),
-          segmentId:
-            runId
-        });
+      const toolSession = createAgentToolSession({
+        activeModel: modelSettings,
+        getAgentStatus: () => this.getStatus(),
+        abortSignal: abortController.signal,
+        onRecord: (record) => {
+          this.upsertToolRecord(runId, record);
+        },
+        onPlanChange: (plan, change) => {
+          if (!this.isCurrentRun(runId)) {
+            return;
+          }
 
-      this.activeRun.toolSession =
-        toolSession;
+          this.activeRun.activityStore?.recordPlan(
+            plan,
+            Date.now(),
+            change
+          );
+          this.persistActiveRunCheckpoint({
+            status: "running"
+          });
+          this.setStatus({
+            ...this.status
+          });
+        },
+        activityStore: this.activeRun.activityStore,
+        settings,
+        initialPlan: this.activeRun.initialPlan,
+        resultStoreDirectory: getTaskResultDirectory(
+          this.activeRun.taskId
+        ),
+        taskId: this.activeRun.taskId,
+        getSegmentId: () => orchestrator.currentSegmentId(),
+        segmentId: runId
+      });
+
+      this.activeRun.toolSession = toolSession;
       const activeCapabilityContext = buildCapabilityContext({
         toolSettings: settings.tools,
         toolManifest: toolSession.registryManifest
@@ -1680,469 +1925,98 @@ export class AgentRuntime {
 
       startResponseStream();
 
-      const maxSteps =
-        settings.tools
-          ?.runtime
-          ?.maxSteps ?? 6;
-
+      const maxSteps = runtimeSettings.maxSteps ?? 6;
       const runTimeoutMs =
-        runtimeSettings.runTimeoutMs ??
-        modelSettings.timeoutMs;
-      const runDeadline =
-        this.activeRun.startedAt + runTimeoutMs;
-      let segmentSystem =
-        context.system;
+        runtimeSettings.runTimeoutMs ?? modelSettings.timeoutMs;
+      const runDeadline = this.activeRun.startedAt + runTimeoutMs;
+      let segmentSystem = context.system;
 
-      while (true) {
-        if (
-          abortController.signal.aborted ||
-          !this.isCurrentRun(runId)
-        ) {
-          break;
-        }
+      const segmentLoop = new SegmentExecutionLoop({
+        orchestrator,
+        runDeadline,
+        signal: abortController.signal,
+        isActive: () => this.isCurrentRun(runId)
+      });
 
-        const remainingRunMs =
-          runDeadline - Date.now();
-
-        if (remainingRunMs <= 0) {
-          this.activeRun.stopReason =
-            RUN_STOP_REASONS.AGENT_RUN_TIMEOUT;
-          this.activeRun.executionStopReason =
-            RUN_STOP_REASONS.AGENT_RUN_TIMEOUT;
-          orchestrator.terminate(
-            this.activeRun.stopReason
-          );
-          this.activeRun.phase = "checkpoint_ready";
-          this.activeRun.activityStore?.recordProgress({
-            title: "当前进展已整理",
-            status: "completed",
-            stopReason: this.activeRun.stopReason
-          });
-          const records = toolSession.getRecords();
-          const plan = toolSession.getPlan();
-          this.activeRun.toolCalls = records;
-          await this.runFinalization({
-            runId,
-            context,
-            runtime,
-            modelSettings,
-            settings,
-            records,
-            plan,
-            executionStopReason:
-              this.activeRun.stopReason,
-            abortController
-          });
-          this.activeRun.phase = "checkpoint_ready";
-          this.activeRun.activityStore?.finalize(
-            this.activeRun.stopReason
-          );
-          break;
-        }
-
-        const segment = orchestrator.beginSegment({
-          plan: toolSession.getPlan(),
-          records: toolSession.getRecords()
-        });
-
-        if (!segment) {
-          this.activeRun.stopReason =
-            RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT;
-          this.activeRun.executionStopReason =
-            RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT;
-          orchestrator.terminate(
-            this.activeRun.stopReason
-          );
-          this.activeRun.phase = "checkpoint_ready";
-          this.activeRun.activityStore?.recordProgress({
-            title: "当前阶段进展已整理",
-            status: "completed",
-            stopReason: this.activeRun.stopReason
-          });
-          const records = toolSession.getRecords();
-          const plan = toolSession.getPlan();
-          this.activeRun.toolCalls = records;
-          this.activeRun.executionStopReason =
-            this.activeRun.stopReason;
-          await this.runFinalization({
-            runId,
-            context,
-            runtime,
-            modelSettings,
-            settings,
-            records,
-            plan,
-            executionStopReason:
-              this.activeRun.stopReason,
-            abortController
-          });
-          this.activeRun.phase = "checkpoint_ready";
-          this.activeRun.activityStore?.finalize(
-            this.activeRun.stopReason
-          );
-          break;
-        }
-
-        this.activeRun.currentSegmentId = segment.id;
-        this.activeRun.phase = "executing";
-        this.persistActiveRunCheckpoint({ status: "running" });
-        this.activeRun.activityStore?.recordProgress({
-          title: segment.index === 1
-            ? "开始执行任务" : "继续执行任务",
-          status: "running"
-        });
-
-      const result =
-        streamText({
-          model: runtime.model,
-
-          system:
-            segmentSystem,
-
-          messages:
-            context.messages,
-
-          tools:
-            toolSession.tools,
-
-          stopWhen:
-            stepCountIs(
-              maxSteps
-            ),
-
-          ...runtime.requestOptions,
-
-          abortSignal:
-            abortController.signal,
-
-          timeout: {
-            totalMs:
-              Math.max(
-                1,
-                Math.min(modelSettings.timeoutMs, remainingRunMs)
-              ),
-
-            chunkMs:
-              Math.min(
-                45000,
-                modelSettings
-                  .timeoutMs
-              )
-          },
-
-          prepareStep: ({
-            stepNumber,
-            initialMessages,
-            responseMessages
-          }) => {
-            if (
-              stepNumber < 4 ||
-              !this.isCurrentRun(runId)
-            ) {
-              return undefined;
-            }
-
-            const compacted =
-              compactRunStepContext({
-                initialMessages,
-                responseMessages,
-                checkpoint:
-                  this.buildActiveCheckpoint(),
-                contextTokenBudget:
-                  modelSettings.contextTokenBudget,
-                outputReserve:
-                  modelSettings.maxOutputTokens ?? 4096
-              });
-
-            if (!compacted.compacted) {
-              return undefined;
-            }
-
-            this.activeRun.contextCompactionCount += 1;
-            this.persistActiveRunCheckpoint({
-              status: "running"
-            });
-
-            return {
-              messages: compacted.messages,
-              instructions: [
-                segmentSystem,
-                compacted.checkpointInstruction,
-                "Earlier tool details were compacted to protect the context budget. Use the checkpoint and result references; do not repeat completed work."
-              ].filter(Boolean).join("\n\n")
-            };
-          },
-
-          onStepStart: ({
-            stepNumber
-          }) => {
-            if (
-              !this.isCurrentRun(
-                runId
-              )
-            ) {
-              return;
-            }
-
-            this.activeRun
-              .currentStepText =
-              "";
-            this.activeRun.stepNumber =
-              Number(stepNumber) || 0;
-
-            this.setStatus({
-              ...this.status
-            });
-          },
-
-          onStepEnd: (step) => {
-            this.handleStepEnd(
-              runId,
-              step
-            );
-          },
-
-          onError: ({
-            error
-          }) => {
-            console.error(
-              "模型流式请求错误：",
-              error
-            );
+      const loopResult = await segmentLoop.run({
+        getPlan: () => toolSession.getPlan(),
+        getRecords: () => toolSession.getRecords(),
+        createCheckpoint: () => {
+          const checkpoint = this.buildActiveCheckpoint();
+          if (checkpoint) {
+            checkpoint.orchestration = null;
           }
-        });
-
-      for await (
-        const textPart
-        of result.textStream
-      ) {
-        if (
-          !this.isCurrentRun(
-            runId
-          )
-        ) {
-          break;
-        }
-
-        if (textPart) {
-          this.activeRun
-            .currentStepText +=
-            textPart;
-
-          appendResponseChunk(
-            textPart
-          );
-
-          this.setStatus({
-            ...this.status
+          return checkpoint;
+        },
+        onSegmentStart: ({ segment }) => {
+          this.activeRun.currentSegmentId = segment.id;
+          this.markRunExecuting();
+          this.persistActiveRunCheckpoint({
+            status: "running"
           });
-        }
-      }
-
-      if (
-        !abortController
-          .signal
-          .aborted &&
-        this.isCurrentRun(runId)
-      ) {
-        const records =
-          toolSession.getRecords();
-        const finishReason =
-          await settleResultValue(
-            result.finishReason,
-            "unknown"
-          );
-        const steps =
-          await settleResultValue(
-            result.steps,
-            []
-          );
-        const plan =
-          toolSession.getPlan();
-        let executionStopReason =
-          inferRunStopReason({
-            records,
-            finishReason,
-            steps,
+          this.activeRun.activityStore?.recordProgress({
+            title:
+              segment.index === 1
+                ? "开始执行任务"
+                : "继续执行任务",
+            status: "running"
+          });
+        },
+        executeSegment: ({ segment, remainingRunMs }) =>
+          this.executeAgentSegment({
+            runId,
+            segment,
+            segmentSystem,
+            context,
+            runtime,
+            modelSettings,
+            toolSession,
             maxSteps,
-            plan
+            abortController,
+            remainingRunMs
+          }),
+        onSegmentComplete: ({
+          segmentOutcome
+        }) => {
+          this.activeRun.currentSegmentId = "";
+          const title =
+            segmentOutcome.decision === "continue"
+              ? "已整理当前进展，继续执行"
+              : segmentOutcome.decision === "checkpoint"
+                ? "当前阶段进展已整理"
+                : "当前阶段已完成";
+          this.activeRun.activityStore?.recordProgress({
+            title,
+            status: [
+              "continue",
+              "complete",
+              "checkpoint"
+            ].includes(segmentOutcome.decision)
+              ? "completed"
+              : "failed",
+            stopReason: segmentOutcome.stopReason
           });
-
-        const segmentRecords = records.filter(
-          (record) => record?.segmentId === segment.id
-        );
-        const batchFailed = segmentRecords.some(
-          (record) => ["failed", "error"].includes(record?.status)
-        );
-        this.activeRun.activityStore?.closeBatch(
-          batchFailed ? "failed" : "completed"
-        );
-        const segmentCheckpoint =
-          this.buildActiveCheckpoint();
-        if (segmentCheckpoint) {
-          segmentCheckpoint.orchestration = null;
-        }
-        const segmentOutcome =
-          orchestrator.completeSegment({
-            stopReason: executionStopReason,
-            finishReason,
-            plan,
-            records,
-            finalText: this.activeRun.finalText,
-            checkpoint: segmentCheckpoint
-          });
-
-        this.activeRun.currentSegmentId = "";
-        executionStopReason =
-          segmentOutcome.stopReason;
-        const segmentProgressTitle =
-          segmentOutcome.decision === "continue"
-            ? "已整理当前进展，继续执行"
-            : segmentOutcome.decision === "checkpoint"
-              ? "当前阶段进展已整理"
-              : "当前阶段已完成";
-        this.activeRun.activityStore?.recordProgress({
-          title: segmentProgressTitle,
-          status: ["continue", "complete", "checkpoint"].includes(segmentOutcome.decision)
-            ? "completed" : "failed",
-          stopReason: executionStopReason
-        });
-
-        if (segmentOutcome.decision === "continue") {
+        },
+        onContinue: ({ checkpoint }) => {
           this.activeRun.finalText = "";
           this.activeRun.currentStepText = "";
-          this.activeRun.executionStopReason =
-            executionStopReason;
-
-          const continuationCheckpoint =
-            this.buildActiveCheckpoint();
           this.activeRun.activityStore?.updateCheckpoint(
-            continuationCheckpoint
+            checkpoint
           );
           segmentSystem = [
             context.system,
-            createCheckpointInstruction(continuationCheckpoint),
+            createCheckpointInstruction(checkpoint),
             "[Continued execution] Continue the same task from the saved task state. Advance unfinished work; do not repeat completed tool calls. If required user input is missing, mark the current plan step needs_input and provide a final explanation. Do not mention internal execution slices or counters to the user."
           ].filter(Boolean).join("\n\n");
-          this.persistActiveRunCheckpoint({ status: "running" });
-          continue;
-        }
-
-        this.activeRun.toolCalls =
-          records;
-        this.activeRun
-          .executionStopReason =
-          executionStopReason;
-
-        if (
-          shouldRunFinalization({
-            finalText:
-              this.activeRun
-                .finalText,
-            plan,
-            records,
-            finishReason,
-            stopReason:
-              executionStopReason
-          })
-        ) {
-          await this.runFinalization({
-            runId,
-            context,
-            runtime,
-            modelSettings,
-            settings,
-            records,
-            plan,
-            executionStopReason,
-            abortController
+          this.persistActiveRunCheckpoint({
+            status: "running"
           });
         }
-
-        const planState =
-          getPlanCompletionState(plan);
-        const hasFinalText =
-          Boolean(
-            this.activeRun
-              .finalText
-              .trim()
-          );
-
-        const reachedContinuationBoundary =
-          isGracefulRunBoundary(
-            executionStopReason
-          );
-
-        this.activeRun.stopReason =
-          reachedContinuationBoundary
-            ? RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT
-            : hasFinalText &&
-          (
-            planState.isComplete ||
-            executionStopReason === RUN_STOP_REASONS.COMPLETED
-          )
-            ? RUN_STOP_REASONS.COMPLETED
-            : executionStopReason;
-        this.activeRun.phase =
-          reachedContinuationBoundary
-            ? "checkpoint_ready"
-            : this.activeRun.stopReason === RUN_STOP_REASONS.COMPLETED
-            ? "completed"
-            : this.activeRun.stopReason === RUN_STOP_REASONS.NEEDS_INPUT
-              ? "needs_input"
-              : this.activeRun.stopReason === RUN_STOP_REASONS.BLOCKED
-                ? "blocked"
-                : "failed";
-
-        this.activeRun
-          .activityStore
-          ?.finalize(
-            this.activeRun
-              .stopReason
-          );
-      }
-        break;
-      }
+      });
 
       if (
-        !abortController
-          .signal
-          .aborted &&
-        !this.activeRun
-          .finalText
-          .trim()
-      ) {
-        const fallbackText =
-          createFallbackFinalSummary({
-            plan:
-              this.activeRun.toolSession
-                ?.getPlan?.() ??
-              this.activeRun.initialPlan ?? [],
-            records:
-              this.activeRun.toolSession
-                ?.getRecords?.() ??
-              this.activeRun.toolCalls ?? [],
-            executionStopReason:
-              this.activeRun.executionStopReason ??
-              this.activeRun.stopReason ??
-              RUN_STOP_REASONS.COMPLETED
-          }) || "当前处理已经结束，但没有生成完整说明。";
-
-        this.activeRun
-          .finalText =
-          fallbackText;
-
-        appendResponseChunk(
-          fallbackText
-        );
-      }
-
-      endResponseStream();
-
-      if (
-        abortController
-          .signal
-          .aborted
+        abortController.signal.aborted ||
+        loopResult.decision === "cancelled"
       ) {
         this.finishCancelledRun({
           runId,
@@ -2151,57 +2025,102 @@ export class AgentRuntime {
         return;
       }
 
-      if (
-        this.isCurrentRun(
-          runId
-        )
-      ) {
-        let assistantText =
-          this.activeRun
-            .finalText
-            .trim();
+      if (!this.isCurrentRun(runId)) {
+        return;
+      }
 
-        if (!assistantText) {
-          assistantText =
-            "任务已处理完成。";
-          this.activeRun.finalText =
-            assistantText;
-        }
+      const records = loopResult.records ?? toolSession.getRecords();
+      const plan = loopResult.plan ?? toolSession.getPlan();
+      const finishReason =
+        loopResult.execution?.finishReason ?? "unknown";
+      const executionStopReason =
+        loopResult.stopReason ?? RUN_STOP_REASONS.UNKNOWN;
 
-        this.activeRun.activityStore
-          ?.updateCheckpoint(
-            this.buildActiveCheckpoint()
-          );
-        this.persistAssistantResponse({
-          conversationId,
-          content: assistantText,
-          status: "complete"
-        });
+      this.activeRun.toolCalls = records;
 
-        const finalStopReason =
-          this.activeRun
-            .stopReason;
-
-        this.activeRun = null;
-
-        this.setStatus({
-          state: "idle",
-          runId: null,
-          conversationId,
-          startedAt: null,
-          lastError: null,
-          stopReason:
-            finalStopReason
+      if (["run_timeout", "segment_limit"].includes(loopResult.source)) {
+        this.activeRun.activityStore?.recordProgress({
+          title:
+            loopResult.source === "run_timeout"
+              ? "当前进展已整理"
+              : "当前阶段进展已整理",
+          status: "completed",
+          stopReason: executionStopReason
         });
       }
+
+      if (
+        shouldRunFinalization({
+          finalText: this.activeRun.finalText,
+          plan,
+          records,
+          finishReason,
+          stopReason: executionStopReason
+        })
+      ) {
+        await this.runFinalization({
+          runId,
+          context,
+          runtime,
+          modelSettings,
+          settings,
+          records,
+          plan,
+          executionStopReason,
+          abortController
+        });
+      }
+
+      if (
+        !abortController.signal.aborted &&
+        !this.activeRun.finalText.trim()
+      ) {
+        const fallbackText = createFallbackFinalSummary({
+          plan,
+          records,
+          executionStopReason
+        }) || "当前处理已经结束，但没有生成完整说明。";
+
+        this.activeRun.finalText = fallbackText;
+        appendResponseChunk(fallbackText);
+      }
+
+      if (abortController.signal.aborted) {
+        this.finishCancelledRun({
+          runId,
+          conversationId
+        });
+        return;
+      }
+
+      const planState = getPlanCompletionState(plan);
+      const hasFinalText = Boolean(
+        this.activeRun.finalText.trim()
+      );
+      const outcome =
+        isGracefulRunBoundary(executionStopReason)
+          ? RUN_OUTCOMES.CONTINUABLE
+          : hasFinalText &&
+              (
+                planState.isComplete ||
+                executionStopReason === RUN_STOP_REASONS.COMPLETED
+              )
+            ? RUN_OUTCOMES.COMPLETED
+            : undefined;
+
+      this.finalizeRun({
+        runId,
+        conversationId,
+        executionStopReason,
+        outcome,
+        content:
+          this.activeRun.finalText.trim() || "任务已处理完成。"
+      });
     } catch (error) {
       if (
-        abortController
-          .signal
-          .aborted ||
+        abortController.signal.aborted ||
         isAbortError(error)
       ) {
-        endResponseStream();
         this.finishCancelledRun({
           runId,
           conversationId
@@ -2209,134 +2128,72 @@ export class AgentRuntime {
         return;
       }
 
-      const friendlyMessage =
-        formatAgentError(error);
+      const friendlyMessage = formatAgentError(error);
 
       console.error(
         "Agent 运行失败：",
         error
       );
 
-      if (
-        this.isCurrentRun(
-          runId
-        )
-      ) {
-        const records =
-          this.activeRun.toolSession
-            ?.getRecords?.() ??
-          this.activeRun.toolCalls ?? [];
-        const plan =
-          this.activeRun.toolSession
-            ?.getPlan?.() ??
-          this.activeRun.initialPlan ?? [];
-        const hasRecoverableState =
-          records.some((record) =>
-            record?.status === "completed"
-          ) ||
-          plan.length > 0;
+      if (!this.isCurrentRun(runId)) {
+        return;
+      }
 
-        this.activeRun.stopReason =
-          hasRecoverableState
-            ? RUN_STOP_REASONS.MODEL_RECOVERY
-            : RUN_STOP_REASONS.MODEL_ERROR;
-        this.activeRun.executionStopReason =
-          this.activeRun.stopReason;
-        this.activeRun.orchestrator?.terminate(
-          this.activeRun.stopReason
-        );
+      const records =
+        this.activeRun.toolSession?.getRecords?.() ??
+        this.activeRun.toolCalls ?? [];
+      const plan =
+        this.activeRun.toolSession?.getPlan?.() ??
+        this.activeRun.initialPlan ?? [];
+      const hasRecoverableState =
+        records.some((record) => record?.status === "completed") ||
+        plan.length > 0;
+      const executionStopReason = hasRecoverableState
+        ? RUN_STOP_REASONS.MODEL_RECOVERY
+        : RUN_STOP_REASONS.MODEL_ERROR;
 
-        if (hasRecoverableState) {
-          this.activeRun.phase = "checkpoint_ready";
-          this.activeRun.toolCalls = records;
-          this.activeRun.activityStore?.recordProgress({
-            title: "当前进展已整理",
-            status: "completed",
-            stopReason: this.activeRun.stopReason
-          });
-          this.activeRun.finalText =
-            createFallbackFinalSummary({
-              plan,
-              records,
-              executionStopReason:
-                this.activeRun.stopReason
-            });
+      this.activeRun.orchestrator?.terminate(
+        executionStopReason
+      );
 
-          startResponseStream();
-          appendResponseChunk(
-            this.activeRun.finalText
-          );
-          endResponseStream();
-
-          this.activeRun.activityStore?.finalize(
-            this.activeRun.stopReason
-          );
-          this.activeRun.activityStore
-            ?.updateCheckpoint(
-              this.buildActiveCheckpoint()
-            );
-          this.persistAssistantResponse({
-            conversationId,
-            content:
-              this.activeRun.finalText,
-            status: "complete"
-          });
-
-          const finalStopReason =
-            this.activeRun.stopReason;
-          this.activeRun = null;
-          this.setStatus({
-            state: "idle",
-            runId: null,
-            conversationId,
-            startedAt: null,
-            lastError: null,
-            stopReason: finalStopReason
-          });
-          return;
-        }
+      if (hasRecoverableState) {
+        this.activeRun.toolCalls = records;
+        this.activeRun.activityStore?.recordProgress({
+          title: "当前进展已整理",
+          status: "completed",
+          stopReason: executionStopReason
+        });
+        const fallback = createFallbackFinalSummary({
+          plan,
+          records,
+          executionStopReason
+        });
 
         startResponseStream();
-        appendResponseChunk(
-          `⚠ ${friendlyMessage}`
-        );
-        endResponseStream();
+        appendResponseChunk(fallback);
 
-        this.activeRun.phase = "failed";
-        this.activeRun
-          .activityStore
-          ?.finalize(
-            this.activeRun
-              .stopReason
-          );
-        this.activeRun.finalText =
-          `⚠ ${friendlyMessage}`;
-        this.activeRun.activityStore
-          ?.updateCheckpoint(
-            this.buildActiveCheckpoint()
-          );
-        this.persistAssistantResponse({
+        this.finalizeRun({
+          runId,
           conversationId,
-          content:
-            this.activeRun
-              .finalText,
-          status: "complete"
+          executionStopReason,
+          outcome: RUN_OUTCOMES.CONTINUABLE,
+          content: fallback
         });
-
-        this.activeRun = null;
-
-        this.setStatus({
-          state: "error",
-          runId: null,
-          conversationId,
-          startedAt: null,
-          lastError:
-            friendlyMessage,
-          stopReason:
-            RUN_STOP_REASONS
-              .MODEL_ERROR
-        });
+        return;
       }
+
+      const errorText = `⚠ ${friendlyMessage}`;
+      startResponseStream();
+      appendResponseChunk(errorText);
+
+      this.finalizeRun({
+        runId,
+        conversationId,
+        executionStopReason,
+        outcome: RUN_OUTCOMES.FAILED,
+        content: errorText,
+        lastError: friendlyMessage
+      });
     }
   }
 
