@@ -1,5 +1,6 @@
 import {
   SettingRow,
+  SettingsVisibility,
   SettingsSection,
   Slider,
   TextInput,
@@ -8,6 +9,7 @@ import {
 
 export function InputPanel({
   settings,
+  developerMode = false,
   onUpdate
 }) {
   const input =
@@ -19,6 +21,10 @@ export function InputPanel({
         title="窗口布局"
         description="输入框宽度以桌宠窗口为基准计算。"
       >
+        <SettingsVisibility
+          visibility="developer"
+          developerMode={developerMode}
+        >
         <SettingRow
           title="额外宽度"
           description="在桌宠宽度基础上向左右扩展。"
@@ -58,6 +64,7 @@ export function InputPanel({
             }}
           />
         </SettingRow>
+        </SettingsVisibility>
 
         <SettingRow
           title="最大文本行数"
@@ -102,6 +109,10 @@ export function InputPanel({
         title="窗口外观"
         description="字体与密度已统一移动到 Appearance。"
       >
+        <SettingsVisibility
+          visibility="developer"
+          developerMode={developerMode}
+        >
         <SettingRow
           title="背景不透明度"
           description="降低后可看到窗口后方内容。"
@@ -148,6 +159,7 @@ export function InputPanel({
             }}
           />
         </SettingRow>
+        </SettingsVisibility>
 
         <SettingRow
           title="占位文字"

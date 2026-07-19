@@ -356,3 +356,18 @@ export function ActionButton({
     </button>
   );
 }
+
+export function SettingsVisibility({
+  visibility = "normal",
+  developerMode = false,
+  children
+}) {
+  if (
+    visibility === "developer" &&
+    !developerMode
+  ) {
+    return null;
+  }
+
+  return children;
+}

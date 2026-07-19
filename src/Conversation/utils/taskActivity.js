@@ -152,6 +152,121 @@ export function toolStatusMark(status) {
   return "✓";
 }
 
+function eventBatchId(event) {
+  return String(
+    event?.batchId ??
+    event?.tool?.batchId ??
+    ""
+  ).trim();
+}
+
+function toolBatchStatus(events) {
+  const statuses = events.map((event) =>
+    normalizeToolStatus(
+      event?.tool?.status ?? event?.status
+    )
+  );
+
+  if (statuses.some((status) => status === "error")) {
+    return "error";
+  }
+
+  if (statuses.some((status) => [
+    "running",
+    "retrying"
+  ].includes(status))) {
+    return "running";
+  }
+
+  if (statuses.some((status) => status === "queued")) {
+    return "queued";
+  }
+
+  if (statuses.some((status) => status === "aborted")) {
+    return "aborted";
+  }
+
+  return "complete";
+}
+
+export function describeToolBatch(batch) {
+  const events = Array.isArray(batch?.events)
+    ? batch.events
+    : [];
+  const count = events.length;
+  const status = batch?.status ?? toolBatchStatus(events);
+
+  if (status === "error") {
+    const failed = events.filter((event) =>
+      normalizeToolStatus(
+        event?.tool?.status ?? event?.status
+      ) === "error"
+    ).length;
+
+    return `${count} 个工具中 ${failed} 个失败`;
+  }
+
+  if (["running", "queued"].includes(status)) {
+    return `正在运行 ${count} 个工具`;
+  }
+
+  if (status === "aborted") {
+    return `已取消 ${count} 个工具`;
+  }
+
+  return `运行了 ${count} 个工具`;
+}
+
+export function groupToolActivityEvents(events = []) {
+  const grouped = [];
+  let pending = [];
+  let pendingBatchId = "";
+
+  const flush = () => {
+    if (pending.length === 0) {
+      return;
+    }
+
+    if (pending.length === 1) {
+      grouped.push(pending[0]);
+    } else {
+      grouped.push({
+        id: `tool-batch:${pendingBatchId || pending[0].id}`,
+        type: "tool_batch",
+        batchId: pendingBatchId,
+        events: pending,
+        status: toolBatchStatus(pending)
+      });
+    }
+
+    pending = [];
+    pendingBatchId = "";
+  };
+
+  for (const event of events) {
+    if (event?.type !== "tool") {
+      flush();
+      grouped.push(event);
+      continue;
+    }
+
+    const batchId = eventBatchId(event);
+    const startsAnotherBatch =
+      pending.length > 0 &&
+      Boolean(batchId || pendingBatchId) &&
+      batchId !== pendingBatchId;
+
+    if (startsAnotherBatch) {
+      flush();
+    }
+
+    pending.push(event);
+    pendingBatchId = pendingBatchId || batchId;
+  }
+
+  flush();
+  return grouped;
+}
 export function normalizePlanStatus(status) {
   if (["in_progress", "running"].includes(status)) {
     return "in_progress";
@@ -230,11 +345,10 @@ export function getPlanStats(plan = []) {
 
 const STOP_REASON_LABELS = Object.freeze({
   completed: "已完成",
-  waiting_for_user: "等待你的回答",
   cancelled_by_user: "已取消",
   needs_input: "需要补充信息",
   blocked: "任务被阻塞",
-  agent_segment_limit: "达到任务分段上限",
+  agent_segment_limit: "当前进展已整理",
   no_progress: "连续分段没有新进展",
   tool_call_limit: "达到工具调用上限",
   agent_step_limit: "达到任务步骤上限",
@@ -297,39 +411,6 @@ function legacyEvents(source) {
     });
   }
 
-  const reasoning = String(
-    source?.reasoningSummary ?? ""
-  ).trim();
-
-  if (reasoning) {
-    events.push({
-      id: `legacy-summary:${source.id ?? "source"}`,
-      type: "summary",
-      sequence: sequence++,
-      status: "completed",
-      title: "思考摘要",
-      content: reasoning,
-      createdAt: startedAt,
-      updatedAt: Number(source?.createdAt || 0)
-    });
-  }
-
-  if (source?.pendingQuestion?.question) {
-    events.push({
-      id: `legacy-question:${source.id ?? "source"}`,
-      type: "question",
-      sequence: sequence++,
-      status:
-        source.pendingQuestion.status === "answered"
-          ? "answered"
-          : "waiting_for_user",
-      title: "等待你的回答",
-      question: source.pendingQuestion,
-      createdAt: Number(source?.createdAt || 0),
-      updatedAt: Number(source?.createdAt || 0)
-    });
-  }
-
   return events;
 }
 
@@ -383,8 +464,7 @@ export function findTaskMessage(
       return Boolean(
         message.activity ||
         (Array.isArray(message.plan) && message.plan.length > 0) ||
-        (Array.isArray(message.toolCalls) && message.toolCalls.length > 0) ||
-        String(message.reasoningSummary ?? "").trim()
+        (Array.isArray(message.toolCalls) && message.toolCalls.length > 0)
       );
     }) ??
     messages.at(-1) ??
@@ -495,11 +575,6 @@ export function createActivitySnapshot(
   const batches = events
     .filter((event) => event.type === "batch" && event.batch)
     .map((event) => event.batch);
-  const reasoning = events
-    .filter((event) => event.type === "summary")
-    .map((event) => String(event.content ?? "").trim())
-    .filter(Boolean)
-    .join("\n\n");
   const lastSource = sources.at(-1) ?? source;
   const stopReason = String(
     lastSource?.activity?.stopReason ??
@@ -566,7 +641,6 @@ export function createActivitySnapshot(
     toolCalls,
     commentary,
     batches,
-    reasoning,
     durationMs,
     stopReason,
     status:

@@ -57,6 +57,14 @@ describe(
           source,
           /tools:\s*toolSession\.tools/u
         );
+        assert.match(
+          source,
+          /toolManifest: toolSession\.registryManifest/u
+        );
+        assert.match(
+          source,
+          /renderPromptSections\(activePromptSections\)/u
+        );
       }
     );
 
@@ -82,44 +90,25 @@ describe(
 );
 
 describe(
-  "agent tool runtime 1.2 contract",
+  "agent tool runtime result contract",
   () => {
     it(
-      "supports paged tool results and legacy question recovery",
+      "supports paged tool results and live activity without retired question recovery",
       () => {
-        const session =
-          read(
-            "../../electron/tools/createAgentToolSession.js"
-          );
-        const runtime =
-          read(
-            "../../electron/agent/AgentRuntime.js"
-          );
-        const conversation =
-          read(
-            "../../src/Conversation/Conversation.jsx"
-          );
+        const session = read(
+          "../../electron/tools/createAgentToolSession.js"
+        );
+        const runtime = read(
+          "../../electron/agent/AgentRuntime.js"
+        );
+        const conversation = read(
+          "../../src/Conversation/Conversation.jsx"
+        );
 
-        assert.match(
-          session,
-          /ToolResultStore/u
-        );
-        assert.doesNotMatch(
-          session,
-          /getPendingQuestion/u
-        );
-        assert.match(
-          runtime,
-          /getPendingQuestion/u
-        );
-        assert.match(
-          runtime,
-          /waiting_for_user/u
-        );
-        assert.match(
-          conversation,
-          /liveActivity/u
-        );
+        assert.match(session, /ToolResultStore/u);
+        assert.match(runtime, /createCheckpointContinuationState/u);
+        assert.doesNotMatch(runtime, /resumeQuestion|getPendingQuestion|pendingQuestion/u);
+        assert.match(conversation, /liveActivity/u);
       }
     );
   }

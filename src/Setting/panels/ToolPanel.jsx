@@ -359,7 +359,7 @@ export function ToolPanel({
                   <Slider
                     value={settings.runtime.maxSteps}
                     min={1}
-                    max={12}
+                    max={32}
                     unit=" 步"
                     onChange={(maxSteps) => {
                       updateRuntime({ maxSteps });
@@ -369,12 +369,12 @@ export function ToolPanel({
 
                 <SettingRow
                   title="最大任务分段"
-                  description="限制一个长期任务自动续跑的 Segment 总数。"
+                  description="控制自动续跑的 checkpoint 数量；达到边界时保留进度，而不是丢失任务。"
                 >
                   <Slider
                     value={settings.runtime.maxSegments}
                     min={1}
-                    max={12}
+                    max={100}
                     unit=" 段"
                     onChange={(maxSegments) => {
                       updateRuntime({ maxSegments });
@@ -389,7 +389,7 @@ export function ToolPanel({
                   <Slider
                     value={settings.runtime.maxNoProgressSegments}
                     min={1}
-                    max={4}
+                    max={10}
                     unit=" 段"
                     onChange={(maxNoProgressSegments) => {
                       updateRuntime({
@@ -415,13 +415,13 @@ export function ToolPanel({
                 </SettingRow>
 
                 <SettingRow
-                  title="最大工具调用"
-                  description="达到上限后拒绝新的工具调用。"
+                  title="受限工具调用"
+                  description="仅统计写入、外部操作或较高风险工具；本地低风险读取不消耗该配额。"
                 >
                   <Slider
                     value={settings.runtime.maxToolCalls}
                     min={1}
-                    max={50}
+                    max={500}
                     unit=" 次"
                     onChange={(maxToolCalls) => {
                       updateRuntime({ maxToolCalls });
@@ -445,19 +445,19 @@ export function ToolPanel({
                 </SettingRow>
 
                 <SettingRow
-                  title="任务总超时"
-                  description="限制一个 Agent Run 可持续的总时间。"
+                  title="任务运行时间"
+                  description="一个 Agent Run 的最长持续时间；低风险工具免配额但仍受该熔断保护。"
                 >
                   <Slider
-                    value={settings.runtime.runTimeoutMs / 1000}
-                    min={10}
-                    max={600}
-                    step={10}
-                    unit=" 秒"
-                    onChange={(seconds) => {
+                    value={settings.runtime.runTimeoutMs / 60000}
+                    min={1}
+                    max={240}
+                    step={1}
+                    unit=" 分钟"
+                    onChange={(minutes) => {
                       updateRuntime({
                         runTimeoutMs:
-                          seconds * 1000
+                          minutes * 60000
                       });
                     }}
                   />
@@ -483,12 +483,12 @@ export function ToolPanel({
 
                 <SettingRow
                   title="重复调用限制"
-                  description="阻止模型持续使用完全相同的工具和参数。"
+                  description="限制受配额或有副作用工具的相同参数重复调用；免配额工具由无进展检测和总请求熔断保护。"
                 >
                   <Slider
                     value={settings.runtime.maxIdenticalCalls}
                     min={1}
-                    max={5}
+                    max={10}
                     unit=" 次"
                     onChange={(maxIdenticalCalls) => {
                       updateRuntime({ maxIdenticalCalls });

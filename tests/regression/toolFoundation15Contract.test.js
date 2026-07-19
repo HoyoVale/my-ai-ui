@@ -32,9 +32,8 @@ describe("Tool Foundation 1.5 contract", () => {
     assert.match(main, /recoverInterruptedRuns/);
   });
 
-  it("provides a fixed other answer and a return-to-current activity control", () => {
-    assert.match(messages, /OTHER_OPTION_ID = "__other__"/);
-    assert.match(messages, /其它回答/);
+  it("provides a return-to-current activity control without a question card", () => {
     assert.match(messages, /conversation-return-to-current/);
+    assert.doesNotMatch(messages, /PendingQuestionCard|OTHER_OPTION_ID|其它回答/);
   });
 });

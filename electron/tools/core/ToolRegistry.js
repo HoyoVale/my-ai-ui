@@ -18,6 +18,11 @@ const TOOL_IDEMPOTENCY_MODES = new Set([
   "required"
 ]);
 
+const TOOL_ACTIVITY_VISIBILITY = new Set([
+  "normal",
+  "developer"
+]);
+
 function cloneMetadata(value) {
   return structuredClone(value);
 }
@@ -169,6 +174,32 @@ function normalizeDefinition(
     : ["none", "read"].includes(sideEffect)
       ? "natural"
       : "none";
+  const explicitLimitAccounting =
+    definition.countsTowardLimit ??
+    defaults.countsTowardLimit;
+  const countsTowardLimit =
+    typeof explicitLimitAccounting === "boolean"
+      ? explicitLimitAccounting
+      : !(
+          ["none", "low"].includes(riskLevel) &&
+          ["none", "read"].includes(sideEffect)
+        );
+  const explicitRepeatAccounting =
+    definition.countsTowardRepeatLimit ??
+    defaults.countsTowardRepeatLimit;
+  const countsTowardRepeatLimit =
+    typeof explicitRepeatAccounting === "boolean"
+      ? explicitRepeatAccounting
+      : countsTowardLimit;
+  const requestedVisibility =
+    definition.activityVisibility ??
+    defaults.activityVisibility;
+  const activityVisibility =
+    TOOL_ACTIVITY_VISIBILITY.has(requestedVisibility)
+      ? requestedVisibility
+      : sideEffect === "none" && riskLevel === "none"
+        ? "developer"
+        : "normal";
 
   return {
     ...definition,
@@ -194,9 +225,9 @@ function normalizeDefinition(
       typeof definition.concurrencyKey === "function"
         ? definition.concurrencyKey
         : String(definition.concurrencyKey ?? "").trim() || null,
-    countsTowardLimit:
-      definition.countsTowardLimit !==
-      false,
+    countsTowardLimit,
+    countsTowardRepeatLimit,
+    activityVisibility,
     timeoutMs:
       Number.isFinite(
         Number(definition.timeoutMs)
@@ -315,6 +346,10 @@ export class ToolRegistry {
           definition.idempotency,
         countsTowardLimit:
           definition.countsTowardLimit,
+        countsTowardRepeatLimit:
+          definition.countsTowardRepeatLimit,
+        activityVisibility:
+          definition.activityVisibility,
         retryPolicy:
           cloneMetadata(
             definition.retryPolicy
@@ -368,6 +403,8 @@ export class ToolRegistrySnapshot {
       sideEffect: definition.sideEffect,
       idempotency: definition.idempotency,
       countsTowardLimit: definition.countsTowardLimit,
+      countsTowardRepeatLimit: definition.countsTowardRepeatLimit,
+      activityVisibility: definition.activityVisibility,
       retryPolicy: cloneMetadata(definition.retryPolicy)
     }));
   }

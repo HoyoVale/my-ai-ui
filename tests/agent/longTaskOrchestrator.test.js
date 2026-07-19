@@ -108,9 +108,107 @@ describe("LongTaskOrchestrator", () => {
       plan: activePlan()
     });
 
-    assert.equal(second.decision, "stop");
+    assert.equal(second.decision, "checkpoint");
     assert.equal(second.stopReason, RUN_STOP_REASONS.NO_PROGRESS);
-    assert.equal(second.snapshot.task.status, "failed");
+    assert.equal(second.snapshot.task.status, "continuable");
+  });
+
+
+
+  it("finalizes a settled plan instead of opening another segment at the step boundary", () => {
+    const orchestrator = new LongTaskOrchestrator({
+      taskId: "task",
+      runId: "run",
+      maxSegments: 5
+    });
+    orchestrator.beginSegment({ plan: activePlan() });
+
+    const outcome = orchestrator.completeSegment({
+      stopReason: RUN_STOP_REASONS.AGENT_STEP_LIMIT,
+      finishReason: "tool-calls",
+      plan: [
+        { id: "inspect", title: "Inspect", status: "completed" },
+        { id: "summarize", title: "Summarize", status: "completed" }
+      ],
+      records: [{
+        id: "plan-complete",
+        name: "update_plan",
+        status: "completed"
+      }]
+    });
+
+    assert.equal(outcome.decision, "complete");
+    assert.equal(outcome.stopReason, RUN_STOP_REASONS.COMPLETED);
+    assert.equal(outcome.snapshot.segmentCount, 1);
+    assert.equal(outcome.snapshot.task.status, "completed");
+  });
+
+  it("turns tool budget exhaustion into a continuable checkpoint", () => {
+    const orchestrator = new LongTaskOrchestrator({
+      taskId: "task",
+      runId: "run"
+    });
+    orchestrator.beginSegment({ plan: activePlan() });
+
+    const outcome = orchestrator.completeSegment({
+      stopReason: RUN_STOP_REASONS.TOOL_CALL_LIMIT,
+      plan: activePlan(),
+      records: [{
+        id: "call-1",
+        name: "write_demo",
+        status: "failed",
+        result: {
+          error: { code: "TOOL_CALL_LIMIT" }
+        }
+      }]
+    });
+
+    assert.equal(outcome.decision, "checkpoint");
+    assert.equal(outcome.stopReason, RUN_STOP_REASONS.TOOL_CALL_LIMIT);
+    assert.equal(outcome.snapshot.task.status, "continuable");
+  });
+
+  it("does not treat repeated identical unmetered reads as semantic progress", () => {
+    const orchestrator = new LongTaskOrchestrator({
+      taskId: "task",
+      runId: "run",
+      maxSegments: 4,
+      maxNoProgressSegments: 2
+    });
+    const record = {
+      name: "read_text_file",
+      status: "completed",
+      input: { path: "README.md" },
+      result: { summary: "Read README" }
+    };
+
+    orchestrator.beginSegment({ plan: activePlan(), records: [record] });
+    const first = orchestrator.completeSegment({
+      stopReason: RUN_STOP_REASONS.AGENT_STEP_LIMIT,
+      plan: activePlan(),
+      records: [record, { ...record, id: "duplicate-1" }]
+    });
+
+    assert.equal(first.madeProgress, false);
+    assert.equal(first.decision, "continue");
+
+    orchestrator.beginSegment({
+      plan: activePlan(),
+      records: [record, { ...record, id: "duplicate-1" }]
+    });
+    const second = orchestrator.completeSegment({
+      stopReason: RUN_STOP_REASONS.AGENT_STEP_LIMIT,
+      plan: activePlan(),
+      records: [
+        record,
+        { ...record, id: "duplicate-1" },
+        { ...record, id: "duplicate-2" }
+      ]
+    });
+
+    assert.equal(second.madeProgress, false);
+    assert.equal(second.decision, "checkpoint");
+    assert.equal(second.stopReason, RUN_STOP_REASONS.NO_PROGRESS);
   });
 
   it("uses needs_input as a terminal state without an ask tool", () => {
@@ -157,8 +255,10 @@ describe("LongTaskOrchestrator", () => {
       }]
     });
 
-    assert.equal(outcome.decision, "stop");
+    assert.equal(outcome.decision, "checkpoint");
     assert.equal(outcome.stopReason, RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT);
+    assert.equal(outcome.snapshot.task.status, "continuable");
+    assert.equal(outcome.snapshot.goal.status, "continuable");
   });
 
   it("terminates an active segment consistently on cancellation", () => {

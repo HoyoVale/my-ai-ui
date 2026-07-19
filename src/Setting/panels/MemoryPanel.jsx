@@ -2,6 +2,7 @@ import {
   ActionButton,
   SettingRow,
   SettingsSection,
+  SettingsVisibility,
   Slider,
   Toggle
 } from "../components/Controls.jsx";
@@ -12,6 +13,7 @@ import {
 
 export function MemoryPanel({
   settings,
+  developerMode = false,
   onUpdate
 }) {
   const memory =
@@ -57,6 +59,10 @@ export function MemoryPanel({
           />
         </SettingRow>
 
+        <SettingsVisibility
+          visibility="developer"
+          developerMode={developerMode}
+        >
         <SettingRow
           title="每次最多注入"
           description="限制单次请求使用的记忆条数，避免长期信息占用过多上下文。"
@@ -102,6 +108,7 @@ export function MemoryPanel({
             }}
           />
         </SettingRow>
+        </SettingsVisibility>
       </SettingsSection>
 
       <SettingsSection

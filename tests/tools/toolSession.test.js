@@ -120,14 +120,5 @@ describe(
       }
     );
 
-    it("does not expose the retired ask_user tool", () => {
-      const session = createAgentToolSession();
-
-      assert.equal("ask_user" in session.tools, false);
-      assert.equal(
-        session.registryManifest.some((tool) => tool.name === "ask_user"),
-        false
-      );
-    });
-  }
+}
 );

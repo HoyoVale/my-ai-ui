@@ -48,7 +48,7 @@ describe("Tool UX 1.4 contract", () => {
       "../../src/Setting/panels/ToolPanel.jsx"
     );
     const defaults = read(
-      "../../electron/settings/defaultSettings.js"
+      "../../src/shared/defaultSettings.js"
     );
     const panel = read(
       "../../src/Conversation/components/TaskPanel.jsx"

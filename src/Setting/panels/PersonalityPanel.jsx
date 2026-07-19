@@ -3,6 +3,7 @@ import {
   Select,
   SettingRow,
   SettingsSection,
+  SettingsVisibility,
   TextArea,
   TextInput,
   Toggle
@@ -79,6 +80,7 @@ const LENGTH_LABELS =
 
 export function PersonalityPanel({
   settings,
+  developerMode = false,
   onUpdate
 }) {
   const personality =
@@ -148,6 +150,10 @@ export function PersonalityPanel({
         </SettingRow>
       </SettingsSection>
 
+      <SettingsVisibility
+        visibility="developer"
+        developerMode={developerMode}
+      >
       <SettingsSection
         title="身份"
         description="定义助手如何称呼自己，以及它在对话中的稳定定位。"
@@ -198,6 +204,7 @@ export function PersonalityPanel({
           />
         </SettingRow>
       </SettingsSection>
+      </SettingsVisibility>
 
       <SettingsSection
         title="回复偏好"

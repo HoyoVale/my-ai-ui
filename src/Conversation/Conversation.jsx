@@ -346,16 +346,6 @@ export default function Conversation() {
               setTaskOpen(true);
             }}
             onOpenInput={openInput}
-            onAnswerQuestion={async (
-              response
-            ) => {
-              return window.api
-                ?.answerAgentQuestion?.({
-                  conversationId:
-                    history.current?.id ?? "",
-                  ...response
-                });
-            }}
             onRegenerate={(
               messageId
             ) => {

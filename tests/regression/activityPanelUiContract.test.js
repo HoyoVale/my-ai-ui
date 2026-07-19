@@ -34,6 +34,6 @@ describe("ChatGPT-inspired activity panel", () => {
     assert.match(source, /<DeveloperActivity/u);
     assert.match(source, /title="Input"/u);
     assert.match(source, /title="Result"/u);
-    assert.match(source, /模型推理文本/u);
+    assert.doesNotMatch(source, /模型推理文本|reasoningText|reasoningSummary/u);
   });
 });

@@ -1,6 +1,7 @@
 import {
   Select,
   SettingRow,
+  SettingsVisibility,
   SettingsSection,
   Slider,
   Toggle
@@ -54,6 +55,7 @@ const AUTO_CLOSE_OPTIONS = [
 
 export function ResponsePanel({
   settings,
+  developerMode = false,
   onUpdate
 }) {
   const response =
@@ -86,6 +88,10 @@ export function ResponsePanel({
           />
         </SettingRow>
 
+        <SettingsVisibility
+          visibility="developer"
+          developerMode={developerMode}
+        >
         <SettingRow
           title="与桌宠间距"
           description="气泡与桌宠窗口之间的水平距离。"
@@ -131,8 +137,13 @@ export function ResponsePanel({
             }}
           />
         </SettingRow>
+        </SettingsVisibility>
       </SettingsSection>
 
+      <SettingsVisibility
+        visibility="developer"
+        developerMode={developerMode}
+      >
       <SettingsSection
         title="尺寸"
         description="限制气泡在长文本下的最大范围。"
@@ -234,6 +245,7 @@ export function ResponsePanel({
           />
         </SettingRow>
       </SettingsSection>
+      </SettingsVisibility>
 
       <SettingsSection
         title="行为"

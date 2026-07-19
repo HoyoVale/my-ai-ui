@@ -32,6 +32,14 @@ import {
 } from "../context/index.js";
 
 import {
+  buildCapabilityContext
+} from "../context/capabilityContextBuilder.js";
+
+import {
+  renderPromptSections
+} from "../context/promptSections.js";
+
+import {
   sanitizeSettings
 } from "../settings/validateSettings.js";
 
@@ -70,6 +78,7 @@ import {
 
 import {
   inferRunStopReason,
+  isGracefulRunBoundary,
   RUN_STOP_REASONS
 } from "./runStopReasons.js";
 
@@ -87,17 +96,18 @@ import {
 } from "./runCheckpoint.js";
 
 import {
+  createCheckpointContinuationState,
+  resolveCheckpointContinuation
+} from "./checkpointResume.js";
+
+import {
   createFallbackFinalSummary,
   createFinalizationInstruction,
   getPlanCompletionState,
+  sanitizeFinalizationText,
   shouldRunFinalization
 } from "./finalization.js";
 
-import {
-  collectAnsweredQuestions,
-  countQuestionEvents,
-  OTHER_OPTION_ID
-} from "./orchestration/askUserPolicy.js";
 import {
   LongTaskOrchestrator
 } from "./orchestration/LongTaskOrchestrator.js";
@@ -129,83 +139,48 @@ function cloneStatus(status) {
   };
 }
 
-function createResumeInstruction(
-  pending,
-  answer = ""
+function appendTaskContinuationToContext(
+  context,
+  continuation,
+  continuationState,
+  userInstruction
 ) {
-  if (!pending?.request?.question) {
-    return "";
+  if (!continuationState) {
+    return context;
   }
 
-  return [
-    "[Resumed Agent Task]",
-    "The user answered the clarification checkpoint inside the current assistant run.",
-    `Previous question: ${pending.request.question}`,
-    `User answer: ${String(answer ?? "").trim()}`,
-    pending.request.decisionKey
-      ? `Resolved decision key: ${pending.request.decisionKey}`
-      : "",
-    "Continue the same task and the same plan. Do not greet the user or treat this as a new conversation turn.",
-    "This legacy checkpoint is answered. Continue with the supplied answer.",
-    "Your next action must advance the plan, use a tool, or provide the final answer. If information is still missing, explain the limitation in the final response."
-  ].filter(Boolean).join("\n");
-}
-
-function createAnsweredQuestion(
-  pending,
-  {
-    answer = "",
-    selectedOptionIds = [],
-    otherText = ""
-  } = {}
-) {
-  return {
-    ...structuredClone(
-      pending?.request ?? {}
-    ),
-    status: "answered",
-    answer:
-      String(answer ?? "").trim(),
-    selectedOptionIds:
-      Array.isArray(selectedOptionIds)
-        ? selectedOptionIds.map(String)
-        : [],
-    otherText:
-      String(otherText ?? "").trim(),
-    answeredAt: Date.now()
-  };
-}
-
-function appendResumeAnswerToContext(
-  context,
-  pending,
-  answeredQuestion
-) {
-  const answer =
-    answeredQuestion?.answer ?? "";
-  const resumeInstruction =
-    createResumeInstruction(
-      pending,
-      answer
-    );
-
-  const checkpointInstruction =
+  const runtimeInstruction = [
     createCheckpointInstruction(
-      pending?.activity?.checkpoint
-    );
+      continuation?.checkpoint
+    ),
+    [
+      "[Continued task]",
+      "Continue the same task using the saved task state above.",
+      "Keep completed plan steps and prior tool results. Do not repeat completed work unless verification is necessary.",
+      `The user's latest instruction is: ${String(userInstruction ?? "").trim()}`,
+      "Treat that instruction as guidance for the remaining work. Replan only when it materially changes the unfinished steps.",
+      "Do not tell the user about internal execution slices, counters, budgets, limits, saved-state mechanics, or runtime stop reasons."
+    ].join("\n")
+  ].filter(Boolean).join("\n\n");
 
+  context.runtimeInstructions = [
+    context.runtimeInstructions,
+    runtimeInstruction
+  ].filter(Boolean).join("\n\n");
   context.system = [
     context.system,
-    checkpointInstruction,
-    resumeInstruction
+    runtimeInstruction
   ].filter(Boolean).join("\n\n");
 
   context.metadata = {
     ...context.metadata,
-    resumedMessageId:
-      pending.messageId,
-    resumedRunId:
-      pending.activity?.runId ?? ""
+    continuedTask: true,
+    taskId: continuationState.taskId,
+    parentRunId: continuationState.parentRunId,
+    resumedFromMessageId:
+      continuationState.resumedFromMessageId,
+    continuationCount:
+      continuationState.continuationCount
   };
 
   return context;
@@ -257,47 +232,12 @@ export class AgentRuntime {
   }
 
   getStatus() {
-    let status = this.status;
-    let pendingQuestion =
-      this.activeRun
-        ?.pendingQuestion ??
-      null;
-
-    if (
-      !this.activeRun &&
-      status.state === "idle"
-    ) {
-      const state =
-        conversationManager
-          .getState();
-      const pending =
-        state.currentConversationId
-          ? conversationManager
-              .getPendingQuestion(
-                state.currentConversationId
-              )
-          : null;
-
-      if (pending) {
-        status = {
-          ...status,
-          state:
-            "waiting_for_user",
-          conversationId:
-            state.currentConversationId
-        };
-        pendingQuestion =
-          pending.request;
-      }
-    }
-
     return cloneStatus({
-      ...status,
-      pendingQuestion,
+      ...this.status,
       stopReason:
         this.activeRun
           ?.stopReason ??
-        status.stopReason ??
+        this.status.stopReason ??
         null,
       plan:
         this.activeRun
@@ -372,8 +312,14 @@ export class AgentRuntime {
       taskId: this.activeRun.taskId,
       goalId: this.activeRun.goalId,
       runId: this.activeRun.runId,
+      parentRunId:
+        this.activeRun.parentRunId ?? "",
       messageId:
         this.activeRun.replaceMessageId ?? "",
+      resumedFromMessageId:
+        this.activeRun.resumedFromMessageId ?? "",
+      objective:
+        this.activeRun.objective ?? "",
       phase:
         this.activeRun.phase ?? "executing",
       plan:
@@ -384,14 +330,14 @@ export class AgentRuntime {
         this.activeRun.toolSession
           ?.getRecords?.() ??
         this.activeRun.toolCalls ?? [],
-      answeredQuestions:
-        this.activeRun.answeredQuestions ?? [],
-      pendingQuestion:
-        this.activeRun.pendingQuestion,
       stopReason:
         this.activeRun.stopReason ?? "",
       contextCompactions:
         this.activeRun.contextCompactionCount ?? 0,
+      continuationCount:
+        this.activeRun.continuationCount ?? 0,
+      previousSegmentCount:
+        this.activeRun.previousSegmentCount ?? 0,
       orchestration:
         this.activeRun.orchestrator
           ?.snapshot?.({ compact: true }) ?? null,
@@ -519,8 +465,7 @@ export class AgentRuntime {
   startMessage(
     content,
     {
-      expectedConversationId = "",
-      expectedPendingMessageId = ""
+      expectedConversationId = ""
     } = {}
   ) {
     const message =
@@ -579,6 +524,8 @@ export class AgentRuntime {
     let conversation;
     let memories;
     let context;
+    let checkpointContinuation = null;
+    let continuationState = null;
 
     try {
       conversation =
@@ -598,29 +545,15 @@ export class AgentRuntime {
         };
       }
 
-      const pendingQuestion =
-        conversationManager
-          .getPendingQuestion(
-            conversation.id
-          );
-
-      if (pendingQuestion) {
-        return {
-          ok: false,
-          code: "pending-question-active",
-          message:
-            "请先在当前回复中回答待确认问题。"
-        };
-      }
-
-      if (expectedPendingMessageId) {
-        return {
-          ok: false,
-          code: "question-expired",
-          message:
-            "这个问题已经失效或被回答，请刷新会话。"
-        };
-      }
+      checkpointContinuation =
+        resolveCheckpointContinuation({
+          conversation,
+          message
+        });
+      continuationState =
+        createCheckpointContinuationState(
+          checkpointContinuation
+        );
 
       conversationManager
         .appendMessage({
@@ -649,6 +582,13 @@ export class AgentRuntime {
           memories
         });
 
+      context = appendTaskContinuationToContext(
+        context,
+        checkpointContinuation,
+        continuationState,
+        message
+      );
+
     } catch (error) {
       const errorMessage =
         "无法准备当前消息或长期记忆，请检查应用数据目录。";
@@ -676,9 +616,11 @@ export class AgentRuntime {
       crypto.randomUUID();
 
     const goalId =
+      continuationState?.goalId ||
       crypto.randomUUID();
 
     const taskId =
+      continuationState?.taskId ||
       crypto.randomUUID();
 
     const abortController =
@@ -697,7 +639,16 @@ export class AgentRuntime {
     this.activeRun = {
       runId,
       goalId,
-      objective: message,
+      parentRunId:
+        continuationState?.parentRunId ?? "",
+      objective:
+        continuationState?.objective || message,
+      continuationInstruction:
+        continuationState ? message : "",
+      continuationCount:
+        continuationState?.continuationCount ?? 0,
+      previousSegmentCount:
+        continuationState?.previousSegmentCount ?? 0,
       orchestrator: null,
       currentSegmentId: "",
       taskId,
@@ -709,19 +660,17 @@ export class AgentRuntime {
       stepNumber: 0,
       startedAt,
       replaceMessageId: null,
-      reasoningSummary: "",
       toolCalls: [],
       activityStore,
-      initialPlan: [],
-      resumedFromMessageId: "",
-      pendingQuestion: null,
-      answeredQuestion: null,
-      answeredQuestions: [],
-      initialQuestionCount: 0,
+      initialPlan:
+        continuationState?.initialPlan ?? [],
+      resumedFromMessageId:
+        continuationState?.resumedFromMessageId ?? "",
       resumeInPlace: false,
       phase: "executing",
       finalizationAttemptCount: 0,
-      contextCompactionCount: 0,
+      contextCompactionCount:
+        continuationState?.contextCompactionCount ?? 0,
       executionStopReason: null,
       stopReason: null
     };
@@ -761,8 +710,13 @@ export class AgentRuntime {
     return {
       ok: true,
       runId,
+      taskId,
       conversationId:
-        conversation.id
+        conversation.id,
+      continuedTask:
+        Boolean(continuationState),
+      resumedFromMessageId:
+        continuationState?.resumedFromMessageId ?? ""
     };
   }
 
@@ -888,15 +842,10 @@ export class AgentRuntime {
       startedAt,
       replaceMessageId:
         plan.targetMessage.id,
-      reasoningSummary: "",
       toolCalls: [],
       activityStore,
       initialPlan: [],
       resumedFromMessageId: "",
-      pendingQuestion: null,
-      answeredQuestion: null,
-      answeredQuestions: [],
-      initialQuestionCount: 0,
       resumeInPlace: false,
       phase: "executing",
       finalizationAttemptCount: 0,
@@ -990,10 +939,7 @@ export class AgentRuntime {
       ].includes(record.status)
     ) {
       this.persistActiveRunCheckpoint({
-        status:
-          this.activeRun.pendingQuestion
-            ? "waiting"
-            : "running"
+        status: "running"
       });
     }
 
@@ -1054,10 +1000,7 @@ export class AgentRuntime {
       "";
 
     this.persistActiveRunCheckpoint({
-      status:
-        this.activeRun.pendingQuestion
-          ? "waiting"
-          : "running"
+      status: "running"
     });
 
     this.setStatus({
@@ -1104,9 +1047,6 @@ export class AgentRuntime {
           Date.now() -
           this.activeRun.startedAt
         ),
-      reasoningSummary:
-        this.activeRun
-          .reasoningSummary,
       toolCalls:
         saveToolHistory
           ? this.activeRun
@@ -1126,12 +1066,6 @@ export class AgentRuntime {
               .CANCELLED_BY_USER
           : RUN_STOP_REASONS
               .COMPLETED),
-      pendingQuestion:
-        this.activeRun
-          .pendingQuestion ??
-        this.activeRun
-          .answeredQuestion ??
-        null,
       resumedFromMessageId:
         this.activeRun
           .resumedFromMessageId,
@@ -1172,300 +1106,6 @@ export class AgentRuntime {
       });
   }
 
-  resumeQuestion({
-    conversationId,
-    messageId,
-    answer,
-    selectedOptionIds = [],
-    otherText = ""
-  } = {}) {
-    const normalizedConversationId =
-      String(conversationId ?? "").trim();
-    const normalizedMessageId =
-      String(messageId ?? "").trim();
-    const normalizedAnswer =
-      String(answer ?? "").trim();
-
-    if (!normalizedAnswer) {
-      return {
-        ok: false,
-        code: "empty-answer",
-        message: "请选择或输入一个回答。"
-      };
-    }
-
-    if (this.activeRun) {
-      return {
-        ok: false,
-        code: "busy",
-        message:
-          "当前回复尚未结束，请稍后再提交。"
-      };
-    }
-
-    const pending =
-      conversationManager
-        .getPendingQuestion(
-          normalizedConversationId
-        );
-
-    if (
-      !pending ||
-      pending.messageId !==
-        normalizedMessageId
-    ) {
-      return {
-        ok: false,
-        code: "question-expired",
-        message:
-          "这个问题已经失效或被回答，请刷新会话。"
-      };
-    }
-
-    const normalizedSelectedOptionIds =
-      Array.isArray(selectedOptionIds)
-        ? selectedOptionIds.map(String)
-        : [];
-    const allowedOptionIds =
-      new Set(
-        (pending.request?.options ?? [])
-          .map((option) =>
-            String(option.id)
-          )
-      );
-    const otherAllowed =
-      pending.request?.allowOther !== false;
-    const includesOther =
-      normalizedSelectedOptionIds.includes(
-        OTHER_OPTION_ID
-      );
-    const invalidSelection =
-      normalizedSelectedOptionIds.some(
-        (id) =>
-          id !== OTHER_OPTION_ID &&
-          !allowedOptionIds.has(
-            String(id)
-          )
-      );
-    const invalidOther =
-      includesOther &&
-      (
-        !otherAllowed ||
-        !String(otherText ?? "").trim()
-      );
-    const invalidSingleSelection =
-      pending.request?.selectionMode !==
-        "multiple" &&
-      normalizedSelectedOptionIds.length > 1;
-
-    if (invalidSelection || invalidOther || invalidSingleSelection) {
-      return {
-        ok: false,
-        code: "invalid-answer-option",
-        message:
-          "所选选项已经发生变化，请重新选择。"
-      };
-    }
-
-    const credentialError =
-      isE2EMode()
-        ? null
-        : getActiveCredentialError();
-
-    if (credentialError) {
-      return {
-        ok: false,
-        code: "missing-api-key",
-        message: credentialError
-      };
-    }
-
-    try {
-      const answeredQuestion =
-        createAnsweredQuestion(
-          pending,
-          {
-            answer:
-              normalizedAnswer,
-            selectedOptionIds:
-              normalizedSelectedOptionIds,
-            otherText
-          }
-        );
-
-      const resolved =
-        conversationManager
-          .resolvePendingQuestion({
-            conversationId:
-              normalizedConversationId,
-            messageId:
-              normalizedMessageId,
-            answer:
-              normalizedAnswer,
-            selectedOptionIds:
-              normalizedSelectedOptionIds,
-            otherText
-          });
-
-      if (!resolved.ok) {
-        return resolved;
-      }
-
-      const conversation =
-        conversationManager
-          .getConversation(
-            normalizedConversationId
-          );
-      const memories =
-        memoryManager.retrieve({
-          query: normalizedAnswer
-        });
-      const context =
-        appendResumeAnswerToContext(
-          assembleAgentContext({
-            settings:
-              getSettings(),
-            conversation,
-            memories
-          }),
-          pending,
-          answeredQuestion
-        );
-      const runId =
-        pending.activity?.runId ??
-        crypto.randomUUID();
-      const taskId =
-        pending.taskId ??
-        pending.activity?.taskId ??
-        runId;
-      const goalId =
-        pending.activity?.checkpoint?.goalId ??
-        taskId;
-
-      const startedAt =
-        pending.activity?.startedAt ??
-        Date.now();
-      const abortController =
-        new AbortController();
-      const activityStore =
-        RunActivityStore
-          .resumeFromSnapshot(
-            pending.activity,
-            {
-              answeredQuestion,
-              runId,
-              taskId
-            }
-          );
-
-      this.activeRun = {
-        runId,
-        taskId,
-        goalId,
-        objective: pending.request?.question ?? "",
-        orchestrator: null,
-        currentSegmentId: "",
-        conversationId:
-          normalizedConversationId,
-        abortController,
-        currentStepText: "",
-        finalText: "",
-        stepNumber: 0,
-        startedAt,
-        replaceMessageId:
-          normalizedMessageId,
-        resumeInPlace: true,
-        reasoningSummary: "",
-        toolCalls: [],
-        activityStore,
-        initialPlan:
-          pending.plan ?? [],
-        resumedFromMessageId:
-          normalizedMessageId,
-        pendingQuestion: null,
-        answeredQuestion,
-        answeredQuestions: [
-          ...collectAnsweredQuestions(
-            pending.activity
-          ),
-          answeredQuestion
-        ],
-        initialQuestionCount:
-          Math.max(
-            countQuestionEvents(
-              pending.activity
-            ),
-            1
-          ),
-        phase: "executing",
-        finalizationAttemptCount: 0,
-        contextCompactionCount:
-          Number(
-            pending.activity
-              ?.checkpoint
-              ?.counts
-              ?.contextCompactions
-          ) || 0,
-        executionStopReason: null,
-        stopReason: null
-      };
-
-      this.ensureActiveAssistantMessage(
-        normalizedConversationId
-      );
-
-      this.setStatus({
-        state: "running",
-        runId,
-        conversationId:
-          normalizedConversationId,
-        startedAt,
-        lastError: null
-      });
-
-      const runArguments = {
-        runId,
-        conversationId:
-          normalizedConversationId,
-        context,
-        memories,
-        abortController
-      };
-
-      if (isE2EMode()) {
-        void this.runE2EMessage(
-          runArguments
-        );
-      } else {
-        void this.runMessage(
-          runArguments
-        );
-      }
-
-      return {
-        ok: true,
-        runId,
-        taskId,
-        conversationId:
-          normalizedConversationId,
-        messageId:
-          normalizedMessageId,
-        resumedInPlace: true
-      };
-    } catch (error) {
-      console.error(
-        "恢复待确认任务失败：",
-        error
-      );
-
-      return {
-        ok: false,
-        code: "resume-failed",
-        message:
-          "无法继续当前任务，请稍后重试。"
-      };
-    }
-  }
 
   stop() {
     if (!this.activeRun) {
@@ -1717,6 +1357,10 @@ export class AgentRuntime {
     executionStopReason,
     abortController
   }) {
+    const bufferProgressHandoff =
+      isGracefulRunBoundary(
+        executionStopReason
+      );
     const maxAttempts =
       settings.tools
         ?.runtime
@@ -1736,10 +1380,7 @@ export class AgentRuntime {
       createFinalizationInstruction({
         plan,
         records,
-        executionStopReason,
-        answeredQuestion:
-          this.activeRun
-            .answeredQuestion
+        executionStopReason
       });
 
     for (
@@ -1768,82 +1409,102 @@ export class AgentRuntime {
         ...this.status
       });
 
-      const result = streamText({
-        model: runtime.model,
-
-        system: [
-          context.system,
-          instruction,
-          attempt > 1
-            ? "The previous finalization attempt returned no usable text. Return a concise final answer now."
-            : ""
-        ].filter(Boolean).join("\n\n"),
-
-        messages:
-          context.messages,
-
-        ...runtime.requestOptions,
-
-        abortSignal:
-          abortController.signal,
-
-        timeout: {
-          totalMs:
-            Math.min(
-              modelSettings.timeoutMs,
-              settings.tools
-                ?.runtime
-                ?.runTimeoutMs ??
-              modelSettings.timeoutMs
-            ),
-
-          chunkMs:
-            Math.min(
-              45000,
-              modelSettings.timeoutMs
-            )
-        },
-
-        onError: ({ error }) => {
-          console.error(
-            "最终总结流式请求错误：",
-            error
-          );
-        }
-      });
-
       let text = "";
 
-      for await (
-        const textPart
-        of result.textStream
-      ) {
-        if (
-          !this.isCurrentRun(runId)
+      try {
+        const result = streamText({
+          model: runtime.model,
+
+          system: [
+            context.system,
+            instruction,
+            attempt > 1
+              ? "The previous finalization attempt returned no usable text. Return a concise final answer now."
+              : ""
+          ].filter(Boolean).join("\n\n"),
+
+          messages:
+            context.messages,
+
+          ...runtime.requestOptions,
+
+          abortSignal:
+            abortController.signal,
+
+          timeout: {
+            totalMs:
+              Math.min(
+                modelSettings.timeoutMs,
+                settings.tools
+                  ?.runtime
+                  ?.runTimeoutMs ??
+                modelSettings.timeoutMs
+              ),
+
+            chunkMs:
+              Math.min(
+                45000,
+                modelSettings.timeoutMs
+              )
+          },
+
+          onError: ({ error }) => {
+            console.error(
+              "最终总结流式请求错误：",
+              error
+            );
+          }
+        });
+
+        for await (
+          const textPart
+          of result.textStream
         ) {
-          break;
+          if (
+            !this.isCurrentRun(runId)
+          ) {
+            break;
+          }
+
+          if (textPart) {
+            text += textPart;
+            if (!bufferProgressHandoff) {
+              this.activeRun
+                .currentStepText =
+                text;
+              this.activeRun.finalText =
+                text;
+
+              appendResponseChunk(
+                textPart
+              );
+
+              this.setStatus({
+                ...this.status
+              });
+            }
+          }
+        }
+      } catch (error) {
+        if (
+          abortController.signal.aborted ||
+          isAbortError(error)
+        ) {
+          throw error;
         }
 
-        if (textPart) {
-          text += textPart;
-          this.activeRun
-            .currentStepText =
-            text;
-          this.activeRun.finalText =
-            text;
-
-          appendResponseChunk(
-            textPart
-          );
-
-          this.setStatus({
-            ...this.status
-          });
-        }
+        console.warn(
+          `最终总结第 ${attempt} 次尝试失败，准备使用下一次尝试或本地兜底：`,
+          error
+        );
+        continue;
       }
 
       const normalized =
-        text.trim();
+        sanitizeFinalizationText(
+          text,
+          executionStopReason
+        );
 
       if (normalized) {
         this.activeRun.finalText =
@@ -1853,6 +1514,12 @@ export class AgentRuntime {
           "";
         this.activeRun.phase =
           "completed";
+
+        if (bufferProgressHandoff) {
+          appendResponseChunk(
+            normalized
+          );
+        }
 
         this.setStatus({
           ...this.status
@@ -1989,6 +1656,27 @@ export class AgentRuntime {
 
       this.activeRun.toolSession =
         toolSession;
+      const activeCapabilityContext = buildCapabilityContext({
+        toolSettings: settings.tools,
+        toolManifest: toolSession.registryManifest
+      });
+      const activePromptSections =
+        (context.promptSections ?? []).map((section) =>
+          section.id === "capabilities"
+            ? {
+                ...section,
+                content: activeCapabilityContext
+              }
+            : section
+        );
+
+      if (activePromptSections.length > 0) {
+        context.promptSections = activePromptSections;
+        context.system = [
+          renderPromptSections(activePromptSections),
+          context.runtimeInstructions
+        ].filter(Boolean).join("\n\n");
+      }
 
       startResponseStream();
 
@@ -2024,10 +1712,28 @@ export class AgentRuntime {
           orchestrator.terminate(
             this.activeRun.stopReason
           );
-          this.activeRun.phase = "failed";
-          this.activeRun.finalText =
-            "任务已达到总运行时间限制，已保留当前检查点。";
-          appendResponseChunk(this.activeRun.finalText);
+          this.activeRun.phase = "checkpoint_ready";
+          this.activeRun.activityStore?.recordProgress({
+            title: "当前进展已整理",
+            status: "completed",
+            stopReason: this.activeRun.stopReason
+          });
+          const records = toolSession.getRecords();
+          const plan = toolSession.getPlan();
+          this.activeRun.toolCalls = records;
+          await this.runFinalization({
+            runId,
+            context,
+            runtime,
+            modelSettings,
+            settings,
+            records,
+            plan,
+            executionStopReason:
+              this.activeRun.stopReason,
+            abortController
+          });
+          this.activeRun.phase = "checkpoint_ready";
           this.activeRun.activityStore?.finalize(
             this.activeRun.stopReason
           );
@@ -2047,13 +1753,44 @@ export class AgentRuntime {
           orchestrator.terminate(
             this.activeRun.stopReason
           );
-          this.activeRun.phase = "failed";
+          this.activeRun.phase = "checkpoint_ready";
+          this.activeRun.activityStore?.recordProgress({
+            title: "当前阶段进展已整理",
+            status: "completed",
+            stopReason: this.activeRun.stopReason
+          });
+          const records = toolSession.getRecords();
+          const plan = toolSession.getPlan();
+          this.activeRun.toolCalls = records;
+          this.activeRun.executionStopReason =
+            this.activeRun.stopReason;
+          await this.runFinalization({
+            runId,
+            context,
+            runtime,
+            modelSettings,
+            settings,
+            records,
+            plan,
+            executionStopReason:
+              this.activeRun.stopReason,
+            abortController
+          });
+          this.activeRun.phase = "checkpoint_ready";
+          this.activeRun.activityStore?.finalize(
+            this.activeRun.stopReason
+          );
           break;
         }
 
         this.activeRun.currentSegmentId = segment.id;
         this.activeRun.phase = "executing";
         this.persistActiveRunCheckpoint({ status: "running" });
+        this.activeRun.activityStore?.recordProgress({
+          title: segment.index === 1
+            ? "开始执行任务" : "继续执行任务",
+          status: "running"
+        });
 
       const result =
         streamText({
@@ -2208,27 +1945,8 @@ export class AgentRuntime {
           .aborted &&
         this.isCurrentRun(runId)
       ) {
-        const reasoningText =
-          await result.reasoningText;
-
-        this.activeRun.reasoningSummary = [
-          this.activeRun.reasoningSummary,
-          String(reasoningText ?? "").trim()
-        ]
-          .filter(Boolean)
-          .join("\n")
-          .slice(-4000);
-
-        this.activeRun
-          .activityStore
-          ?.recordSummary(
-            this.activeRun
-              .reasoningSummary
-          );
-
         const records =
           toolSession.getRecords();
-        const pendingQuestion = null;
         const finishReason =
           await settleResultValue(
             result.finishReason,
@@ -2243,7 +1961,6 @@ export class AgentRuntime {
           toolSession.getPlan();
         let executionStopReason =
           inferRunStopReason({
-            pendingQuestion,
             records,
             finishReason,
             steps,
@@ -2251,6 +1968,15 @@ export class AgentRuntime {
             plan
           });
 
+        const segmentRecords = records.filter(
+          (record) => record?.segmentId === segment.id
+        );
+        const batchFailed = segmentRecords.some(
+          (record) => ["failed", "error"].includes(record?.status)
+        );
+        this.activeRun.activityStore?.closeBatch(
+          batchFailed ? "failed" : "completed"
+        );
         const segmentCheckpoint =
           this.buildActiveCheckpoint();
         if (segmentCheckpoint) {
@@ -2269,6 +1995,18 @@ export class AgentRuntime {
         this.activeRun.currentSegmentId = "";
         executionStopReason =
           segmentOutcome.stopReason;
+        const segmentProgressTitle =
+          segmentOutcome.decision === "continue"
+            ? "已整理当前进展，继续执行"
+            : segmentOutcome.decision === "checkpoint"
+              ? "当前阶段进展已整理"
+              : "当前阶段已完成";
+        this.activeRun.activityStore?.recordProgress({
+          title: segmentProgressTitle,
+          status: ["continue", "complete", "checkpoint"].includes(segmentOutcome.decision)
+            ? "completed" : "failed",
+          stopReason: executionStopReason
+        });
 
         if (segmentOutcome.decision === "continue") {
           this.activeRun.finalText = "";
@@ -2284,7 +2022,7 @@ export class AgentRuntime {
           segmentSystem = [
             context.system,
             createCheckpointInstruction(continuationCheckpoint),
-            `[Segment continuation ${segmentOutcome.segment.index + 1}] Continue the same task from the checkpoint. Advance unfinished work; do not repeat completed tool calls. If required user input is missing, mark the current plan step needs_input and provide a final explanation.`
+            "[Continued execution] Continue the same task from the saved task state. Advance unfinished work; do not repeat completed tool calls. If required user input is missing, mark the current plan step needs_input and provide a final explanation. Do not mention internal execution slices or counters to the user."
           ].filter(Boolean).join("\n\n");
           this.persistActiveRunCheckpoint({ status: "running" });
           continue;
@@ -2292,14 +2030,12 @@ export class AgentRuntime {
 
         this.activeRun.toolCalls =
           records;
-        this.activeRun.pendingQuestion = null;
         this.activeRun
           .executionStopReason =
           executionStopReason;
 
         if (
           shouldRunFinalization({
-            pendingQuestion,
             finalText:
               this.activeRun
                 .finalText,
@@ -2332,8 +2068,15 @@ export class AgentRuntime {
               .trim()
           );
 
+        const reachedContinuationBoundary =
+          isGracefulRunBoundary(
+            executionStopReason
+          );
+
         this.activeRun.stopReason =
-          hasFinalText &&
+          reachedContinuationBoundary
+            ? RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT
+            : hasFinalText &&
           (
             planState.isComplete ||
             executionStopReason === RUN_STOP_REASONS.COMPLETED
@@ -2341,7 +2084,9 @@ export class AgentRuntime {
             ? RUN_STOP_REASONS.COMPLETED
             : executionStopReason;
         this.activeRun.phase =
-          this.activeRun.stopReason === RUN_STOP_REASONS.COMPLETED
+          reachedContinuationBoundary
+            ? "checkpoint_ready"
+            : this.activeRun.stopReason === RUN_STOP_REASONS.COMPLETED
             ? "completed"
             : this.activeRun.stopReason === RUN_STOP_REASONS.NEEDS_INPUT
               ? "needs_input"
@@ -2365,12 +2110,23 @@ export class AgentRuntime {
           .aborted &&
         !this.activeRun
           .finalText
-          .trim() &&
-        !this.activeRun
-          .pendingQuestion
+          .trim()
       ) {
         const fallbackText =
-          "模型没有返回可显示的文字。";
+          createFallbackFinalSummary({
+            plan:
+              this.activeRun.toolSession
+                ?.getPlan?.() ??
+              this.activeRun.initialPlan ?? [],
+            records:
+              this.activeRun.toolSession
+                ?.getRecords?.() ??
+              this.activeRun.toolCalls ?? [],
+            executionStopReason:
+              this.activeRun.executionStopReason ??
+              this.activeRun.stopReason ??
+              RUN_STOP_REASONS.COMPLETED
+          }) || "当前处理已经结束，但没有生成完整说明。";
 
         this.activeRun
           .finalText =
@@ -2400,42 +2156,27 @@ export class AgentRuntime {
           runId
         )
       ) {
-        const waitingQuestion =
-          this.activeRun
-            .pendingQuestion;
         let assistantText =
           this.activeRun
             .finalText
             .trim();
 
-        if (
-          !assistantText &&
-          !waitingQuestion
-        ) {
+        if (!assistantText) {
           assistantText =
             "任务已处理完成。";
           this.activeRun.finalText =
             assistantText;
         }
 
-        if (
-          assistantText ||
-          waitingQuestion
-        ) {
-          this.activeRun.activityStore
-            ?.updateCheckpoint(
-              this.buildActiveCheckpoint()
-            );
-          this.persistAssistantResponse({
-            conversationId,
-            content:
-              assistantText,
-            status:
-              waitingQuestion
-                ? "waiting"
-                : "complete"
-          });
-        }
+        this.activeRun.activityStore
+          ?.updateCheckpoint(
+            this.buildActiveCheckpoint()
+          );
+        this.persistAssistantResponse({
+          conversationId,
+          content: assistantText,
+          status: "complete"
+        });
 
         const finalStopReason =
           this.activeRun
@@ -2444,16 +2185,11 @@ export class AgentRuntime {
         this.activeRun = null;
 
         this.setStatus({
-          state:
-            waitingQuestion
-              ? "waiting_for_user"
-              : "idle",
+          state: "idle",
           runId: null,
           conversationId,
           startedAt: null,
           lastError: null,
-          pendingQuestion:
-            waitingQuestion,
           stopReason:
             finalStopReason
         });
@@ -2481,23 +2217,91 @@ export class AgentRuntime {
         error
       );
 
-      startResponseStream();
-      appendResponseChunk(
-        `⚠ ${friendlyMessage}`
-      );
-      endResponseStream();
-
       if (
         this.isCurrentRun(
           runId
         )
       ) {
+        const records =
+          this.activeRun.toolSession
+            ?.getRecords?.() ??
+          this.activeRun.toolCalls ?? [];
+        const plan =
+          this.activeRun.toolSession
+            ?.getPlan?.() ??
+          this.activeRun.initialPlan ?? [];
+        const hasRecoverableState =
+          records.some((record) =>
+            record?.status === "completed"
+          ) ||
+          plan.length > 0;
+
         this.activeRun.stopReason =
-          RUN_STOP_REASONS
-            .MODEL_ERROR;
+          hasRecoverableState
+            ? RUN_STOP_REASONS.MODEL_RECOVERY
+            : RUN_STOP_REASONS.MODEL_ERROR;
+        this.activeRun.executionStopReason =
+          this.activeRun.stopReason;
         this.activeRun.orchestrator?.terminate(
           this.activeRun.stopReason
         );
+
+        if (hasRecoverableState) {
+          this.activeRun.phase = "checkpoint_ready";
+          this.activeRun.toolCalls = records;
+          this.activeRun.activityStore?.recordProgress({
+            title: "当前进展已整理",
+            status: "completed",
+            stopReason: this.activeRun.stopReason
+          });
+          this.activeRun.finalText =
+            createFallbackFinalSummary({
+              plan,
+              records,
+              executionStopReason:
+                this.activeRun.stopReason
+            });
+
+          startResponseStream();
+          appendResponseChunk(
+            this.activeRun.finalText
+          );
+          endResponseStream();
+
+          this.activeRun.activityStore?.finalize(
+            this.activeRun.stopReason
+          );
+          this.activeRun.activityStore
+            ?.updateCheckpoint(
+              this.buildActiveCheckpoint()
+            );
+          this.persistAssistantResponse({
+            conversationId,
+            content:
+              this.activeRun.finalText,
+            status: "complete"
+          });
+
+          const finalStopReason =
+            this.activeRun.stopReason;
+          this.activeRun = null;
+          this.setStatus({
+            state: "idle",
+            runId: null,
+            conversationId,
+            startedAt: null,
+            lastError: null,
+            stopReason: finalStopReason
+          });
+          return;
+        }
+
+        startResponseStream();
+        appendResponseChunk(
+          `⚠ ${friendlyMessage}`
+        );
+        endResponseStream();
+
         this.activeRun.phase = "failed";
         this.activeRun
           .activityStore

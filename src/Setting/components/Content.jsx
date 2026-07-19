@@ -82,6 +82,9 @@ export function SettingsContent({
     appearance: (
       <AppearancePanel
         settings={settings}
+        developerMode={
+          settings.general.developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "appearance",
@@ -94,6 +97,9 @@ export function SettingsContent({
     pet: (
       <PetPanel
         settings={settings}
+        developerMode={
+          settings.general.developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "pet",
@@ -106,6 +112,9 @@ export function SettingsContent({
     input: (
       <InputPanel
         settings={settings}
+        developerMode={
+          settings.general.developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "input",
@@ -118,6 +127,9 @@ export function SettingsContent({
     response: (
       <ResponsePanel
         settings={settings}
+        developerMode={
+          settings.general.developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "response",
@@ -131,6 +143,9 @@ export function SettingsContent({
     personality: (
       <PersonalityPanel
         settings={settings}
+        developerMode={
+          settings.general.developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "personality",
@@ -143,6 +158,9 @@ export function SettingsContent({
     model: (
       <ModelPanel
         settings={settings}
+        developerMode={
+          settings.general.developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "model",
@@ -205,6 +223,9 @@ export function SettingsContent({
     memory: (
       <MemoryPanel
         settings={settings}
+        developerMode={
+          settings.general.developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "memory",

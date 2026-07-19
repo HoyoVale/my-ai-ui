@@ -43,19 +43,4 @@ describe("multi-step assistant streaming", () => {
     assert.match(source, /activity\.finalText/u);
   });
 
-  it("resumes ask_user inside the original assistant message and run", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
-
-    const resumeStart = runtime.indexOf("resumeQuestion({");
-    const resumeEnd = runtime.indexOf("\n  stop() {", resumeStart);
-    const resumeSource = runtime.slice(resumeStart, resumeEnd);
-
-    assert.doesNotMatch(resumeSource, /startMessage\(/u);
-    assert.doesNotMatch(resumeSource, /appendMessage\(/u);
-    assert.match(resumeSource, /replaceMessageId:[\s\S]*normalizedMessageId/u);
-    assert.match(resumeSource, /pending\.activity\?\.runId/u);
-    assert.match(resumeSource, /resumedInPlace: true/u);
-  });
 });

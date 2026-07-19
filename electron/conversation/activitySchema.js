@@ -245,6 +245,16 @@ export function sanitizeActivityTool(
       "none",
       40
     ),
+    countsTowardLimit:
+      source.countsTowardLimit !== false,
+    countsTowardRepeatLimit:
+      source.countsTowardRepeatLimit !== false,
+    activityVisibility:
+      source.activityVisibility === "developer"
+        ? "developer"
+        : "normal",
+    gracefulBoundary:
+      source.gracefulBoundary === true,
     attempt: timestampValue(
       source.attempt,
       0
@@ -322,9 +332,7 @@ function sanitizeActivityEvent(source, index) {
     "tool",
     "plan",
     "commentary",
-    "batch",
-    "summary",
-    "question"
+    "batch"
   ].includes(source.type)
     ? source.type
     : null;
@@ -445,31 +453,6 @@ function sanitizeActivityEvent(source, index) {
     event.batchId = batch.id;
   }
 
-  if (type === "summary") {
-    event.content = stringValue(
-      source.content,
-      "",
-      100000
-    ).trim();
-
-    if (!event.content) {
-      return null;
-    }
-  }
-
-  if (type === "question") {
-    const question = jsonValue(
-      source.question,
-      8000
-    );
-
-    if (!question?.question) {
-      return null;
-    }
-
-    event.question = question;
-  }
-
   if (type === "status") {
     event.stopReason = normalizeRunStopReason(
       source.stopReason,
@@ -500,8 +483,14 @@ function sanitizeCheckpoint(source) {
     return null;
   }
 
+  const sanitizedCheckpoint = {
+    ...checkpoint
+  };
+  delete sanitizedCheckpoint.answeredQuestions;
+  delete sanitizedCheckpoint.pendingQuestion;
+
   return {
-    ...checkpoint,
+    ...sanitizedCheckpoint,
     version: 1,
     taskId: stringValue(
       checkpoint.taskId,
@@ -547,12 +536,12 @@ export function sanitizeActivity(source) {
   const status = [
     "running",
     "completed",
-    "waiting_for_user",
     "needs_input",
     "blocked",
     "cancelling",
     "cancelled",
     "interrupted",
+    "checkpoint_ready",
     "failed",
     "unknown",
     "resumed"
@@ -603,6 +592,13 @@ export function sanitizeActivity(source) {
       0
     ),
     stopReason,
+    resumable:
+      source.resumable === true ||
+      status === "checkpoint_ready",
+    completionState:
+      status === "checkpoint_ready"
+        ? "partial"
+        : "terminal",
     checkpoint:
       sanitizeCheckpoint(
         source.checkpoint
@@ -615,11 +611,9 @@ export function createLegacyActivity({
   messageId,
   createdAt,
   durationMs = 0,
-  reasoningSummary = "",
   toolCalls = [],
   plan = [],
   stopReason = "completed",
-  pendingQuestion = null,
   taskId = ""
 } = {}) {
   const normalizedReason = normalizeRunStopReason(
@@ -668,35 +662,6 @@ export function createLegacyActivity({
     });
   }
 
-  if (reasoningSummary) {
-    events.push({
-      id: `legacy-summary:${messageId}`,
-      type: "summary",
-      sequence: sequence++,
-      status: "completed",
-      title: "思考摘要",
-      content: reasoningSummary,
-      createdAt: startedAt,
-      updatedAt: endedAt
-    });
-  }
-
-  if (pendingQuestion?.question) {
-    events.push({
-      id: `legacy-question:${messageId}`,
-      type: "question",
-      sequence: sequence++,
-      status:
-        pendingQuestion.status === "answered"
-          ? "answered"
-          : "waiting_for_user",
-      title: "等待你的回答",
-      question: pendingQuestion,
-      createdAt: endedAt,
-      updatedAt: endedAt
-    });
-  }
-
   events.push({
     id: `legacy-status:${messageId}`,
     type: "status",
@@ -731,8 +696,7 @@ export function deriveLegacyActivityFields(activity) {
   if (!normalized) {
     return {
       plan: [],
-      toolCalls: [],
-      reasoningSummary: ""
+      toolCalls: []
     };
   }
 
@@ -742,15 +706,10 @@ export function deriveLegacyActivityFields(activity) {
   const toolCalls = normalized.events
     .filter((event) => event.type === "tool")
     .map((event) => event.tool);
-  const reasoningSummary = normalized.events
-    .filter((event) => event.type === "summary")
-    .map((event) => event.content)
-    .filter(Boolean)
-    .join("\n\n");
+
 
   return {
     plan: planEvent?.plan ?? [],
-    toolCalls,
-    reasoningSummary
+    toolCalls
   };
 }

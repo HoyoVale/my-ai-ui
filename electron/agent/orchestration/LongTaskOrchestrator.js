@@ -1,5 +1,6 @@
 import {
-  RUN_STOP_REASONS
+  RUN_STOP_REASONS,
+  isGracefulRunBoundary
 } from "../runStopReasons.js";
 
 function clone(value) {
@@ -44,12 +45,20 @@ function progressSignature(plan = [], records = []) {
       status: text(item?.status, 40),
       reason: text(item?.reason, 240)
     }));
-  const usefulTools = (Array.isArray(records) ? records : [])
-    .filter((record) =>
-      record?.status === "completed" &&
-      !["report_progress", "update_plan"].includes(record?.name)
-    )
-    .map((record) => ({
+  const usefulToolMap = new Map();
+
+  for (
+    const record
+    of Array.isArray(records) ? records : []
+  ) {
+    if (
+      record?.status !== "completed" ||
+      record?.name === "update_plan"
+    ) {
+      continue;
+    }
+
+    const normalized = {
       name: text(record?.name, 120),
       input: stableValue(record?.input ?? null),
       summary: text(
@@ -57,9 +66,18 @@ function progressSignature(plan = [], records = []) {
         360
       ),
       resultId: text(record?.result?.reference?.resultId, 120)
-    }));
+    };
+    const signature = JSON.stringify(normalized);
 
-  return JSON.stringify({ plan: planState, tools: usefulTools });
+    if (!usefulToolMap.has(signature)) {
+      usefulToolMap.set(signature, normalized);
+    }
+  }
+
+  return JSON.stringify({
+    plan: planState,
+    tools: [...usefulToolMap.values()]
+  });
 }
 
 function normalizeStep(step, fallbackNumber) {
@@ -248,20 +266,36 @@ export class LongTaskOrchestrator {
         RUN_STOP_REASONS.PLAN_INCOMPLETE
       ].includes(stopReason)
     ) {
-      if (this.segments.length >= this.limits.maxSegments) {
+      const hasSettledPlan =
+        Array.isArray(plan) &&
+        plan.length > 0 &&
+        !currentPlanState.unfinished &&
+        !currentPlanState.needsInput &&
+        !currentPlanState.blocked;
+
+      if (hasSettledPlan) {
+        decision = "complete";
+        finalStopReason = RUN_STOP_REASONS.COMPLETED;
+      } else if (this.segments.length >= this.limits.maxSegments) {
+        decision = "checkpoint";
         finalStopReason = RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT;
       } else if (
         this.noProgressSegments >= this.limits.maxNoProgressSegments
       ) {
+        decision = "checkpoint";
         finalStopReason = RUN_STOP_REASONS.NO_PROGRESS;
       } else {
         decision = "continue";
       }
+    } else if (isGracefulRunBoundary(stopReason)) {
+      decision = "checkpoint";
+      finalStopReason = stopReason;
     }
 
     if (decision !== "continue") {
       this.task.stopReason = text(finalStopReason, 80);
       this.task.status = decision === "complete" ? "completed" :
+        decision === "checkpoint" ? "continuable" :
         finalStopReason === RUN_STOP_REASONS.NEEDS_INPUT ? "needs_input" :
           finalStopReason === RUN_STOP_REASONS.BLOCKED ? "blocked" : "failed";
       this.goal.status = this.task.status;
@@ -301,6 +335,8 @@ export class LongTaskOrchestrator {
     this.task.status =
       stopReason === RUN_STOP_REASONS.CANCELLED_BY_USER
         ? "cancelled"
+        : isGracefulRunBoundary(stopReason)
+          ? "continuable"
         : stopReason === RUN_STOP_REASONS.NEEDS_INPUT
           ? "needs_input"
           : stopReason === RUN_STOP_REASONS.BLOCKED

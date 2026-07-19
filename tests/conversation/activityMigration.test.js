@@ -18,7 +18,6 @@ describe("conversation activity migration", () => {
       createdAt: 2000,
       durationMs: 500,
       stopReason: "step_limit",
-      reasoningSummary: "Inspected the project.",
       plan: [
         {
           id: "step-1",
@@ -49,7 +48,7 @@ describe("conversation activity migration", () => {
     );
     assert.equal(
       message.activity.events.some((event) => event.type === "summary"),
-      true
+      false
     );
   });
 

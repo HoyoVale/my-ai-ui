@@ -80,11 +80,6 @@ describe(
             session.tools,
           true
         );
-        assert.equal(
-          "ask_user" in
-            session.tools,
-          false
-        );
       }
     );
 

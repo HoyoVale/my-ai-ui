@@ -257,12 +257,7 @@ export class RunPlanStore {
   }
 
   canRunTool(toolName) {
-    if (
-      [
-        "update_plan",
-        "report_progress"
-      ].includes(toolName)
-    ) {
+    if (toolName === "update_plan") {
       return {
         ok: true,
         step: this.getExecutionState()
@@ -297,44 +292,9 @@ export class RunPlanStore {
 
 export function createAgentToolDefinitions({
   resultStore = null,
-  planStore = null,
-  activityStore = null
+  planStore = null
 } = {}) {
   return [
-    {
-      name: "report_progress",
-      title: "Report progress",
-      description:
-        "Publish one concise user-facing progress update around a meaningful batch of tool work. Use phase=before_tools before a batch, between_tools when the direction changes, and after_tools after the batch result is understood. This is public commentary, never private chain-of-thought. Do not call it for every individual tool.",
-      countsTowardLimit: false,
-      inputSchema: z.object({
-        message: z.string()
-          .min(1)
-          .max(600),
-        phase: z.enum([
-          "before_tools",
-          "between_tools",
-          "after_tools"
-        ]),
-        objective: z.string()
-          .max(200)
-          .optional()
-      }),
-      async execute(input) {
-        const event = activityStore
-          ?.recordCommentary({
-            content: input.message,
-            phase: input.phase,
-            objective: input.objective ?? ""
-          });
-
-        return {
-          status: "recorded",
-          phase: input.phase,
-          batchId: event?.batchId ?? ""
-        };
-      }
-    },
     {
       name: "update_plan",
       title: "Update task plan",

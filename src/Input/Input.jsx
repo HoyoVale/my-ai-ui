@@ -51,8 +51,7 @@ export default function Input() {
 
   const {
     status,
-    isRunning,
-    isWaitingForUser
+    isRunning
   } = useAgentStatus();
 
   const inputSettings =
@@ -185,10 +184,8 @@ export default function Input() {
       placeholder={
         isRunning
           ? "正在生成回复…"
-          : isWaitingForUser
-            ? "回答 Agent 的问题…"
-            : inputSettings
-                .placeholder
+          : inputSettings
+              .placeholder
       }
       canSend={
         isRunning ||

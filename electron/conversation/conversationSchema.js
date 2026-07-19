@@ -9,7 +9,7 @@ import {
   normalizeRunStopReason
 } from "../agent/runStopReasons.js";
 
-const STORE_VERSION = 10;
+const STORE_VERSION = 11;
 
 const MESSAGE_ROLES =
   new Set([
@@ -20,16 +20,9 @@ const MESSAGE_ROLES =
 const MESSAGE_STATUSES =
   new Set([
     "running",
-    "waiting",
     "complete",
     "aborted",
     "interrupted"
-  ]);
-
-const PENDING_QUESTION_STATUSES =
-  new Set([
-    "waiting",
-    "answered"
   ]);
 
 function stringValue(
@@ -76,147 +69,6 @@ function booleanValue(
     : fallback;
 }
 
-
-function sanitizePendingQuestion(source) {
-  if (
-    !source ||
-    typeof source !== "object"
-  ) {
-    return null;
-  }
-
-  const question = stringValue(
-    source.question,
-    "",
-    1000
-  ).trim();
-
-  if (!question) {
-    return null;
-  }
-
-  const options =
-    Array.isArray(source.options)
-      ? source.options
-          .map((option, index) => {
-            if (
-              !option ||
-              typeof option !== "object"
-            ) {
-              return null;
-            }
-
-            const label = stringValue(
-              option.label,
-              "",
-              200
-            ).trim();
-            const id = stringValue(
-              option.id,
-              `option-${index + 1}`,
-              80
-            ) || `option-${index + 1}`;
-            const normalizedLabel =
-              label.toLowerCase();
-
-            if (
-              !label ||
-              id === "__other__" ||
-              [
-                "other",
-                "other answer",
-                "custom",
-                "custom answer",
-                "其他",
-                "其它",
-                "其他回答",
-                "其它回答"
-              ].includes(normalizedLabel)
-            ) {
-              return null;
-            }
-
-            return {
-              id,
-              label
-            };
-          })
-          .filter(Boolean)
-          .slice(0, 6)
-      : [];
-
-  const status =
-    PENDING_QUESTION_STATUSES.has(
-      source.status
-    )
-      ? source.status
-      : "waiting";
-
-  const result = {
-    question,
-    decisionId: stringValue(
-      source.decisionId,
-      "",
-      160
-    ).trim(),
-    decisionKey: stringValue(
-      source.decisionKey,
-      "",
-      320
-    ).trim(),
-    reason: stringValue(
-      source.reason,
-      "",
-      500
-    ).trim(),
-    options,
-    selectionMode:
-      source.selectionMode ===
-        "multiple"
-        ? "multiple"
-        : "single",
-    allowOther:
-      source.allowOther !== false,
-    status
-  };
-
-  if (status === "answered") {
-    result.answeredAt =
-      timestampValue(
-        source.answeredAt,
-        0
-      );
-    result.answer =
-      stringValue(
-        source.answer,
-        "",
-        2000
-      ).trim();
-    result.selectedOptionIds =
-      Array.isArray(
-        source.selectedOptionIds
-      )
-        ? source.selectedOptionIds
-            .map((id) =>
-              stringValue(
-                id,
-                "",
-                80
-              )
-            )
-            .filter(Boolean)
-            .slice(0, 6)
-        : [];
-    result.otherText =
-      stringValue(
-        source.otherText,
-        "",
-        2000
-      ).trim();
-  }
-
-  return result;
-}
 
 function sanitizePlanItem(
   source,
@@ -305,21 +157,39 @@ export function sanitizeMessage(
       ? source.role
       : null;
 
-  const content =
+  const legacyQuestion =
+    role === "assistant" &&
+    source.pendingQuestion &&
+    typeof source.pendingQuestion === "object"
+      ? stringValue(
+          source.pendingQuestion.question,
+          "",
+          1000
+        ).trim()
+      : "";
+  const legacyAnswer =
+    legacyQuestion
+      ? stringValue(
+          source.pendingQuestion?.answer,
+          "",
+          2000
+        ).trim()
+      : "";
+  const sourceContent =
     stringValue(
       source.content
     ).trim();
+  const content =
+    sourceContent ||
+    (legacyQuestion
+      ? legacyAnswer
+        ? `已记录的信息：${legacyQuestion}\n\n回答：${legacyAnswer}`
+        : `需要补充信息：${legacyQuestion}`
+      : "");
 
   const canStoreEmptyAssistant =
     role === "assistant" &&
-    (
-      Boolean(
-        source.pendingQuestion
-      ) ||
-      Boolean(
-        source.activity
-      )
-    );
+    Boolean(source.activity);
 
   if (
     !role ||
@@ -332,11 +202,13 @@ export function sanitizeMessage(
   }
 
   const status =
-    MESSAGE_STATUSES.has(
-      source.status
-    )
-      ? source.status
-      : "complete";
+    source.status === "waiting"
+      ? "complete"
+      : MESSAGE_STATUSES.has(
+          source.status
+        )
+        ? source.status
+        : "complete";
 
   const includeInContext =
     booleanValue(
@@ -379,13 +251,6 @@ export function sanitizeMessage(
         0
       );
 
-    const sourceReasoning =
-      stringValue(
-        source.reasoningSummary,
-        "",
-        100000
-      ).trim();
-
     const sourceToolCalls =
       Array.isArray(
         source.toolCalls
@@ -406,10 +271,18 @@ export function sanitizeMessage(
             .slice(0, 20)
         : [];
 
-    const pendingQuestion =
-      sanitizePendingQuestion(
-        source.pendingQuestion
-      );
+    const migratedPlan =
+      legacyQuestion && !legacyAnswer
+        ? sourcePlan.map((item) =>
+            item.status === "in_progress"
+              ? {
+                  ...item,
+                  status: "needs_input",
+                  reason: item.reason || legacyQuestion
+                }
+              : item
+          )
+        : sourcePlan;
 
     const sourceTaskId =
       stringValue(
@@ -419,20 +292,21 @@ export function sanitizeMessage(
       );
 
     const legacyStopReason =
-      normalizeRunStopReason(
-        source.stopReason,
-        status === "aborted"
-          ? "cancelled_by_user"
-          : "completed"
-      );
+      legacyQuestion && !legacyAnswer
+        ? "needs_input"
+        : normalizeRunStopReason(
+            source.stopReason,
+            status === "aborted"
+              ? "cancelled_by_user"
+              : "completed"
+          );
 
     const hasLegacyActivity =
       durationMs > 0 ||
-      Boolean(sourceReasoning) ||
       sourceToolCalls.length > 0 ||
-      sourcePlan.length > 0 ||
+      migratedPlan.length > 0 ||
       Boolean(source.stopReason) ||
-      Boolean(pendingQuestion);
+      Boolean(legacyQuestion);
 
     const activity =
       sanitizeActivity(
@@ -445,14 +319,11 @@ export function sanitizeMessage(
             createdAt:
               message.createdAt,
             durationMs,
-            reasoningSummary:
-              sourceReasoning,
             toolCalls:
               sourceToolCalls,
-            plan: sourcePlan,
+            plan: migratedPlan,
             stopReason:
               legacyStopReason,
-            pendingQuestion,
             taskId:
               sourceTaskId
           })
@@ -463,16 +334,13 @@ export function sanitizeMessage(
         activity
       );
 
-    const reasoningSummary =
-      sourceReasoning ||
-      derived.reasoningSummary;
     const toolCalls =
       sourceToolCalls.length > 0
         ? sourceToolCalls
         : derived.toolCalls;
     const plan =
-      sourcePlan.length > 0
-        ? sourcePlan
+      migratedPlan.length > 0
+        ? migratedPlan
         : derived.plan;
 
     if (durationMs > 0) {
@@ -483,11 +351,6 @@ export function sanitizeMessage(
     ) {
       message.durationMs =
         activity.durationMs;
-    }
-
-    if (reasoningSummary) {
-      message.reasoningSummary =
-        reasoningSummary;
     }
 
     if (toolCalls.length > 0) {
@@ -511,11 +374,6 @@ export function sanitizeMessage(
     } else {
       message.stopReason =
         legacyStopReason;
-    }
-
-    if (pendingQuestion) {
-      message.pendingQuestion =
-        pendingQuestion;
     }
 
     const resumedFromMessageId =

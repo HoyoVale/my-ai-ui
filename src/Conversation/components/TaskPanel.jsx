@@ -14,9 +14,11 @@ import {
 
 import {
   createTaskSnapshot,
+  describeToolBatch,
   describeToolTarget,
   formatTaskDuration,
   getToolTitle,
+  groupToolActivityEvents,
   stopReasonLabel,
   stringifyTaskValue,
   toolStatusLabel,
@@ -47,11 +49,7 @@ function panelTimelineEvents(snapshot) {
 
     if (
       event.type === "tool" &&
-      [
-        "update_plan",
-        "ask_user",
-        "report_progress"
-      ].includes(event.tool?.name)
+event.tool?.activityVisibility === "developer"
     ) {
       return false;
     }
@@ -60,7 +58,8 @@ function panelTimelineEvents(snapshot) {
       return true;
     }
 
-    return ["failed", "cancelled", "interrupted"].includes(event.status);
+    return String(event.id ?? "").startsWith("progress:") ||
+      ["failed", "cancelled", "interrupted"].includes(event.status);
   });
 }
 
@@ -104,7 +103,7 @@ export function ConversationTaskPanel({
     snapshot.toolCalls[0] ??
     null;
 
-  const events = panelTimelineEvents(snapshot);
+  const events = groupToolActivityEvents(panelTimelineEvents(snapshot));
 
   return (
     <aside
@@ -232,6 +231,31 @@ function ActivityTimelineEvent({ event }) {
     );
   }
 
+  if (event.type === "tool_batch") {
+    return (
+      <details
+        className={`conversation-activity-tool-batch is-${event.status}`}
+        data-batch-id={event.batchId || undefined}
+      >
+        <summary>
+          <span>
+            <ConversationIcon name="tool" size={15} />
+          </span>
+          <strong>{describeToolBatch(event)}</strong>
+          <ConversationIcon name="chevron" size={13} />
+        </summary>
+        <div className="conversation-activity-tool-batch__items">
+          {event.events.map((toolEvent) => (
+            <ActivityTimelineEvent
+              event={toolEvent}
+              key={toolEvent.id}
+            />
+          ))}
+        </div>
+      </details>
+    );
+  }
+
   if (event.type === "tool") {
     const tool = event.tool;
     const target = describeToolTarget(tool);
@@ -271,26 +295,13 @@ function ActivityTimelineEvent({ event }) {
     );
   }
 
-  if (event.type === "question") {
-    return (
-      <div className="conversation-activity-timeline__event is-question">
-        <span>
-          <ConversationIcon name="activity" size={15} />
-        </span>
-        <div className="conversation-activity-timeline__copy">
-          <strong>{event.question?.question ?? "等待你的回答"}</strong>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="conversation-activity-timeline__event is-status">
       <span>
         <ConversationIcon name="warning" size={15} />
       </span>
       <div className="conversation-activity-timeline__copy">
-        <strong>{stopReasonLabel(event.stopReason)}</strong>
+        <strong>{event.title || stopReasonLabel(event.stopReason)}</strong>
       </div>
     </div>
   );
@@ -355,13 +366,6 @@ function DeveloperActivity({
       )}
 
       {selectedTool && <ToolDetails toolCall={selectedTool} />}
-
-      {snapshot.reasoning && (
-        <details className="conversation-task-reasoning">
-          <summary>模型推理文本</summary>
-          <MarkdownContent content={snapshot.reasoning} compact />
-        </details>
-      )}
 
       {snapshot.stopReason && (
         <div className="conversation-task-stop-reason">

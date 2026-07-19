@@ -43,19 +43,23 @@ export function createToolSignature(name, input) {
 
 export class ToolBudget {
   constructor({
-    maxRequests = 12,
-    maxIdenticalRequests = 2,
+    maxRequests = 100,
+    maxTotalRequests = 2000,
+    maxIdenticalRequests = 3,
     maxRetries = 1,
     deadline = 0
   } = {}) {
-    this.maxRequests = Math.max(1, Number(maxRequests) || 12);
+    this.maxRequests = Math.max(1, Number(maxRequests) || 100);
+    this.maxTotalRequests = Math.max(this.maxRequests, Number(maxTotalRequests) || 2000);
     this.maxIdenticalRequests = Math.max(
       1,
-      Number(maxIdenticalRequests) || 2
+      Number(maxIdenticalRequests) || 3
     );
     this.maxRetries = Math.max(0, Number(maxRetries) || 0);
     this.deadline = Math.max(0, Number(deadline) || 0);
     this.requestCount = 0;
+    this.totalRequestCount = 0;
+    this.unmeteredRequestCount = 0;
     this.executionCount = 0;
     this.retryCount = 0;
     this.deniedCount = 0;
@@ -64,29 +68,46 @@ export class ToolBudget {
     this.signatures = new Map();
   }
 
-  inspectRequest(name, input, { countsTowardLimit = true } = {}) {
+  inspectRequest(
+    name,
+    input,
+    {
+      countsTowardLimit = true,
+      countsTowardRepeatLimit = true
+    } = {}
+  ) {
     const signature = createToolSignature(name, input);
     const previous = this.signatures.get(signature) ?? 0;
     let rejection = null;
+    this.totalRequestCount += 1;
+    if (countsTowardLimit) {
+      this.requestCount += 1;
+    } else {
+      this.unmeteredRequestCount += 1;
+    }
+    this.signatures.set(signature, previous + 1);
 
-    if (countsTowardLimit && this.requestCount >= this.maxRequests) {
+    if (this.totalRequestCount > this.maxTotalRequests) {
       rejection = {
-        code: "TOOL_CALL_LIMIT",
-        message: `本次回复最多允许请求 ${this.maxRequests} 次工具。`
+        code: "TOOL_EMERGENCY_LIMIT",
+        message: `工具总请求达到安全熔断上限 ${this.maxTotalRequests} 次。`
       };
     } else if (
       countsTowardLimit &&
+      this.requestCount > this.maxRequests
+    ) {
+      rejection = {
+        code: "TOOL_CALL_LIMIT",
+        message: `本次任务最多允许请求 ${this.maxRequests} 次受限工具。`
+      };
+    } else if (
+      countsTowardRepeatLimit &&
       previous >= this.maxIdenticalRequests
     ) {
       rejection = {
         code: "REPEATED_TOOL_CALL",
         message: `相同工具和参数已请求 ${previous} 次，没有必要继续重复。`
       };
-    }
-
-    if (countsTowardLimit) {
-      this.requestCount += 1;
-      this.signatures.set(signature, previous + 1);
     }
     try {
       this.bytesIn += Buffer.byteLength(JSON.stringify(input) ?? "", "utf8");
@@ -122,6 +143,8 @@ export class ToolBudget {
       requestCount: this.requestCount,
       executionCount: this.executionCount,
       retryCount: this.retryCount,
+      totalRequestCount: this.totalRequestCount,
+      unmeteredRequestCount: this.unmeteredRequestCount,
       deniedCount: this.deniedCount,
       bytesIn: this.bytesIn,
       bytesOut: this.bytesOut,

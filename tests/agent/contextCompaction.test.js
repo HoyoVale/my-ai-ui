@@ -34,7 +34,7 @@ describe("long Tool-flow context compaction", () => {
     assert.ok(result.removedMessages > 0);
     assert.equal(result.messages[0].role, "user");
     assert.notEqual(result.messages[1]?.role, "tool");
-    assert.match(result.checkpointInstruction, /Persisted run checkpoint/);
+    assert.match(result.checkpointInstruction, /Saved task state/);
   });
 
   it("does not compact below the budget threshold", () => {

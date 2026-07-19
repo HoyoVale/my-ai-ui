@@ -2,7 +2,6 @@ export const RUN_STOP_REASONS = Object.freeze({
   COMPLETED: "completed",
   CANCELLED_BY_USER: "cancelled_by_user",
   INTERRUPTED: "interrupted",
-  WAITING_FOR_USER: "waiting_for_user",
   NEEDS_INPUT: "needs_input",
   BLOCKED: "blocked",
   TOOL_CALL_LIMIT: "tool_call_limit",
@@ -14,6 +13,7 @@ export const RUN_STOP_REASONS = Object.freeze({
   REPEATED_TOOL_CALL: "repeated_tool_call",
   TOOL_ERROR: "tool_error",
   MODEL_ERROR: "model_error",
+  MODEL_RECOVERY: "model_recovery",
   INVALID_TOOL_ARGUMENTS: "invalid_tool_arguments",
   PERMISSION_DENIED: "permission_denied",
   OUTPUT_LIMIT: "output_limit",
@@ -24,7 +24,9 @@ export const RUN_STOP_REASONS = Object.freeze({
 
 const LEGACY_ALIASES = Object.freeze({
   user_input_required:
-    RUN_STOP_REASONS.WAITING_FOR_USER,
+    RUN_STOP_REASONS.NEEDS_INPUT,
+  waiting_for_user:
+    RUN_STOP_REASONS.NEEDS_INPUT,
   step_limit:
     RUN_STOP_REASONS.AGENT_STEP_LIMIT,
   run_timeout:
@@ -43,6 +45,8 @@ const TOOL_ERROR_REASON = Object.freeze({
   AGENT_RUN_TIMEOUT:
     RUN_STOP_REASONS.AGENT_RUN_TIMEOUT,
   TOOL_CALL_LIMIT:
+    RUN_STOP_REASONS.TOOL_CALL_LIMIT,
+  TOOL_EMERGENCY_LIMIT:
     RUN_STOP_REASONS.TOOL_CALL_LIMIT,
   TOOL_TIMEOUT:
     RUN_STOP_REASONS.TOOL_TIMEOUT,
@@ -87,6 +91,23 @@ export function normalizeRunStopReason(
   return LEGACY_ALIASES[normalized] ?? fallback;
 }
 
+
+const GRACEFUL_BOUNDARY_REASONS = new Set([
+  RUN_STOP_REASONS.AGENT_STEP_LIMIT,
+  RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT,
+  RUN_STOP_REASONS.TOOL_CALL_LIMIT,
+  RUN_STOP_REASONS.AGENT_RUN_TIMEOUT,
+  RUN_STOP_REASONS.REPEATED_TOOL_CALL,
+  RUN_STOP_REASONS.NO_PROGRESS,
+  RUN_STOP_REASONS.MODEL_RECOVERY
+]);
+
+export function isGracefulRunBoundary(value) {
+  return GRACEFUL_BOUNDARY_REASONS.has(
+    normalizeRunStopReason(value)
+  );
+}
+
 export function runStatusFromStopReason(
   value
 ) {
@@ -98,11 +119,8 @@ export function runStatusFromStopReason(
     return "completed";
   }
 
-  if (
-    reason ===
-    RUN_STOP_REASONS.WAITING_FOR_USER
-  ) {
-    return "waiting_for_user";
+  if (isGracefulRunBoundary(reason)) {
+    return "checkpoint_ready";
   }
 
   if (reason === RUN_STOP_REASONS.NEEDS_INPUT) {
@@ -165,18 +183,12 @@ export function stopReasonFromToolRecords(
 }
 
 export function inferRunStopReason({
-  pendingQuestion,
   records = [],
   finishReason,
   steps = [],
   maxSteps = 0,
   plan = []
 } = {}) {
-  if (pendingQuestion) {
-    return RUN_STOP_REASONS.WAITING_FOR_USER;
-  }
-
-
   const needsInput =
     Array.isArray(plan) &&
     plan.some((item) => item?.status === "needs_input");

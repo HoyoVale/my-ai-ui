@@ -189,13 +189,4 @@ describe("AI SDK Tool loop convergence", () => {
     );
   });
 
-  it("never advertises the retired ask_user tool to the model", () => {
-    const session = createAgentToolSession();
-
-    assert.equal("ask_user" in session.tools, false);
-    assert.equal(
-      session.registryManifest.some((tool) => tool.name === "ask_user"),
-      false
-    );
-  });
 });

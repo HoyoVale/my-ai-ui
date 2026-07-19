@@ -121,8 +121,7 @@ export function createAgentToolSession({
     .registerMany(
       createAgentToolDefinitions({
         resultStore,
-        planStore,
-        activityStore
+        planStore
       }),
       {
         source: "builtin.agent",
@@ -201,15 +200,19 @@ export function createAgentToolSession({
       maxToolCalls:
         toolSettings.runtime
           ?.maxToolCalls ??
-        12,
+        100,
+      maxTotalToolCalls:
+        toolSettings.runtime
+          ?.maxTotalToolCalls ??
+        2000,
       maxIdenticalCalls:
         toolSettings.runtime
           ?.maxIdenticalCalls ??
-        2,
+        3,
       runTimeoutMs:
         toolSettings.runtime
           ?.runTimeoutMs ??
-        120000,
+        1800000,
       resultStore,
       maxRetries:
         toolSettings.runtime

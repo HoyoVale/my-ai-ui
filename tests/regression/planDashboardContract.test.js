@@ -42,7 +42,7 @@ describe("automatic plan dashboard", () => {
     assert.match(css, /is-needs_input/u);
   });
 
-  it("removes duplicate update_plan tool rows from the public timeline", () => {
+  it("uses Tool manifest visibility instead of a duplicated tool-name filter", () => {
     const messageList = read(
       "../../src/Conversation/components/MessageList.jsx"
     );
@@ -50,7 +50,9 @@ describe("automatic plan dashboard", () => {
       "../../src/Conversation/components/TaskPanel.jsx"
     );
 
-    assert.match(messageList, /"update_plan"/u);
-    assert.match(taskPanel, /"update_plan"/u);
+    assert.match(messageList, /activityVisibility === "developer"/u);
+    assert.match(taskPanel, /activityVisibility === "developer"/u);
+    assert.doesNotMatch(messageList, /"update_plan"/u);
+    assert.doesNotMatch(taskPanel, /"update_plan"/u);
   });
 });

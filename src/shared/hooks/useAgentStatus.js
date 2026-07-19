@@ -9,7 +9,6 @@ const INITIAL_STATUS = {
   conversationId: null,
   startedAt: null,
   lastError: null,
-  pendingQuestion: null,
   stopReason: null,
   plan: [],
   activeToolCalls: []
@@ -67,9 +66,6 @@ export function useAgentStatus() {
         "running" ||
       ["stopping", "cancelling"].includes(
         status.state
-      ),
-    isWaitingForUser:
-      status.state ===
-        "waiting_for_user"
+      )
   };
 }

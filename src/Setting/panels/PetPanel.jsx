@@ -1,5 +1,6 @@
 import {
   SettingRow,
+  SettingsVisibility,
   SettingsSection,
   Slider,
   Toggle
@@ -7,6 +8,7 @@ import {
 
 export function PetPanel({
   settings,
+  developerMode = false,
   onUpdate
 }) {
   const pet =
@@ -66,6 +68,10 @@ export function PetPanel({
           />
         </SettingRow>
 
+        <SettingsVisibility
+          visibility="developer"
+          developerMode={developerMode}
+        >
         <SettingRow
           title="阴影强度"
           description="控制桌宠图片下方的柔和阴影。"
@@ -90,6 +96,7 @@ export function PetPanel({
             }}
           />
         </SettingRow>
+        </SettingsVisibility>
       </SettingsSection>
 
       <SettingsSection
@@ -114,6 +121,10 @@ export function PetPanel({
           />
         </SettingRow>
 
+        <SettingsVisibility
+          visibility="developer"
+          developerMode={developerMode}
+        >
         <SettingRow
           title="显示在任务栏"
           description="关闭后桌宠不会占用任务栏位置。"
@@ -131,6 +142,7 @@ export function PetPanel({
             }}
           />
         </SettingRow>
+        </SettingsVisibility>
       </SettingsSection>
     </>
   );

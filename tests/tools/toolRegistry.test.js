@@ -34,11 +34,33 @@ describe("ToolRegistry foundation", () => {
     assert.equal(registered.source, "builtin.test");
     assert.equal(registered.sideEffect, "read");
     assert.equal(registered.riskLevel, "low");
+    assert.equal(registered.countsTowardLimit, false);
+    assert.equal(registered.countsTowardRepeatLimit, false);
+    assert.equal(registered.activityVisibility, "normal");
     assert.equal(registered.retryPolicy.maxAttempts, 2);
     assert.deepEqual(
       registered.retryPolicy.retryOn,
       ["TEMPORARY_FAILURE"]
     );
+  });
+
+
+  it("hides simple no-side-effect tools from normal activity by default", () => {
+    const registry = new ToolRegistry();
+    const registered = registry.register(
+      definition("calculator", {
+        sideEffect: "none",
+        riskLevel: "none"
+      })
+    );
+
+    assert.equal(registered.countsTowardLimit, false);
+    assert.equal(registered.countsTowardRepeatLimit, false);
+    assert.equal(registered.activityVisibility, "developer");
+
+    const manifest = registry.manifest()[0];
+    assert.equal(manifest.activityVisibility, "developer");
+    assert.equal(manifest.countsTowardRepeatLimit, false);
   });
 
   it("does not make write tools retryable by default", () => {

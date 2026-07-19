@@ -11,6 +11,15 @@ import {
 import {
   BASE_SYSTEM_CONTEXT
 } from "./baseSystemContext.js";
+import {
+  buildCapabilityContext
+} from "./capabilityContextBuilder.js";
+
+import {
+  createPromptSection,
+  renderPromptSections
+} from "./promptSections.js";
+
 
 import {
   buildPersonalityContext,
@@ -39,7 +48,8 @@ import {
 export function assembleAgentContext({
   settings,
   conversation,
-  memories = []
+  memories = [],
+  toolManifest = []
 } = {}) {
   const normalizedSettings =
     settings ?? {};
@@ -121,16 +131,64 @@ export function assembleAgentContext({
         normalizedSettings.tools
     });
 
-  const systemSections = [
-    BASE_SYSTEM_CONTEXT,
-    runtimeContext,
-    personalityContext,
-    memoryContext,
-    pinnedContext
-  ].filter(Boolean);
+  const capabilityContext =
+    buildCapabilityContext({
+      toolSettings:
+        normalizedSettings.tools,
+      toolManifest
+    });
+
+  const promptSections = [
+    createPromptSection({
+      id: "policy",
+      authority: "policy",
+      source: "app",
+      title: "core",
+      content: BASE_SYSTEM_CONTEXT
+    }),
+    createPromptSection({
+      id: "capabilities",
+      authority: "capability",
+      source: "tool-runtime",
+      title: "active tools",
+      content: capabilityContext
+    }),
+    createPromptSection({
+      id: "runtime",
+      authority: "runtime",
+      source: "app",
+      title: "environment",
+      content: runtimeContext
+    }),
+    createPromptSection({
+      id: "personality",
+      authority: "preference",
+      source: "user-settings",
+      title: "personality",
+      content: personalityContext
+    }),
+    createPromptSection({
+      id: "memory",
+      authority: "data",
+      source: "memory",
+      title: "long-term memory",
+      content: memoryContext
+    }),
+    createPromptSection({
+      id: "pinned",
+      authority: "data",
+      source: "conversation",
+      title: "pinned messages",
+      content: pinnedContext
+    })
+  ].filter((section) =>
+    section.content
+  );
 
   const system =
-    systemSections.join("\n\n");
+    renderPromptSections(
+      promptSections
+    );
 
   const budget =
     buildTokenBudget({
@@ -147,6 +205,14 @@ export function assembleAgentContext({
           tokens:
             estimateTextTokens(
               BASE_SYSTEM_CONTEXT
+            )
+        },
+        {
+          id: "capability",
+          label: "工具能力",
+          tokens:
+            estimateTextTokens(
+              capabilityContext
             )
         },
         {
@@ -196,6 +262,10 @@ export function assembleAgentContext({
     system,
     messages,
     budget,
+    promptSections:
+      structuredClone(
+        promptSections
+      ),
     metadata: {
       activeModel: {
         providerId:

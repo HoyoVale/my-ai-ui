@@ -936,19 +936,19 @@ function sanitizeToolSettings(
         runtime.maxSteps,
         defaults.runtime.maxSteps,
         1,
-        12
+        32
       ),
       maxSegments: integerValue(
         runtime.maxSegments,
         defaults.runtime.maxSegments,
         1,
-        12
+        100
       ),
       maxNoProgressSegments: integerValue(
         runtime.maxNoProgressSegments,
         defaults.runtime.maxNoProgressSegments,
         1,
-        4
+        10
       ),
       maxFinalizationAttempts: integerValue(
         runtime.maxFinalizationAttempts,
@@ -960,7 +960,13 @@ function sanitizeToolSettings(
         runtime.maxToolCalls,
         defaults.runtime.maxToolCalls,
         1,
-        50
+        500
+      ),
+      maxTotalToolCalls: integerValue(
+        runtime.maxTotalToolCalls,
+        defaults.runtime.maxTotalToolCalls,
+        100,
+        10000
       ),
       maxToolRetries: integerValue(
         runtime.maxToolRetries,
@@ -972,7 +978,7 @@ function sanitizeToolSettings(
         runtime.runTimeoutMs,
         defaults.runtime.runTimeoutMs,
         10000,
-        600000
+        14400000
       ),
       defaultTimeoutMs: integerValue(
         runtime.defaultTimeoutMs,
@@ -984,7 +990,7 @@ function sanitizeToolSettings(
         runtime.maxIdenticalCalls,
         defaults.runtime.maxIdenticalCalls,
         1,
-        5
+        10
       ),
       saveToolHistory: booleanValue(
         runtime.saveToolHistory,

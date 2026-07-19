@@ -7,6 +7,7 @@ import {
   ActionButton,
   Select,
   SettingRow,
+  SettingsVisibility,
   Slider,
   TextInput
 } from "../components/Controls.jsx";
@@ -131,6 +132,7 @@ function ModelList({
 
 function ProviderConnection({
   provider,
+  developerMode = false,
   status,
   loading,
   apiKey,
@@ -153,6 +155,10 @@ function ProviderConnection({
       </summary>
 
       <div className="model-config-card__body">
+        <SettingsVisibility
+          visibility="developer"
+          developerMode={developerMode}
+        >
         <SettingRow title="显示名称">
           <TextInput
             value={provider.name}
@@ -200,6 +206,7 @@ function ProviderConnection({
             }
           />
         </SettingRow>
+        </SettingsVisibility>
 
         {provider.credentialMode !== "none" && (
           <SettingRow
@@ -434,7 +441,11 @@ function ModelConfiguration({
   );
 }
 
-export function ModelPanel({ settings, onUpdate }) {
+export function ModelPanel({
+  settings,
+  developerMode = false,
+  onUpdate
+}) {
   const modelSettings = settings.model;
   const providerId = modelSettings.activeProvider;
   const provider =
@@ -594,6 +605,7 @@ export function ModelPanel({ settings, onUpdate }) {
         <div className="model-editor-stack">
           <ProviderConnection
             provider={provider}
+            developerMode={developerMode}
             status={status}
             loading={loading}
             apiKey={apiKey}
@@ -610,11 +622,16 @@ export function ModelPanel({ settings, onUpdate }) {
             onClear={() => void handleClear()}
           />
 
-          <ModelConfiguration
-            provider={provider}
-            model={activeModel}
-            onUpdate={updateActiveModel}
-          />
+          <SettingsVisibility
+            visibility="developer"
+            developerMode={developerMode}
+          >
+            <ModelConfiguration
+              provider={provider}
+              model={activeModel}
+              onUpdate={updateActiveModel}
+            />
+          </SettingsVisibility>
         </div>
       </div>
     </div>

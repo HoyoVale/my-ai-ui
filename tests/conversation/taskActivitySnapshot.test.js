@@ -6,7 +6,9 @@ import {
 import assert from "node:assert/strict";
 
 import {
-  createActivitySnapshot
+  createActivitySnapshot,
+  describeToolBatch,
+  groupToolActivityEvents
 } from "../../src/Conversation/utils/taskActivity.js";
 
 function assistantMessage({
@@ -71,5 +73,43 @@ describe("task activity snapshots", () => {
     assert.equal(snapshot.messageId, "message-2");
     assert.equal(snapshot.runId, "run-2");
     assert.match(snapshot.toolCalls[0].activityId, /^run-2:/u);
+  });
+
+  it("groups consecutive calls by batch and leaves boundaries intact", () => {
+    const tool = (id, batchId = "", status = "completed") => ({
+      id,
+      type: "tool",
+      batchId,
+      status,
+      tool: {
+        id,
+        name: "read_text_file",
+        status
+      }
+    });
+    const events = [
+      tool("one", "batch-a"),
+      tool("two", "batch-a"),
+      {
+        id: "commentary",
+        type: "commentary",
+        content: "next"
+      },
+      tool("three"),
+      tool("four"),
+      tool("five", "batch-b", "running")
+    ];
+
+    const grouped = groupToolActivityEvents(events);
+
+    assert.deepEqual(
+      grouped.map((event) => event.type),
+      ["tool_batch", "commentary", "tool_batch", "tool"]
+    );
+    assert.equal(grouped[0].events.length, 2);
+    assert.equal(grouped[0].batchId, "batch-a");
+    assert.equal(describeToolBatch(grouped[0]), "运行了 2 个工具");
+    assert.equal(grouped[2].batchId, "");
+    assert.equal(grouped[3].id, "five");
   });
 });

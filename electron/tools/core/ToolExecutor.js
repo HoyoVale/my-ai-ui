@@ -219,9 +219,10 @@ export class ToolExecutor {
     getRecordMetadata = null,
     policyEngine = null,
     defaultTimeoutMs = 15000,
-    maxToolCalls = 12,
-    maxIdenticalCalls = 2,
-    runTimeoutMs = 120000,
+    maxToolCalls = 100,
+    maxTotalToolCalls = 2000,
+    maxIdenticalCalls = 3,
+    runTimeoutMs = 1800000,
     resultStore = null,
     maxRetries = 1,
     maxConcurrent = 4,
@@ -243,6 +244,7 @@ export class ToolExecutor {
       : 0;
     this.budget = budget ?? new ToolBudget({
       maxRequests: maxToolCalls,
+      maxTotalRequests: maxTotalToolCalls,
       maxIdenticalRequests: maxIdenticalCalls,
       maxRetries: this.maxRetries,
       deadline: this.deadline
@@ -305,6 +307,8 @@ export class ToolExecutor {
     this.budget.noteOutput(output);
     const endedAt = Date.now();
     const cancelled = output.error?.type === TOOL_ERROR_TYPES.CANCELLED;
+    const gracefulBoundary =
+      output.error?.category === "budget_exceeded";
     const captured = this.captureFailure(output, {
       toolName: baseRecord.name,
       cancelled,
@@ -314,6 +318,11 @@ export class ToolExecutor {
     });
     this.emit({
       ...baseRecord,
+      activityVisibility:
+        gracefulBoundary
+          ? "developer"
+          : baseRecord.activityVisibility,
+      gracefulBoundary,
       status: cancelled ? "cancelled" : "failed",
       output: captured.value,
       result: captured.result,
@@ -369,6 +378,14 @@ export class ToolExecutor {
       source: definition.source,
       riskLevel: definition.riskLevel,
       sideEffect: definition.sideEffect,
+      countsTowardLimit:
+        definition.countsTowardLimit !== false,
+      countsTowardRepeatLimit:
+        definition.countsTowardRepeatLimit === undefined
+          ? definition.countsTowardLimit !== false
+          : definition.countsTowardRepeatLimit !== false,
+      activityVisibility:
+        definition.activityVisibility ?? "normal",
       taskId,
       segmentId,
       batch: recordMetadata.batch ?? null,
@@ -386,7 +403,14 @@ export class ToolExecutor {
     const budgetCheck = this.budget.inspectRequest(
       definition.name,
       input,
-      { countsTowardLimit: definition.countsTowardLimit !== false }
+      {
+        countsTowardLimit:
+          definition.countsTowardLimit !== false,
+        countsTowardRepeatLimit:
+          definition.countsTowardRepeatLimit === undefined
+            ? definition.countsTowardLimit !== false
+            : definition.countsTowardRepeatLimit !== false
+      }
     );
     if (this.context.abortSignal?.aborted) {
       return this.finishRejected(

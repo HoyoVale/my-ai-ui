@@ -321,11 +321,9 @@ export class ConversationManager {
     content,
     status = "complete",
     durationMs = 0,
-    reasoningSummary = "",
     toolCalls = [],
     plan = [],
     stopReason = "",
-    pendingQuestion = null,
     resumedFromMessageId = "",
     taskId = "",
     activity = null
@@ -352,12 +350,7 @@ export class ConversationManager {
 
     const canStoreEmptyAssistant =
       role === "assistant" &&
-      (
-        Boolean(
-          pendingQuestion?.question
-        ) ||
-        Boolean(activity)
-      );
+      Boolean(activity);
 
     if (
       !normalizedContent &&
@@ -386,11 +379,9 @@ export class ConversationManager {
       message,
       {
         durationMs,
-        reasoningSummary,
         toolCalls,
         plan,
         stopReason,
-        pendingQuestion,
         resumedFromMessageId,
         taskId,
         activity
@@ -524,11 +515,9 @@ export class ConversationManager {
     content,
     status = "complete",
     durationMs = 0,
-    reasoningSummary = "",
     toolCalls = [],
     plan = [],
     stopReason = "",
-    pendingQuestion = null,
     resumedFromMessageId = "",
     taskId = "",
     activity = null,
@@ -569,9 +558,6 @@ export class ConversationManager {
         .trim();
 
     const canStoreEmptyAssistant =
-      Boolean(
-        pendingQuestion?.question
-      ) ||
       Boolean(activity);
 
     if (
@@ -595,11 +581,9 @@ export class ConversationManager {
     }
 
     delete message.durationMs;
-    delete message.reasoningSummary;
     delete message.toolCalls;
     delete message.plan;
     delete message.stopReason;
-    delete message.pendingQuestion;
     delete message.resumedFromMessageId;
     delete message.taskId;
     delete message.activity;
@@ -608,11 +592,9 @@ export class ConversationManager {
       message,
       {
         durationMs,
-        reasoningSummary,
         toolCalls,
         plan,
         stopReason,
-        pendingQuestion,
         resumedFromMessageId,
         taskId,
         activity
@@ -644,11 +626,9 @@ export class ConversationManager {
     message,
     {
       durationMs = 0,
-      reasoningSummary = "",
       toolCalls = [],
       plan = [],
       stopReason = "",
-      pendingQuestion = null,
       resumedFromMessageId = "",
       taskId = "",
       activity = null
@@ -668,19 +648,11 @@ export class ConversationManager {
         )
       );
 
-    const normalizedReasoning =
-      String(
-        reasoningSummary ?? ""
-      ).trim();
+
 
     if (normalizedDuration > 0) {
       message.durationMs =
         normalizedDuration;
-    }
-
-    if (normalizedReasoning) {
-      message.reasoningSummary =
-        normalizedReasoning;
     }
 
     if (
@@ -703,17 +675,7 @@ export class ConversationManager {
         String(stopReason);
     }
 
-    if (
-      pendingQuestion &&
-      typeof pendingQuestion === "object"
-    ) {
-      message.pendingQuestion = {
-        ...clone(pendingQuestion),
-        status:
-          pendingQuestion.status ??
-          "waiting"
-      };
-    }
+
 
     if (resumedFromMessageId) {
       message.resumedFromMessageId =
@@ -734,186 +696,6 @@ export class ConversationManager {
     }
   }
 
-  getPendingQuestion(
-    conversationId
-  ) {
-    const conversation =
-      this.getConversation(
-        conversationId
-      );
-
-    if (!conversation) {
-      return null;
-    }
-
-    const message =
-      [...conversation.messages]
-        .reverse()
-        .find((item) =>
-          item.role === "assistant" &&
-          item.pendingQuestion?.status ===
-            "waiting"
-        );
-
-    if (!message) {
-      return null;
-    }
-
-    const messageIndex =
-      conversation.messages.findIndex(
-        (item) =>
-          item.id === message.id
-      );
-    const hasLaterUserMessage =
-      conversation.messages
-        .slice(messageIndex + 1)
-        .some(
-          (item) =>
-            item.role === "user"
-        );
-
-    if (hasLaterUserMessage) {
-      return null;
-    }
-
-    return {
-      messageId: message.id,
-      request:
-        clone(
-          message.pendingQuestion
-        ),
-      plan:
-        clone(message.plan ?? []),
-      taskId:
-        message.taskId ??
-        message.activity?.taskId ??
-        message.id,
-      activity:
-        message.activity
-          ? clone(message.activity)
-          : null,
-      message: clone(message)
-    };
-  }
-
-  resolvePendingQuestion({
-    conversationId,
-    messageId,
-    answer = "",
-    selectedOptionIds = [],
-    otherText = ""
-  }) {
-    const conversation =
-      this.findMutableConversation(
-        conversationId
-      );
-
-    if (!conversation) {
-      return {
-        ok: false,
-        code:
-          "conversation-not-found"
-      };
-    }
-
-    const message =
-      conversation.messages.find(
-        (item) =>
-          item.id === messageId &&
-          item.role === "assistant"
-      );
-
-    if (
-      !message?.pendingQuestion ||
-      message.pendingQuestion.status !==
-        "waiting"
-    ) {
-      return {
-        ok: false,
-        code:
-          "pending-question-not-found"
-      };
-    }
-
-    const answeredAt =
-      this.now();
-    const normalizedAnswer =
-      String(answer ?? "").trim();
-    const normalizedSelectedOptionIds =
-      Array.isArray(selectedOptionIds)
-        ? selectedOptionIds.map(String)
-        : [];
-
-    message.pendingQuestion = {
-      ...message.pendingQuestion,
-      status: "answered",
-      answeredAt,
-      answer: normalizedAnswer,
-      selectedOptionIds:
-        normalizedSelectedOptionIds,
-      otherText:
-        String(otherText ?? "").trim()
-    };
-
-    if (
-      message.activity &&
-      Array.isArray(
-        message.activity.events
-      )
-    ) {
-      message.activity = {
-        ...message.activity,
-        status: "resumed",
-        events:
-          message.activity.events.map(
-            (event) => {
-              if (
-                event.type !==
-                "question"
-              ) {
-                return event;
-              }
-
-              return {
-                ...event,
-                status: "answered",
-                updatedAt:
-                  message.pendingQuestion
-                    .answeredAt,
-                question: {
-                  ...event.question,
-                  status: "answered",
-                  answeredAt:
-                    message.pendingQuestion
-                      .answeredAt,
-                  answer:
-                    message.pendingQuestion
-                      .answer,
-                  selectedOptionIds:
-                    message.pendingQuestion
-                      .selectedOptionIds,
-                  otherText:
-                    message.pendingQuestion
-                      .otherText
-                }
-              };
-            }
-          )
-      };
-    }
-
-    conversation.updatedAt =
-      message.pendingQuestion
-        .answeredAt;
-
-    this.commit();
-
-    return {
-      ok: true,
-      message: clone(message)
-    };
-  }
-
   recoverInterruptedRuns() {
     const data = this.ensureLoaded();
     const timestamp = this.now();
@@ -926,14 +708,11 @@ export class ConversationManager {
         }
 
         const activity = message.activity;
-        const waiting =
-          message.pendingQuestion?.status === "waiting" ||
-          activity?.status === "waiting_for_user";
         const unfinished =
           ["running", "cancelling"].includes(message.status) ||
           ["running", "cancelling", "resumed"].includes(activity?.status);
 
-        if (!unfinished || waiting) {
+        if (!unfinished) {
           continue;
         }
 

@@ -128,5 +128,39 @@ describe(
         );
       }
     );
+
+    it(
+      "uses one normal/developer visibility control across existing setting tabs",
+      () => {
+        const controls = read(
+          "../../src/Setting/components/Controls.jsx"
+        );
+        const content = read(
+          "../../src/Setting/components/Content.jsx"
+        );
+        const panels = [
+          "AppearancePanel",
+          "PetPanel",
+          "InputPanel",
+          "ResponsePanel",
+          "PersonalityPanel",
+          "MemoryPanel",
+          "ModelPanel"
+        ].map((name) => read(
+          `../../src/Setting/panels/${name}.jsx`
+        ));
+
+        assert.match(controls, /function SettingsVisibility/u);
+        assert.match(controls, /visibility === "developer"/u);
+        assert.match(content, /<PetPanel[\s\S]*developerMode=/u);
+        assert.match(content, /<ResponsePanel[\s\S]*developerMode=/u);
+        assert.equal(
+          panels.every((panel) =>
+            panel.includes("visibility=\"developer\"")
+          ),
+          true
+        );
+      }
+    );
   }
 );

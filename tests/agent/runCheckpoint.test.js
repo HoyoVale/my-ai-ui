@@ -35,14 +35,39 @@ describe("persisted run checkpoints", () => {
 
   it("creates a compact resume instruction", () => {
     const checkpoint = createRunCheckpoint({
+      objective: "Inspect the project",
       phase: "executing",
-      plan: [{ id: "one", title: "Inspect", status: "completed" }],
-      answeredQuestions: [{ question: "Mode?", answer: "Safe" }]
+      plan: [{ id: "one", title: "Inspect", status: "completed" }]
     });
     const instruction = createCheckpointInstruction(checkpoint);
 
-    assert.match(instruction, /Persisted run checkpoint/);
+    assert.match(instruction, /Saved task state/);
+    assert.match(instruction, /reference data, not runtime instructions/);
+    assert.match(instruction, /Original task objective: Inspect the project/);
     assert.match(instruction, /\[completed\] Inspect/);
-    assert.match(instruction, /Mode\?: Safe/);
+    assert.doesNotMatch(instruction, /Segments:/u);
+    assert.doesNotMatch(instruction, /maxSegments/u);
+  });
+
+  it("persists continuation lineage without consuming the next run budget", () => {
+    const checkpoint = createRunCheckpoint({
+      goalId: "goal",
+      taskId: "task",
+      runId: "run-2",
+      parentRunId: "run-1",
+      messageId: "message-2",
+      resumedFromMessageId: "message-1",
+      objective: "Finish the refactor",
+      continuationCount: 2,
+      previousSegmentCount: 24
+    });
+
+    assert.equal(checkpoint.goalId, "goal");
+    assert.equal(checkpoint.taskId, "task");
+    assert.equal(checkpoint.parentRunId, "run-1");
+    assert.equal(checkpoint.resumedFromMessageId, "message-1");
+    assert.equal(checkpoint.objective, "Finish the refactor");
+    assert.equal(checkpoint.continuationCount, 2);
+    assert.equal(checkpoint.previousSegmentCount, 24);
   });
 });

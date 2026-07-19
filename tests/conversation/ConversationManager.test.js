@@ -409,8 +409,6 @@ describe(
           role: "assistant",
           content: "reply",
           durationMs: 1250,
-          reasoningSummary:
-            "Checked the request.",
           toolCalls: [
             {
               id: "tool-1",
@@ -439,10 +437,6 @@ describe(
         assert.equal(
           message.durationMs,
           1250
-        );
-        assert.equal(
-          message.reasoningSummary,
-          "Checked the request."
         );
         assert.equal(
           message.toolCalls[0].name,
@@ -578,100 +572,6 @@ describe(
         assert.equal(
           result.code,
           "not-latest-assistant-message"
-        );
-      }
-    );
-  }
-);
-
-describe(
-  "ConversationManager pending questions",
-  () => {
-    it(
-      "persists a pending question and resolves it in the same assistant turn",
-      () => {
-        const manager =
-          createManager();
-        const conversation =
-          manager.create();
-
-        const assistant =
-          manager.appendMessage({
-            conversationId:
-              conversation.id,
-            role: "assistant",
-            content:
-              "Which folder should I inspect?",
-            stopReason:
-              "user_input_required",
-            pendingQuestion: {
-              question:
-                "Which folder should I inspect?",
-              options: [
-                {
-                  id: "src",
-                  label: "src"
-                }
-              ],
-              status: "waiting"
-            },
-            plan: [
-              {
-                id: "inspect",
-                title: "Inspect project",
-                status: "in_progress"
-              }
-            ]
-          });
-
-        const pending =
-          manager.getPendingQuestion(
-            conversation.id
-          );
-
-        assert.equal(
-          pending.messageId,
-          assistant.id
-        );
-        assert.equal(
-          pending.plan[0].id,
-          "inspect"
-        );
-
-        const resolved =
-          manager.resolvePendingQuestion({
-            conversationId:
-              conversation.id,
-            messageId:
-              assistant.id,
-            answer: "src",
-            selectedOptionIds: [
-              "src"
-            ]
-          });
-
-        assert.equal(
-          resolved.ok,
-          true
-        );
-        assert.equal(
-          manager.getPendingQuestion(
-            conversation.id
-          ),
-          null
-        );
-        assert.equal(
-          manager.getConversation(
-            conversation.id
-          ).messages.length,
-          1
-        );
-        assert.equal(
-          manager.getConversation(
-            conversation.id
-          ).messages[0]
-            .pendingQuestion.status,
-          "answered"
         );
       }
     );

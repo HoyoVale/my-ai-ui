@@ -127,6 +127,58 @@ describe("Tool Runtime Kernel v2", () => {
     assert.equal(budget.bytesOut > 0, true);
   });
 
+  it("does not spend the ordinary quota on explicitly unmetered reads", async () => {
+    const executor = new ToolExecutor({
+      maxToolCalls: 1,
+      maxTotalToolCalls: 10,
+      maxIdenticalCalls: 1
+    });
+    const read = definition({ countsTowardLimit: false });
+    const write = definition({
+      name: "write_demo",
+      sideEffect: "write",
+      countsTowardLimit: true
+    });
+
+    assert.equal((await executor.execute(read, { value: 1 })).ok, true);
+    assert.equal((await executor.execute(read, { value: 2 })).ok, true);
+    assert.equal((await executor.execute(write, { value: 3 })).ok, true);
+
+    const limited = await executor.execute(write, { value: 4 });
+    const repeated = await executor.execute(read, { value: 1 });
+    const budget = executor.getBudget();
+
+    assert.equal(limited.error.code, "TOOL_CALL_LIMIT");
+    assert.equal(repeated.ok, true);
+    assert.equal(budget.requestCount, 2);
+    assert.equal(budget.unmeteredRequestCount, 3);
+    assert.equal(budget.totalRequestCount, 5);
+  });
+
+
+  it("keeps an emergency fuse for otherwise unmetered tools", async () => {
+    const executor = new ToolExecutor({
+      maxToolCalls: 1,
+      maxTotalToolCalls: 2,
+      maxIdenticalCalls: 1
+    });
+    const read = definition({
+      countsTowardLimit: false,
+      countsTowardRepeatLimit: false
+    });
+
+    assert.equal((await executor.execute(read, { value: 1 })).ok, true);
+    assert.equal((await executor.execute(read, { value: 1 })).ok, true);
+
+    const fused = await executor.execute(read, { value: 1 });
+
+    assert.equal(fused.error.code, "TOOL_EMERGENCY_LIMIT");
+    assert.equal(
+      executor.getRecords().at(-1).activityVisibility,
+      "developer"
+    );
+  });
+
   it("uses canonical signatures for semantically identical objects", async () => {
     const executor = new ToolExecutor({ maxIdenticalCalls: 1 });
     const flexible = definition({
@@ -373,6 +425,15 @@ describe("Tool Runtime Kernel v2", () => {
     assert.equal(manifest.version, 1);
     assert.deepEqual(manifest.toolsets, ["custom.read"]);
     assert.equal(manifest.idempotency, "natural");
+    const writeRegistry = new ToolRegistry();
+    writeRegistry.register(definition({
+      name: "write_demo",
+      sideEffect: "write"
+    }));
+    const [writeManifest] = writeRegistry.manifest();
+
+    assert.equal(manifest.countsTowardLimit, false);
+    assert.equal(writeManifest.countsTowardLimit, true);
   });
 
   it("runs a frozen custom Tool snapshot without AgentRuntime", async () => {

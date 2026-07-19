@@ -32,6 +32,10 @@ describe("Tool Runtime Kernel dependency boundary", () => {
   it("keeps Electron and Renderer orchestration limits aligned", () => {
     const electronRuntime = DEFAULT_SETTINGS.tools.runtime;
     const rendererRuntime = FALLBACK_SETTINGS.tools.runtime;
+    assert.equal(
+      DEFAULT_SETTINGS,
+      FALLBACK_SETTINGS
+    );
 
     assert.equal(
       rendererRuntime.maxFinalizationAttempts,

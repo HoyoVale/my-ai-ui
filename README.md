@@ -477,7 +477,7 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 当前工具运行时进一步支持：
 
 - Conversation 实时工具活动与计划状态；
-- `ask_user` 暂停后由下一条用户消息继续原任务；
+- 长任务达到内部边界后生成阶段总结，用户明确继续时继承原任务；
 - 大型工具结果自动保存并通过 `read_tool_result` 分页读取；
 - 标准化 Agent 停止原因；
 - Setting 设置项不再显示标题下方的重复说明文字，开发者工具 description 保留。

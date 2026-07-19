@@ -23,10 +23,6 @@ import {
   isSettingSender
 } from "../../windows/setting/settingWindow.js";
 
-import {
-  isConversationSender
-} from "../../windows/conversation/conversationWindow.js";
-
 function requireInputSender(
   event
 ) {
@@ -37,20 +33,6 @@ function requireInputSender(
   ) {
     throw new Error(
       "Only the Input window can send agent messages."
-    );
-  }
-}
-
-function requireConversationSender(
-  event
-) {
-  if (
-    !isConversationSender(
-      event.sender
-    )
-  ) {
-    throw new Error(
-      "Only the Conversation window can answer agent questions."
     );
   }
 }
@@ -79,18 +61,6 @@ export function registerAgentIpc() {
 
       return agentRuntime
         .startMessage(content);
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS
-      .agent
-      .RESUME_QUESTION,
-    (event, response = {}) => {
-      requireConversationSender(event);
-
-      return agentRuntime
-        .resumeQuestion(response);
     }
   );
 

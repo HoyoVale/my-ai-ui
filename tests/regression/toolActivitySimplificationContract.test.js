@@ -25,14 +25,12 @@ describe("compact thinking activity", () => {
     assert.doesNotMatch(source, /message\.pendingQuestion[\s\S]*等待回复/u);
   });
 
-  it("does not expose raw reasoning summaries in the normal timeline", () => {
+  it("does not expose retired question or reasoning events in the normal timeline", () => {
     const source = read(
       "../../src/Conversation/components/MessageList.jsx"
     );
 
-    assert.match(
-      source,
-      /"summary",[\s\S]*"question",[\s\S]*"batch",[\s\S]*"plan"/u
-    );
+    assert.doesNotMatch(source, /PendingQuestionCard|reasoningSummary|reasoningText/u);
+    assert.match(source, /event\.type === "batch"|event\.type === "plan"/u);
   });
 });

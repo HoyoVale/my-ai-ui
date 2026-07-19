@@ -87,6 +87,7 @@ describe(
                 maxNoProgressSegments: 999,
                 maxFinalizationAttempts: 999,
                 maxToolCalls: 999,
+                maxTotalToolCalls: 99999,
                 runTimeoutMs: 1,
                 defaultTimeoutMs: 50,
                 maxIdenticalCalls: 99,
@@ -126,15 +127,15 @@ describe(
 
         assert.equal(
           settings.tools.runtime.maxSteps,
-          12
+          32
         );
         assert.equal(
           settings.tools.runtime.maxSegments,
-          12
+          100
         );
         assert.equal(
           settings.tools.runtime.maxNoProgressSegments,
-          4
+          10
         );
         assert.equal(
           settings.tools.mode,
@@ -151,7 +152,11 @@ describe(
         );
         assert.equal(
           settings.tools.runtime.maxToolCalls,
-          50
+          500
+        );
+        assert.equal(
+          settings.tools.runtime.maxTotalToolCalls,
+          10000
         );
         assert.equal(
           settings.tools.runtime.runTimeoutMs,
@@ -159,7 +164,7 @@ describe(
         );
         assert.equal(
           settings.tools.runtime.maxIdenticalCalls,
-          5
+          10
         );
         assert.equal(
           settings.tools.runtime

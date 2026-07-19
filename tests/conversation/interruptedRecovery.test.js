@@ -76,37 +76,4 @@ describe("interrupted run recovery", () => {
     assert.equal(message.activity.events[0].tool.status, "cancelled");
   });
 
-  it("keeps waiting ask_user checkpoints resumable", () => {
-    const manager = createManager();
-    const conversation = manager.create();
-    manager.appendMessage({
-      conversationId: conversation.id,
-      role: "assistant",
-      content: "",
-      status: "waiting",
-      pendingQuestion: {
-        question: "Choose",
-        status: "waiting",
-        options: []
-      },
-      activity: {
-        version: 3,
-        taskId: "task",
-        runId: "run",
-        status: "waiting_for_user",
-        startedAt: 1000,
-        endedAt: null,
-        durationMs: 0,
-        stopReason: "waiting_for_user",
-        events: []
-      }
-    });
-
-    const result = manager.recoverInterruptedRuns();
-    const message = manager.getConversation(conversation.id).messages[0];
-
-    assert.equal(result.recovered, 0);
-    assert.equal(message.pendingQuestion.status, "waiting");
-    assert.equal(message.activity.status, "waiting_for_user");
-  });
 });

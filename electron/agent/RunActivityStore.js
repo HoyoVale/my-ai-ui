@@ -89,7 +89,7 @@ export class RunActivityStore {
     this.planRevision = 0;
     this.commentaryRevision = 0;
     this.batchRevision = 0;
-    this.questionRevision = 0;
+    this.progressRevision = 0;
     this.lastPlanSignature = "";
     this.activeBatchId = "";
     this.checkpoint = null;
@@ -101,133 +101,6 @@ export class RunActivityStore {
       title: "开始处理任务",
       createdAt: this.startedAt,
       updatedAt: this.startedAt
-    });
-  }
-
-  static resumeFromSnapshot(
-    snapshot,
-    {
-      answeredQuestion = null,
-      resumedAt = Date.now(),
-      runId = "",
-      taskId = ""
-    } = {}
-  ) {
-    const source =
-      snapshot &&
-      typeof snapshot === "object"
-        ? snapshot
-        : {};
-
-    const store = new RunActivityStore({
-      taskId:
-        source.taskId ?? taskId,
-      runId:
-        source.runId ?? runId,
-      startedAt:
-        source.startedAt ??
-        resumedAt
-    });
-
-    store.events = Array.isArray(
-      source.events
-    )
-      ? clone(source.events)
-      : [];
-    store.sequence =
-      store.events.reduce(
-        (maximum, event) =>
-          Math.max(
-            maximum,
-            Number(event.sequence) || 0
-          ),
-        -1
-      ) + 1;
-    store.planRevision =
-      store.events.filter(
-        (event) =>
-          event.type === "plan"
-      ).length;
-    store.commentaryRevision =
-      store.events.filter(
-        (event) =>
-          event.type === "commentary"
-      ).length;
-    store.batchRevision =
-      store.events.filter(
-        (event) =>
-          event.type === "batch"
-      ).length;
-    store.questionRevision =
-      store.events.filter(
-        (event) =>
-          event.type === "question"
-      ).length;
-    const latestPlan =
-      [...store.events]
-        .reverse()
-        .find(
-          (event) =>
-            event.type === "plan"
-        )?.plan ?? [];
-    store.lastPlanSignature =
-      JSON.stringify(latestPlan);
-    store.activeBatchId = "";
-    store.checkpoint =
-      source.checkpoint &&
-      typeof source.checkpoint === "object"
-        ? clone(source.checkpoint)
-        : null;
-    store.status = "running";
-    store.stopReason = "";
-    store.endedAt = null;
-
-    if (answeredQuestion) {
-      store.markQuestionAnswered(
-        answeredQuestion,
-        resumedAt
-      );
-    }
-
-    store.upsertEvent({
-      id: `run:${store.runId || store.taskId}`,
-      type: "status",
-      status: "running",
-      title: "继续处理任务",
-      stopReason: "",
-      updatedAt: resumedAt
-    });
-
-    return store;
-  }
-
-  markQuestionAnswered(
-    answer,
-    timestamp = Date.now()
-  ) {
-    const event = [...this.events]
-      .reverse()
-      .find(
-        (item) =>
-          item.type === "question" &&
-          item.status ===
-            "waiting_for_user"
-      );
-
-    if (!event) {
-      return null;
-    }
-
-    return this.upsertEvent({
-      ...event,
-      status: "answered",
-      updatedAt: timestamp,
-      question: {
-        ...clone(event.question),
-        ...clone(answer),
-        status: "answered",
-        answeredAt: nowValue(timestamp)
-      }
     });
   }
 
@@ -395,10 +268,6 @@ export class RunActivityStore {
   }
 
   upsertTool(record) {
-    if (record?.name === "report_progress") {
-      return null;
-    }
-
     const timestamp = nowValue(
       record.endedAt ?? record.startedAt ?? Date.now()
     );
@@ -426,6 +295,14 @@ export class RunActivityStore {
         source: record.source,
         riskLevel: record.riskLevel,
         sideEffect: record.sideEffect,
+        countsTowardLimit:
+          record.countsTowardLimit !== false,
+        countsTowardRepeatLimit:
+          record.countsTowardRepeatLimit !== false,
+        activityVisibility:
+          record.activityVisibility ?? "normal",
+        gracefulBoundary:
+          record.gracefulBoundary === true,
         status: canonicalToolStatus(record.status),
         batchId: batch?.id ?? "",
         batchObjective: batch?.objective ?? "",
@@ -499,38 +376,27 @@ export class RunActivityStore {
     });
   }
 
-  recordQuestion(request, timestamp = Date.now()) {
-    if (!request?.question) {
+  recordProgress({
+    title,
+    status = "running",
+    stopReason = "",
+    batchId = this.activeBatchId
+  } = {}, timestamp = Date.now()) {
+    const normalizedTitle = String(title ?? "").trim();
+
+    if (!normalizedTitle) {
       return null;
     }
 
-    this.questionRevision += 1;
+    this.progressRevision += 1;
 
     return this.upsertEvent({
-      id: `question:${this.runId}:${this.questionRevision}`,
-      type: "question",
-      status: "waiting_for_user",
-      title: "等待你的回答",
-      batchId: this.activeBatchId,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      question: clone(request)
-    });
-  }
-
-  recordSummary(content, timestamp = Date.now()) {
-    const normalized = String(content ?? "").trim();
-
-    if (!normalized) {
-      return null;
-    }
-
-    return this.upsertEvent({
-      id: `summary:${this.runId}`,
-      type: "summary",
-      status: "completed",
-      title: "模型推理文本",
-      content: normalized,
+      id: `progress:${this.runId}:${this.progressRevision}`,
+      type: "status",
+      status: String(status || "running"),
+      title: normalizedTitle,
+      stopReason: String(stopReason || ""),
+      batchId: String(batchId || ""),
       createdAt: timestamp,
       updatedAt: timestamp
     });
@@ -588,8 +454,14 @@ export class RunActivityStore {
     this.upsertEvent({
       id: `run:${this.runId || this.taskId}`,
       type: "status",
-      status: this.status,
-      title: this.status,
+      status:
+        this.status === "checkpoint_ready"
+          ? "completed"
+          : this.status,
+      title:
+        this.status === "checkpoint_ready"
+          ? "当前进展已整理"
+          : this.status,
       stopReason: this.stopReason,
       updatedAt: this.endedAt
     });
@@ -600,6 +472,9 @@ export class RunActivityStore {
   snapshot() {
     const endedAt = this.endedAt;
     const currentEnd = endedAt ?? Date.now();
+    const resumable =
+      this.status === "checkpoint_ready" &&
+      Boolean(this.checkpoint);
 
     return {
       version: 3,
@@ -610,6 +485,9 @@ export class RunActivityStore {
       endedAt,
       durationMs: Math.max(0, currentEnd - this.startedAt),
       stopReason: this.stopReason,
+      resumable,
+      completionState:
+        resumable ? "partial" : "terminal",
       checkpoint:
         this.checkpoint
           ? clone(this.checkpoint)

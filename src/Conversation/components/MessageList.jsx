@@ -15,8 +15,10 @@ import {
 
 import {
   createActivitySnapshot,
+  describeToolBatch,
   formatTaskDuration,
   getToolTitle,
+  groupToolActivityEvents,
   stopReasonLabel
 } from "../utils/taskActivity.js";
 
@@ -29,8 +31,6 @@ const TIME_FORMATTER =
       hour12: false
     }
   );
-
-const OTHER_OPTION_ID = "__other__";
 
 const FULL_TIME_FORMATTER =
   new Intl.DateTimeFormat(
@@ -86,8 +86,7 @@ export function ConversationMessageList({
   onOpenTaskPanel,
   onOpenInput,
   onUpdateMessageContext,
-  onRegenerate,
-  onAnswerQuestion
+  onRegenerate
 }) {
   const endRef =
     useRef(null);
@@ -354,23 +353,6 @@ export function ConversationMessageList({
                     </div>
                   )}
 
-                  {isAssistant &&
-                    message.pendingQuestion
-                      ?.status === "waiting" && (
-                      <PendingQuestionCard
-                        request={
-                          message.pendingQuestion
-                        }
-                        busy={busy}
-                        onSubmit={(response) => {
-                          return onAnswerQuestion?.({
-                            messageId: message.id,
-                            ...response
-                          });
-                        }}
-                      />
-                    )}
-
                   <div className="conversation-message__actions">
                     <div className="conversation-message__status-group">
                       {isAssistant &&
@@ -532,8 +514,6 @@ export function ConversationMessageList({
 function visibleTimelineEvents(snapshot) {
   return snapshot.events.filter((event) => {
     if ([
-      "summary",
-      "question",
       "batch",
       "plan"
     ].includes(event.type)) {
@@ -542,11 +522,7 @@ function visibleTimelineEvents(snapshot) {
 
     if (
       event.type === "tool" &&
-      [
-        "update_plan",
-        "ask_user",
-        "report_progress"
-      ].includes(event.tool?.name)
+event.tool?.activityVisibility === "developer"
     ) {
       return false;
     }
@@ -555,7 +531,8 @@ function visibleTimelineEvents(snapshot) {
       return true;
     }
 
-    return ["failed", "cancelled"].includes(event.status);
+    return String(event.id ?? "").startsWith("progress:") ||
+      ["failed", "cancelled"].includes(event.status);
   });
 }
 
@@ -576,7 +553,7 @@ function ThinkingTimeline({
   liveText = "",
   onOpenTaskPanel
 }) {
-  const events = visibleTimelineEvents(snapshot);
+  const events = groupToolActivityEvents(visibleTimelineEvents(snapshot));
 
   if (
     !live &&
@@ -654,6 +631,30 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
     );
   }
 
+  if (event.type === "tool_batch") {
+    return (
+      <details
+        className={`conversation-thinking-tool-batch is-${event.status}`}
+        data-batch-id={event.batchId || undefined}
+      >
+        <summary>
+          <ConversationIcon name="tool" size={16} />
+          <strong>{describeToolBatch(event)}</strong>
+          <ConversationIcon name="chevron" size={13} />
+        </summary>
+        <div className="conversation-thinking-tool-batch__items">
+          {event.events.map((toolEvent) => (
+            <TimelineEvent
+              event={toolEvent}
+              key={toolEvent.id}
+              onOpenTaskPanel={onOpenTaskPanel}
+            />
+          ))}
+        </div>
+      </details>
+    );
+  }
+
   if (event.type === "tool") {
     const tool = event.tool;
 
@@ -686,273 +687,8 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
 
   return (
     <div className="conversation-thinking-event conversation-thinking-event--status">
-      <span>{stopReasonLabel(event.stopReason)}</span>
+      <span>{event.title || stopReasonLabel(event.stopReason)}</span>
     </div>
-  );
-}
-
-function PendingQuestionCard({
-  request,
-  busy,
-  onSubmit
-}) {
-  const options = Array.isArray(
-    request?.options
-  )
-    ? request.options.filter(
-        (option) =>
-          String(option?.id) !==
-          OTHER_OPTION_ID
-      )
-    : [];
-  const multiple =
-    request?.selectionMode ===
-    "multiple";
-  const allowOther =
-    request?.allowOther !== false;
-  const [selected, setSelected] =
-    useState([]);
-  const [otherActive, setOtherActive] =
-    useState(
-      options.length === 0 &&
-      allowOther
-    );
-  const [other, setOther] =
-    useState("");
-  const [submitting, setSubmitting] =
-    useState(false);
-  const [error, setError] =
-    useState("");
-
-  const toggleOption = (id) => {
-    setError("");
-    setSelected((current) => {
-      if (!multiple) {
-        setOtherActive(false);
-        return current.includes(id)
-          ? []
-          : [id];
-      }
-
-      return current.includes(id)
-        ? current.filter(
-            (item) => item !== id
-          )
-        : [...current, id];
-    });
-  };
-
-  const toggleOther = () => {
-    setError("");
-    setOtherActive((current) => {
-      const next = !current;
-
-      if (next && !multiple) {
-        setSelected([]);
-      }
-
-      return next;
-    });
-  };
-
-  const selectedLabels =
-    options
-      .filter((option) =>
-        selected.includes(option.id)
-      )
-      .map((option) => option.label);
-  const otherText =
-    otherActive
-      ? other.trim()
-      : "";
-  const submittedOptionIds = [
-    ...selected,
-    ...(otherActive
-      ? [OTHER_OPTION_ID]
-      : [])
-  ];
-  const answer = [
-    ...selectedLabels,
-    otherText
-  ].filter(Boolean).join("、");
-  const valid =
-    submittedOptionIds.length > 0 &&
-    (!otherActive || Boolean(otherText));
-
-  const submit = async () => {
-    if (!valid || busy || submitting) {
-      if (otherActive && !otherText) {
-        setError("请输入其它回答后再继续。");
-      }
-      return;
-    }
-
-    setSubmitting(true);
-    setError("");
-
-    try {
-      const result =
-        await onSubmit?.({
-          answer,
-          selectedOptionIds:
-            submittedOptionIds,
-          otherText
-        });
-
-      if (result?.ok === false) {
-        setError(
-          result.message ||
-          "无法提交回答，请稍后重试。"
-        );
-      }
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "无法提交回答，请稍后重试。"
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <section
-      className="conversation-question-card"
-      data-testid="conversation-question-card"
-    >
-      <header className="conversation-question-card__header">
-        <strong>
-          {request.question}
-        </strong>
-        {request.reason && (
-          <span>{request.reason}</span>
-        )}
-      </header>
-
-      {(options.length > 0 || allowOther) && (
-        <div
-          className="conversation-question-options"
-          role={
-            multiple
-              ? "group"
-              : "radiogroup"
-          }
-        >
-          {options.map((option, index) => {
-            const active =
-              selected.includes(
-                option.id
-              );
-
-            return (
-              <button
-                type="button"
-                className={
-                  active
-                    ? "is-selected"
-                    : ""
-                }
-                role={
-                  multiple
-                    ? "checkbox"
-                    : "radio"
-                }
-                aria-checked={active}
-                key={option.id}
-                onClick={() => {
-                  toggleOption(
-                    option.id
-                  );
-                }}
-              >
-                <span className="conversation-question-option__control">
-                  <span />
-                </span>
-                <span className="conversation-question-option__copy">
-                  <strong>{option.label}</strong>
-                </span>
-                <kbd>{index + 1}</kbd>
-              </button>
-            );
-          })}
-
-          {allowOther && (
-            <div
-              className={`conversation-question-option-other${
-                otherActive
-                  ? " is-selected"
-                  : ""
-              }`}
-              data-option-id={OTHER_OPTION_ID}
-            >
-              <button
-                type="button"
-                role={
-                  multiple
-                    ? "checkbox"
-                    : "radio"
-                }
-                aria-checked={otherActive}
-                onClick={toggleOther}
-              >
-                <span className="conversation-question-option__control">
-                  <span />
-                </span>
-                <span className="conversation-question-option__copy">
-                  <strong>其它回答</strong>
-                  <small>输入未列出的答案</small>
-                </span>
-              </button>
-
-              {otherActive && (
-                <textarea
-                  autoFocus
-                  value={other}
-                  rows={2}
-                  placeholder="输入其它回答"
-                  onChange={(event) => {
-                    setOther(
-                      event.target.value
-                    );
-                    setError("");
-                  }}
-                />
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {error && (
-        <p className="conversation-question-card__error">
-          {error}
-        </p>
-      )}
-
-      <div className="conversation-question-actions">
-        <span>
-          {multiple
-            ? "可选择多个选项"
-            : "请选择一个选项"}
-        </span>
-        <button
-          type="button"
-          disabled={
-            !valid ||
-            busy ||
-            submitting
-          }
-          onClick={() => {
-            void submit();
-          }}
-        >
-          {submitting
-            ? "正在提交…"
-            : "确定"}
-        </button>
-      </div>
-    </section>
   );
 }
 

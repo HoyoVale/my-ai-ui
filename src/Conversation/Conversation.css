@@ -638,13 +638,6 @@
   font-size: 10.5px;
 }
 
-.conversation-reasoning > strong {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--conversation-soft);
-  font-size: 10px;
-}
-
 .conversation-tool-call {
   margin-top: 8px;
   padding-top: 8px;
@@ -1553,22 +1546,6 @@
   white-space: nowrap;
 }
 
-.conversation-reasoning {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--conversation-border);
-}
-
-.conversation-reasoning > summary {
-  color: var(--conversation-faint);
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.conversation-reasoning .markdown-content {
-  margin-top: 7px;
-}
-
 @keyframes conversation-activity-reveal {
   from {
     opacity: 0;
@@ -2229,7 +2206,6 @@
 
 .conversation-task-section,
 .conversation-task-tool-detail,
-.conversation-task-reasoning,
 .conversation-task-stop-reason {
   margin-top: 20px;
 }
@@ -2494,23 +2470,6 @@
   white-space: pre-wrap;
 }
 
-.conversation-task-reasoning {
-  padding-top: 12px;
-  border-top: 1px solid var(--conversation-border);
-  color: var(--conversation-soft);
-  font-size: 10.5px;
-}
-
-.conversation-task-reasoning > summary {
-  color: var(--conversation-soft);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.conversation-task-reasoning .markdown-content {
-  margin-top: 9px;
-}
-
 .conversation-task-stop-reason {
   color: var(--conversation-faint);
   font: 9px/1.5
@@ -2700,20 +2659,64 @@ button.conversation-thinking-event:focus-visible strong {
   color: var(--conversation-faint);
 }
 
-.conversation-thinking-event--question {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
-}
-
-.conversation-thinking-event--question > svg {
-  margin-top: 2px;
-  color: var(--accent-color);
-}
-
 .conversation-thinking-event--status {
   color: var(--conversation-faint);
   font-size: 0.84em;
+}
+.conversation-thinking-tool-batch {
+  min-width: 0;
+  color: var(--conversation-soft);
+}
+
+.conversation-thinking-tool-batch > summary {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.conversation-thinking-tool-batch > summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-thinking-tool-batch > summary > svg:first-child {
+  color: var(--conversation-faint);
+}
+
+.conversation-thinking-tool-batch > summary > strong {
+  overflow: hidden;
+  font-size: 0.94em;
+  font-weight: 520;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-thinking-tool-batch > summary > svg:last-child {
+  opacity: 0.68;
+  transition: transform 160ms ease;
+}
+
+.conversation-thinking-tool-batch[open] > summary > svg:last-child {
+  transform: rotate(180deg);
+}
+
+.conversation-thinking-tool-batch__items {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0 2px 28px;
+}
+
+.conversation-thinking-tool-batch.is-running > summary > svg:first-child,
+.conversation-thinking-tool-batch.is-queued > summary > svg:first-child {
+  color: var(--accent-color);
+}
+
+.conversation-thinking-tool-batch.is-error > summary {
+  color: var(--conversation-danger);
 }
 
 .conversation-thinking-timeline__panel-link {
@@ -2822,107 +2825,6 @@ button.conversation-thinking-event:focus-visible > strong {
 .conversation-thinking-event small,
 .conversation-thinking-event em {
   display: none;
-}
-
-.conversation-question-card {
-  width: min(100%, 620px);
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 16px;
-  border: 1px solid var(--conversation-border);
-  border-radius: 14px;
-  background: var(--conversation-soft-surface);
-}
-
-.conversation-question-card > strong {
-  color: var(--conversation-text);
-  font-size: 0.98em;
-  font-weight: 620;
-  line-height: 1.55;
-}
-
-.conversation-question-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.conversation-question-options button {
-  min-height: 34px;
-  padding: 6px 12px;
-  border: 1px solid var(--conversation-border-strong);
-  border-radius: 999px;
-  color: var(--conversation-soft);
-  background: transparent;
-  font: inherit;
-  font-size: 0.88em;
-  cursor: pointer;
-  transition:
-    border-color 130ms ease,
-    color 130ms ease,
-    background 130ms ease;
-}
-
-.conversation-question-options button:hover,
-.conversation-question-options button.is-selected {
-  border-color: color-mix(
-    in srgb,
-    var(--conversation-accent) 52%,
-    var(--conversation-border)
-  );
-  color: var(--conversation-text);
-  background: color-mix(
-    in srgb,
-    var(--conversation-accent) 10%,
-    transparent
-  );
-}
-
-.conversation-question-card textarea {
-  width: 100%;
-  min-height: 64px;
-  resize: vertical;
-  padding: 9px 11px;
-  border: 1px solid var(--conversation-border);
-  border-radius: 10px;
-  outline: 0;
-  color: var(--conversation-text);
-  background: var(--conversation-surface);
-  font: inherit;
-  font-size: 0.9em;
-  line-height: 1.5;
-}
-
-.conversation-question-card textarea:focus {
-  border-color: color-mix(
-    in srgb,
-    var(--conversation-accent) 55%,
-    var(--conversation-border)
-  );
-}
-
-.conversation-question-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.conversation-question-actions button {
-  min-height: 34px;
-  padding: 6px 14px;
-  border: 0;
-  border-radius: 999px;
-  color: var(--conversation-surface);
-  background: var(--conversation-text);
-  font: inherit;
-  font-size: 0.86em;
-  font-weight: 620;
-  cursor: pointer;
-}
-
-.conversation-question-actions button:disabled {
-  opacity: 0.38;
-  cursor: default;
 }
 
 .conversation-activity-panel {
@@ -3155,11 +3057,6 @@ button.conversation-thinking-event:focus-visible > strong {
   font-style: normal;
 }
 
-.reduce-motion .conversation-question-options button,
-.reduce-motion .conversation-question-card textarea {
-  transition: none;
-}
-
 /* ============================================================
    Tool UX 1.4 — run-isolated public commentary and batches
    ============================================================ */
@@ -3274,6 +3171,72 @@ button.conversation-thinking-event:focus-visible > strong {
   color: var(--conversation-danger);
 }
 
+.conversation-activity-tool-batch {
+  margin: 0 0 18px;
+}
+
+.conversation-activity-tool-batch > summary {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.conversation-activity-tool-batch > summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-activity-tool-batch > summary > span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--conversation-faint);
+  border: 1px solid var(--conversation-border);
+  border-radius: 50%;
+}
+
+.conversation-activity-tool-batch > summary > strong {
+  color: var(--conversation-text);
+  font-size: 13px;
+  font-weight: 590;
+}
+
+.conversation-activity-tool-batch > summary > svg {
+  color: var(--conversation-faint);
+  transition: transform 160ms ease;
+}
+
+.conversation-activity-tool-batch[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.conversation-activity-tool-batch__items {
+  display: grid;
+  padding: 12px 0 0 34px;
+}
+
+.conversation-activity-tool-batch__items .conversation-activity-timeline__event {
+  min-height: 44px;
+  padding-bottom: 10px;
+}
+
+.conversation-activity-tool-batch__items .conversation-activity-timeline__event::after {
+  display: none;
+}
+
+.conversation-activity-tool-batch.is-running > summary > span,
+.conversation-activity-tool-batch.is-queued > summary > span {
+  color: var(--conversation-accent);
+}
+
+.conversation-activity-tool-batch.is-error > summary > span {
+  color: var(--conversation-danger);
+}
 .conversation-activity-identifiers {
   display: grid;
   gap: 6px;
@@ -3308,7 +3271,7 @@ button.conversation-thinking-event:focus-visible > strong {
 }
 
 /* ============================================================
-   Tool UX 1.4.1 — live activity, plan dashboard and ask_user
+   Tool UX 1.4.1 — live activity and plan dashboard
    ============================================================ */
 
 .conversation-message--live {
@@ -3475,201 +3438,6 @@ button.conversation-thinking-event:focus-visible > strong {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-.conversation-question-card {
-  width: min(100%, 620px);
-  gap: 14px;
-  padding: 18px;
-  border-radius: 18px;
-  background: color-mix(
-    in srgb,
-    var(--conversation-surface) 94%,
-    var(--conversation-text) 6%
-  );
-  box-shadow: 0 14px 34px color-mix(
-    in srgb,
-    #000 10%,
-    transparent
-  );
-}
-
-.conversation-question-card__header {
-  display: grid;
-  gap: 5px;
-}
-
-.conversation-question-card__header > strong {
-  color: var(--conversation-text);
-  font-size: 1em;
-  font-weight: 650;
-  line-height: 1.55;
-}
-
-.conversation-question-card__header > span {
-  color: var(--conversation-faint);
-  font-size: 0.82em;
-  line-height: 1.5;
-}
-
-.conversation-question-options {
-  display: grid;
-  gap: 8px;
-}
-
-.conversation-question-options > button,
-.conversation-question-option-other {
-  width: 100%;
-  min-height: 48px;
-  border: 1px solid var(--conversation-border);
-  border-radius: 13px;
-  color: var(--conversation-soft);
-  background: transparent;
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    color 140ms ease;
-}
-
-.conversation-question-options > button {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 11px;
-  padding: 10px 12px;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.conversation-question-options > button:hover,
-.conversation-question-options > button.is-selected,
-.conversation-question-option-other.is-selected {
-  border-color: color-mix(
-    in srgb,
-    var(--conversation-accent) 54%,
-    var(--conversation-border)
-  );
-  color: var(--conversation-text);
-  background: color-mix(
-    in srgb,
-    var(--conversation-accent) 8%,
-    transparent
-  );
-}
-
-.conversation-question-option__control {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--conversation-border-strong);
-  border-radius: 50%;
-}
-
-[role="checkbox"] .conversation-question-option__control {
-  border-radius: 5px;
-}
-
-.is-selected > .conversation-question-option__control,
-.conversation-question-option-other.is-selected .conversation-question-option__control {
-  border-color: var(--conversation-accent);
-}
-
-.is-selected > .conversation-question-option__control > span,
-.conversation-question-option-other.is-selected .conversation-question-option__control > span {
-  width: 8px;
-  height: 8px;
-  border-radius: inherit;
-  background: var(--conversation-accent);
-}
-
-.conversation-question-option__copy {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.conversation-question-option__copy strong {
-  color: inherit;
-  font-size: 0.9em;
-  font-weight: 570;
-  line-height: 1.45;
-}
-
-.conversation-question-option__copy small {
-  color: var(--conversation-faint);
-  font-size: 0.76em;
-}
-
-.conversation-question-options kbd {
-  min-width: 20px;
-  padding: 2px 5px;
-  border: 1px solid var(--conversation-border);
-  border-radius: 5px;
-  color: var(--conversation-faint);
-  background: transparent;
-  font: 0.72em/1.25 var(--app-font-family);
-  text-align: center;
-}
-
-.conversation-question-option-other {
-  overflow: hidden;
-}
-
-.conversation-question-option-other > button {
-  width: 100%;
-  min-height: 48px;
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  align-items: center;
-  gap: 11px;
-  padding: 10px 12px;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.conversation-question-option-other textarea,
-.conversation-question-card textarea {
-  width: calc(100% - 24px);
-  min-height: 66px;
-  margin: 0 12px 12px;
-  resize: vertical;
-  padding: 10px 11px;
-  border: 1px solid var(--conversation-border);
-  border-radius: 10px;
-  outline: 0;
-  color: var(--conversation-text);
-  background: var(--conversation-surface);
-  font: inherit;
-  font-size: 0.88em;
-  line-height: 1.5;
-}
-
-.conversation-question-card__error {
-  margin: 0;
-  color: var(--conversation-danger);
-  font-size: 0.8em;
-  line-height: 1.45;
-}
-
-.conversation-question-actions {
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.conversation-question-actions > span {
-  color: var(--conversation-faint);
-  font-size: 0.76em;
-}
-
-.conversation-question-actions > button {
-  min-width: 74px;
 }
 
 .reduce-motion .conversation-plan-dashboard,
