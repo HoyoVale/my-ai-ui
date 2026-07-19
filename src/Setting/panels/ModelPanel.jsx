@@ -7,7 +7,6 @@ import {
   ActionButton,
   Select,
   SettingRow,
-  SettingsVisibility,
   Slider,
   TextInput
 } from "../components/Controls.jsx";
@@ -15,6 +14,10 @@ import {
 import {
   useModelCredentials
 } from "../hooks/useModelCredentials.js";
+
+import {
+  MODEL_PROVIDER_TEMPLATES
+} from "../../shared/defaultSettings.js";
 
 import {
   apiModeOptions,
@@ -28,6 +31,38 @@ import {
   REASONING_MODE_OPTIONS,
   VERBOSITY_OPTIONS
 } from "../model/modelPanelOptions.js";
+
+function createProviderFromTemplate(
+  templateId,
+  existingProviders
+) {
+  const source =
+    MODEL_PROVIDER_TEMPLATES[templateId];
+
+  if (!source) {
+    return null;
+  }
+
+  const provider =
+    structuredClone(source);
+
+  let providerId =
+    provider.id;
+
+  if (existingProviders[providerId]) {
+    providerId =
+      `${provider.id}-${Date.now().toString(36)}`;
+  }
+
+  provider.id = providerId;
+  provider.configured = true;
+
+  if (providerId !== source.id) {
+    provider.name = `${provider.name} 2`;
+  }
+
+  return provider;
+}
 
 function ProviderSelector({
   modelSettings,
@@ -132,7 +167,6 @@ function ModelList({
 
 function ProviderConnection({
   provider,
-  developerMode = false,
   status,
   loading,
   apiKey,
@@ -155,10 +189,6 @@ function ProviderConnection({
       </summary>
 
       <div className="model-config-card__body">
-        <SettingsVisibility
-          visibility="developer"
-          developerMode={developerMode}
-        >
         <SettingRow title="显示名称">
           <TextInput
             value={provider.name}
@@ -206,9 +236,7 @@ function ProviderConnection({
             }
           />
         </SettingRow>
-        </SettingsVisibility>
-
-        {provider.credentialMode !== "none" && (
+{provider.credentialMode !== "none" && (
           <SettingRow
             title="API Key"
             description={
@@ -443,22 +471,31 @@ function ModelConfiguration({
 
 export function ModelPanel({
   settings,
-  developerMode = false,
   onUpdate
 }) {
   const modelSettings = settings.model;
-  const providerId = modelSettings.activeProvider;
+  const providers =
+    modelSettings.providers ?? {};
+  const providerId =
+    modelSettings.activeProvider;
   const provider =
-    modelSettings.providers[providerId] ??
-    Object.values(modelSettings.providers)[0];
+    providers[providerId] ??
+    Object.values(providers)[0] ??
+    null;
 
   const activeModel = useMemo(
-    () => provider.models.find(
+    () => provider?.models?.find(
       (item) => item.id === provider.activeModelId
-    ) ?? provider.models[0],
-    [provider.activeModelId, provider.models]
+    ) ?? provider?.models?.[0] ?? null,
+    [provider]
   );
 
+  const availableTemplateIds =
+    Object.keys(MODEL_PROVIDER_TEMPLATES)
+      .filter((templateId) => !providers[templateId]);
+
+  const [providerTemplateId, setProviderTemplateId] =
+    useState(availableTemplateIds[0] ?? "compatible");
   const [apiKey, setApiKey] = useState("");
   const [credentialAction, setCredentialAction] = useState("idle");
   const [testResult, setTestResult] = useState(null);
@@ -471,12 +508,42 @@ export function ModelPanel({
     clearApiKey
   } = useModelCredentials(provider);
 
+  const addProvider = () => {
+    const nextProvider =
+      createProviderFromTemplate(
+        providerTemplateId,
+        providers
+      );
+
+    if (!nextProvider) {
+      return;
+    }
+
+    onUpdate({
+      activeProvider: nextProvider.id,
+      providers: {
+        ...providers,
+        [nextProvider.id]: nextProvider
+      }
+    });
+
+    setProviderTemplateId(
+      availableTemplateIds.find((id) => id !== providerTemplateId) ??
+      "compatible"
+    );
+  };
+
   const updateProvider = (patch) => {
+    if (!provider) {
+      return;
+    }
+
     onUpdate({
       providers: {
         ...modelSettings.providers,
         [providerId]: {
           ...provider,
+          configured: true,
           ...patch
         }
       }
@@ -524,6 +591,7 @@ export function ModelPanel({
     setCredentialAction("saving");
     try {
       await saveApiKey(apiKey);
+      updateProvider({ configured: true });
       setApiKey("");
       setCredentialAction("saved");
     } catch {
@@ -557,6 +625,37 @@ export function ModelPanel({
       setTesting(false);
     }
   };
+
+  if (!provider || !activeModel) {
+    const templateOptions =
+      Object.values(MODEL_PROVIDER_TEMPLATES).map((item) => ({
+        value: item.id,
+        label: item.name
+      }));
+
+    return (
+      <div className="model-panel">
+        <div className="model-runtime-summary">
+          <div>
+            <span className="model-eyebrow">Models</span>
+            <strong>尚未添加模型</strong>
+            <small>添加一个 Provider 后，模型才会出现在 Input 菜单中。</small>
+          </div>
+
+          <div className="model-runtime-summary__actions">
+            <Select
+              value={providerTemplateId}
+              options={templateOptions}
+              onChange={setProviderTemplateId}
+            />
+            <ActionButton onClick={addProvider}>
+              添加提供商
+            </ActionButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="model-panel">
@@ -605,7 +704,6 @@ export function ModelPanel({
         <div className="model-editor-stack">
           <ProviderConnection
             provider={provider}
-            developerMode={developerMode}
             status={status}
             loading={loading}
             apiKey={apiKey}
@@ -621,19 +719,39 @@ export function ModelPanel({
             onSave={() => void handleSave()}
             onClear={() => void handleClear()}
           />
-
-          <SettingsVisibility
-            visibility="developer"
-            developerMode={developerMode}
-          >
             <ModelConfiguration
               provider={provider}
               model={activeModel}
               onUpdate={updateActiveModel}
             />
-          </SettingsVisibility>
-        </div>
+</div>
       </div>
+
+      <details className="model-config-card">
+        <summary>
+          <span>
+            <strong>添加提供商</strong>
+            <small>模板只用于创建配置，不会自动出现在 Input 模型列表。</small>
+          </span>
+        </summary>
+        <div className="model-config-card__body">
+          <SettingRow title="Provider 模板">
+            <div className="settings-credential-control">
+              <Select
+                value={providerTemplateId}
+                options={Object.values(MODEL_PROVIDER_TEMPLATES).map((item) => ({
+                  value: item.id,
+                  label: item.name
+                }))}
+                onChange={setProviderTemplateId}
+              />
+              <ActionButton onClick={addProvider}>
+                添加
+              </ActionButton>
+            </div>
+          </SettingRow>
+        </div>
+      </details>
     </div>
   );
 }

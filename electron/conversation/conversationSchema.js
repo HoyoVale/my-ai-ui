@@ -9,7 +9,7 @@ import {
   normalizeRunStopReason
 } from "../agent/runStopReasons.js";
 
-const STORE_VERSION = 12;
+const STORE_VERSION = 13;
 
 const MESSAGE_ROLES =
   new Set([
@@ -24,6 +24,54 @@ const MESSAGE_STATUSES =
     "aborted",
     "interrupted"
   ]);
+
+const SESSION_MODES = new Set([
+  "chat",
+  "coding"
+]);
+
+function sanitizeModelSelection(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const providerId = nullableStringValue(
+    source.providerId,
+    120
+  );
+  const modelConfigId = nullableStringValue(
+    source.modelConfigId ?? source.modelId,
+    120
+  );
+
+  return providerId && modelConfigId
+    ? { providerId, modelConfigId }
+    : null;
+}
+
+function sanitizeModelSnapshot(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const providerId = nullableStringValue(source.providerId, 120);
+  const modelConfigId = nullableStringValue(
+    source.modelConfigId ?? source.id,
+    120
+  );
+
+  if (!providerId || !modelConfigId) {
+    return null;
+  }
+
+  return {
+    providerId,
+    providerName: stringValue(source.providerName, providerId, 120).trim() || providerId,
+    modelConfigId,
+    modelName: stringValue(source.modelName, source.modelId ?? modelConfigId, 160).trim() || modelConfigId,
+    modelId: stringValue(source.modelId, modelConfigId, 200).trim() || modelConfigId
+  };
+}
 
 function stringValue(
   value,
@@ -516,14 +564,34 @@ export function sanitizeConversation(
     sanitizeWorkspaceSnapshot(
       source.workspaceSnapshot
     );
+  const mode = SESSION_MODES.has(source.mode)
+    ? source.mode
+    : workspaceId
+      ? "coding"
+      : "chat";
+  const modelSelection = sanitizeModelSelection(
+    source.modelSelection
+  );
+  const modelSnapshot = sanitizeModelSnapshot(
+    source.modelSnapshot
+  );
 
   return {
     id,
+    mode,
 
     workspaceId,
     workspaceSnapshot:
       workspaceId && workspaceSnapshot?.id === workspaceId
         ? workspaceSnapshot
+        : null,
+
+    modelSelection,
+    modelSnapshot:
+      modelSelection &&
+      modelSnapshot?.providerId === modelSelection.providerId &&
+      modelSnapshot?.modelConfigId === modelSelection.modelConfigId
+        ? modelSnapshot
         : null,
 
     title:

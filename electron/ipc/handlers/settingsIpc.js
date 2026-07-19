@@ -34,11 +34,24 @@ import {
   isSettingSender
 } from "../../windows/setting/settingWindow.js";
 
+import {
+  isInputSender
+} from "../../windows/input/inputWindow.js";
+
 function canModifySettings(
   event
 ) {
   return isSettingSender(
     event.sender
+  );
+}
+
+function canSelectWorkspace(
+  event
+) {
+  return (
+    isSettingSender(event.sender) ||
+    isInputSender(event.sender)
   );
 }
 
@@ -154,9 +167,9 @@ export function registerSettingsIpc() {
       .settings
       .SELECT_DIRECTORY,
     async (event) => {
-      if (!canModifySettings(event)) {
+      if (!canSelectWorkspace(event)) {
         throw new Error(
-          "Only the Setting window can select workspaces."
+          "Only the Setting or Input window can select workspaces."
         );
       }
 

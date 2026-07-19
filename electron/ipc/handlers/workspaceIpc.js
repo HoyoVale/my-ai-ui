@@ -15,6 +15,10 @@ import {
 } from "../../windows/setting/settingWindow.js";
 
 import {
+  isInputSender
+} from "../../windows/input/inputWindow.js";
+
+import {
   listWorkspaces,
   registerWorkspace,
   removeWorkspace
@@ -35,9 +39,12 @@ export function registerWorkspaceIpc() {
   ipcMain.handle(
     IPC_CHANNELS.workspace.REGISTER,
     (event, input = {}) => {
-      if (!isSettingSender(event.sender)) {
+      if (
+        !isSettingSender(event.sender) &&
+        !isInputSender(event.sender)
+      ) {
         throw new Error(
-          "Only the Setting window can register workspaces."
+          "Only the Setting or Input window can register workspaces."
         );
       }
 

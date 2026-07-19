@@ -7,6 +7,10 @@ import {
   updateSettings
 } from "../settings/settingsStore.js";
 
+import {
+  applyModelSelection
+} from "../conversation/sessionContext.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -281,11 +285,22 @@ export function bindSettingsToConversationWorkspace(
 
   source.tools = {
     ...source.tools,
+    mode: conversation?.mode === "coding"
+      ? "coding"
+      : "chat",
+    profile: conversation?.mode === "coding"
+      ? "workspace"
+      : "chat",
     workspace: {
       ...source.tools?.workspace,
       roots: rootPath ? [rootPath] : []
     }
   };
+
+  source.model = applyModelSelection(
+    source.model,
+    conversation?.modelSelection
+  );
 
   source.activeWorkspace = workspace
     ? createWorkspaceSnapshot(workspace)

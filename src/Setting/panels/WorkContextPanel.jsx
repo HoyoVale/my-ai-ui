@@ -4,24 +4,17 @@ import {
 
 import {
   ActionButton,
-  Segmented,
   SettingsSection
 } from "../components/Controls.jsx";
 
-import {
-  TOOL_MODE_OPTIONS
-} from "../tools/toolPanelOptions.js";
-
 export function WorkContextPanel({
-  settings,
-  onUpdateTools
+  settings
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const workspaces = Array.isArray(settings.workspaces?.items)
     ? settings.workspaces.items
     : [];
-  const coding = settings.tools.mode === "coding";
 
   const addWorkspace = async () => {
     setError("");
@@ -79,42 +72,27 @@ export function WorkContextPanel({
   return (
     <>
       <SettingsSection
-        title="工作模式"
-        description="模式决定新一轮运行可使用的能力；会话仍按工作区归类。"
+        title="会话规则"
+        description="会话按 Chat 与 Coding 管理，工作区绑定创建后不会改变。"
       >
         <div className="tool-mode-card">
-          <Segmented
-            value={settings.tools.mode}
-            options={TOOL_MODE_OPTIONS}
-            testId="work-context-mode"
-            onChange={(mode) => {
-              onUpdateTools({
-                mode,
-                profile: mode === "coding"
-                  ? "workspace"
-                  : "chat"
-              });
-            }}
-          />
-
           <div className="tool-mode-card__copy">
-            <strong>
-              {coding
-                ? "Coding"
-                : "Chat"}
-            </strong>
-            <span>
-              {coding
-                ? "允许当前会话读取其绑定的工作区；没有工作区时仍可正常聊天。"
-                : "仅使用通用工具，不读取本地工作区。"}
-            </span>
+            <strong>Chat</strong>
+            <span>可以不绑定工作区；绑定后只提供只读文件能力。Input 中可以切换到其他工作区已有的 Chat 会话。</span>
+          </div>
+        </div>
+
+        <div className="tool-mode-card">
+          <div className="tool-mode-card__copy">
+            <strong>Coding</strong>
+            <span>创建会话前必须选择工作区；会话创建后不能换绑。未来写入能力也只会作用于该固定目录。</span>
           </div>
         </div>
       </SettingsSection>
 
       <SettingsSection
         title="工作区"
-        description="工作区是长期注册的项目目录；每个会话固定绑定一个工作区或无工作区。"
+        description="工作区是用户明确授权的项目目录。"
       >
         {error && (
           <div className="settings-inline-error">

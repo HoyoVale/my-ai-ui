@@ -9,6 +9,9 @@ const EMPTY_STATE = {
   currentConversation: null,
   currentWorkspaceId: null,
   currentWorkspace: null,
+  currentMode: "chat",
+  currentModelSelection: null,
+  currentModel: null,
   totalConversations: 0
 };
 
@@ -162,13 +165,15 @@ export function useConversationHistory() {
     error,
     refresh,
 
-    create: (workspaceId = undefined) =>
+    create: (input = {}) =>
       runAction(
         () =>
           window.api
-            ?.createConversation?.({
-              workspaceId
-            })
+            ?.createConversation?.(
+              typeof input === "object" && input !== null
+                ? input
+                : { workspaceId: input }
+            )
       ),
 
     switchWorkspace: (workspaceId = null) =>
@@ -178,6 +183,20 @@ export function useConversationHistory() {
             ?.switchConversationWorkspace?.(
               workspaceId
             )
+      ),
+
+    navigateContext: (input) =>
+      runAction(
+        () =>
+          window.api
+            ?.navigateConversationContext?.(input)
+      ),
+
+    setModel: (input) =>
+      runAction(
+        () =>
+          window.api
+            ?.setConversationModel?.(input)
       ),
 
     select: (conversationId) =>

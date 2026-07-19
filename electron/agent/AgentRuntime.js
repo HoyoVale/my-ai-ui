@@ -68,6 +68,10 @@ import {
 } from "./agentErrors.js";
 
 import {
+  getConversationTargetError
+} from "./messageTarget.js";
+
+import {
   isE2EMode,
   streamE2EResponse
 } from "./e2eAgentDriver.js";
@@ -135,11 +139,11 @@ import {
 
 
 
-function getActiveCredentialError() {
+function getActiveCredentialError(modelConfig = null) {
   try {
     const modelSettings =
       resolveActiveModelSettings(
-        getSettings().model
+        modelConfig ?? getSettings().model
       );
 
     return getCredentialError(
@@ -412,6 +416,11 @@ export class AgentRuntime {
         this.activeRun.workspaceId ?? "",
       workspaceSnapshot:
         this.activeRun.workspaceSnapshot ?? null,
+      mode: this.activeRun.mode ?? "chat",
+      modelSelection:
+        this.activeRun.modelSelection ?? null,
+      modelSnapshot:
+        this.activeRun.modelSnapshot ?? null,
       goalId: this.activeRun.goalId,
       runId: this.activeRun.runId,
       parentRunId:
@@ -656,10 +665,29 @@ export class AgentRuntime {
       };
     }
 
+    const credentialConversation =
+      conversationManager.getCurrentConversation();
+    const initialTargetError =
+      getConversationTargetError(
+        credentialConversation,
+        expectedConversationId
+      );
+
+    if (initialTargetError) {
+      return initialTargetError;
+    }
+
+    const credentialBinding =
+      bindSettingsToConversationWorkspace(
+        getSettings(),
+        credentialConversation
+      );
     const credentialError =
       isE2EMode()
         ? null
-        : getActiveCredentialError();
+        : getActiveCredentialError(
+            credentialBinding.settings.model
+          );
 
     if (credentialError) {
       const errorMessage =
@@ -692,6 +720,7 @@ export class AgentRuntime {
     let context;
     let runSettings;
     let activeWorkspace = null;
+    let executionConversation;
     let checkpointContinuation = null;
     let continuationState = null;
 
@@ -700,17 +729,14 @@ export class AgentRuntime {
         conversationManager
           .getCurrentConversation();
 
-      if (
-        expectedConversationId &&
-        conversation.id !==
+      const targetError =
+        getConversationTargetError(
+          conversation,
           expectedConversationId
-      ) {
-        return {
-          ok: false,
-          code: "conversation-changed",
-          message:
-            "当前会话已经切换，请回到原会话后重新提交回答。"
-        };
+        );
+
+      if (targetError) {
+        return targetError;
       }
 
       checkpointContinuation =
@@ -743,10 +769,26 @@ export class AgentRuntime {
           query: message
         });
 
+      executionConversation = continuationState
+        ? {
+            ...conversation,
+            mode: continuationState.mode ?? conversation.mode,
+            workspaceId:
+              continuationState.workspaceId === undefined
+                ? conversation.workspaceId
+                : continuationState.workspaceId,
+            workspaceSnapshot:
+              continuationState.workspaceSnapshot ?? conversation.workspaceSnapshot,
+            modelSelection:
+              continuationState.modelSelection ?? conversation.modelSelection,
+            modelSnapshot:
+              continuationState.modelSnapshot ?? conversation.modelSnapshot
+          }
+        : conversation;
       const binding =
         bindSettingsToConversationWorkspace(
           getSettings(),
-          conversation
+          executionConversation
         );
       runSettings = binding.settings;
       activeWorkspace = binding.workspace;
@@ -754,7 +796,8 @@ export class AgentRuntime {
       context =
         assembleAgentContext({
           settings: runSettings,
-          conversation,
+          conversation:
+            executionConversation,
           memories
         });
 
@@ -829,9 +872,15 @@ export class AgentRuntime {
       currentSegmentId: "",
       taskId,
       workspaceId:
-        conversation.workspaceId ?? null,
+        executionConversation.workspaceId ?? null,
       workspaceSnapshot:
-        conversation.workspaceSnapshot ?? null,
+        executionConversation.workspaceSnapshot ?? null,
+      mode:
+        executionConversation.mode ?? "chat",
+      modelSelection:
+        executionConversation.modelSelection ?? null,
+      modelSnapshot:
+        executionConversation.modelSnapshot ?? null,
       activeWorkspace,
       conversationId:
         conversation.id,
@@ -1026,6 +1075,11 @@ export class AgentRuntime {
         plan.conversation.workspaceId ?? null,
       workspaceSnapshot:
         plan.conversation.workspaceSnapshot ?? null,
+      mode: plan.conversation.mode ?? "chat",
+      modelSelection:
+        plan.conversation.modelSelection ?? null,
+      modelSnapshot:
+        plan.conversation.modelSnapshot ?? null,
       activeWorkspace,
       conversationId:
         plan.conversation.id,

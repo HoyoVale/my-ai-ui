@@ -86,9 +86,6 @@ export function SettingsContent({
     appearance: (
       <AppearancePanel
         settings={settings}
-        developerMode={
-          settings.general.developerMode
-        }
         onUpdate={(patch) => {
           onUpdateSection(
             "appearance",
@@ -101,9 +98,6 @@ export function SettingsContent({
     pet: (
       <PetPanel
         settings={settings}
-        developerMode={
-          settings.general.developerMode
-        }
         onUpdate={(patch) => {
           onUpdateSection(
             "pet",
@@ -116,9 +110,6 @@ export function SettingsContent({
     input: (
       <InputPanel
         settings={settings}
-        developerMode={
-          settings.general.developerMode
-        }
         onUpdate={(patch) => {
           onUpdateSection(
             "input",
@@ -131,9 +122,6 @@ export function SettingsContent({
     response: (
       <ResponsePanel
         settings={settings}
-        developerMode={
-          settings.general.developerMode
-        }
         onUpdate={(patch) => {
           onUpdateSection(
             "response",
@@ -147,12 +135,6 @@ export function SettingsContent({
     workspace: (
       <WorkContextPanel
         settings={settings}
-        onUpdateTools={(patch) => {
-          onUpdateSection(
-            "tools",
-            patch
-          );
-        }}
       />
     ),
 
@@ -174,9 +156,6 @@ export function SettingsContent({
     model: (
       <ModelPanel
         settings={settings}
-        developerMode={
-          settings.general.developerMode
-        }
         onUpdate={(patch) => {
           onUpdateSection(
             "model",

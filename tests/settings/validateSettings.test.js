@@ -341,14 +341,8 @@ describe(
         assert.deepEqual(
           Object.keys(
             settings.model.providers
-          ).slice(0, 5),
-          [
-            "deepseek",
-            "openai",
-            "anthropic",
-            "ollama",
-            "compatible"
-          ]
+          ),
+          ["custom-gateway"]
         );
 
         assert.equal(

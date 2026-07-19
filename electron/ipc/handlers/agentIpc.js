@@ -10,6 +10,10 @@ import {
 } from "../../agent/AgentRuntime.js";
 
 import {
+  normalizeAgentMessageRequest
+} from "../../agent/messageTarget.js";
+
+import {
   clearProviderApiKey,
   getProviderCredentialStatus,
   setProviderApiKey
@@ -56,11 +60,22 @@ export function registerAgentIpc() {
     IPC_CHANNELS
       .agent
       .SEND_MESSAGE,
-    (event, content) => {
+    (event, input) => {
       requireInputSender(event);
 
+      const request =
+        normalizeAgentMessageRequest(input);
+
       return agentRuntime
-        .startMessage(content);
+        .startMessage(
+          request.content,
+          {
+            expectedConversationId:
+              request.expectedConversationId,
+            continueTask:
+              request.continueTask
+          }
+        );
     }
   );
 

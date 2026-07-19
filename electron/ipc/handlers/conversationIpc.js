@@ -108,10 +108,15 @@ export function registerConversationIpc() {
 
       try {
         conversation = conversationManager.create({
+          mode: input.mode || undefined,
           workspaceId:
             input.workspaceId === null
               ? null
-              : input.workspaceId || undefined
+              : input.workspaceId || undefined,
+          modelSelection:
+            input.modelSelection && typeof input.modelSelection === "object"
+              ? input.modelSelection
+              : undefined
         });
       } catch (error) {
         return {
@@ -157,6 +162,55 @@ export function registerConversationIpc() {
       }
 
       return result;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .NAVIGATE_CONTEXT,
+    (_event, input = {}) => {
+      const busy =
+        rejectWhenBusy();
+
+      if (busy) {
+        return busy;
+      }
+
+      const result = conversationManager.navigateContext({
+        mode: String(input.mode ?? ""),
+        workspaceId: input.workspaceId === undefined
+          ? undefined
+          : input.workspaceId === null
+            ? null
+            : String(input.workspaceId ?? "")
+      });
+
+      if (result.ok) {
+        clearResponseWindow();
+      }
+
+      return result;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .SET_MODEL,
+    (_event, input = {}) => {
+      const busy =
+        rejectWhenBusy();
+
+      if (busy) {
+        return busy;
+      }
+
+      return conversationManager.setModelSelection({
+        conversationId: String(input.conversationId ?? ""),
+        providerId: String(input.providerId ?? ""),
+        modelConfigId: String(input.modelConfigId ?? "")
+      });
     }
   );
 

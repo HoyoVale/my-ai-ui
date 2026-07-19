@@ -98,6 +98,12 @@ const IPC_CHANNELS =
       SWITCH_WORKSPACE:
         "conversation-switch-workspace",
 
+      NAVIGATE_CONTEXT:
+        "conversation-navigate-context",
+
+      SET_MODEL:
+        "conversation-set-model",
+
       SELECT:
         "conversation-select",
 

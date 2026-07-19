@@ -4,6 +4,11 @@ import {
   buildShortTermContext
 } from "./contextBuilder.js";
 
+import {
+  normalizeSessionMode,
+  resolveModelBinding
+} from "./sessionContext.js";
+
 
 function clone(value) {
   return structuredClone(value);
@@ -111,9 +116,11 @@ export class ConversationManager {
       normalizedId
     );
 
-    if (!workspace) {
+    if (!workspace || workspace.missing) {
       const error = new Error(
-        "工作区不存在或已被移除。"
+        workspace?.missing
+          ? "工作区目录不存在，请在工作上下文中重新添加。"
+          : "工作区不存在或已被移除。"
       );
       error.code = "workspace-not-found";
       throw error;
@@ -134,6 +141,16 @@ export class ConversationManager {
     );
 
     return current?.workspaceId ?? null;
+  }
+
+  currentMode() {
+    const data = this.ensureLoaded();
+    const current = data.conversations.find(
+      (conversation) =>
+        conversation.id === data.currentConversationId
+    );
+
+    return current?.mode ?? "chat";
   }
 
   getState() {
@@ -162,25 +179,35 @@ export class ConversationManager {
         current?.workspaceId ?? null,
       currentWorkspace:
         current?.workspaceSnapshot ?? null,
+      currentMode:
+        current?.mode ?? "chat",
+      currentModelSelection:
+        current?.modelSelection ?? null,
+      currentModel:
+        current?.modelSnapshot ?? null,
 
       totalConversations:
         data.conversations.length
     };
   }
 
-  list({ workspaceId } = {}) {
-    const hasFilter = workspaceId !== undefined;
+  list({ workspaceId, mode } = {}) {
+    const hasWorkspaceFilter = workspaceId !== undefined;
     const normalizedWorkspaceId =
       workspaceId === null
         ? null
         : String(workspaceId ?? "").trim() || null;
+    const normalizedMode = mode === undefined
+      ? null
+      : normalizeSessionMode(mode, "chat");
 
     return this
       .ensureLoaded()
       .conversations
       .filter((conversation) =>
-        !hasFilter ||
-        (conversation.workspaceId ?? null) === normalizedWorkspaceId
+        (!hasWorkspaceFilter ||
+          (conversation.workspaceId ?? null) === normalizedWorkspaceId) &&
+        (!normalizedMode || conversation.mode === normalizedMode)
       )
       .map((conversation) =>
         this.toSummary(
@@ -225,28 +252,60 @@ export class ConversationManager {
 
   create({
     title = "新会话",
-    workspaceId = undefined
+    mode = undefined,
+    workspaceId = undefined,
+    modelSelection = undefined
   } = {}) {
     const data =
       this.ensureLoaded();
+    const current = data.conversations.find(
+      (conversation) =>
+        conversation.id === data.currentConversationId
+    ) ?? null;
+    const resolvedMode = normalizeSessionMode(
+      mode,
+      current?.mode ?? "chat"
+    );
     const inheritedWorkspaceId =
       workspaceId === undefined
-        ? this.currentWorkspaceId()
+        ? current?.mode === resolvedMode
+          ? current.workspaceId
+          : null
         : workspaceId;
     const binding =
       this.resolveWorkspaceBinding(
         inheritedWorkspaceId
       );
 
+    if (resolvedMode === "coding" && !binding.workspaceId) {
+      const error = new Error(
+        "Coding 会话必须先绑定工作区。"
+      );
+      error.code = "coding-workspace-required";
+      throw error;
+    }
+
+    const modelBinding = resolveModelBinding(
+      this.getSettings().model,
+      modelSelection === undefined
+        ? current?.modelSelection ?? null
+        : modelSelection
+    );
+
     const timestamp =
       this.now();
 
     const conversation = {
       id: this.createId(),
+      mode: resolvedMode,
       workspaceId:
         binding.workspaceId,
       workspaceSnapshot:
         binding.workspaceSnapshot,
+      modelSelection:
+        modelBinding.selection,
+      modelSnapshot:
+        modelBinding.snapshot,
       title:
         String(title)
           .trim()
@@ -274,32 +333,100 @@ export class ConversationManager {
     );
   }
 
-  switchWorkspace(workspaceId = null) {
-    const normalizedWorkspaceId =
-      workspaceId === null
-        ? null
-        : String(workspaceId ?? "").trim() || null;
-    const data = this.ensureLoaded();
-    const current = data.conversations.find(
-      (conversation) =>
-        conversation.id === data.currentConversationId
-    ) ?? null;
+  findRecentConversation({
+    mode,
+    workspaceId = undefined
+  }) {
+    const resolvedMode = normalizeSessionMode(mode, "chat");
+    const hasWorkspace = workspaceId !== undefined;
+    const normalizedWorkspaceId = workspaceId === null
+      ? null
+      : String(workspaceId ?? "").trim() || null;
 
-    if (
-      current &&
-      (current.workspaceId ?? null) === normalizedWorkspaceId &&
-      current.messages.length === 0
-    ) {
+    return this.ensureLoaded().conversations
+      .filter((conversation) => {
+        if (conversation.mode !== resolvedMode) {
+          return false;
+        }
+
+        if (
+          hasWorkspace &&
+          (conversation.workspaceId ?? null) !== normalizedWorkspaceId
+        ) {
+          return false;
+        }
+
+        if (resolvedMode === "coding" && !hasWorkspace) {
+          const workspace = this.getWorkspaceById(
+            conversation.workspaceId
+          );
+          return Boolean(workspace && !workspace.missing);
+        }
+
+        return true;
+      })
+      .sort(
+        (left, right) =>
+          Number(right.updatedAt || 0) - Number(left.updatedAt || 0)
+      )[0] ?? null;
+  }
+
+  navigateContext({
+    mode,
+    workspaceId = undefined
+  } = {}) {
+    const resolvedMode = normalizeSessionMode(mode, this.currentMode());
+
+    if (resolvedMode === "coding" && workspaceId === null) {
       return {
-        ok: true,
+        ok: false,
+        code: "coding-workspace-required",
+        message: "Coding 会话必须先选择工作区。"
+      };
+    }
+
+    if (workspaceId !== undefined && workspaceId !== null) {
+      try {
+        this.resolveWorkspaceBinding(workspaceId);
+      } catch (error) {
+        return {
+          ok: false,
+          code: error?.code ?? "workspace-not-found",
+          message: error instanceof Error
+            ? error.message
+            : "工作区不可用。"
+        };
+      }
+    }
+
+    const existing = this.findRecentConversation({
+      mode: resolvedMode,
+      workspaceId
+    });
+
+    if (existing) {
+      const selected = this.select(existing.id);
+      return {
+        ...selected,
         created: false,
-        conversation: current
+        conversation: clone(existing)
+      };
+    }
+
+    if (resolvedMode === "coding" && workspaceId === undefined) {
+      return {
+        ok: false,
+        code: "coding-workspace-required",
+        message: "尚无 Coding 会话，请先选择工作区。"
       };
     }
 
     try {
       const conversation = this.create({
-        workspaceId: normalizedWorkspaceId
+        mode: resolvedMode,
+        workspaceId: resolvedMode === "chat"
+          ? workspaceId ?? null
+          : workspaceId
       });
 
       return {
@@ -310,12 +437,67 @@ export class ConversationManager {
     } catch (error) {
       return {
         ok: false,
-        code: error?.code ?? "workspace-switch-failed",
+        code: error?.code ?? "conversation-context-failed",
         message: error instanceof Error
           ? error.message
-          : "无法切换工作区。"
+          : "无法切换会话上下文。"
       };
     }
+  }
+
+  setModelSelection({
+    conversationId,
+    providerId,
+    modelConfigId
+  } = {}) {
+    const conversation = this.findMutableConversation(
+      conversationId || this.ensureLoaded().currentConversationId
+    );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    const binding = resolveModelBinding(
+      this.getSettings().model,
+      { providerId, modelConfigId }
+    );
+
+    if (!binding.selection) {
+      return {
+        ok: false,
+        code: "model-not-found",
+        message: "模型不存在或已被移除。"
+      };
+    }
+
+    conversation.modelSelection = binding.selection;
+    conversation.modelSnapshot = binding.snapshot;
+    conversation.updatedAt = this.now();
+    this.commit();
+
+    return {
+      ok: true,
+      conversation: clone(conversation)
+    };
+  }
+
+  switchWorkspace(workspaceId = null) {
+    return this.navigateContext({
+      mode: "chat",
+      workspaceId
+    });
+  }
+
+  switchMode(mode) {
+    return this.navigateContext({
+      mode,
+      workspaceId: undefined
+    });
   }
 
   rename({
@@ -1221,10 +1403,15 @@ export class ConversationManager {
 
     return {
       id: conversation.id,
+      mode: conversation.mode ?? "chat",
       workspaceId:
         conversation.workspaceId ?? null,
       workspaceSnapshot:
         conversation.workspaceSnapshot ?? null,
+      modelSelection:
+        conversation.modelSelection ?? null,
+      modelSnapshot:
+        conversation.modelSnapshot ?? null,
       workspaceAvailable:
         conversation.workspaceId
           ? Boolean(liveWorkspace && !liveWorkspace.missing)

@@ -22,7 +22,7 @@ describe(
   "Tool and runtime context Setting contract",
   () => {
     it(
-      "adds a dedicated Tools page with progressive disclosure",
+      "keeps user Tool controls visible and runtime insurance in developer mode",
       () => {
         const tabs = read(
           "../../src/Setting/constants/Tabs.js"
@@ -34,26 +34,15 @@ describe(
           "../../src/Setting/panels/WorkContextPanel.jsx"
         );
 
-        assert.match(
-          tabs,
-          /id: "tools"/u
-        );
-        assert.match(
-          workspacePanel,
-          /TOOL_MODE_OPTIONS/u
-        );
-        assert.match(
-          panel,
-          /developerMode/u
-        );
-        assert.match(
-          panel,
-          /单个工具/u
-        );
-        assert.match(
-          workspacePanel,
-          /selectWorkspaceDirectory/u
-        );
+        assert.match(tabs, /id: "tools"/u);
+        assert.match(panel, /title="工具"/u);
+        assert.match(panel, /title="工具组"/u);
+        assert.match(panel, /title="单个工具"/u);
+        assert.match(panel, /tool-advanced-settings/u);
+        assert.match(panel, /developerMode &&/u);
+        assert.match(panel, /tool-developer-settings/u);
+        assert.match(workspacePanel, /会话按 Chat 与 Coding 管理/u);
+        assert.match(workspacePanel, /selectWorkspaceDirectory/u);
       }
     );
 
@@ -64,30 +53,12 @@ describe(
           "../../src/Setting/panels/ConversationPanel.jsx"
         );
 
-        assert.match(
-          panel,
-          /运行环境上下文/u
-        );
-        assert.match(
-          panel,
-          /context-developer-settings/u
-        );
-        assert.match(
-          panel,
-          /workspaceDetail/u
-        );
-        assert.match(
-          panel,
-          /toolDetail/u
-        );
-        assert.match(
-          panel,
-          /conversationSettings\s*\.contextTurns/u
-        );
-        assert.doesNotMatch(
-          panel,
-          /\bsettings\s*\.contextTurns/u
-        );
+        assert.match(panel, /运行环境上下文/u);
+        assert.match(panel, /context-developer-settings/u);
+        assert.match(panel, /workspaceDetail/u);
+        assert.match(panel, /toolDetail/u);
+        assert.match(panel, /conversationSettings\s*\.contextTurns/u);
+        assert.doesNotMatch(panel, /\bsettings\s*\.contextTurns/u);
       }
     );
 
@@ -101,22 +72,10 @@ describe(
           "../../electron/tools/core/ToolExecutor.js"
         );
 
-        assert.match(
-          agent,
-          /maxSteps/u
-        );
-        assert.match(
-          agent,
-          /saveToolHistory/u
-        );
-        assert.match(
-          executor,
-          /defaultTimeoutMs/u
-        );
-        assert.match(
-          executor,
-          /TOOL_TIMEOUT/u
-        );
+        assert.match(agent, /maxSteps/u);
+        assert.match(agent, /saveToolHistory/u);
+        assert.match(executor, /defaultTimeoutMs/u);
+        assert.match(executor, /TOOL_TIMEOUT/u);
       }
     );
   }

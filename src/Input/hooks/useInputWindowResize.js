@@ -8,8 +8,11 @@ import {
 
 export function useInputWindowResize({
   value,
+  barRef,
   textareaRef,
-  settings
+  settings,
+  menuOpen = false,
+  menuHeight = 0
 }) {
   const fontSize =
     settings?.fontSize;
@@ -36,31 +39,58 @@ export function useInputWindowResize({
     textarea.style.height =
       "0px";
 
-    const layout =
+    const textLayout =
       calculateInputHeights({
         value,
-
         measuredScrollHeight:
           textarea.scrollHeight,
-
         fontSize,
         maxLines
       });
 
     textarea.style.height =
-      `${layout.contentHeight}px`;
+      `${textLayout.contentHeight}px`;
 
     textarea.style.overflowY =
-      layout.overflow;
+      textLayout.overflow;
+
+    const measuredBaseHeight =
+      barRef.current
+        ? Math.ceil(
+            barRef.current
+              .getBoundingClientRect()
+              .height
+          )
+        : 0;
+
+    const layout =
+      calculateInputHeights({
+        value,
+        measuredScrollHeight:
+          textarea.scrollHeight,
+        measuredBaseHeight,
+        fontSize,
+        maxLines,
+        menuOpen,
+        menuHeight
+      });
 
     window.api
-      ?.resizeInputWindow?.(
-        layout.windowHeight
-      );
+      ?.resizeInputWindow?.({
+        height:
+          layout.windowHeight,
+        baseHeight:
+          layout.baseWindowHeight,
+        menuExtraHeight:
+          layout.menuExtraHeight
+      });
   }, [
     value,
+    barRef,
     textareaRef,
     fontSize,
-    maxLines
+    maxLines,
+    menuOpen,
+    menuHeight
   ]);
 }

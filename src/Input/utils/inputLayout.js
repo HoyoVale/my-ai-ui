@@ -1,17 +1,26 @@
 export const INPUT_MIN_WINDOW_HEIGHT =
-  48;
+  52;
 
 export const INPUT_WINDOW_VERTICAL_SPACE =
-  16;
+  20;
 
 export const INPUT_TEXTAREA_VERTICAL_PADDING =
   12;
 
+export const INPUT_CONTEXT_MENU_GAP =
+  10;
+
+export const INPUT_CONTEXT_MENU_MAX_HEIGHT =
+  320;
+
 export function calculateInputHeights({
   value,
   measuredScrollHeight,
+  measuredBaseHeight = 0,
   fontSize,
-  maxLines
+  maxLines,
+  menuOpen = false,
+  menuHeight = 0
 }) {
   const lineHeight =
     Math.round(
@@ -51,21 +60,46 @@ export function calculateInputHeights({
         )
       : minTextareaHeight;
 
+  const fallbackBaseHeight =
+    Math.ceil(
+      contentHeight +
+      INPUT_WINDOW_VERTICAL_SPACE
+    );
+
+  const baseWindowHeight =
+    Math.max(
+      INPUT_MIN_WINDOW_HEIGHT,
+      Math.ceil(
+        Number(measuredBaseHeight) ||
+        fallbackBaseHeight
+      )
+    );
+
+  const measuredMenuHeight =
+    Math.min(
+      INPUT_CONTEXT_MENU_MAX_HEIGHT,
+      Math.max(
+        0,
+        Number(menuHeight) || 0
+      )
+    );
+
+  const menuExtraHeight =
+    menuOpen && measuredMenuHeight > 0
+      ? measuredMenuHeight +
+        INPUT_CONTEXT_MENU_GAP
+      : 0;
+
   return {
     lineHeight,
     minTextareaHeight,
     maxTextareaHeight,
     contentHeight,
-
+    baseWindowHeight,
+    menuExtraHeight,
     windowHeight:
-      Math.max(
-        INPUT_MIN_WINDOW_HEIGHT,
-        Math.ceil(
-          contentHeight +
-          INPUT_WINDOW_VERTICAL_SPACE
-        )
-      ),
-
+      baseWindowHeight +
+      menuExtraHeight,
     overflow:
       hasValue &&
       Number(

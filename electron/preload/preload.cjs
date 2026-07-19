@@ -97,6 +97,12 @@ const CHANNELS = Object.freeze({
   CONVERSATION_SWITCH_WORKSPACE:
     "conversation-switch-workspace",
 
+  CONVERSATION_NAVIGATE_CONTEXT:
+    "conversation-navigate-context",
+
+  CONVERSATION_SET_MODEL:
+    "conversation-set-model",
+
   CONVERSATION_SELECT:
     "conversation-select",
 
@@ -293,13 +299,23 @@ const api = Object.freeze({
   },
 
   resizeInputWindow: (
-    height
+    request
   ) => {
+    const normalized =
+      request &&
+      typeof request === "object"
+        ? {
+            height: Number(request.height),
+            baseHeight: Number(request.baseHeight),
+            menuExtraHeight: Number(request.menuExtraHeight)
+          }
+        : Number(request);
+
     ipcRenderer.send(
       CHANNELS
         .RESIZE_INPUT_WINDOW,
 
-      Number(height)
+      normalized
     );
   },
 
@@ -400,12 +416,28 @@ const api = Object.freeze({
   },
 
   sendAgentMessage: (
-    content
+    input
   ) => {
+    const request =
+      input && typeof input === "object"
+        ? {
+            content: String(input.content ?? ""),
+            expectedConversationId: String(
+              input.expectedConversationId ?? ""
+            ),
+            continueTask:
+              input.continueTask === true
+          }
+        : {
+            content: String(input ?? ""),
+            expectedConversationId: "",
+            continueTask: false
+          };
+
     return ipcRenderer.invoke(
       CHANNELS
         .AGENT_SEND_MESSAGE,
-      String(content ?? "")
+      request
     );
   },
 
@@ -505,10 +537,20 @@ const api = Object.freeze({
       CHANNELS
         .CONVERSATION_CREATE,
       {
+        mode: String(input?.mode ?? ""),
         workspaceId:
           input?.workspaceId === null
             ? null
-            : String(input?.workspaceId ?? "")
+            : input?.workspaceId === undefined
+              ? undefined
+              : String(input?.workspaceId ?? ""),
+        modelSelection:
+          input?.modelSelection && typeof input.modelSelection === "object"
+            ? {
+                providerId: String(input.modelSelection.providerId ?? ""),
+                modelConfigId: String(input.modelSelection.modelConfigId ?? "")
+              }
+            : undefined
       }
     );
   },
@@ -520,6 +562,31 @@ const api = Object.freeze({
       workspaceId === null
         ? null
         : String(workspaceId ?? "")
+    );
+  },
+
+  navigateConversationContext: (input = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CONVERSATION_NAVIGATE_CONTEXT,
+      {
+        mode: String(input?.mode ?? ""),
+        workspaceId: input?.workspaceId === undefined
+          ? undefined
+          : input?.workspaceId === null
+            ? null
+            : String(input.workspaceId ?? "")
+      }
+    );
+  },
+
+  setConversationModel: (input = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CONVERSATION_SET_MODEL,
+      {
+        conversationId: String(input?.conversationId ?? ""),
+        providerId: String(input?.providerId ?? ""),
+        modelConfigId: String(input?.modelConfigId ?? "")
+      }
     );
   },
 

@@ -103,6 +103,7 @@ export const TOOLSET_OPTIONS = [
   },
   {
     id: "agent.internal",
+    userVisible: false,
     title: "Agent 内部",
     description:
       "维护任务计划、进度和大型结果引用。",
@@ -121,24 +122,6 @@ export const TOOLSET_OPTIONS = [
           "分页读取当前 Agent Run 中被截断的大型工具结果。"
       }
     ]
-  }
-];
-
-export const TOOL_MODE_OPTIONS = [
-  {
-    value: "chat",
-    label: "Chat"
-  },
-  {
-    value: "coding",
-    label: "Coding"
-  }
-];
-
-export const TOOL_DETAIL_OPTIONS = [
-  {
-    value: "detailed",
-    label: "详细"
   }
 ];
 

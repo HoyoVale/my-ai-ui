@@ -22,7 +22,7 @@ describe(
   "Tool UX developer-mode contract",
   () => {
     it(
-      "keeps ordinary Tool settings focused on Chat, Coding and workspaces",
+      "keeps ordinary Tool settings available while hiding runtime insurance",
       () => {
         const panel = read(
           "../../src/Setting/panels/ToolPanel.jsx"
@@ -31,51 +31,36 @@ describe(
           "../../src/Setting/panels/WorkContextPanel.jsx"
         );
 
-        assert.match(workspacePanel, /TOOL_MODE_OPTIONS/u);
         assert.match(workspacePanel, /Chat/u);
         assert.match(workspacePanel, /Coding/u);
         assert.match(workspacePanel, /添加工作区/u);
+        assert.match(panel, /启用工具/u);
+        assert.match(panel, /工具组/u);
+        assert.match(panel, /单个工具/u);
+        assert.match(panel, /高级设置/u);
+        assert.match(panel, /developerMode &&/u);
         assert.doesNotMatch(panel, /展示层级|活动显示/u);
-        assert.doesNotMatch(panel, /tool-display-detail/u);
-        assert.doesNotMatch(
-          panel,
-          /启用工具调用|当前模型|固定安全边界/u
-        );
-        assert.doesNotMatch(
-          panel,
-          /包含应用启动目录|includeProjectRoot/u
-        );
+        assert.doesNotMatch(panel, /包含应用启动目录|includeProjectRoot/u);
       }
     );
 
     it(
-      "shows Toolset overrides and every tool description only in developer mode",
+      "keeps forced Tool overrides and runtime boundaries developer-only",
       () => {
         const panel = read(
           "../../src/Setting/panels/ToolPanel.jsx"
         );
 
-        assert.match(
-          panel,
-          /developerMode &&/u
-        );
-        assert.match(
-          panel,
-          /tool\.description/u
-        );
-        assert.match(
-          panel,
-          /TOOL_OVERRIDE_OPTIONS/u
-        );
-        assert.match(
-          panel,
-          /tool-developer-settings/u
-        );
+        assert.match(panel, /developerMode &&/u);
+        assert.match(panel, /TOOL_OVERRIDE_OPTIONS/u);
+        assert.match(panel, /tool-developer-settings/u);
+        assert.match(panel, /Runtime 诊断与保险丝/u);
+        assert.match(panel, /单工具强制覆盖/u);
       }
     );
 
     it(
-      "gates the Developer navigation and Context advanced controls",
+      "gates Developer navigation and Context diagnostics",
       () => {
         const general = read(
           "../../src/Setting/panels/GeneralPanel.jsx"
@@ -89,14 +74,8 @@ describe(
 
         assert.match(general, /developer-mode/u);
         assert.match(sidebar, /developerOnly/u);
-        assert.match(
-          context,
-          /context-developer-settings/u
-        );
-        assert.match(
-          context,
-          /共享完整工作区路径/u
-        );
+        assert.match(context, /context-developer-settings/u);
+        assert.match(context, /共享完整工作区路径/u);
       }
     );
 
@@ -113,57 +92,32 @@ describe(
           "../../src/Conversation/utils/taskActivity.js"
         );
 
-        assert.match(
-          list,
-          /conversation-thinking-timeline/u
-        );
-        assert.match(
-          list,
-          /createActivitySnapshot/u
-        );
-        assert.match(
-          activity,
-          /activity\?\.events/u
-        );
-        assert.match(
-          panel,
-          /developerMode/u
-        );
-        assert.match(
-          panel,
-          /Model output/u
-        );
+        assert.match(list, /conversation-thinking-timeline/u);
+        assert.match(list, /createActivitySnapshot/u);
+        assert.match(activity, /activity\?\.events/u);
+        assert.match(panel, /developerMode/u);
+        assert.match(panel, /Model output/u);
       }
     );
 
     it(
-      "uses one normal/developer visibility control across existing setting tabs",
+      "exposes all Window and Model settings without developer visibility gates",
       () => {
-        const controls = read(
-          "../../src/Setting/components/Controls.jsx"
-        );
-        const content = read(
-          "../../src/Setting/components/Content.jsx"
-        );
-        const panels = [
+        const names = [
           "AppearancePanel",
           "PetPanel",
           "InputPanel",
           "ResponsePanel",
-          "PersonalityPanel",
-          "MemoryPanel",
           "ModelPanel"
-        ].map((name) => read(
+        ];
+        const panels = names.map((name) => read(
           `../../src/Setting/panels/${name}.jsx`
         ));
 
-        assert.match(controls, /function SettingsVisibility/u);
-        assert.match(controls, /visibility === "developer"/u);
-        assert.match(content, /<PetPanel[\s\S]*developerMode=/u);
-        assert.match(content, /<ResponsePanel[\s\S]*developerMode=/u);
         assert.equal(
           panels.every((panel) =>
-            panel.includes("visibility=\"developer\"")
+            !panel.includes('visibility="developer"') &&
+            !panel.includes("SettingsVisibility")
           ),
           true
         );

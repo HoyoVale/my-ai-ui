@@ -5,6 +5,10 @@ import {
 } from "./defaultSettings.js";
 
 import {
+  PROVIDER_DEFAULTS
+} from "./providerDefaults.js";
+
+import {
   SAFE_TOOL_NAMES,
   TOOLSET_IDS
 } from "../tools/toolCatalog.js";
@@ -54,6 +58,128 @@ const CREDENTIAL_MODES = [
   "optional",
   "none"
 ];
+
+const LEGACY_TEMPLATE_MODELS = Object.freeze({
+  deepseek: new Set([
+    "deepseek-v4-flash",
+    "deepseek-v4-pro"
+  ]),
+  openai: new Set([
+    "gpt-5-2",
+    "gpt-5.2",
+    "gpt-4.1-mini",
+    "gpt-4.1 mini"
+  ]),
+  anthropic: new Set([
+    "claude-sonnet-4",
+    "claude sonnet 4",
+    "claude-sonnet-4-6",
+    "claude sonnet 4.6"
+  ]),
+  ollama: new Set([
+    "gemma3",
+    "gemma 3"
+  ]),
+  compatible: new Set([
+    "compatible-model",
+    "compatible model",
+    "model-id"
+  ])
+});
+
+function normalizedTemplateValue(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function isLegacyTemplateProvider(
+  providerId,
+  source,
+  fallback
+) {
+  if (!source || typeof source !== "object") {
+    return true;
+  }
+
+  const knownModels = LEGACY_TEMPLATE_MODELS[providerId];
+
+  if (!knownModels) {
+    return false;
+  }
+
+  const baseURL = normalizedTemplateValue(source.baseURL);
+  const fallbackBaseURL = normalizedTemplateValue(fallback?.baseURL);
+  const type = normalizedTemplateValue(source.type);
+  const fallbackType = normalizedTemplateValue(fallback?.type);
+  const name = normalizedTemplateValue(source.name);
+  const fallbackName = normalizedTemplateValue(fallback?.name);
+
+  if (
+    baseURL &&
+    fallbackBaseURL &&
+    baseURL.replace(/\/+$/u, "") !==
+      fallbackBaseURL.replace(/\/+$/u, "")
+  ) {
+    return false;
+  }
+
+  if (type && fallbackType && type !== fallbackType) {
+    return false;
+  }
+
+  if (name && fallbackName && name !== fallbackName) {
+    return false;
+  }
+
+  const models = Array.isArray(source.models)
+    ? source.models
+    : [];
+
+  if (!models.length) {
+    return true;
+  }
+
+  return models.every((model) => {
+    const candidates = [
+      model?.id,
+      model?.name,
+      model?.modelId,
+      model?.model
+    ]
+      .map(normalizedTemplateValue)
+      .filter(Boolean);
+
+    return candidates.some((candidate) =>
+      knownModels.has(candidate)
+    );
+  });
+}
+
+function inferProviderConfigured({
+  providerId,
+  source,
+  fallback,
+  activeProvider
+}) {
+  if (typeof source?.configured === "boolean") {
+    return source.configured;
+  }
+
+  if (!source || typeof source !== "object") {
+    return false;
+  }
+
+  if (providerId === activeProvider) {
+    return true;
+  }
+
+  return !isLegacyTemplateProvider(
+    providerId,
+    source,
+    fallback
+  );
+}
 
 const TYPOGRAPHY_WINDOWS = [
   "pet",
@@ -525,7 +651,8 @@ function sanitizeProvider(
   providerId,
   source,
   fallback,
-  legacyContextTokenBudget
+  legacyContextTokenBudget,
+  configured
 ) {
   const normalizedId =
     nonEmptyStringValue(
@@ -596,6 +723,7 @@ function sanitizeProvider(
 
   return {
     id: normalizedId,
+    configured: Boolean(configured),
     type,
     name: nonEmptyStringValue(
       source?.name,
@@ -635,81 +763,101 @@ function sanitizeModelSettings(
   defaults,
   legacyContextTokenBudget
 ) {
+  const sourceModel =
+    model &&
+    typeof model === "object"
+      ? model
+      : {};
+
   const hasLegacyShape =
-    typeof model.model === "string" ||
-    typeof model.baseURL === "string" ||
-    typeof model.provider === "string" ||
-    model.temperature !== undefined ||
-    model.maxOutputTokens !== undefined ||
-    model.timeoutMs !== undefined;
+    typeof sourceModel.model === "string" ||
+    typeof sourceModel.baseURL === "string" ||
+    typeof sourceModel.provider === "string" ||
+    sourceModel.temperature !== undefined ||
+    sourceModel.maxOutputTokens !== undefined ||
+    sourceModel.timeoutMs !== undefined;
 
   const sourceProviders = {
-    ...model.providers
+    ...(sourceModel.providers ?? {})
   };
 
   if (hasLegacyShape) {
     sourceProviders.deepseek = {
-      ...defaults.providers.deepseek,
-      baseURL: model.baseURL,
+      ...PROVIDER_DEFAULTS.deepseek,
+      configured: true,
+      baseURL: sourceModel.baseURL,
       activeModelId: "migrated-model",
       models: [
         {
           id: "migrated-model",
           name:
-            model.model ??
+            sourceModel.model ??
             "DeepSeek",
-          modelId: model.model,
+          modelId: sourceModel.model,
           contextTokenBudget:
             legacyContextTokenBudget,
           temperature:
-            model.temperature,
+            sourceModel.temperature,
           maxOutputTokens:
-            model.maxOutputTokens,
+            sourceModel.maxOutputTokens,
           timeoutMs:
-            model.timeoutMs
+            sourceModel.timeoutMs
         }
       ]
     };
   }
 
-  const providerIds = new Set([
-    ...Object.keys(defaults.providers),
-    ...Object.keys(sourceProviders)
-  ]);
+  const requestedProvider =
+    nonEmptyStringValue(
+      sourceModel.activeProvider,
+      defaults.activeProvider ?? "",
+      80
+    );
 
   const providers = {};
 
   for (
     const providerId
-    of [...providerIds].slice(0, 20)
+    of Object.keys(sourceProviders).slice(0, 20)
   ) {
     const fallback =
-      defaults.providers[providerId] ??
-      defaults.providers.compatible;
+      PROVIDER_DEFAULTS[providerId] ??
+      PROVIDER_DEFAULTS.compatible;
+
+    const sourceProvider =
+      sourceProviders[providerId];
+
+    const configured =
+      inferProviderConfigured({
+        providerId,
+        source: sourceProvider,
+        fallback,
+        activeProvider: requestedProvider
+      });
+
+    if (!configured) {
+      continue;
+    }
 
     providers[providerId] =
       sanitizeProvider(
         providerId,
-        sourceProviders[providerId],
+        sourceProvider,
         fallback,
         providerId === "deepseek"
           ? legacyContextTokenBudget
-          : undefined
+          : undefined,
+        true
       );
   }
 
-  const requestedProvider =
-    nonEmptyStringValue(
-      model.activeProvider,
-      defaults.activeProvider,
-      80
-    );
+  const activeProvider =
+    providers[requestedProvider]
+      ? requestedProvider
+      : Object.keys(providers)[0] ?? "";
 
   return {
-    activeProvider:
-      providers[requestedProvider]
-        ? requestedProvider
-        : defaults.activeProvider,
+    activeProvider,
     providers
   };
 }
@@ -1053,6 +1201,12 @@ function sanitizeToolSettings(
         defaults.runtime.maxToolRetries,
         0,
         2
+      ),
+      maxConcurrent: integerValue(
+        runtime.maxConcurrent,
+        defaults.runtime.maxConcurrent,
+        1,
+        16
       ),
       runTimeoutMs: integerValue(
         runtime.runTimeoutMs,

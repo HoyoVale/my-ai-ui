@@ -53,9 +53,12 @@ function overrideValue(value) {
     : "inherit";
 }
 
-function baseToolsetEnabled(mode, toolset) {
+function baseToolsetEnabled(_mode, toolset) {
+  // Chat sessions may opt into a bound read-only workspace.
+  // Coding sessions use the same read tools today and can gain
+  // separate write toolsets later without changing this rule.
   if (toolset === "workspace.read") {
-    return mode === "coding";
+    return true;
   }
 
   return true;
@@ -80,6 +83,10 @@ export function resolveEnabledToolCatalog(
     const toolset = item.toolset ?? item.toolsets?.[0] ?? "core.runtime";
     let toolsetEnabled = baseToolsetEnabled(mode, toolset);
 
+    if (typeof legacyToolsets[toolset] === "boolean") {
+      toolsetEnabled = legacyToolsets[toolset];
+    }
+
     const toolsetOverride = overrideValue(
       toolsetOverrides[toolset]
     );
@@ -88,11 +95,6 @@ export function resolveEnabledToolCatalog(
       toolsetEnabled = true;
     } else if (toolsetOverride === "disabled") {
       toolsetEnabled = false;
-    } else if (
-      settings.mode === undefined &&
-      typeof legacyToolsets[toolset] === "boolean"
-    ) {
-      toolsetEnabled = legacyToolsets[toolset];
     }
 
     if (!toolsetEnabled) {
@@ -111,10 +113,7 @@ export function resolveEnabledToolCatalog(
       return false;
     }
 
-    if (
-      settings.mode === undefined &&
-      typeof legacyOverrides[item.name] === "boolean"
-    ) {
+    if (typeof legacyOverrides[item.name] === "boolean") {
       return legacyOverrides[item.name];
     }
 

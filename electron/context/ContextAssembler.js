@@ -54,10 +54,24 @@ export function assembleAgentContext({
   const normalizedSettings =
     settings ?? {};
 
-  const activeModel =
-    resolveActiveModelSettings(
-      normalizedSettings.model
-    );
+  let activeModel;
+
+  try {
+    activeModel =
+      resolveActiveModelSettings(
+        normalizedSettings.model
+      );
+  } catch {
+    activeModel = {
+      provider: "unconfigured",
+      providerId: "",
+      providerName: "未配置",
+      modelConfigId: "",
+      modelName: "未配置",
+      model: "",
+      contextTokenBudget: 64000
+    };
+  }
 
   const sourceMessages =
     conversation?.messages ?? [];

@@ -98,6 +98,9 @@ export function createRunCheckpoint({
   taskId = "",
   workspaceId = "",
   workspaceSnapshot = null,
+  mode = "chat",
+  modelSelection = null,
+  modelSnapshot = null,
   runId = "",
   parentRunId = "",
   messageId = "",
@@ -149,6 +152,15 @@ export function createRunCheckpoint({
     workspaceSnapshot:
       workspaceSnapshot && typeof workspaceSnapshot === "object"
         ? structuredClone(workspaceSnapshot)
+        : null,
+    mode: mode === "coding" ? "coding" : "chat",
+    modelSelection:
+      modelSelection && typeof modelSelection === "object"
+        ? structuredClone(modelSelection)
+        : null,
+    modelSnapshot:
+      modelSnapshot && typeof modelSnapshot === "object"
+        ? structuredClone(modelSnapshot)
         : null,
     runId: text(runId, 120),
     parentRunId: text(parentRunId, 120),

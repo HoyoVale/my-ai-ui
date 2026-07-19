@@ -249,7 +249,11 @@ export function createAgentToolSession({
       maxRetries:
         toolSettings.runtime
           ?.maxToolRetries ??
-        1
+        1,
+      maxConcurrent:
+        toolSettings.runtime
+          ?.maxConcurrent ??
+        4
     });
   const runtime = new ToolRuntime({
     definitions: enabledDefinitions,

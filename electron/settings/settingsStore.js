@@ -115,12 +115,7 @@ function loadSettings() {
       JSON.parse(text);
 
     cachedSettings =
-      sanitizeSettings(
-        deepMerge(
-          cloneDefaultSettings(),
-          parsed
-        )
-      );
+      sanitizeSettings(parsed);
   } catch (error) {
     if (
       error?.code !== "ENOENT"

@@ -14,9 +14,10 @@ import {
   getPetWindow
 } from "../pet/petWindow.js";
 
-const INPUT_MIN_HEIGHT = 48;
-const INPUT_VERTICAL_SPACE = 16;
+const INPUT_MIN_HEIGHT = 52;
+const INPUT_VERTICAL_SPACE = 20;
 const INPUT_TEXTAREA_VERTICAL_PADDING = 12;
+const INPUT_CONTEXT_MENU_MAX_HEIGHT = 330;
 
 let inputWindow = null;
 let attachedPet = null;
@@ -24,6 +25,11 @@ let attachedPet = null;
 let fixedInputWidth = null;
 let logicalInputHeight =
   INPUT_MIN_HEIGHT;
+
+let logicalInputBaseHeight =
+  INPUT_MIN_HEIGHT;
+
+let logicalMenuExtraHeight = 0;
 
 let petMoveHandler = null;
 let petResizeHandler = null;
@@ -68,7 +74,8 @@ function getInputMetrics(
         input.maxLines *
           lineHeight +
           INPUT_TEXTAREA_VERTICAL_PADDING +
-          INPUT_VERTICAL_SPACE
+          INPUT_VERTICAL_SPACE +
+          INPUT_CONTEXT_MENU_MAX_HEIGHT
       ),
 
     alwaysOnTop:
@@ -188,6 +195,25 @@ function updateSizeConstraints(
       )
     );
 
+  logicalInputBaseHeight =
+    Math.round(
+      clamp(
+        logicalInputBaseHeight,
+        metrics.minHeight,
+        metrics.maxHeight
+      )
+    );
+
+  logicalMenuExtraHeight =
+    Math.max(
+      0,
+      Math.min(
+        logicalMenuExtraHeight,
+        logicalInputHeight -
+          metrics.minHeight
+      )
+    );
+
   inputWindow.setMinimumSize(
     1,
     1
@@ -280,6 +306,11 @@ export function openInputWindow() {
 
   logicalInputHeight =
     metrics.minHeight;
+
+  logicalInputBaseHeight =
+    metrics.minHeight;
+
+  logicalMenuExtraHeight = 0;
 
   inputWindow =
     createBaseWindow({
@@ -387,6 +418,11 @@ export function openInputWindow() {
 
       logicalInputHeight =
         INPUT_MIN_HEIGHT;
+
+      logicalInputBaseHeight =
+        INPUT_MIN_HEIGHT;
+
+      logicalMenuExtraHeight = 0;
     }
   );
 
@@ -422,7 +458,7 @@ export function applyInputWindowSettings(
 }
 
 export function resizeInputWindow(
-  requestedHeight
+  request
 ) {
   if (
     !inputWindow ||
@@ -434,12 +470,31 @@ export function resizeInputWindow(
     return;
   }
 
+  const normalized =
+    request &&
+    typeof request === "object"
+      ? request
+      : {
+          height: request,
+          baseHeight: request,
+          menuExtraHeight: 0
+        };
+
   const numericHeight =
-    Number(requestedHeight);
+    Number(normalized.height);
+
+  const numericBaseHeight =
+    Number(normalized.baseHeight);
+
+  const numericMenuExtraHeight =
+    Number(normalized.menuExtraHeight);
 
   if (
     !Number.isFinite(
       numericHeight
+    ) ||
+    !Number.isFinite(
+      numericBaseHeight
     )
   ) {
     return;
@@ -453,10 +508,37 @@ export function resizeInputWindow(
       settings
     );
 
+  logicalInputBaseHeight =
+    Math.round(
+      clamp(
+        numericBaseHeight,
+        metrics.minHeight,
+        metrics.maxHeight
+      )
+    );
+
+  logicalMenuExtraHeight =
+    Math.max(
+      0,
+      Math.min(
+        Number.isFinite(
+          numericMenuExtraHeight
+        )
+          ? numericMenuExtraHeight
+          : numericHeight -
+            logicalInputBaseHeight,
+        INPUT_CONTEXT_MENU_MAX_HEIGHT
+      )
+    );
+
   logicalInputHeight =
     Math.round(
       clamp(
-        numericHeight,
+        Math.max(
+          numericHeight,
+          logicalInputBaseHeight +
+            logicalMenuExtraHeight
+        ),
         metrics.minHeight,
         metrics.maxHeight
       )

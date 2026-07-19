@@ -34,7 +34,7 @@ describe(
   "safe agent tool session",
   () => {
     it(
-      "publishes workspace tools only when Coding has an explicit workspace",
+      "publishes read-only workspace tools for bound Chat and Coding sessions",
       () => {
         const chatSession =
           createAgentToolSession({
@@ -87,6 +87,31 @@ describe(
           )
         );
         temporaryRoots.push(root);
+
+        const chatWorkspaceSession =
+          createAgentToolSession({
+            getAgentStatus: () => ({
+              state: "running"
+            }),
+            settings: {
+              tools: {
+                mode: "chat",
+                workspace: {
+                  roots: [root]
+                },
+                runtime: {},
+                developer: {
+                  toolsetOverrides: {},
+                  toolOverrides: {}
+                }
+              }
+            }
+          });
+
+        assert.equal(
+          "read_text_file" in chatWorkspaceSession.tools,
+          true
+        );
 
         const codingSession =
           createAgentToolSession({

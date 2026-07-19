@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useRef,
   useState
 } from "react";
@@ -24,6 +25,12 @@ import {
 } from "./hooks/useInputWindowResize.js";
 
 import {
+  encodeModelOptionValue,
+  parseModelOptionValue,
+  useInputContext
+} from "./hooks/useInputContext.js";
+
+import {
   getWindowTypographyStyle
 } from "../shared/typography.js";
 
@@ -35,6 +42,15 @@ export default function Input() {
 
   const [submitting, setSubmitting] =
     useState(false);
+
+  const [contextMenuOpen, setContextMenuOpen] =
+    useState(false);
+
+  const [contextMenuHeight, setContextMenuHeight] =
+    useState(0);
+
+  const barRef =
+    useRef(null);
 
   const textareaRef =
     useRef(null);
@@ -57,12 +73,53 @@ export default function Input() {
   const inputSettings =
     settings.input;
 
+  const inputContext =
+    useInputContext(settings);
+
+  const currentMode =
+    inputContext.state.currentMode ?? "chat";
+  const currentModelSelection =
+    inputContext.state.currentModelSelection;
+  const selectedModelValue = currentModelSelection
+    ? encodeModelOptionValue(
+        currentModelSelection.providerId,
+        currentModelSelection.modelConfigId
+      )
+    : "";
+  const modelValue = inputContext.models.some(
+    (model) => model.value === selectedModelValue
+  )
+    ? selectedModelValue
+    : inputContext.models[0]?.value ?? "";
+
   useInputWindowResize({
     value,
+    barRef,
     textareaRef,
     settings:
-      inputSettings
+      inputSettings,
+    menuOpen: contextMenuOpen,
+    menuHeight: contextMenuHeight
   });
+
+  const handleContextMenuOpenChange =
+    useCallback((open) => {
+      setContextMenuOpen(open);
+
+      if (!open) {
+        setContextMenuHeight(0);
+      }
+    }, []);
+
+  const handleContextMenuPanelHeightChange =
+    useCallback((height) => {
+      setContextMenuHeight(
+        Math.max(
+          0,
+          Number(height) || 0
+        )
+      );
+    }, []);
 
   const handleSend = async () => {
     if (isRunning) {
@@ -85,11 +142,20 @@ export default function Input() {
     setSubmitting(true);
 
     try {
+      const expectedConversationId =
+        inputContext.state.currentConversationId;
+
+      if (!expectedConversationId) {
+        console.warn("当前没有可发送消息的会话。");
+        return;
+      }
+
       const result =
         await window.api
-          ?.sendAgentMessage?.(
-            message
-          );
+          ?.sendAgentMessage?.({
+            content: message,
+            expectedConversationId
+          });
 
       if (result?.ok) {
         setValue("");
@@ -179,6 +245,7 @@ export default function Input() {
             .appearance
             .accentColor
       }}
+      barRef={barRef}
       textareaRef={textareaRef}
       value={value}
       placeholder={
@@ -189,9 +256,7 @@ export default function Input() {
       }
       canSend={
         isRunning ||
-        Boolean(
-          value.trim()
-        )
+        Boolean(value.trim())
       }
       isRunning={isRunning}
       isStopping={
@@ -200,6 +265,48 @@ export default function Input() {
       )
       }
       disabled={submitting}
+      context={{
+        mode: currentMode,
+        workspaceId:
+          inputContext.state.currentWorkspaceId ?? null,
+        currentConversationId:
+          inputContext.state.currentConversationId,
+        currentConversationTitle:
+          inputContext.state.currentConversation?.title ?? "新会话",
+        currentModelSelection,
+        workspaces: inputContext.workspaces,
+        conversations: inputContext.conversations,
+        models: inputContext.models,
+        modelValue,
+        busy: inputContext.busy,
+        error: inputContext.error
+      }}
+      onContextMenuOpenChange={handleContextMenuOpenChange}
+      onContextMenuPanelHeightChange={handleContextMenuPanelHeightChange}
+      onSelectSession={(conversationId) => {
+        return inputContext.selectSession(conversationId);
+      }}
+      onCreateSession={(input) => {
+        return inputContext.createSession(input);
+      }}
+      onAddWorkspace={() => {
+        return inputContext.addWorkspace();
+      }}
+      onModelChange={(selection) => {
+        const parsed = parseModelOptionValue(selection);
+
+        if (!parsed) {
+          return Promise.resolve({
+            ok: false,
+            message: "模型配置无效。"
+          });
+        }
+
+        return inputContext.setModel(
+          parsed.providerId,
+          parsed.modelConfigId
+        );
+      }}
       onChange={setValue}
       onKeyDown={handleKeyDown}
       onSend={() => {

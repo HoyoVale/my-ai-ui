@@ -486,6 +486,81 @@ async function main() {
         '[data-testid="input-send"]'
       );
 
+    const inputMenuTrigger =
+      input.locator(
+        '[data-testid="input-context-menu-trigger"]'
+      );
+
+    assert.equal(
+      await inputMenuTrigger
+        .locator("svg")
+        .count(),
+      1
+    );
+
+    const inputBrowserWindow =
+      await electronApp
+        .browserWindow(input);
+
+    await delay(100);
+
+    const closedInputBounds =
+      await inputBrowserWindow
+        .evaluate(
+          (window) =>
+            window.getBounds()
+        );
+
+    await inputMenuTrigger.click();
+
+    await input
+      .locator(
+        '[data-testid="input-context-menu-panel"]'
+      )
+      .waitFor();
+
+    await waitForAttribute(
+      inputMenuTrigger,
+      "aria-expanded",
+      "true"
+    );
+
+    await delay(100);
+
+    const openInputBounds =
+      await inputBrowserWindow
+        .evaluate(
+          (window) =>
+            window.getBounds()
+        );
+
+    assert.ok(
+      openInputBounds.height >
+        closedInputBounds.height
+    );
+
+    assert.equal(
+      openInputBounds.y,
+      closedInputBounds.y
+    );
+
+    assert.ok(
+      openInputBounds.y +
+        openInputBounds.height >
+      closedInputBounds.y +
+        closedInputBounds.height
+    );
+
+    await input.keyboard.press(
+      "Escape"
+    );
+
+    await waitForAttribute(
+      inputMenuTrigger,
+      "aria-expanded",
+      "false"
+    );
+
     await inputField.fill(
       "first message"
     );

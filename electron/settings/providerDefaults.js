@@ -19,6 +19,7 @@ function modelDefaults(overrides) {
 export const PROVIDER_DEFAULTS = Object.freeze({
   deepseek: {
     id: "deepseek",
+    configured: false,
     type: "deepseek",
     name: "DeepSeek",
     baseURL: "https://api.deepseek.com",
@@ -47,6 +48,7 @@ export const PROVIDER_DEFAULTS = Object.freeze({
 
   openai: {
     id: "openai",
+    configured: false,
     type: "openai",
     name: "OpenAI",
     baseURL: "https://api.openai.com/v1",
@@ -67,6 +69,7 @@ export const PROVIDER_DEFAULTS = Object.freeze({
 
   anthropic: {
     id: "anthropic",
+    configured: false,
     type: "anthropic",
     name: "Anthropic",
     baseURL: "https://api.anthropic.com/v1",
@@ -87,6 +90,7 @@ export const PROVIDER_DEFAULTS = Object.freeze({
 
   ollama: {
     id: "ollama",
+    configured: false,
     type: "ollama",
     name: "Ollama",
     baseURL: "http://127.0.0.1:11434/api",
@@ -108,6 +112,7 @@ export const PROVIDER_DEFAULTS = Object.freeze({
 
   compatible: {
     id: "compatible",
+    configured: false,
     type: "openai-compatible",
     name: "OpenAI-compatible",
     baseURL: "http://localhost:1234/v1",

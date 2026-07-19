@@ -7,7 +7,6 @@ import {
   Segmented,
   Select,
   SettingRow,
-  SettingsVisibility,
   SettingsSection,
   Slider,
   TextInput,
@@ -56,7 +55,6 @@ const WINDOW_OPTIONS = [
 
 export function AppearancePanel({
   settings,
-  developerMode = false,
   onUpdate
 }) {
   const appearance =
@@ -110,11 +108,6 @@ export function AppearancePanel({
           />
         </div>
       </SettingsSection>
-
-      <SettingsVisibility
-        visibility="developer"
-        developerMode={developerMode}
-      >
       <SettingsSection title="全局字体">
         <SettingRow title="字体族">
           <Select
@@ -300,9 +293,7 @@ export function AppearancePanel({
           />
         </SettingRow>
       </SettingsSection>
-      </SettingsVisibility>
-
-      <SettingsSection title="动画">
+<SettingsSection title="动画">
         <SettingRow title="减少动态效果">
           <Toggle
             checked={appearance.reducedMotion}

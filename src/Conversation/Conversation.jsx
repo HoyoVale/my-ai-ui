@@ -94,8 +94,8 @@ export default function Conversation() {
   const [query, setQuery] =
     useState("");
 
-  const [workspaceScope, setWorkspaceScope] =
-    useState("all");
+  const [sidebarMode, setSidebarMode] =
+    useState("chat");
 
   const workspaces =
     Array.isArray(settings.workspaces?.items)
@@ -104,58 +104,16 @@ export default function Conversation() {
 
   const currentConversationId =
     history.current?.id ?? "";
-  const currentWorkspaceId =
-    history.current?.workspaceId ?? "";
 
   useEffect(() => {
-    if (!currentConversationId) {
-      return;
+    if (history.current?.mode) {
+      setSidebarMode(
+        history.current.mode === "coding"
+          ? "coding"
+          : "chat"
+      );
     }
-
-    setWorkspaceScope(
-      currentWorkspaceId || "none"
-    );
-  }, [currentConversationId, currentWorkspaceId]);
-
-  const filteredConversations =
-    useMemo(
-      () => {
-        const normalized =
-          query
-            .trim()
-            .toLowerCase();
-
-        return history
-          .conversations
-          .filter((conversation) => {
-            if (workspaceScope === "all") {
-              return true;
-            }
-
-            if (workspaceScope === "none") {
-              return !conversation.workspaceId;
-            }
-
-            return conversation.workspaceId === workspaceScope;
-          })
-          .filter((conversation) => {
-            if (!normalized) {
-              return true;
-            }
-
-            return String(
-              conversation.title ?? ""
-            )
-              .toLowerCase()
-              .includes(normalized);
-          });
-      },
-      [
-        history.conversations,
-        query,
-        workspaceScope
-      ]
-    );
+  }, [history.current?.id, history.current?.mode]);
 
   useEffect(() => {
     setTaskOpen(false);
@@ -281,14 +239,13 @@ export default function Conversation() {
           );
         }}
         onCreate={() => {
-          const workspaceId =
-            workspaceScope === "all"
-              ? history.current?.workspaceId ?? null
-              : workspaceScope === "none"
-                ? null
-                : workspaceScope;
-
-          void history.create(workspaceId);
+          void history.create({
+            mode: history.current?.mode ?? "chat",
+            workspaceId:
+              history.current?.workspaceId ?? null,
+            modelSelection:
+              history.current?.modelSelection ?? undefined
+          });
         }}
         onOpenInput={openInput}
         onMinimize={() => {
@@ -308,23 +265,11 @@ export default function Conversation() {
       <div className="conversation-layout">
         <ConversationSidebar
           conversations={
-            filteredConversations
+            history.conversations
           }
           workspaces={workspaces}
-          workspaceScope={workspaceScope}
-          onWorkspaceScopeChange={(nextScope) => {
-            setWorkspaceScope(nextScope);
-
-            if (nextScope === "all") {
-              return;
-            }
-
-            void history.switchWorkspace(
-              nextScope === "none"
-                ? null
-                : nextScope
-            );
-          }}
+          activeMode={sidebarMode}
+          onModeChange={setSidebarMode}
           currentConversationId={
             history.state
               .currentConversationId

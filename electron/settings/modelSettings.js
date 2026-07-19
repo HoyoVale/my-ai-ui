@@ -1,30 +1,28 @@
-import {
-  PROVIDER_DEFAULTS
-} from "./providerDefaults.js";
-
-const FALLBACK_PROVIDER =
-  PROVIDER_DEFAULTS.deepseek;
-
 export function getActiveProviderConfig(
   modelSettings = {}
 ) {
-  const providerId = String(
-    modelSettings.activeProvider ??
-      "deepseek"
-  );
-
   const providers =
     modelSettings.providers ?? {};
 
+  const requestedProviderId = String(
+    modelSettings.activeProvider ?? ""
+  ).trim();
+
   const provider =
-    providers[providerId] ??
-    providers.deepseek ??
+    providers[requestedProviderId] ??
     Object.values(providers)[0] ??
-    FALLBACK_PROVIDER;
+    null;
+
+  if (!provider) {
+    throw new Error(
+      "尚未配置可用模型，请先在模型设置中添加提供商和模型。"
+    );
+  }
 
   return {
     providerId:
-      provider.id ?? providerId,
+      provider.id ??
+      requestedProviderId,
     provider
   };
 }

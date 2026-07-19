@@ -23,6 +23,7 @@ function modelDefaults(overrides) {
 const PROVIDERS = {
   deepseek: {
     id: "deepseek",
+    configured: false,
     type: "deepseek",
     name: "DeepSeek",
     baseURL: "https://api.deepseek.com",
@@ -50,6 +51,7 @@ const PROVIDERS = {
   },
   openai: {
     id: "openai",
+    configured: false,
     type: "openai",
     name: "OpenAI",
     baseURL: "https://api.openai.com/v1",
@@ -69,6 +71,7 @@ const PROVIDERS = {
   },
   anthropic: {
     id: "anthropic",
+    configured: false,
     type: "anthropic",
     name: "Anthropic",
     baseURL: "https://api.anthropic.com/v1",
@@ -88,6 +91,7 @@ const PROVIDERS = {
   },
   ollama: {
     id: "ollama",
+    configured: false,
     type: "ollama",
     name: "Ollama",
     baseURL: "http://127.0.0.1:11434/api",
@@ -108,6 +112,7 @@ const PROVIDERS = {
   },
   compatible: {
     id: "compatible",
+    configured: false,
     type: "openai-compatible",
     name: "OpenAI-compatible",
     baseURL: "http://localhost:1234/v1",
@@ -126,6 +131,11 @@ const PROVIDERS = {
     ]
   }
 };
+
+export const MODEL_PROVIDER_TEMPLATES =
+  Object.freeze(
+    structuredClone(PROVIDERS)
+  );
 
 export const FALLBACK_SETTINGS = {
   general: {
@@ -236,6 +246,7 @@ export const FALLBACK_SETTINGS = {
       maxToolCallsPerBatch: 24,
       maxTotalToolCalls: 2000,
       maxToolRetries: 1,
+      maxConcurrent: 4,
       runTimeoutMs: 1800000,
       defaultTimeoutMs: 15000,
       maxIdenticalCalls: 3,
@@ -288,7 +299,7 @@ export const FALLBACK_SETTINGS = {
     minPriority: 0.3
   },
   model: {
-    activeProvider: "deepseek",
-    providers: structuredClone(PROVIDERS)
+    activeProvider: "",
+    providers: {}
   }
 };
