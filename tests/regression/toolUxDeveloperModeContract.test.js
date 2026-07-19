@@ -27,11 +27,14 @@ describe(
         const panel = read(
           "../../src/Setting/panels/ToolPanel.jsx"
         );
+        const workspacePanel = read(
+          "../../src/Setting/panels/WorkContextPanel.jsx"
+        );
 
-        assert.match(panel, /TOOL_MODE_OPTIONS/u);
-        assert.match(panel, /Chat/u);
-        assert.match(panel, /Coding/u);
-        assert.match(panel, /添加工作区/u);
+        assert.match(workspacePanel, /TOOL_MODE_OPTIONS/u);
+        assert.match(workspacePanel, /Chat/u);
+        assert.match(workspacePanel, /Coding/u);
+        assert.match(workspacePanel, /添加工作区/u);
         assert.doesNotMatch(panel, /展示层级|活动显示/u);
         assert.doesNotMatch(panel, /tool-display-detail/u);
         assert.doesNotMatch(

@@ -38,6 +38,10 @@ import {
   registerWindowIpc
 } from "./handlers/windowIpc.js";
 
+import {
+  registerWorkspaceIpc
+} from "./handlers/workspaceIpc.js";
+
 let registered = false;
 
 export function registerIpcHandlers() {
@@ -55,6 +59,7 @@ export function registerIpcHandlers() {
   registerResponseIpc();
   registerSettingIpc();
   registerSettingsIpc();
+  registerWorkspaceIpc();
   registerSecurityIpc();
   registerWindowIpc();
 }

@@ -95,6 +95,9 @@ const IPC_CHANNELS =
       CREATE:
         "conversation-create",
 
+      SWITCH_WORKSPACE:
+        "conversation-switch-workspace",
+
       SELECT:
         "conversation-select",
 
@@ -153,6 +156,17 @@ const IPC_CHANNELS =
     security: Object.freeze({
       OPEN_EXTERNAL_URL:
         "security-open-external-url"
+    }),
+
+    workspace: Object.freeze({
+      LIST:
+        "workspace-list",
+
+      REGISTER:
+        "workspace-register",
+
+      REMOVE:
+        "workspace-remove"
     }),
 
     settings: Object.freeze({

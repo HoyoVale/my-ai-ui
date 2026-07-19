@@ -144,6 +144,12 @@ export function createCheckpointContinuationState(
       checkpoint.goalId || checkpoint.taskId || ""
     ),
     taskId: String(checkpoint.taskId || ""),
+    workspaceId: String(checkpoint.workspaceId || ""),
+    workspaceSnapshot:
+      checkpoint.workspaceSnapshot &&
+      typeof checkpoint.workspaceSnapshot === "object"
+        ? structuredClone(checkpoint.workspaceSnapshot)
+        : null,
     parentRunId: String(checkpoint.runId || ""),
     resumedFromMessageId: String(
       continuation?.messageId || checkpoint.messageId || ""

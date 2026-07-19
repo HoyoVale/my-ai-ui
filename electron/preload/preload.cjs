@@ -94,6 +94,9 @@ const CHANNELS = Object.freeze({
   CONVERSATION_CREATE:
     "conversation-create",
 
+  CONVERSATION_SWITCH_WORKSPACE:
+    "conversation-switch-workspace",
+
   CONVERSATION_SELECT:
     "conversation-select",
 
@@ -121,6 +124,15 @@ const CHANNELS = Object.freeze({
 
   CONVERSATION_CHANGED:
     "conversation-changed",
+
+  WORKSPACE_LIST:
+    "workspace-list",
+
+  WORKSPACE_REGISTER:
+    "workspace-register",
+
+  WORKSPACE_REMOVE:
+    "workspace-remove",
 
   MEMORY_GET_STATE:
     "memory-get-state",
@@ -488,10 +500,26 @@ const api = Object.freeze({
     );
   },
 
-  createConversation: () => {
+  createConversation: (input = {}) => {
     return ipcRenderer.invoke(
       CHANNELS
-        .CONVERSATION_CREATE
+        .CONVERSATION_CREATE,
+      {
+        workspaceId:
+          input?.workspaceId === null
+            ? null
+            : String(input?.workspaceId ?? "")
+      }
+    );
+  },
+
+  switchConversationWorkspace: (workspaceId = null) => {
+    return ipcRenderer.invoke(
+      CHANNELS
+        .CONVERSATION_SWITCH_WORKSPACE,
+      workspaceId === null
+        ? null
+        : String(workspaceId ?? "")
     );
   },
 
@@ -600,6 +628,28 @@ const api = Object.freeze({
 
       callback,
       (state) => state
+    );
+  },
+
+  listWorkspaces: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.WORKSPACE_LIST
+    );
+  },
+
+  registerWorkspace: (rootPath) => {
+    return ipcRenderer.invoke(
+      CHANNELS.WORKSPACE_REGISTER,
+      {
+        rootPath: String(rootPath ?? "")
+      }
+    );
+  },
+
+  removeWorkspace: (workspaceId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.WORKSPACE_REMOVE,
+      String(workspaceId ?? "")
     );
   },
 

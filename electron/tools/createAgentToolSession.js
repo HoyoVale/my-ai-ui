@@ -66,6 +66,7 @@ export function createAgentToolSession({
   initialPlan = [],
   resultStoreDirectory = "",
   taskId = "",
+  workspaceId = "",
   segmentId = ""
 } = {}) {
   const planStore =
@@ -80,6 +81,7 @@ export function createAgentToolSession({
       storageDirectory:
         resultStoreDirectory,
       taskId,
+      workspaceId,
       segmentId: getSegmentId ? "" : segmentId
     });
   const toolSettings =
@@ -163,6 +165,7 @@ export function createAgentToolSession({
       context: {
         abortSignal,
         taskId,
+        workspaceId,
         segmentId,
         mode: "interactive"
       },

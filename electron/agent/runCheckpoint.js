@@ -96,6 +96,8 @@ function compactToolRecords(
 export function createRunCheckpoint({
   goalId = "",
   taskId = "",
+  workspaceId = "",
+  workspaceSnapshot = null,
   runId = "",
   parentRunId = "",
   messageId = "",
@@ -143,6 +145,11 @@ export function createRunCheckpoint({
     version: 1,
     goalId: text(goalId, 120),
     taskId: text(taskId, 120),
+    workspaceId: text(workspaceId, 120),
+    workspaceSnapshot:
+      workspaceSnapshot && typeof workspaceSnapshot === "object"
+        ? structuredClone(workspaceSnapshot)
+        : null,
     runId: text(runId, 120),
     parentRunId: text(parentRunId, 120),
     messageId: text(messageId, 120),

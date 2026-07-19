@@ -94,6 +94,29 @@ export default function Conversation() {
   const [query, setQuery] =
     useState("");
 
+  const [workspaceScope, setWorkspaceScope] =
+    useState("all");
+
+  const workspaces =
+    Array.isArray(settings.workspaces?.items)
+      ? settings.workspaces.items
+      : [];
+
+  const currentConversationId =
+    history.current?.id ?? "";
+  const currentWorkspaceId =
+    history.current?.workspaceId ?? "";
+
+  useEffect(() => {
+    if (!currentConversationId) {
+      return;
+    }
+
+    setWorkspaceScope(
+      currentWorkspaceId || "none"
+    );
+  }, [currentConversationId, currentWorkspaceId]);
+
   const filteredConversations =
     useMemo(
       () => {
@@ -102,28 +125,35 @@ export default function Conversation() {
             .trim()
             .toLowerCase();
 
-        if (!normalized) {
-          return history
-            .conversations;
-        }
-
         return history
           .conversations
-          .filter(
-            (conversation) => {
-              return String(
-                conversation.title ?? ""
-              )
-                .toLowerCase()
-                .includes(
-                  normalized
-                );
+          .filter((conversation) => {
+            if (workspaceScope === "all") {
+              return true;
             }
-          );
+
+            if (workspaceScope === "none") {
+              return !conversation.workspaceId;
+            }
+
+            return conversation.workspaceId === workspaceScope;
+          })
+          .filter((conversation) => {
+            if (!normalized) {
+              return true;
+            }
+
+            return String(
+              conversation.title ?? ""
+            )
+              .toLowerCase()
+              .includes(normalized);
+          });
       },
       [
         history.conversations,
-        query
+        query,
+        workspaceScope
       ]
     );
 
@@ -131,7 +161,7 @@ export default function Conversation() {
     setTaskOpen(false);
     setTaskTargetMessageId(null);
   }, [
-    history.current?.id
+    currentConversationId
   ]);
 
   const rootClassName =
@@ -251,7 +281,14 @@ export default function Conversation() {
           );
         }}
         onCreate={() => {
-          void history.create();
+          const workspaceId =
+            workspaceScope === "all"
+              ? history.current?.workspaceId ?? null
+              : workspaceScope === "none"
+                ? null
+                : workspaceScope;
+
+          void history.create(workspaceId);
         }}
         onOpenInput={openInput}
         onMinimize={() => {
@@ -273,6 +310,21 @@ export default function Conversation() {
           conversations={
             filteredConversations
           }
+          workspaces={workspaces}
+          workspaceScope={workspaceScope}
+          onWorkspaceScopeChange={(nextScope) => {
+            setWorkspaceScope(nextScope);
+
+            if (nextScope === "all") {
+              return;
+            }
+
+            void history.switchWorkspace(
+              nextScope === "none"
+                ? null
+                : nextScope
+            );
+          }}
           currentConversationId={
             history.state
               .currentConversationId

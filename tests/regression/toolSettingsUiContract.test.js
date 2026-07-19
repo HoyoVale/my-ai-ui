@@ -30,13 +30,16 @@ describe(
         const panel = read(
           "../../src/Setting/panels/ToolPanel.jsx"
         );
+        const workspacePanel = read(
+          "../../src/Setting/panels/WorkContextPanel.jsx"
+        );
 
         assert.match(
           tabs,
           /id: "tools"/u
         );
         assert.match(
-          panel,
+          workspacePanel,
           /TOOL_MODE_OPTIONS/u
         );
         assert.match(
@@ -48,7 +51,7 @@ describe(
           /单个工具/u
         );
         assert.match(
-          panel,
+          workspacePanel,
           /selectWorkspaceDirectory/u
         );
       }

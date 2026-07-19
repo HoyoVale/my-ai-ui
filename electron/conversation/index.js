@@ -20,6 +20,11 @@ import {
   ConversationStore
 } from "./ConversationStore.js";
 
+import {
+  createWorkspaceSnapshot,
+  getWorkspaceById
+} from "../workspace/workspaceRegistry.js";
+
 function broadcastState(
   state
 ) {
@@ -64,6 +69,8 @@ export const conversationManager =
   new ConversationManager({
     store,
     getSettings,
+    getWorkspaceById,
+    createWorkspaceSnapshot,
     onChange:
       broadcastState
   });

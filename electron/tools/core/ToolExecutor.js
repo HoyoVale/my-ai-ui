@@ -259,6 +259,7 @@ export class ToolExecutor {
       maxPerBatch: maxToolCallsPerBatch
     });
     this.eventStore = eventStore ?? new ToolEventStore();
+    this.callSequence = 0;
   }
 
   beginStep({
@@ -376,7 +377,8 @@ export class ToolExecutor {
 
   async execute(definition, input, options = {}) {
     const id = String(
-      options.toolCallId ?? `${definition.name}-${Date.now()}`
+      options.toolCallId ??
+        `${definition.name}-${Date.now()}-${++this.callSequence}`
     );
     const queuedAt = Date.now();
     let recordMetadata = options.metadata ?? {};

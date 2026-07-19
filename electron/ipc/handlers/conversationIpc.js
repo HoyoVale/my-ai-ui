@@ -96,7 +96,7 @@ export function registerConversationIpc() {
     IPC_CHANNELS
       .conversation
       .CREATE,
-    () => {
+    (_event, input = {}) => {
       const busy =
         rejectWhenBusy();
 
@@ -104,9 +104,24 @@ export function registerConversationIpc() {
         return busy;
       }
 
-      const conversation =
-        conversationManager
-          .create();
+      let conversation;
+
+      try {
+        conversation = conversationManager.create({
+          workspaceId:
+            input.workspaceId === null
+              ? null
+              : input.workspaceId || undefined
+        });
+      } catch (error) {
+        return {
+          ok: false,
+          code: error?.code ?? "conversation-create-failed",
+          message: error instanceof Error
+            ? error.message
+            : "无法创建会话。"
+        };
+      }
 
       clearResponseWindow();
 
@@ -114,6 +129,34 @@ export function registerConversationIpc() {
         ok: true,
         conversation
       };
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS
+      .conversation
+      .SWITCH_WORKSPACE,
+    (_event, workspaceId) => {
+      const busy =
+        rejectWhenBusy();
+
+      if (busy) {
+        return busy;
+      }
+
+      const result =
+        conversationManager
+          .switchWorkspace(
+            workspaceId === null
+              ? null
+              : String(workspaceId ?? "")
+          );
+
+      if (result.ok) {
+        clearResponseWindow();
+      }
+
+      return result;
     }
   );
 

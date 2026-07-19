@@ -24,6 +24,10 @@ import {
 } from "../settings/settingsStore.js";
 
 import {
+  bindSettingsToConversationWorkspace
+} from "../workspace/workspaceRegistry.js";
+
+import {
   memoryManager
 } from "../memory/index.js";
 
@@ -404,6 +408,10 @@ export class AgentRuntime {
 
     return createRunCheckpoint({
       taskId: this.activeRun.taskId,
+      workspaceId:
+        this.activeRun.workspaceId ?? "",
+      workspaceSnapshot:
+        this.activeRun.workspaceSnapshot ?? null,
       goalId: this.activeRun.goalId,
       runId: this.activeRun.runId,
       parentRunId:
@@ -682,6 +690,8 @@ export class AgentRuntime {
     let conversation;
     let memories;
     let context;
+    let runSettings;
+    let activeWorkspace = null;
     let checkpointContinuation = null;
     let continuationState = null;
 
@@ -733,10 +743,17 @@ export class AgentRuntime {
           query: message
         });
 
+      const binding =
+        bindSettingsToConversationWorkspace(
+          getSettings(),
+          conversation
+        );
+      runSettings = binding.settings;
+      activeWorkspace = binding.workspace;
+
       context =
         assembleAgentContext({
-          settings:
-            getSettings(),
+          settings: runSettings,
           conversation,
           memories
         });
@@ -811,6 +828,11 @@ export class AgentRuntime {
       orchestrator: null,
       currentSegmentId: "",
       taskId,
+      workspaceId:
+        conversation.workspaceId ?? null,
+      workspaceSnapshot:
+        conversation.workspaceSnapshot ?? null,
+      activeWorkspace,
       conversationId:
         conversation.id,
       abortController,
@@ -851,6 +873,7 @@ export class AgentRuntime {
         conversation.id,
       context,
       memories,
+      settings: runSettings,
       abortController
     };
 
@@ -906,6 +929,8 @@ export class AgentRuntime {
     let plan;
     let memories;
     let context;
+    let runSettings;
+    let activeWorkspace = null;
 
     try {
       plan =
@@ -932,10 +957,17 @@ export class AgentRuntime {
               .content
         });
 
+      const binding =
+        bindSettingsToConversationWorkspace(
+          getSettings(),
+          plan.conversation
+        );
+      runSettings = binding.settings;
+      activeWorkspace = binding.workspace;
+
       context =
         assembleAgentContext({
-          settings:
-            getSettings(),
+          settings: runSettings,
           conversation:
             plan.conversation,
           memories
@@ -990,6 +1022,11 @@ export class AgentRuntime {
       orchestrator: null,
       currentSegmentId: "",
       taskId,
+      workspaceId:
+        plan.conversation.workspaceId ?? null,
+      workspaceSnapshot:
+        plan.conversation.workspaceSnapshot ?? null,
+      activeWorkspace,
       conversationId:
         plan.conversation.id,
       abortController,
@@ -1028,6 +1065,7 @@ export class AgentRuntime {
         plan.conversation.id,
       context,
       memories,
+      settings: runSettings,
       abortController
     };
 
@@ -1863,15 +1901,16 @@ export class AgentRuntime {
     runId,
     conversationId,
     context,
+    settings,
     abortController
   }) {
     try {
-      const settings = getSettings();
+      const runSettings = settings ?? getSettings();
       const modelSettings = resolveActiveModelSettings(
-        settings.model
+        runSettings.model
       );
       const runtime = createModelRuntime(modelSettings);
-      const runtimeSettings = settings.tools?.runtime ?? {};
+      const runtimeSettings = runSettings.tools?.runtime ?? {};
       const orchestrator = new LongTaskOrchestrator({
         goalId: this.activeRun.goalId,
         taskId: this.activeRun.taskId,
@@ -1910,19 +1949,21 @@ export class AgentRuntime {
           });
         },
         activityStore: this.activeRun.activityStore,
-        settings,
+        settings: runSettings,
         initialPlan: this.activeRun.initialPlan,
         resultStoreDirectory: getTaskResultDirectory(
           this.activeRun.taskId
         ),
         taskId: this.activeRun.taskId,
+        workspaceId:
+          this.activeRun.workspaceId ?? "",
         getSegmentId: () => orchestrator.currentSegmentId(),
         segmentId: runId
       });
 
       this.activeRun.toolSession = toolSession;
       const activeCapabilityContext = buildCapabilityContext({
-        toolSettings: settings.tools,
+        toolSettings: runSettings.tools,
         toolManifest: toolSession.registryManifest
       });
       const activePromptSections =

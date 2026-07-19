@@ -51,6 +51,10 @@ import {
   ToolPanel
 } from "../panels/ToolPanel.jsx";
 
+import {
+  WorkContextPanel
+} from "../panels/WorkContextPanel.jsx";
+
 export function SettingsContent({
   activeTab,
   settings,
@@ -139,6 +143,18 @@ export function SettingsContent({
       />
     ),
 
+
+    workspace: (
+      <WorkContextPanel
+        settings={settings}
+        onUpdateTools={(patch) => {
+          onUpdateSection(
+            "tools",
+            patch
+          );
+        }}
+      />
+    ),
 
     personality: (
       <PersonalityPanel

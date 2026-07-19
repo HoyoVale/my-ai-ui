@@ -4,6 +4,7 @@ import {
   buildShortTermContext
 } from "./contextBuilder.js";
 
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -32,6 +33,18 @@ export class ConversationManager {
     now = () => Date.now(),
     createId = () =>
       crypto.randomUUID(),
+    getWorkspaceById = () => null,
+    createWorkspaceSnapshot = (workspace) =>
+      workspace
+        ? {
+            id: String(workspace.id ?? ""),
+            name: String(workspace.name ?? "工作区"),
+            rootPath: String(workspace.rootPath ?? ""),
+            canonicalPath: String(
+              workspace.canonicalPath ?? workspace.rootPath ?? ""
+            )
+          }
+        : null,
     onChange = () => {}
   }) {
     if (!store) {
@@ -58,6 +71,14 @@ export class ConversationManager {
     this.now = now;
     this.createId =
       createId;
+    this.getWorkspaceById =
+      typeof getWorkspaceById === "function"
+        ? getWorkspaceById
+        : () => null;
+    this.createWorkspaceSnapshot =
+      typeof createWorkspaceSnapshot === "function"
+        ? createWorkspaceSnapshot
+        : () => null;
     this.onChange =
       onChange;
 
@@ -71,6 +92,48 @@ export class ConversationManager {
     }
 
     return this.data;
+  }
+
+  resolveWorkspaceBinding(workspaceId) {
+    const normalizedId =
+      workspaceId === null
+        ? null
+        : String(workspaceId ?? "").trim() || null;
+
+    if (!normalizedId) {
+      return {
+        workspaceId: null,
+        workspaceSnapshot: null
+      };
+    }
+
+    const workspace = this.getWorkspaceById(
+      normalizedId
+    );
+
+    if (!workspace) {
+      const error = new Error(
+        "工作区不存在或已被移除。"
+      );
+      error.code = "workspace-not-found";
+      throw error;
+    }
+
+    return {
+      workspaceId: workspace.id,
+      workspaceSnapshot:
+        this.createWorkspaceSnapshot(workspace)
+    };
+  }
+
+  currentWorkspaceId() {
+    const data = this.ensureLoaded();
+    const current = data.conversations.find(
+      (conversation) =>
+        conversation.id === data.currentConversationId
+    );
+
+    return current?.workspaceId ?? null;
   }
 
   getState() {
@@ -95,15 +158,30 @@ export class ConversationManager {
             )
           : null,
 
+      currentWorkspaceId:
+        current?.workspaceId ?? null,
+      currentWorkspace:
+        current?.workspaceSnapshot ?? null,
+
       totalConversations:
         data.conversations.length
     };
   }
 
-  list() {
+  list({ workspaceId } = {}) {
+    const hasFilter = workspaceId !== undefined;
+    const normalizedWorkspaceId =
+      workspaceId === null
+        ? null
+        : String(workspaceId ?? "").trim() || null;
+
     return this
       .ensureLoaded()
       .conversations
+      .filter((conversation) =>
+        !hasFilter ||
+        (conversation.workspaceId ?? null) === normalizedWorkspaceId
+      )
       .map((conversation) =>
         this.toSummary(
           conversation
@@ -146,16 +224,29 @@ export class ConversationManager {
   }
 
   create({
-    title = "新会话"
+    title = "新会话",
+    workspaceId = undefined
   } = {}) {
     const data =
       this.ensureLoaded();
+    const inheritedWorkspaceId =
+      workspaceId === undefined
+        ? this.currentWorkspaceId()
+        : workspaceId;
+    const binding =
+      this.resolveWorkspaceBinding(
+        inheritedWorkspaceId
+      );
 
     const timestamp =
       this.now();
 
     const conversation = {
       id: this.createId(),
+      workspaceId:
+        binding.workspaceId,
+      workspaceSnapshot:
+        binding.workspaceSnapshot,
       title:
         String(title)
           .trim()
@@ -181,6 +272,50 @@ export class ConversationManager {
     return clone(
       conversation
     );
+  }
+
+  switchWorkspace(workspaceId = null) {
+    const normalizedWorkspaceId =
+      workspaceId === null
+        ? null
+        : String(workspaceId ?? "").trim() || null;
+    const data = this.ensureLoaded();
+    const current = data.conversations.find(
+      (conversation) =>
+        conversation.id === data.currentConversationId
+    ) ?? null;
+
+    if (
+      current &&
+      (current.workspaceId ?? null) === normalizedWorkspaceId &&
+      current.messages.length === 0
+    ) {
+      return {
+        ok: true,
+        created: false,
+        conversation: current
+      };
+    }
+
+    try {
+      const conversation = this.create({
+        workspaceId: normalizedWorkspaceId
+      });
+
+      return {
+        ok: true,
+        created: true,
+        conversation
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        code: error?.code ?? "workspace-switch-failed",
+        message: error instanceof Error
+          ? error.message
+          : "无法切换工作区。"
+      };
+    }
   }
 
   rename({
@@ -1080,8 +1215,20 @@ export class ConversationManager {
         .messages
         .at(-1);
 
+    const liveWorkspace = this.getWorkspaceById(
+      conversation.workspaceId
+    );
+
     return {
       id: conversation.id,
+      workspaceId:
+        conversation.workspaceId ?? null,
+      workspaceSnapshot:
+        conversation.workspaceSnapshot ?? null,
+      workspaceAvailable:
+        conversation.workspaceId
+          ? Boolean(liveWorkspace && !liveWorkspace.missing)
+          : true,
       title: conversation.title,
       createdAt:
         conversation.createdAt,

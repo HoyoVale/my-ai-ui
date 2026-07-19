@@ -3001,3 +3001,45 @@
     margin-inline: 14px;
   }
 }
+
+/* Workspace registry */
+.workspace-registry-item {
+  align-items: center;
+}
+
+.workspace-registry-item__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-registry-item__copy strong {
+  color: var(--setting-text);
+  font-size: 13px;
+}
+
+.workspace-registry-item__copy code {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--setting-text-soft);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-inline-error {
+  margin: 0 20px 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #d92d3d 35%, var(--setting-border));
+  border-radius: 10px;
+  color: #d92d3d;
+  background: color-mix(in srgb, #d92d3d 7%, transparent);
+  font-size: 12px;
+}
+
+.settings-support-copy {
+  margin: 12px 20px 0;
+  color: var(--setting-text-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}

@@ -9,7 +9,7 @@ import {
   normalizeRunStopReason
 } from "../agent/runStopReasons.js";
 
-const STORE_VERSION = 11;
+const STORE_VERSION = 12;
 
 const MESSAGE_ROLES =
   new Set([
@@ -40,6 +40,51 @@ function stringValue(
     0,
     maxLength
   );
+}
+
+function nullableStringValue(
+  value,
+  maxLength = 120
+) {
+  const normalized = stringValue(
+    value,
+    "",
+    maxLength
+  ).trim();
+
+  return normalized || null;
+}
+
+function sanitizeWorkspaceSnapshot(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const id = nullableStringValue(source.id, 120);
+  const rootPath = stringValue(
+    source.rootPath ?? source.canonicalPath,
+    "",
+    2000
+  ).trim();
+
+  if (!id || !rootPath) {
+    return null;
+  }
+
+  return {
+    id,
+    name: stringValue(
+      source.name,
+      "工作区",
+      120
+    ).trim() || "工作区",
+    rootPath,
+    canonicalPath: stringValue(
+      source.canonicalPath,
+      rootPath,
+      2000
+    ).trim() || rootPath
+  };
 }
 
 function timestampValue(
@@ -463,8 +508,23 @@ export function sanitizeConversation(
       )
     );
 
+  const workspaceId = nullableStringValue(
+    source.workspaceId,
+    120
+  );
+  const workspaceSnapshot =
+    sanitizeWorkspaceSnapshot(
+      source.workspaceSnapshot
+    );
+
   return {
     id,
+
+    workspaceId,
+    workspaceSnapshot:
+      workspaceId && workspaceSnapshot?.id === workspaceId
+        ? workspaceSnapshot
+        : null,
 
     title:
       stringValue(

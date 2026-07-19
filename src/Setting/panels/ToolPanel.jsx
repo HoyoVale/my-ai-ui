@@ -1,20 +1,11 @@
 import {
-  useState
-} from "react";
-
-import {
-  ActionButton,
   SettingRow,
-  SettingsSection,
   Slider,
-  TextInput,
   Toggle,
-  Segmented,
   Select
 } from "../components/Controls.jsx";
 
 import {
-  TOOL_MODE_OPTIONS,
   TOOL_OVERRIDE_OPTIONS,
   TOOLSET_OPTIONS
 } from "../tools/toolPanelOptions.js";
@@ -27,32 +18,11 @@ function formatBytes(value) {
   return `${Math.round(value / 1000)} KB`;
 }
 
-function hasDeveloperOverrides(
-  settings
-) {
-  return [
-    ...Object.values(
-      settings.developer
-        ?.toolsetOverrides ?? {}
-    ),
-    ...Object.values(
-      settings.developer
-        ?.toolOverrides ?? {}
-    )
-  ].some(
-    (value) =>
-      value !== "inherit"
-  );
-}
-
 export function ToolPanel({
   settings,
   developerMode = false,
   onUpdate
 }) {
-  const [rootDraft, setRootDraft] =
-    useState("");
-
   const updateRuntime = (patch) => {
     onUpdate({
       runtime: {
@@ -80,149 +50,8 @@ export function ToolPanel({
     });
   };
 
-  const addRoot = (value) => {
-    const normalized =
-      String(value ?? "").trim();
-
-    if (!normalized) {
-      return;
-    }
-
-    updateWorkspace({
-      roots: [
-        ...new Set([
-          ...settings.workspace.roots,
-          normalized
-        ])
-      ]
-    });
-    setRootDraft("");
-  };
-
-  const browseRoot = async () => {
-    const result =
-      await window.api
-        ?.selectWorkspaceDirectory?.();
-
-    if (
-      result?.canceled ||
-      !result?.paths?.[0]
-    ) {
-      return;
-    }
-
-    addRoot(result.paths[0]);
-  };
-
-  const coding =
-    settings.mode === "coding";
-
   return (
     <>
-      <SettingsSection
-        title="工作模式"
-        description="选择 Agent 当前需要的能力范围。"
-      >
-        <div className="tool-mode-card">
-          <Segmented
-            value={settings.mode}
-            options={TOOL_MODE_OPTIONS}
-            testId="tool-mode"
-            onChange={(mode) => {
-              onUpdate({
-                mode,
-                profile:
-                  mode === "coding"
-                    ? "workspace"
-                    : "chat"
-              });
-            }}
-          />
-
-          <div
-            className="tool-mode-card__copy"
-            key={settings.mode}
-          >
-            <strong>
-              {coding
-                ? "分析授权项目"
-                : "聊天与通用任务"}
-            </strong>
-            <span>
-              {coding
-                ? "包含 Chat 能力，并允许读取和搜索授权工作区。"
-                : "用于时间、计算、规划和日常对话，不读取本地项目。"}
-            </span>
-          </div>
-
-          {hasDeveloperOverrides(settings) && (
-            <div className="tool-mode-card__notice">
-              开发者覆盖生效
-            </div>
-          )}
-        </div>
-      </SettingsSection>
-
-      <section
-        className={`tool-workspace-reveal${
-          coding
-            ? " is-visible"
-            : ""
-        }`}
-        aria-hidden={!coding}
-      >
-        <div className="tool-workspace-reveal__inner">
-          <SettingsSection
-            title="Coding 工作区"
-            description="Agent 只能读取你明确授权的目录。"
-          >
-            <div className="workspace-simple-list">
-              {settings.workspace.roots.length === 0 ? (
-                <div className="workspace-simple-list__empty">
-                  尚未添加工作区，文件工具不可用
-                </div>
-              ) : (
-                settings.workspace.roots.map(
-                  (root) => (
-                    <div
-                      className="workspace-simple-item"
-                      key={root}
-                    >
-                      <code title={root}>
-                        {root}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          updateWorkspace({
-                            roots:
-                              settings.workspace.roots.filter(
-                                (item) =>
-                                  item !== root
-                              )
-                          });
-                        }}
-                      >
-                        移除
-                      </button>
-                    </div>
-                  )
-                )
-              )}
-            </div>
-
-            <ActionButton
-              testId="add-workspace"
-              onClick={() => {
-                void browseRoot();
-              }}
-            >
-              添加工作区
-            </ActionButton>
-          </SettingsSection>
-        </div>
-      </section>
-
       {developerMode && (
         <div className="developer-reveal">
           <details
@@ -535,22 +364,6 @@ export function ToolPanel({
                 </summary>
 
                 <div className="developer-tool-list__body">
-                  <div className="workspace-developer-add">
-                    <TextInput
-                      value={rootDraft}
-                      placeholder="手动输入工作区路径"
-                      onChange={setRootDraft}
-                    />
-                    <ActionButton
-                      disabled={!rootDraft.trim()}
-                      onClick={() => {
-                        addRoot(rootDraft);
-                      }}
-                    >
-                      添加
-                    </ActionButton>
-                  </div>
-
                   <SettingRow title="文本文件上限">
                     <Slider
                       value={settings.workspace.maxTextFileBytes}

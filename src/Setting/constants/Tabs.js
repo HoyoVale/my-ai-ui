@@ -53,6 +53,13 @@ export const SETTING_GROUPS = [
     label: "AI",
     tabs: [
       {
+        id: "workspace",
+        label: "Workspace",
+        title: "工作上下文",
+        description:
+          "管理工作模式、注册工作区以及会话的项目归属。"
+      },
+      {
         id: "personality",
         label: "Personality",
         title: "个性",
@@ -78,7 +85,7 @@ export const SETTING_GROUPS = [
         label: "Tools",
         title: "工具",
         description:
-          "管理 Tool Runtime、只读工作区和低风险工具权限。"
+          "管理 Tool Runtime、工具权限和开发者执行边界。"
       },
       {
         id: "memory",

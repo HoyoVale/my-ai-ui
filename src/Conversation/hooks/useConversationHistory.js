@@ -7,6 +7,8 @@ import {
 const EMPTY_STATE = {
   currentConversationId: null,
   currentConversation: null,
+  currentWorkspaceId: null,
+  currentWorkspace: null,
   totalConversations: 0
 };
 
@@ -160,11 +162,22 @@ export function useConversationHistory() {
     error,
     refresh,
 
-    create: () =>
+    create: (workspaceId = undefined) =>
       runAction(
         () =>
           window.api
-            ?.createConversation?.()
+            ?.createConversation?.({
+              workspaceId
+            })
+      ),
+
+    switchWorkspace: (workspaceId = null) =>
+      runAction(
+        () =>
+          window.api
+            ?.switchConversationWorkspace?.(
+              workspaceId
+            )
       ),
 
     select: (conversationId) =>

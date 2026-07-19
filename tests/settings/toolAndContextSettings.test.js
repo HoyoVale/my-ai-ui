@@ -189,11 +189,20 @@ describe(
           false
         );
         assert.deepEqual(
-          settings.tools.workspace.roots,
+          settings.workspaces.items.map(
+            (workspace) => workspace.rootPath
+          ),
           [
             "C:\\Projects\\One",
             "D:\\Notes"
           ]
+        );
+        assert.equal(
+          Object.hasOwn(
+            settings.tools.workspace,
+            "roots"
+          ),
+          false
         );
         assert.equal(
           Object.hasOwn(

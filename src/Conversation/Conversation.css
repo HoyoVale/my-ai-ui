@@ -3530,3 +3530,60 @@ button.conversation-thinking-event:focus-visible > strong {
 .conversation-activity-plan__row.is-superseded {
   opacity: 0.55;
 }
+
+/* Workspace-scoped conversation navigation */
+.conversation-workspace-select {
+  display: grid;
+  gap: 5px;
+  margin: 0 2px 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--conversation-border);
+  border-radius: 10px;
+  color: var(--conversation-soft);
+  background: var(--conversation-surface);
+}
+
+.conversation-workspace-select > span {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.conversation-workspace-select select {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--conversation-text);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.conversation-workspace-select small {
+  color: var(--conversation-faint);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.conversation-workspace-group {
+  margin-bottom: 10px;
+}
+
+.conversation-workspace-group__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 5px;
+  color: var(--conversation-faint);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.conversation-workspace-group__title small {
+  font-size: 9px;
+  font-weight: 500;
+}

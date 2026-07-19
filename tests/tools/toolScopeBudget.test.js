@@ -105,4 +105,19 @@ describe("per-step and per-batch Tool boundaries", () => {
     assert.equal(second.ok, true);
     assert.equal(third.error.code, "TOOL_BATCH_LIMIT");
   });
+  it("creates unique fallback call ids for rapid sequential calls", async () => {
+    const executor = new ToolExecutor({
+      maxToolCalls: 100,
+      maxTotalToolCalls: 100
+    });
+
+    await executor.execute(definition(), { value: 1 });
+    await executor.execute(definition(), { value: 2 });
+    await executor.execute(definition(), { value: 3 });
+
+    const ids = executor.getRecords().map((record) => record.id);
+    assert.equal(ids.length, 3);
+    assert.equal(new Set(ids).size, 3);
+  });
+
 });

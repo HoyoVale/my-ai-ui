@@ -150,6 +150,7 @@ export class ToolResultStore {
     storageDirectory = "",
     retentionMs = 7 * 24 * 60 * 60 * 1000,
     taskId = "",
+    workspaceId = "",
     segmentId = "",
     redact = null
   } = {}) {
@@ -178,6 +179,7 @@ export class ToolResultStore {
     );
     this.owner = {
       taskId: String(taskId ?? ""),
+      workspaceId: String(workspaceId ?? ""),
       segmentId: String(segmentId ?? "")
     };
     this.redact =
@@ -270,6 +272,13 @@ export class ToolResultStore {
       return false;
     }
     if (
+      this.owner.workspaceId &&
+      owner.workspaceId &&
+      owner.workspaceId !== this.owner.workspaceId
+    ) {
+      return false;
+    }
+    if (
       this.owner.segmentId &&
       owner.segmentId &&
       owner.segmentId !== this.owner.segmentId
@@ -316,6 +325,7 @@ export class ToolResultStore {
       toolName = "tool",
       callId = "",
       taskId = this.owner.taskId,
+      workspaceId = this.owner.workspaceId,
       segmentId = this.owner.segmentId
     } = {}
   ) {
@@ -368,6 +378,7 @@ export class ToolResultStore {
       callId: String(callId ?? ""),
       owner: {
         taskId: String(taskId ?? ""),
+        workspaceId: String(workspaceId ?? ""),
         segmentId: String(segmentId ?? "")
       },
       text: storedText,

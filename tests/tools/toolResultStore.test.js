@@ -184,6 +184,47 @@ describe(
       }
     );
 
+
+    it(
+      "keeps persisted result references scoped to one workspace",
+      () => {
+        const directory = fs.mkdtempSync(
+          path.join(os.tmpdir(), "tool-result-workspace-")
+        );
+
+        try {
+          const firstStore = new ToolResultStore({
+            maxInlineBytes: 2000,
+            maxStoredBytes: 12000,
+            storageDirectory: directory,
+            taskId: "task-1",
+            workspaceId: "workspace-a"
+          });
+          const captured = firstStore.capture({
+            ok: true,
+            data: { text: "workspace".repeat(1000) }
+          });
+          const resultId = captured.result.reference.resultId;
+          const wrongWorkspace = new ToolResultStore({
+            maxInlineBytes: 2000,
+            maxStoredBytes: 12000,
+            storageDirectory: directory,
+            taskId: "task-1",
+            workspaceId: "workspace-b"
+          });
+          const rejected = wrongWorkspace.read(resultId);
+
+          assert.equal(rejected.ok, false);
+          assert.equal(
+            rejected.error.code,
+            "TOOL_RESULT_NOT_FOUND"
+          );
+        } finally {
+          fs.rmSync(directory, { recursive: true, force: true });
+        }
+      }
+    );
+
     it(
       "uses the same envelope for failures and cancellations",
       () => {

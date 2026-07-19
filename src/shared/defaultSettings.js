@@ -218,6 +218,9 @@ export const FALLBACK_SETTINGS = {
       toolDetail: "profile"
     }
   },
+  workspaces: {
+    items: []
+  },
   tools: {
     enabled: true,
     mode: "coding",
@@ -240,7 +243,6 @@ export const FALLBACK_SETTINGS = {
     },
     workspace: {
       enabled: true,
-      roots: [],
       maxTextFileBytes: 2000000,
       maxReadLines: 1000,
       maxDirectoryEntries: 200,

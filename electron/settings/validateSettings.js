@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   cloneDefaultSettings
 } from "./defaultSettings.js";
@@ -712,30 +714,6 @@ function sanitizeModelSettings(
   };
 }
 
-function stringArrayValue(
-  value,
-  fallback = [],
-  maxItems = 12,
-  maxLength = 500
-) {
-  if (!Array.isArray(value)) {
-    return [...fallback];
-  }
-
-  return [
-    ...new Set(
-      value
-        .slice(0, maxItems)
-        .map((item) =>
-          typeof item === "string"
-            ? item.trim().slice(0, maxLength)
-            : ""
-        )
-        .filter(Boolean)
-    )
-  ];
-}
-
 function sanitizeContextSettings(
   context,
   defaults
@@ -800,6 +778,102 @@ function sanitizeContextSettings(
       )
     }
   };
+}
+
+function normalizeWorkspacePath(value) {
+  const requested = String(value ?? "").trim();
+
+  if (/^[a-zA-Z]:[\\/]/u.test(requested)) {
+    return path.win32.normalize(requested);
+  }
+
+  return path.resolve(requested);
+}
+
+function workspaceBaseName(value) {
+  return /^[a-zA-Z]:[\\/]/u.test(String(value ?? ""))
+    ? path.win32.basename(String(value))
+    : path.basename(String(value));
+}
+
+function workspaceIdFromPath(rootPath) {
+  let hash = 2166136261;
+
+  for (const character of String(rootPath ?? "")) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return `workspace-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function sanitizeWorkspaceRegistry(
+  source,
+  legacyRoots = []
+) {
+  const candidates = Array.isArray(source?.items)
+    ? source.items
+    : [];
+  const migrated = candidates.length > 0
+    ? candidates
+    : (Array.isArray(legacyRoots) ? legacyRoots : []).map((rootPath) => ({
+        rootPath
+      }));
+  const seen = new Set();
+  const items = [];
+
+  for (const candidate of migrated) {
+    const requested = String(
+      typeof candidate === "string"
+        ? candidate
+        : candidate?.rootPath ?? candidate?.canonicalPath ?? ""
+    ).trim();
+
+    if (!requested) {
+      continue;
+    }
+
+    const rootPath = normalizeWorkspacePath(requested);
+    const comparable = process.platform === "win32"
+      ? rootPath.toLowerCase()
+      : rootPath;
+
+    if (seen.has(comparable)) {
+      continue;
+    }
+
+    seen.add(comparable);
+    const id = nonEmptyStringValue(
+      candidate?.id,
+      workspaceIdFromPath(comparable),
+      120
+    );
+    const createdAt = Math.max(
+      0,
+      Math.round(Number(candidate?.createdAt) || 0)
+    );
+    const lastOpenedAt = Math.max(
+      createdAt,
+      Math.round(Number(candidate?.lastOpenedAt) || createdAt)
+    );
+
+    items.push({
+      id,
+      name: nonEmptyStringValue(
+        candidate?.name,
+        workspaceBaseName(rootPath) || rootPath,
+        120
+      ),
+      rootPath,
+      canonicalPath: normalizeWorkspacePath(
+        candidate?.canonicalPath ?? rootPath
+      ),
+      createdAt,
+      lastOpenedAt
+    });
+  }
+
+  return { items };
 }
 
 function sanitizeToolSettings(
@@ -1005,10 +1079,6 @@ function sanitizeToolSettings(
     },
     workspace: {
       enabled: true,
-      roots: stringArrayValue(
-        workspace.roots,
-        defaults.workspace.roots
-      ),
       maxTextFileBytes: integerValue(
         workspace.maxTextFileBytes,
         defaults.workspace.maxTextFileBytes,
@@ -1077,6 +1147,8 @@ export function sanitizeSettings(
     source.context ?? {};
   const tools =
     source.tools ?? {};
+  const workspaces =
+    source.workspaces ?? {};
   const memory =
     source.memory ?? {};
   const model = source.model ?? {};
@@ -1370,6 +1442,10 @@ export function sanitizeSettings(
       defaults.context
     ),
 
+    workspaces: sanitizeWorkspaceRegistry(
+      workspaces,
+      tools?.workspace?.roots
+    ),
     tools: sanitizeToolSettings(
       tools,
       defaults.tools

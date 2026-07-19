@@ -36,7 +36,8 @@ class MemoryStore {
 
 function createManager({
   maxConversations = 100,
-  contextTurns = 8
+  contextTurns = 8,
+  workspaces = []
 } = {}) {
   let timestamp = 1000;
   let id = 0;
@@ -54,6 +55,18 @@ function createManager({
       id += 1;
       return `id-${id}`;
     },
+
+    getWorkspaceById: (workspaceId) =>
+      workspaces.find(
+        (workspace) => workspace.id === workspaceId
+      ) ?? null,
+
+    createWorkspaceSnapshot: (workspace) => ({
+      id: workspace.id,
+      name: workspace.name,
+      rootPath: workspace.rootPath,
+      canonicalPath: workspace.canonicalPath ?? workspace.rootPath
+    }),
 
     getSettings: () => ({
       conversation: {
@@ -572,6 +585,110 @@ describe(
         assert.equal(
           result.code,
           "not-latest-assistant-message"
+        );
+      }
+    );
+  }
+);
+
+
+describe(
+  "ConversationManager workspace binding",
+  () => {
+    const workspaces = [
+      {
+        id: "workspace-a",
+        name: "Project A",
+        rootPath: "/projects/a",
+        canonicalPath: "/projects/a"
+      },
+      {
+        id: "workspace-b",
+        name: "Project B",
+        rootPath: "/projects/b",
+        canonicalPath: "/projects/b"
+      }
+    ];
+
+    it(
+      "binds one workspace snapshot to a conversation and never mutates it when switching",
+      () => {
+        const manager = createManager({ workspaces });
+        const first = manager.create({
+          workspaceId: "workspace-a"
+        });
+
+        manager.appendMessage({
+          conversationId: first.id,
+          role: "user",
+          content: "Project A task"
+        });
+
+        const switched = manager.switchWorkspace(
+          "workspace-b"
+        );
+
+        assert.equal(switched.ok, true);
+        assert.equal(switched.created, true);
+        assert.notEqual(
+          switched.conversation.id,
+          first.id
+        );
+        assert.equal(
+          switched.conversation.workspaceId,
+          "workspace-b"
+        );
+        assert.equal(
+          manager.getConversation(first.id).workspaceId,
+          "workspace-a"
+        );
+        assert.equal(
+          manager.getConversation(first.id).workspaceSnapshot.name,
+          "Project A"
+        );
+      }
+    );
+
+    it(
+      "filters summaries by workspace and keeps no-workspace sessions separate",
+      () => {
+        const manager = createManager({ workspaces });
+        manager.create({
+          title: "A",
+          workspaceId: "workspace-a"
+        });
+        manager.create({
+          title: "None",
+          workspaceId: null
+        });
+        manager.create({
+          title: "B",
+          workspaceId: "workspace-b"
+        });
+
+        assert.deepEqual(
+          manager.list({ workspaceId: "workspace-a" })
+            .map((conversation) => conversation.title),
+          ["A"]
+        );
+        assert.deepEqual(
+          manager.list({ workspaceId: null })
+            .map((conversation) => conversation.title),
+          ["None"]
+        );
+      }
+    );
+
+    it(
+      "rejects binding a new conversation to an unknown workspace",
+      () => {
+        const manager = createManager({ workspaces });
+
+        assert.throws(
+          () => manager.create({
+            workspaceId: "missing"
+          }),
+          /工作区不存在/u
         );
       }
     );
