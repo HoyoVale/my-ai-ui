@@ -233,7 +233,9 @@ export class ToolResultStore {
     const memoryEntry = this.entries.get(id);
 
     if (memoryEntry) {
-      return memoryEntry;
+      return this.isOwnedByStore(memoryEntry)
+        ? memoryEntry
+        : null;
     }
 
     const filePath = this.entryPath(id);
@@ -264,28 +266,23 @@ export class ToolResultStore {
 
   isOwnedByStore(entry) {
     const owner = entry?.owner ?? {};
-    if (
-      this.owner.taskId &&
-      owner.taskId &&
-      owner.taskId !== this.owner.taskId
-    ) {
-      return false;
-    }
-    if (
-      this.owner.workspaceId &&
-      owner.workspaceId &&
-      owner.workspaceId !== this.owner.workspaceId
-    ) {
-      return false;
-    }
-    if (
-      this.owner.segmentId &&
-      owner.segmentId &&
-      owner.segmentId !== this.owner.segmentId
-    ) {
-      return false;
-    }
-    return true;
+    const matches = (expected, actual) =>
+      !expected || String(actual ?? "") === expected;
+
+    return (
+      matches(
+        this.owner.taskId,
+        owner.taskId
+      ) &&
+      matches(
+        this.owner.workspaceId,
+        owner.workspaceId
+      ) &&
+      matches(
+        this.owner.segmentId,
+        owner.segmentId
+      )
+    );
   }
 
   cleanupExpired(now = Date.now()) {
@@ -505,11 +502,13 @@ export class ToolResultStore {
 
     if (
       !entry ||
-      (taskId && entry.owner?.taskId && entry.owner.taskId !== taskId) ||
+      (
+        taskId &&
+        String(entry.owner?.taskId ?? "") !== String(taskId)
+      ) ||
       (
         segmentId &&
-        entry.owner?.segmentId &&
-        entry.owner.segmentId !== segmentId
+        String(entry.owner?.segmentId ?? "") !== String(segmentId)
       )
     ) {
       return {
@@ -568,15 +567,17 @@ export class ToolResultStore {
   }
 
   list() {
-    return [...this.entries.values()].map(
-      (entry) => ({
+    return [...this.entries.values()]
+      .filter((entry) =>
+        this.isOwnedByStore(entry)
+      )
+      .map((entry) => ({
         id: entry.id,
         toolName: entry.toolName,
         totalBytes: entry.totalBytes,
         storedBytes: entry.storedBytes,
         clipped: entry.clipped,
         createdAt: entry.createdAt
-      })
-    );
+      }));
   }
 }

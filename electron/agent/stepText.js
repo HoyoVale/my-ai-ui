@@ -24,7 +24,10 @@ export function classifyAgentStep(step = {}) {
       ? "commentary"
       : "final",
     text,
-    objective: inferStepObjective(toolCalls)
+    objective: inferStepObjective(toolCalls),
+    phase: hasToolCalls
+      ? "before_tools"
+      : "after_tools"
   };
 }
 

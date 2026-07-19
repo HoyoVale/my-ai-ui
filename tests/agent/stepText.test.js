@@ -29,6 +29,10 @@ describe("agent step text classification", () => {
       result.objective,
       "search_files、read_text_file"
     );
+    assert.equal(
+      result.phase,
+      "before_tools"
+    );
   });
 
   it("keeps a tool-free final step as the final assistant answer", () => {
@@ -40,5 +44,6 @@ describe("agent step text classification", () => {
 
     assert.equal(result.kind, "final");
     assert.equal(result.text, "The task is complete.");
+    assert.equal(result.phase, "after_tools");
   });
 });

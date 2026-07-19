@@ -132,6 +132,10 @@ import {
 } from "./finalizationBudget.js";
 
 import {
+  resolveActiveRunText
+} from "./activeRunText.js";
+
+import {
   SegmentExecutionLoop
 } from "./orchestration/SegmentExecutionLoop.js";
 
@@ -353,11 +357,9 @@ export class AgentRuntime {
           ?.activityStore
           ?.snapshot?.() ?? null,
       assistantText:
-        this.activeRun
-          ?.finalText ??
-        this.activeRun
-          ?.currentStepText ??
-        "",
+        resolveActiveRunText(
+          this.activeRun
+        ),
       liveStepText:
         this.activeRun
           ?.currentStepText ?? "",
@@ -527,7 +529,9 @@ export class AgentRuntime {
       conversationId:
         this.activeRun.conversationId,
       content:
-        this.activeRun.finalText ?? "",
+        resolveActiveRunText(
+          this.activeRun
+        ),
       status
     });
   }
@@ -584,8 +588,28 @@ export class AgentRuntime {
       content: run.finalText,
       status: state.messageStatus
     });
-    void run.toolSession
-      ?.closePersistence?.();
+    const closePersistence =
+      run.toolSession
+        ?.closePersistence?.();
+
+    if (closePersistence) {
+      void Promise.resolve(
+        closePersistence
+      )
+        .then((closed) => {
+          if (closed === false) {
+            console.warn(
+              "工具事件持久化仍有待写入数据，将在应用退出前重试。"
+            );
+          }
+        })
+        .catch((error) => {
+          console.warn(
+            "关闭工具事件持久化失败：",
+            error
+          );
+        });
+    }
 
     /*
      * Response 窗口需要在 activeRun 被释放前收到最后一份结构化快照。
@@ -639,7 +663,10 @@ export class AgentRuntime {
         .conversation
         .saveAbortedReplies;
     const content = savePartial
-      ? this.activeRun.finalText.trim()
+      ? resolveActiveRunText(
+          this.activeRun,
+          { trim: true }
+        )
       : "";
 
     this.finalizeRun({
@@ -1238,16 +1265,7 @@ export class AgentRuntime {
           content:
             classified.text,
           phase:
-            this.activeRun
-              .activityStore
-              ?.events
-              ?.some(
-                (event) =>
-                  event.type ===
-                    "tool"
-              )
-              ? "between_tools"
-              : "before_tools",
+            classified.phase,
           objective:
             classified.objective
         });
@@ -1255,6 +1273,11 @@ export class AgentRuntime {
       classified.kind ===
         "final"
     ) {
+      this.activeRun
+        .activityStore
+        ?.closeBatch(
+          "completed"
+        );
       this.activeRun.finalText =
         classified.text;
     }

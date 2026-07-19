@@ -6,6 +6,13 @@ function clone(value) {
   return structuredClone(value);
 }
 
+function reportPlanObserverError(error) {
+  console.warn(
+    "任务计划更新监听器执行失败：",
+    error
+  );
+}
+
 const PLAN_STATUSES = new Set([
   "pending",
   "in_progress",
@@ -173,10 +180,24 @@ export class RunPlanStore {
       changedAt: Date.now(),
       plan
     };
-    this.onChange?.(
-      plan,
-      clone(this.lastChange)
-    );
+    try {
+      const notification =
+        this.onChange?.(
+          plan,
+          clone(this.lastChange)
+        );
+
+      if (
+        notification &&
+        typeof notification.then === "function"
+      ) {
+        void notification.catch(
+          reportPlanObserverError
+        );
+      }
+    } catch (error) {
+      reportPlanObserverError(error);
+    }
 
     return plan;
   }

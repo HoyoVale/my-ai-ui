@@ -118,6 +118,13 @@ app.on(
     persistenceFlushInProgress = true;
 
     void flushAllPersistenceQueues()
+      .then((result) => {
+        if (!result.ok) {
+          console.warn(
+            `应用退出前仍有 ${result.pendingCount} 个持久化队列未写入。`
+          );
+        }
+      })
       .finally(() => {
         app.quit();
       });

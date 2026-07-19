@@ -226,6 +226,71 @@ describe(
     );
 
     it(
+      "rejects legacy unowned disk results from a scoped task",
+      () => {
+        const directory = fs.mkdtempSync(
+          path.join(os.tmpdir(), "tool-result-unowned-")
+        );
+
+        try {
+          const legacyStore = new ToolResultStore({
+            maxInlineBytes: 2000,
+            maxStoredBytes: 12000,
+            storageDirectory: directory
+          });
+          const captured = legacyStore.capture({
+            ok: true,
+            data: { text: "legacy".repeat(1000) }
+          });
+          const scopedStore = new ToolResultStore({
+            maxInlineBytes: 2000,
+            maxStoredBytes: 12000,
+            storageDirectory: directory,
+            taskId: "task-scoped",
+            workspaceId: "workspace-scoped"
+          });
+          const rejected = scopedStore.read(
+            captured.result.reference.resultId
+          );
+
+          assert.equal(rejected.ok, false);
+          assert.equal(
+            rejected.error.code,
+            "TOOL_RESULT_NOT_FOUND"
+          );
+        } finally {
+          fs.rmSync(directory, { recursive: true, force: true });
+        }
+      }
+    );
+
+    it(
+      "enforces workspace ownership for in-memory result entries",
+      () => {
+        const store = new ToolResultStore({
+          maxInlineBytes: 2000,
+          maxStoredBytes: 12000,
+          taskId: "task-1",
+          workspaceId: "workspace-a"
+        });
+        const captured = store.capture(
+          {
+            ok: true,
+            data: { text: "private".repeat(1000) }
+          },
+          {
+            taskId: "task-1",
+            workspaceId: "workspace-b"
+          }
+        );
+        const resultId = captured.result.reference.resultId;
+
+        assert.equal(store.read(resultId).ok, false);
+        assert.deepEqual(store.list(), []);
+      }
+    );
+
+    it(
       "uses the same envelope for failures and cancellations",
       () => {
         const store = new ToolResultStore();

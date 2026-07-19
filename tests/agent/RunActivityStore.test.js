@@ -112,3 +112,62 @@ describe("RunActivityStore", () => {
   });
 
 });
+
+describe("RunActivityStore commentary batches", () => {
+  it("does not suppress an identical before-tools update that starts a new batch", () => {
+    const store = new RunActivityStore({
+      taskId: "task-repeat",
+      runId: "run-repeat",
+      startedAt: 100
+    });
+
+    const first = store.recordCommentary({
+      content: "准备读取文件",
+      phase: "before_tools"
+    }, 110);
+    const second = store.recordCommentary({
+      content: "准备读取文件",
+      phase: "before_tools"
+    }, 120);
+    const snapshot = store.snapshot();
+    const batches = snapshot.events.filter(
+      (event) => event.type === "batch"
+    );
+    const commentary = snapshot.events.filter(
+      (event) => event.type === "commentary"
+    );
+
+    assert.notEqual(first.batchId, second.batchId);
+    assert.equal(batches.length, 2);
+    assert.equal(batches[0].status, "completed");
+    assert.equal(batches[1].status, "running");
+    assert.equal(commentary.length, 2);
+  });
+
+  it("closes the active batch even when an after-tools update is deduplicated", () => {
+    const store = new RunActivityStore({
+      taskId: "task-close",
+      runId: "run-close",
+      startedAt: 100
+    });
+
+    store.beginBatch("读取文件", 110);
+    store.recordCommentary({
+      content: "读取完成",
+      phase: "after_tools"
+    }, 120);
+    store.beginBatch("再次读取", 130);
+    store.recordCommentary({
+      content: "读取完成",
+      phase: "after_tools"
+    }, 140);
+
+    assert.equal(store.getActiveBatch(), null);
+    assert.equal(
+      store.snapshot().events.filter(
+        (event) => event.type === "commentary"
+      ).length,
+      2
+    );
+  });
+});

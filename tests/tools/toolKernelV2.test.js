@@ -355,6 +355,46 @@ describe("Tool Runtime Kernel v2", () => {
     );
   });
 
+  it("recovers valid JSONL events around a truncated record", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "tool-event-recovery-")
+    );
+    temporaryDirectories.push(directory);
+    const storageFile = path.join(directory, "events.jsonl");
+    fs.writeFileSync(
+      storageFile,
+      [
+        JSON.stringify({ sequence: 1, status: "queued" }),
+        "{\"sequence\":2",
+        JSON.stringify({ sequence: 3, status: "completed" }),
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...values) => {
+      warnings.push(values);
+    };
+
+    try {
+      const recovered = new ToolEventStore({ storageFile });
+
+      assert.deepEqual(
+        recovered.list().map((event) => event.status),
+        ["queued", "completed"]
+      );
+      assert.equal(
+        recovered.append({ status: "next" }).sequence,
+        4
+      );
+      assert.equal(warnings.length, 1);
+      await recovered.close();
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it("redacts audit event secrets before projection", () => {
     const events = new ToolEventStore();
     events.append({

@@ -120,17 +120,56 @@ export class AsyncPersistenceQueue {
 
   async close() {
     if (this.closed) {
-      return;
+      return true;
     }
 
     await this.flush();
+
+    if (this.hasPending) {
+      return false;
+    }
+
     this.closed = true;
     registeredQueues.delete(this);
+    return true;
   }
 }
 
-export async function flushAllPersistenceQueues() {
-  await Promise.allSettled(
-    [...registeredQueues].map((queue) => queue.flush())
+export async function flushAllPersistenceQueues({
+  maxAttempts = 3,
+  retryDelayMs = 50
+} = {}) {
+  const attempts = Math.max(
+    1,
+    Math.min(5, Math.round(Number(maxAttempts)) || 1)
   );
+  const delayMs = delayValue(retryDelayMs, 50);
+  let pendingQueues = [];
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const queues = [...registeredQueues];
+
+    await Promise.allSettled(
+      queues.map((queue) => queue.flush())
+    );
+
+    pendingQueues = queues.filter(
+      (queue) => queue.hasPending
+    );
+
+    if (pendingQueues.length === 0) {
+      break;
+    }
+
+    if (attempt < attempts && delayMs > 0) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, delayMs);
+      });
+    }
+  }
+
+  return {
+    ok: pendingQueues.length === 0,
+    pendingCount: pendingQueues.length
+  };
 }

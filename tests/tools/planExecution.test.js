@@ -161,3 +161,34 @@ describe("executable task plans", () => {
     );
   });
 });
+
+it("keeps an accepted plan update when its observer throws", () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...values) => {
+    warnings.push(values);
+  };
+
+  try {
+    const store = new RunPlanStore([], {
+      onChange: () => {
+        throw new Error("renderer disconnected");
+      }
+    });
+
+    const plan = store.update([
+      {
+        id: "one",
+        title: "Inspect",
+        status: "in_progress"
+      }
+    ]);
+
+    assert.equal(plan[0].status, "in_progress");
+    assert.equal(store.get()[0].id, "one");
+    assert.equal(store.getLastChange().revision, 1);
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.warn = originalWarn;
+  }
+});

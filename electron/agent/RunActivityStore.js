@@ -227,21 +227,6 @@ export class RunActivityStore {
       return null;
     }
 
-    const duplicate =
-      [...this.events]
-        .reverse()
-        .find(
-          (event) =>
-            event.type === "commentary"
-        );
-
-    if (
-      duplicate?.content ===
-        normalized
-    ) {
-      return duplicate;
-    }
-
     const normalizedPhase = commentaryPhase(phase);
     let batch = this.getActiveBatch();
 
@@ -249,6 +234,27 @@ export class RunActivityStore {
       batch = this.beginBatch(objective || normalized, timestamp);
     } else if (!batch && normalizedPhase !== "after_tools") {
       batch = this.beginBatch(objective || normalized, timestamp);
+    }
+
+    const duplicate =
+      [...this.events]
+        .reverse()
+        .find(
+          (event) =>
+            event.type === "commentary"
+        );
+    const batchId = batch?.id ?? "";
+    const isDuplicate =
+      duplicate?.content === normalized &&
+      duplicate?.phase === normalizedPhase &&
+      String(duplicate?.batchId ?? "") === batchId;
+
+    if (isDuplicate) {
+      if (normalizedPhase === "after_tools") {
+        this.closeBatch("completed", timestamp);
+      }
+
+      return duplicate;
     }
 
     this.commentaryRevision += 1;
@@ -259,7 +265,7 @@ export class RunActivityStore {
       title: objective || batch?.objective || "进度更新",
       content: normalized,
       phase: normalizedPhase,
-      batchId: batch?.id ?? "",
+      batchId,
       createdAt: timestamp,
       updatedAt: timestamp
     });

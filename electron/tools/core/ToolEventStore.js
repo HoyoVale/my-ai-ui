@@ -57,17 +57,51 @@ export class ToolEventStore {
     if (!this.storageFile || !fs.existsSync(this.storageFile)) {
       return;
     }
+
+    let skipped = 0;
+
     try {
-      for (const line of fs.readFileSync(this.storageFile, "utf8").split("\n")) {
+      const lines = fs
+        .readFileSync(this.storageFile, "utf8")
+        .split("\n");
+
+      for (const line of lines) {
         if (!line.trim()) {
           continue;
         }
-        const event = JSON.parse(line);
-        this.events.push(Object.freeze(event));
-        this.sequence = Math.max(this.sequence, Number(event.sequence) || 0);
+
+        try {
+          const event = JSON.parse(line);
+
+          if (!event || typeof event !== "object") {
+            skipped += 1;
+            continue;
+          }
+
+          this.events.push(
+            Object.freeze(event)
+          );
+          this.sequence = Math.max(
+            this.sequence,
+            Number(event.sequence) || 0
+          );
+        } catch {
+          /*
+           * JSONL 最后一行可能在应用异常退出时只写入了一部分。
+           * 跳过单条损坏记录，保留其余已经落盘的工具生命周期。
+           */
+          skipped += 1;
+        }
       }
     } catch (error) {
       console.warn("无法恢复工具事件日志：", error);
+      return;
+    }
+
+    if (skipped > 0) {
+      console.warn(
+        `恢复工具事件日志时忽略了 ${skipped} 条损坏记录。`
+      );
     }
   }
 

@@ -6,7 +6,8 @@ import {
 import assert from "node:assert/strict";
 
 import {
-  AsyncPersistenceQueue
+  AsyncPersistenceQueue,
+  flushAllPersistenceQueues
 } from "../../electron/persistence/AsyncPersistenceQueue.js";
 
 describe("AsyncPersistenceQueue", () => {
@@ -58,4 +59,66 @@ describe("AsyncPersistenceQueue", () => {
     assert.deepEqual(writes, ["first", "second"]);
     await queue.close();
   });
+});
+
+it("keeps a failed final write pending until a later close succeeds", async () => {
+  const writes = [];
+  const errors = [];
+  let shouldFail = true;
+  const queue = new AsyncPersistenceQueue({
+    delayMs: 1000,
+    maxWriteRetries: 0,
+    onError: (error) => {
+      errors.push(error.message);
+    },
+    write: async (value) => {
+      if (shouldFail) {
+        throw new Error("disk unavailable");
+      }
+      writes.push(value);
+    }
+  });
+
+  queue.enqueue({ revision: 1 });
+
+  assert.equal(await queue.close(), false);
+  assert.deepEqual(errors, ["disk unavailable"]);
+  assert.deepEqual(writes, []);
+
+  shouldFail = false;
+
+  assert.equal(await queue.close(), true);
+  assert.deepEqual(writes, [{ revision: 1 }]);
+});
+
+
+it("retries temporarily failed queues during the global shutdown flush", async () => {
+  const writes = [];
+  let attempts = 0;
+  const queue = new AsyncPersistenceQueue({
+    delayMs: 1000,
+    maxWriteRetries: 0,
+    onError: () => {},
+    write: async (value) => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("temporary failure");
+      }
+      writes.push(value);
+    }
+  });
+
+  queue.enqueue("checkpoint");
+
+  const result = await flushAllPersistenceQueues({
+    maxAttempts: 2,
+    retryDelayMs: 0
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    pendingCount: 0
+  });
+  assert.deepEqual(writes, ["checkpoint"]);
+  assert.equal(await queue.close(), true);
 });
