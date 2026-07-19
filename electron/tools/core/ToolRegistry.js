@@ -1,3 +1,8 @@
+import {
+  normalizeToolRuntimeContract,
+  publicToolRuntimeContract
+} from "./ToolRuntimeContract.js";
+
 const TOOL_RISK_LEVELS = new Set([
   "none",
   "low",
@@ -36,6 +41,9 @@ function copyDefinition(definition) {
       retryOn: [
         ...(definition.retryPolicy?.retryOn ?? [])
       ]
+    },
+    runtimeContract: {
+      ...definition.runtimeContract
     }
   };
 }
@@ -200,6 +208,14 @@ function normalizeDefinition(
       : sideEffect === "none" && riskLevel === "none"
         ? "developer"
         : "normal";
+  const runtimeContract = normalizeToolRuntimeContract(
+    definition.runtimeContract ?? defaults.runtimeContract,
+    {
+      sideEffect,
+      idempotency,
+      timeoutMs: definition.timeoutMs ?? defaults.timeoutMs
+    }
+  );
 
   return {
     ...definition,
@@ -228,6 +244,7 @@ function normalizeDefinition(
     countsTowardLimit,
     countsTowardRepeatLimit,
     activityVisibility,
+    runtimeContract,
     timeoutMs:
       Number.isFinite(
         Number(definition.timeoutMs)
@@ -353,6 +370,10 @@ export class ToolRegistry {
         retryPolicy:
           cloneMetadata(
             definition.retryPolicy
+          ),
+        runtimeContract:
+          publicToolRuntimeContract(
+            definition.runtimeContract
           )
       })
     );
@@ -405,7 +426,10 @@ export class ToolRegistrySnapshot {
       countsTowardLimit: definition.countsTowardLimit,
       countsTowardRepeatLimit: definition.countsTowardRepeatLimit,
       activityVisibility: definition.activityVisibility,
-      retryPolicy: cloneMetadata(definition.retryPolicy)
+      retryPolicy: cloneMetadata(definition.retryPolicy),
+      runtimeContract: publicToolRuntimeContract(
+        definition.runtimeContract
+      )
     }));
   }
 }

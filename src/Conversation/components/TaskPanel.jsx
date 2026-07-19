@@ -57,7 +57,7 @@ function panelTimelineEvents(snapshot, developerMode = false) {
     }
 
     return developerMode ||
-      ["failed", "cancelled", "interrupted"].includes(event.status);
+      ["failed", "cancelled", "interrupted", "attention"].includes(event.status);
   });
 }
 
@@ -133,6 +133,29 @@ export function ConversationTaskPanel({
       </header>
 
       <div className="conversation-task-panel__scroll conversation-activity-panel__scroll">
+        {snapshot.runtimeRecovery?.unresolvedCount > 0 && (
+          <section
+            className="conversation-runtime-recovery"
+            data-testid="tool-runtime-recovery"
+          >
+            <span>
+              <ConversationIcon name="warning" size={15} />
+            </span>
+            <div>
+              <strong>
+                {snapshot.runtimeRecovery.needsConfirmation > 0
+                  ? "有工具操作需要确认"
+                  : "有工具操作需要核验"}
+              </strong>
+              <small>
+                {snapshot.runtimeRecovery.needsConfirmation > 0
+                  ? `${snapshot.runtimeRecovery.needsConfirmation} 个操作无法自动判断是否已经生效。`
+                  : `${snapshot.runtimeRecovery.needsReconciliation || snapshot.runtimeRecovery.unresolvedCount} 个操作需要先检查实际状态。`}
+              </small>
+            </div>
+          </section>
+        )}
+
         <section className="conversation-activity-section">
           <h2>思考</h2>
 
@@ -344,6 +367,14 @@ function DeveloperActivity({
         </div>
       </dl>
 
+      {snapshot.runtimeDiagnostics?.calls?.length > 0 && (
+        <RawDetail
+          title="Runtime recovery"
+          value={stringifyTaskValue(snapshot.runtimeDiagnostics)}
+          code
+        />
+      )}
+
       {snapshot.toolCalls.length > 0 && (
         <div className="conversation-developer-tool-list">
           {snapshot.toolCalls.map((toolCall) => {
@@ -422,6 +453,22 @@ function ToolDetails({ toolCall }) {
       <div className="conversation-task-raw-details">
         <RawDetail title="Tool" value={toolCall.name} />
         <RawDetail title="Batch" value={toolCall.batchId || "none"} />
+
+        {toolCall.runtime !== undefined && (
+          <RawDetail
+            title="Runtime state"
+            value={stringifyTaskValue(toolCall.runtime)}
+            code
+          />
+        )}
+
+        {toolCall.runtimeContract !== undefined && (
+          <RawDetail
+            title="Runtime contract"
+            value={stringifyTaskValue(toolCall.runtimeContract)}
+            code
+          />
+        )}
 
         {toolCall.input !== undefined && (
           <RawDetail

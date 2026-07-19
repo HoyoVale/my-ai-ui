@@ -171,3 +171,26 @@ describe("RunActivityStore commentary batches", () => {
     );
   });
 });
+
+it("RunActivityStore keeps a bounded live projection", () => {
+  const store = new RunActivityStore({
+    taskId: "task-bounded",
+    runId: "run-bounded",
+    maxEvents: 100
+  });
+
+  for (let index = 0; index < 140; index += 1) {
+    store.recordCommentary({
+      content: `进度 ${index}`,
+      phase: "between_tools"
+    });
+  }
+
+  const snapshot = store.snapshot();
+  assert.equal(snapshot.events.length <= 100, true);
+  assert.equal(snapshot.eventsOmitted > 0, true);
+  assert.equal(
+    snapshot.events.some((event) => event.id === "run:run-bounded"),
+    true
+  );
+});

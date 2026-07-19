@@ -61,6 +61,15 @@ function normalizeToolStatus(value) {
     return "failed";
   }
 
+  if ([
+    "unknown",
+    "needs_reconciliation",
+    "needs_confirmation",
+    "attention"
+  ].includes(value)) {
+    return "attention";
+  }
+
   return "completed";
 }
 
@@ -268,6 +277,8 @@ export function sanitizeActivityTool(
   const input = jsonValue(source.input, 24000);
   const output = jsonValue(source.output, 24000);
   const meta = jsonValue(source.meta, 8000);
+  const runtime = jsonValue(source.runtime, 8000);
+  const runtimeContract = jsonValue(source.runtimeContract, 4000);
   const result = sanitizeToolResult(
     source.result
   );
@@ -302,6 +313,14 @@ export function sanitizeActivityTool(
 
   if (meta !== undefined) {
     tool.meta = meta;
+  }
+
+  if (runtime !== undefined) {
+    tool.runtime = runtime;
+  }
+
+  if (runtimeContract !== undefined) {
+    tool.runtimeContract = runtimeContract;
   }
 
   if (result) {

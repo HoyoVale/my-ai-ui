@@ -38,6 +38,15 @@ function statusClass(status) {
     return "is-error";
   }
 
+  if ([
+    "attention",
+    "unknown",
+    "needs_reconciliation",
+    "needs_confirmation"
+  ].includes(status)) {
+    return "is-attention";
+  }
+
   if (["running", "queued", "retrying", "in_progress"].includes(status)) {
     return "is-running";
   }

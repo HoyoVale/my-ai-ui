@@ -17,6 +17,10 @@ import {
   shouldRetryToolError
 } from "./toolErrors.js";
 import {
+  isUnsafeToolEffect
+} from "./ToolRuntimeContract.js";
+
+import {
   isJsonSerializable,
   validateToolInput,
   validateToolOutput
@@ -230,7 +234,8 @@ export class ToolExecutor {
     maxToolCallsPerStep = 16,
     maxToolCallsPerBatch = 24,
     budget = null,
-    eventStore = null
+    eventStore = null,
+    executionLedger = null
   } = {}) {
     this.context = { ...context };
     this.onRecord = onRecord;
@@ -259,6 +264,7 @@ export class ToolExecutor {
       maxPerBatch: maxToolCallsPerBatch
     });
     this.eventStore = eventStore ?? new ToolEventStore();
+    this.executionLedger = executionLedger;
     this.callSequence = 0;
   }
 
@@ -402,6 +408,12 @@ export class ToolExecutor {
       source: definition.source,
       riskLevel: definition.riskLevel,
       sideEffect: definition.sideEffect,
+      runtimeContract: {
+        effect: definition.runtimeContract?.effect ?? "read",
+        retryMode: definition.runtimeContract?.retryMode ?? "safe",
+        supportsAbort: definition.runtimeContract?.supportsAbort === true,
+        supportsResume: definition.runtimeContract?.supportsResume === true
+      },
       countsTowardLimit:
         definition.countsTowardLimit !== false,
       countsTowardRepeatLimit:
@@ -420,7 +432,12 @@ export class ToolExecutor {
       endedAt: null,
       durationMs: 0,
       attempt: 0,
-      maxAttempts: 0
+      maxAttempts: 0,
+      runtime: {
+        state: "planned",
+        replayed: false,
+        recovery: "none"
+      }
     };
     const scopeCheck = this.scopeBudget.inspect({
       stepId:
@@ -457,10 +474,7 @@ export class ToolExecutor {
       }
 
       this.emit({ ...baseRecord, status: "queued" });
-      return this.finishRejected(
-        baseRecord,
-        scopedError
-      );
+      return this.finishRejected(baseRecord, scopedError);
     }
 
     this.emit({ ...baseRecord, status: "queued" });
@@ -549,7 +563,8 @@ export class ToolExecutor {
           version: definition.version ?? 1,
           source: definition.source ?? "builtin",
           riskLevel: definition.riskLevel ?? "none",
-          sideEffect: definition.sideEffect ?? "none"
+          sideEffect: definition.sideEffect ?? "none",
+          runtimeContract: definition.runtimeContract ?? null
         },
         input: validatedInput.value,
         taskId,
@@ -600,23 +615,174 @@ export class ToolExecutor {
       );
     }
 
+    let ledgerCall = null;
+    let effectiveIdempotencyKey = String(options.idempotencyKey ?? "");
+
+    if (this.executionLedger) {
+      let prepared;
+      try {
+        prepared = await this.executionLedger.prepare({
+          definition,
+          input: validatedInput.value,
+          callId: id,
+          segmentId,
+          explicitIdempotencyKey: effectiveIdempotencyKey
+        });
+      } catch (error) {
+        return this.finishRejected(
+          baseRecord,
+          createRuntimeError(
+            "TOOL_PREPARE_FAILED",
+            `无法持久化工具执行准备状态：${errorMessage(error)}`,
+            true,
+            TOOL_ERROR_TYPES.TEMPORARY_FAILURE,
+            "persistence"
+          )
+        );
+      }
+
+      if (prepared.replayed) {
+        const receipt = prepared.receipt;
+        const endedAt = Date.now();
+        const replayedRecord = {
+          ...baseRecord,
+          status: receipt.status === "success" ? "completed" :
+            receipt.status === "cancelled" ? "cancelled" : "failed",
+          output: receipt.output,
+          result: receipt.result,
+          startedAt: receipt.startedAt || endedAt,
+          endedAt,
+          durationMs: 0,
+          attempt: receipt.attempt || 1,
+          maxAttempts: receipt.attempt || 1,
+          runtime: {
+            state: "reported",
+            replayed: true,
+            recovery: "replay_receipt",
+            receiptId: receipt.receiptId,
+            checksum: receipt.checksum
+          }
+        };
+        this.emit(replayedRecord);
+        return structuredClone(receipt.output);
+      }
+
+      if (!prepared.ok) {
+        const needsConfirmation = prepared.code === "TOOL_CONFIRMATION_REQUIRED";
+        const output = createRuntimeError(
+          prepared.code,
+          needsConfirmation
+            ? "此前的写操作结果无法自动确认，需要用户确认后才能继续。"
+            : prepared.code === "TOOL_CALL_LEASED"
+              ? "该工具调用正在由另一个执行器处理。"
+              : "此前的写操作状态不确定，需要先核验实际结果。",
+          false,
+          TOOL_ERROR_TYPES.CONFLICT,
+          needsConfirmation ? "needs_confirmation" : "needs_reconciliation",
+          {
+            previousCallId: prepared.previousCall?.callId ?? "",
+            state: prepared.state ?? "",
+            lease: prepared.lease ?? null
+          }
+        );
+        this.emit({
+          ...baseRecord,
+          status: needsConfirmation ? "needs_confirmation" : "needs_reconciliation",
+          output,
+          lastError: output.error,
+          endedAt: Date.now(),
+          runtime: {
+            state: prepared.state ?? "needs_reconciliation",
+            replayed: false,
+            recovery: needsConfirmation
+              ? "needs_confirmation"
+              : "needs_reconciliation"
+          }
+        });
+        return output;
+      }
+
+      ledgerCall = prepared.call;
+      effectiveIdempotencyKey = ledgerCall.idempotencyKey || effectiveIdempotencyKey;
+      baseRecord.runtime = {
+        state: "prepared",
+        replayed: false,
+        recovery: "none",
+        idempotencyKey: effectiveIdempotencyKey,
+        leaseOwnerId: ledgerCall.lease?.ownerId ?? ""
+      };
+    }
+
     const scope = createAbortScope(this.context.abortSignal, timeoutMs);
     let release = null;
+    let heartbeatId = null;
     try {
       release = await this.concurrency.acquire(
         resolveConcurrencyKey(definition, validatedInput.value),
         scope.signal
       );
+      if (ledgerCall) {
+        ledgerCall = await this.executionLedger.markDispatched(
+          ledgerCall,
+          { dispatchedAt: Date.now() }
+        );
+        const heartbeatMs = Math.max(
+          1_000,
+          Number(definition.runtimeContract?.heartbeatMs) || 10_000
+        );
+        heartbeatId = setInterval(() => {
+          void this.executionLedger.heartbeat(ledgerCall).catch((error) => {
+            console.warn("工具 Lease 心跳更新失败：", error);
+          });
+        }, heartbeatMs);
+        heartbeatId.unref?.();
+      }
       this.budget.noteExecution();
       return await this.executeAuthorized(
         definition,
         validatedInput.value,
-        options,
+        {
+          ...options,
+          idempotencyKey: effectiveIdempotencyKey
+        },
         baseRecord,
-        scope.signal
+        scope.signal,
+        ledgerCall
       );
     } catch (error) {
       const classified = classifyToolError(error, { abortSignal: scope.signal });
+      if (ledgerCall && isUnsafeToolEffect(definition.runtimeContract)) {
+        try {
+          const unresolved = await this.executionLedger.markUnknown(
+            ledgerCall,
+            { reason: classified.message, error: classified }
+          );
+          const output = createRuntimeError(
+            "TOOL_EFFECT_UNKNOWN",
+            "工具执行器已停止等待，但写操作是否生效尚不确定。",
+            false,
+            TOOL_ERROR_TYPES.CONFLICT,
+            unresolved.state === "needs_confirmation"
+              ? "needs_confirmation"
+              : "needs_reconciliation"
+          );
+          this.emit({
+            ...baseRecord,
+            status: unresolved.state,
+            output,
+            lastError: output.error,
+            endedAt: Date.now(),
+            runtime: {
+              ...baseRecord.runtime,
+              state: unresolved.state,
+              recovery: unresolved.state
+            }
+          });
+          return output;
+        } catch (ledgerError) {
+          console.warn("无法记录不确定的工具副作用：", ledgerError);
+        }
+      }
       return this.finishRejected(
         baseRecord,
         createRuntimeError(
@@ -628,6 +794,9 @@ export class ToolExecutor {
         )
       );
     } finally {
+      if (heartbeatId) {
+        clearInterval(heartbeatId);
+      }
       release?.();
       scope.cleanup();
     }
@@ -638,7 +807,8 @@ export class ToolExecutor {
     input,
     options,
     baseRecord,
-    abortSignal
+    abortSignal,
+    ledgerCall = null
   ) {
     const retryPolicy = normalizedPolicy(
       definition,
@@ -649,13 +819,21 @@ export class ToolExecutor {
     let lastFailure = null;
 
     for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt += 1) {
+      if (ledgerCall) {
+        ledgerCall.attempt = attempt;
+      }
       this.emit({
         ...baseRecord,
         status: "running",
         startedAt,
         attempt,
         maxAttempts: retryPolicy.maxAttempts,
-        lastError: lastFailure
+        lastError: lastFailure,
+        runtime: {
+          ...baseRecord.runtime,
+          state: "dispatched",
+          attempt
+        }
       });
 
       try {
@@ -715,19 +893,27 @@ export class ToolExecutor {
               attempt,
               maxAttempts: retryPolicy.maxAttempts,
               lastError: output.error,
-              durationMs: Math.max(1, Date.now() - startedAt)
+              durationMs: Math.max(1, Date.now() - startedAt),
+              runtime: {
+                ...baseRecord.runtime,
+                state: "dispatched",
+                attempt,
+                recovery: "retrying"
+              }
             });
             await wait(retryPolicy.backoffMs * attempt, abortSignal);
             continue;
           }
 
-          return this.finishExecutionFailure(
+          return await this.finishExecutionFailure(
+            definition,
             baseRecord,
             output,
             startedAt,
             attempt,
             retryPolicy.maxAttempts,
-            classified.type === TOOL_ERROR_TYPES.CANCELLED
+            classified.type === TOOL_ERROR_TYPES.CANCELLED,
+            ledgerCall
           );
         }
 
@@ -760,12 +946,29 @@ export class ToolExecutor {
         const endedAt = Date.now();
         this.budget.noteOutput(captured.value);
 
+        let receipt = null;
+        if (ledgerCall) {
+          receipt = await this.executionLedger.storeReceipt(
+            ledgerCall,
+            {
+              status: "success",
+              output: captured.value,
+              result: captured.result,
+              attempt,
+              startedAt,
+              endedAt,
+              metadata: captured.meta
+            }
+          );
+        }
+
         try {
           await this.onExecutionComplete?.({
             definition,
             input,
             output: captured.value,
-            callId: baseRecord.id
+            callId: baseRecord.id,
+            receipt
           });
         } catch (error) {
           console.warn("工具完成回调执行失败：", error);
@@ -782,8 +985,20 @@ export class ToolExecutor {
           durationMs: Math.max(1, endedAt - startedAt),
           attempt,
           maxAttempts: retryPolicy.maxAttempts,
-          lastError: lastFailure
+          lastError: lastFailure,
+          runtime: {
+            ...baseRecord.runtime,
+            state: receipt ? "receipt_stored" : "completed",
+            replayed: false,
+            recovery: "none",
+            receiptId: receipt?.receiptId ?? "",
+            checksum: receipt?.checksum ?? ""
+          }
         });
+
+        if (ledgerCall && receipt) {
+          await this.executionLedger.markReported(ledgerCall, receipt);
+        }
         return captured.value;
       } catch (error) {
         const classified = classifyToolError(error, { abortSignal });
@@ -807,19 +1022,27 @@ export class ToolExecutor {
             attempt,
             maxAttempts: retryPolicy.maxAttempts,
             lastError: output.error,
-            durationMs: Math.max(1, Date.now() - startedAt)
+            durationMs: Math.max(1, Date.now() - startedAt),
+            runtime: {
+              ...baseRecord.runtime,
+              state: "dispatched",
+              attempt,
+              recovery: "retrying"
+            }
           });
           await wait(retryPolicy.backoffMs * attempt, abortSignal);
           continue;
         }
 
-        return this.finishExecutionFailure(
+        return await this.finishExecutionFailure(
+          definition,
           baseRecord,
           output,
           startedAt,
           attempt,
           retryPolicy.maxAttempts,
-          classified.type === TOOL_ERROR_TYPES.CANCELLED
+          classified.type === TOOL_ERROR_TYPES.CANCELLED,
+          ledgerCall
         );
       }
     }
@@ -827,13 +1050,15 @@ export class ToolExecutor {
     return createRuntimeError("TOOL_EXECUTION_FAILED", "工具执行失败。");
   }
 
-  finishExecutionFailure(
+  async finishExecutionFailure(
+    definition,
     baseRecord,
     output,
     startedAt,
     attempt,
     maxAttempts,
-    cancelled
+    cancelled,
+    ledgerCall = null
   ) {
     this.budget.noteOutput(output);
     const captured = this.captureFailure(output, {
@@ -844,6 +1069,74 @@ export class ToolExecutor {
       segmentId: baseRecord.segmentId
     });
     const endedAt = Date.now();
+
+    if (
+      ledgerCall &&
+      isUnsafeToolEffect(definition.runtimeContract) &&
+      ["cancelled", "timeout"].includes(output.error?.category)
+    ) {
+      await this.executionLedger.requestCancellation(
+        ledgerCall,
+        { reason: output.error?.code ?? "cancelled" }
+      );
+      const unresolved = await this.executionLedger.markUnknown(
+        ledgerCall,
+        {
+          reason: output.error?.message ?? "",
+          error: output.error
+        }
+      );
+      const needsConfirmation = unresolved.state === "needs_confirmation";
+      const uncertainOutput = createRuntimeError(
+        "TOOL_EFFECT_UNKNOWN",
+        needsConfirmation
+          ? "工具已停止等待，但该写操作无法自动确认，请由用户决定是否继续。"
+          : "工具已停止等待，但该写操作是否生效尚不确定，需要先核验实际状态。",
+        false,
+        TOOL_ERROR_TYPES.CONFLICT,
+        needsConfirmation ? "needs_confirmation" : "needs_reconciliation",
+        { originalError: output.error }
+      );
+      this.emit({
+        ...baseRecord,
+        status: unresolved.state,
+        output: uncertainOutput,
+        result: captured.result,
+        meta: { ...captured.meta, budget: this.budget.snapshot() },
+        startedAt,
+        endedAt,
+        durationMs: Math.max(1, endedAt - startedAt),
+        attempt,
+        maxAttempts,
+        lastError: uncertainOutput.error,
+        runtime: {
+          ...baseRecord.runtime,
+          state: unresolved.state,
+          recovery: needsConfirmation
+            ? "needs_confirmation"
+            : "needs_reconciliation"
+        }
+      });
+      return uncertainOutput;
+    }
+
+    let receipt = null;
+    if (ledgerCall) {
+      receipt = await this.executionLedger.markFailure(
+        ledgerCall,
+        {
+          status: cancelled ? "cancelled" : "error",
+          cancelled,
+          error: output.error,
+          output: captured.value,
+          result: captured.result,
+          startedAt,
+          endedAt,
+          metadata: captured.meta
+        }
+      );
+    }
+
     this.emit({
       ...baseRecord,
       status: cancelled ? "cancelled" : "failed",
@@ -855,8 +1148,19 @@ export class ToolExecutor {
       durationMs: Math.max(1, endedAt - startedAt),
       attempt,
       maxAttempts,
-      lastError: output.error
+      lastError: output.error,
+      runtime: {
+        ...baseRecord.runtime,
+        state: receipt ? "receipt_stored" : (cancelled ? "cancelled" : "failed"),
+        recovery: receipt ? "replay_receipt" : "none",
+        receiptId: receipt?.receiptId ?? "",
+        checksum: receipt?.checksum ?? ""
+      }
     });
+
+    if (ledgerCall && receipt) {
+      await this.executionLedger.markReported(ledgerCall, receipt);
+    }
     return output;
   }
 

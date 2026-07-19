@@ -788,3 +788,8 @@
     transform: rotate(360deg);
   }
 }
+
+.response-activity__event.is-attention .response-activity__mark,
+.response-activity__event.is-attention strong {
+  opacity: 0.9;
+}

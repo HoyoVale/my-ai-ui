@@ -31,10 +31,16 @@ export class ToolEventStore {
   constructor({
     storageFile = "",
     redact = null,
-    writeDelayMs = 50
+    writeDelayMs = 50,
+    maxMemoryEvents = 5000
   } = {}) {
     this.events = [];
     this.sequence = 0;
+    this.maxMemoryEvents = Math.max(
+      100,
+      Number(maxMemoryEvents) || 5000
+    );
+    this.omittedEvents = 0;
     this.storageFile = String(storageFile ?? "").trim();
     this.redact =
       typeof redact === "function"
@@ -51,6 +57,18 @@ export class ToolEventStore {
         })
       : null;
     this.load();
+  }
+
+  pruneMemory() {
+    const overflow =
+      this.events.length - this.maxMemoryEvents;
+
+    if (overflow <= 0) {
+      return;
+    }
+
+    this.events.splice(0, overflow);
+    this.omittedEvents += overflow;
   }
 
   load() {
@@ -85,6 +103,7 @@ export class ToolEventStore {
             this.sequence,
             Number(event.sequence) || 0
           );
+          this.pruneMemory();
         } catch {
           /*
            * JSONL 最后一行可能在应用异常退出时只写入了一部分。
@@ -151,12 +170,21 @@ export class ToolEventStore {
       timestamp: Number(event?.timestamp) || Date.now()
     });
     this.events.push(stored);
+    this.pruneMemory();
     this.persist(stored);
     return clone(stored);
   }
 
   list() {
     return this.events.map(clone);
+  }
+
+  getProjectionInfo() {
+    return {
+      retainedEvents: this.events.length,
+      omittedEvents: this.omittedEvents,
+      lastSequence: this.sequence
+    };
   }
 
   projectRecords() {

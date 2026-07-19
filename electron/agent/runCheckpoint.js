@@ -93,6 +93,39 @@ function compactToolRecords(
     }));
 }
 
+
+function compactToolRuntime(runtime) {
+  if (!runtime || typeof runtime !== "object") {
+    return null;
+  }
+
+  const calls = (Array.isArray(runtime.calls) ? runtime.calls : [])
+    .filter((call) =>
+      call?.hasReceipt ||
+      ["needs_confirmation", "needs_reconciliation"].includes(call?.recovery)
+    )
+    .slice(-20)
+    .map((call) => ({
+      callId: text(call?.callId, 120),
+      toolName: text(call?.toolName, 120),
+      state: text(call?.state, 60),
+      recovery: text(call?.recovery, 60),
+      effect: text(call?.effect, 40),
+      hasReceipt: call?.hasReceipt === true,
+      receiptId: text(call?.receiptId, 120)
+    }));
+
+  return {
+    version: Math.max(1, Number(runtime.version) || 1),
+    totalCalls: Math.max(0, Number(runtime.totalCalls) || 0),
+    receiptCount: Math.max(0, Number(runtime.receiptCount) || 0),
+    unresolvedCount: Math.max(0, Number(runtime.unresolvedCount) || 0),
+    needsConfirmation: Math.max(0, Number(runtime.needsConfirmation) || 0),
+    needsReconciliation: Math.max(0, Number(runtime.needsReconciliation) || 0),
+    calls
+  };
+}
+
 export function createRunCheckpoint({
   goalId = "",
   taskId = "",
@@ -117,6 +150,7 @@ export function createRunCheckpoint({
   continuationCount = 0,
   previousSegmentCount = 0,
   orchestration = null,
+  toolRuntime = null,
   updatedAt = Date.now()
 } = {}) {
   const compactedPlan =
@@ -145,7 +179,7 @@ export function createRunCheckpoint({
   };
 
   return {
-    version: 1,
+    version: 2,
     goalId: text(goalId, 120),
     taskId: text(taskId, 120),
     workspaceId: text(workspaceId, 120),
@@ -201,7 +235,8 @@ export function createRunCheckpoint({
     tools,
     orchestration:
       orchestration && typeof orchestration === "object"
-        ? structuredClone(orchestration) : null
+        ? structuredClone(orchestration) : null,
+    toolRuntime: compactToolRuntime(toolRuntime)
   };
 }
 
@@ -253,6 +288,9 @@ export function createCheckpointInstruction(
       : "",
     toolLines.length > 0
       ? "Recent tool results:\n" + toolLines.join("\n")
+      : "",
+    checkpoint.toolRuntime?.unresolvedCount > 0
+      ? `Unresolved tool effects: ${checkpoint.toolRuntime.unresolvedCount}. Do not repeat them automatically; request reconciliation or user confirmation as indicated by the saved state.`
       : "",
     "[Saved task state: data ends]"
   ].filter(Boolean).join("\n\n");

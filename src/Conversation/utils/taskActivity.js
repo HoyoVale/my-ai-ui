@@ -93,6 +93,15 @@ export function normalizeToolStatus(status) {
     return "error";
   }
 
+  if ([
+    "attention",
+    "unknown",
+    "needs_reconciliation",
+    "needs_confirmation"
+  ].includes(status)) {
+    return "attention";
+  }
+
   if (["queued"].includes(status)) {
     return "queued";
   }
@@ -119,6 +128,10 @@ export function toolStatusLabel(status) {
     return "等待中";
   }
 
+  if (normalized === "attention") {
+    return "需要处理";
+  }
+
   if (normalized === "running") {
     return "进行中";
   }
@@ -143,6 +156,10 @@ export function toolStatusMark(status) {
 
   if (["queued", "running", "retrying"].includes(normalized)) {
     return "";
+  }
+
+  if (normalized === "attention") {
+    return "!";
   }
 
   if (normalized === "aborted") {
@@ -211,6 +228,10 @@ function toolBatchStatus(events) {
     return "error";
   }
 
+  if (statuses.some((status) => status === "attention")) {
+    return "attention";
+  }
+
   if (statuses.some((status) => [
     "running",
     "retrying"
@@ -244,6 +265,10 @@ export function describeToolBatch(batch) {
     ).length;
 
     return `${count} 个工具中 ${failed} 个失败`;
+  }
+
+  if (status === "attention") {
+    return `${count} 个工具中有操作需要确认`;
   }
 
   if (["running", "queued"].includes(status)) {
@@ -660,6 +685,12 @@ export function createActivitySnapshot(
     lastSource?.status === "interrupted" ||
     lastSource?.activity?.status === "interrupted" ||
     stopReason === "interrupted";
+  const runtimeRecovery =
+    lastSource?.toolRuntime ??
+    lastSource?.activity?.checkpoint?.toolRuntime ??
+    null;
+  const runtimeDiagnostics =
+    lastSource?.toolRuntimeDiagnostics ?? null;
 
   return {
     source: lastSource,
@@ -683,6 +714,8 @@ export function createActivitySnapshot(
     batches,
     durationMs,
     stopReason,
+    runtimeRecovery,
+    runtimeDiagnostics,
     status:
       lastSource?.activity?.status ??
       (running ? "running" : "completed")

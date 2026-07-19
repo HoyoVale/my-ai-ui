@@ -34,6 +34,15 @@ function canonicalToolStatus(status) {
     return "failed";
   }
 
+  if ([
+    "unknown",
+    "needs_reconciliation",
+    "needs_confirmation",
+    "attention"
+  ].includes(status)) {
+    return "attention";
+  }
+
   return "completed";
 }
 
@@ -76,7 +85,8 @@ export class RunActivityStore {
   constructor({
     taskId,
     runId,
-    startedAt = Date.now()
+    startedAt = Date.now(),
+    maxEvents = 600
   } = {}) {
     this.taskId = String(taskId ?? runId ?? "");
     this.runId = String(runId ?? "");
@@ -88,6 +98,11 @@ export class RunActivityStore {
     this.stopReason = "";
     this.events = [];
     this.sequence = 0;
+    this.maxEvents = Math.max(
+      100,
+      Number(maxEvents) || 600
+    );
+    this.eventsOmitted = 0;
     this.planRevision = 0;
     this.commentaryRevision = 0;
     this.batchRevision = 0;
@@ -106,6 +121,61 @@ export class RunActivityStore {
       createdAt: this.startedAt,
       updatedAt: this.startedAt
     });
+  }
+
+  protectedEventIds() {
+    const ids = new Set([
+      `run:${this.runId || this.taskId}`
+    ]);
+
+    if (this.activeBatchId) {
+      ids.add(this.activeBatchId);
+    }
+
+    const latestPlan = [...this.events]
+      .reverse()
+      .find((event) => event.type === "plan");
+
+    if (latestPlan?.id) {
+      ids.add(latestPlan.id);
+    }
+
+    for (const event of this.events) {
+      const status = canonicalToolStatus(
+        event?.tool?.status ?? event?.status
+      );
+
+      if (
+        event.type === "tool" &&
+        ["queued", "running", "retrying", "attention"].includes(status)
+      ) {
+        ids.add(event.id);
+      }
+    }
+
+    return ids;
+  }
+
+  pruneEvents() {
+    while (this.events.length > this.maxEvents) {
+      const protectedIds = this.protectedEventIds();
+      let index = this.events.findIndex(
+        (event) => !protectedIds.has(event.id)
+      );
+
+      if (index < 0) {
+        index = this.events.findIndex(
+          (event) => !String(event.id).startsWith("run:")
+        );
+      }
+
+      if (index < 0) {
+        break;
+      }
+
+      this.events.splice(index, 1);
+      this.eventsOmitted += 1;
+    }
   }
 
   upsertEvent(event) {
@@ -138,6 +208,7 @@ export class RunActivityStore {
 
     this.sequence += 1;
     this.events.push(next);
+    this.pruneEvents();
 
     return clone(next);
   }
@@ -305,6 +376,14 @@ export class RunActivityStore {
         source: record.source,
         riskLevel: record.riskLevel,
         sideEffect: record.sideEffect,
+        runtimeContract:
+          record.runtimeContract === undefined
+            ? undefined
+            : clone(record.runtimeContract),
+        runtime:
+          record.runtime === undefined
+            ? undefined
+            : clone(record.runtime),
         countsTowardLimit:
           record.countsTowardLimit !== false,
         countsTowardRepeatLimit:
@@ -409,6 +488,49 @@ export class RunActivityStore {
       batchId: String(batchId || ""),
       category: "runtime",
       activityVisibility: "developer",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
+  }
+
+
+  recordRecovery(
+    recovery,
+    timestamp = Date.now()
+  ) {
+    const unresolved = Math.max(
+      0,
+      Number(recovery?.unresolvedCount) || 0
+    );
+
+    if (unresolved === 0) {
+      return null;
+    }
+
+    const needsConfirmation = Math.max(
+      0,
+      Number(recovery?.needsConfirmation) || 0
+    );
+    const needsReconciliation = Math.max(
+      0,
+      Number(recovery?.needsReconciliation) || 0
+    );
+    const title = needsConfirmation > 0
+      ? `有 ${needsConfirmation} 个工具操作需要确认`
+      : `有 ${needsReconciliation || unresolved} 个工具操作需要核验`;
+
+    return this.upsertEvent({
+      id: `recovery:${this.taskId}`,
+      type: "status",
+      status: "attention",
+      title,
+      category: "work",
+      activityVisibility: "normal",
+      recovery: {
+        unresolvedCount: unresolved,
+        needsConfirmation,
+        needsReconciliation
+      },
       createdAt: timestamp,
       updatedAt: timestamp
     });
@@ -519,6 +641,7 @@ export class RunActivityStore {
         this.checkpoint
           ? clone(this.checkpoint)
           : null,
+      eventsOmitted: this.eventsOmitted,
       events: clone(this.events)
     };
   }

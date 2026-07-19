@@ -25,6 +25,10 @@ import {
 } from "./core/ToolEventStore.js";
 
 import {
+  ToolExecutionLedger
+} from "./runtime-state/ToolExecutionLedger.js";
+
+import {
   createAiSdkToolSet,
   supportsStrictToolSchemas
 } from "./adapters/aiSdkToolAdapter.js";
@@ -66,6 +70,7 @@ export function createAgentToolSession({
   initialPlan = [],
   resultStoreDirectory = "",
   taskId = "",
+  runId = "",
   workspaceId = "",
   segmentId = ""
 } = {}) {
@@ -84,6 +89,16 @@ export function createAgentToolSession({
       workspaceId,
       segmentId: getSegmentId ? "" : segmentId
     });
+  const runtimeDirectory = resultStoreDirectory
+    ? path.join(resultStoreDirectory, "runtime")
+    : "";
+  const executionLedger = new ToolExecutionLedger({
+    directory: runtimeDirectory,
+    taskId,
+    runId,
+    workspaceId,
+    ownerId: runId || undefined
+  });
   const toolSettings =
     settings.tools ?? {};
   const workspaceSettings =
@@ -253,7 +268,8 @@ export function createAgentToolSession({
       maxConcurrent:
         toolSettings.runtime
           ?.maxConcurrent ??
-        4
+        4,
+      executionLedger
     });
   const runtime = new ToolRuntime({
     definitions: enabledDefinitions,
@@ -294,13 +310,35 @@ export function createAgentToolSession({
       runtime.getBudget(),
     getEvents: () =>
       runtime.getEvents(),
+    getRuntimeRecovery: () =>
+      executionLedger.publicSnapshot(),
+    getRuntimeDiagnostics: () =>
+      executionLedger.developerSnapshot(),
+    reconcileRuntime: () =>
+      executionLedger.reconcile(enabledDefinitions),
+    recordRuntimeEvent: (type, payload, options) =>
+      executionLedger.recordRuntimeEvent(type, payload, options),
+    storeRuntimeCheckpoint: (checkpoint, options) =>
+      executionLedger.storeCheckpoint(checkpoint, options),
+    getPersistedRuntimeCheckpoint: () =>
+      executionLedger.loadCheckpoint(),
     beginStep: (scope) =>
       executor.beginStep(scope),
     endStep: (stepId) =>
       executor.endStep(stepId),
-    flushPersistence: () =>
-      executor.eventStore.flush(),
-    closePersistence: () =>
-      executor.eventStore.close()
+    flushPersistence: async () => {
+      await Promise.all([
+        executor.eventStore.flush(),
+        executionLedger.flush()
+      ]);
+      return true;
+    },
+    closePersistence: async () => {
+      const results = await Promise.all([
+        executor.eventStore.close(),
+        executionLedger.close()
+      ]);
+      return results.every((result) => result !== false);
+    }
   };
 }

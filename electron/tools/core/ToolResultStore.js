@@ -149,6 +149,8 @@ export class ToolResultStore {
     maxPreviewCharacters = 1800,
     storageDirectory = "",
     retentionMs = 7 * 24 * 60 * 60 * 1000,
+    maxPersistedEntries = 256,
+    maxPersistedBytes = 64 * 1024 * 1024,
     taskId = "",
     workspaceId = "",
     segmentId = "",
@@ -177,6 +179,15 @@ export class ToolResultStore {
       Number(retentionMs) ||
         7 * 24 * 60 * 60 * 1000
     );
+    this.maxPersistedEntries = Math.max(
+      1,
+      Number(maxPersistedEntries) || 256
+    );
+    this.maxPersistedBytes = Math.max(
+      this.maxStoredBytes,
+      Number(maxPersistedBytes) ||
+        64 * 1024 * 1024
+    );
     this.owner = {
       taskId: String(taskId ?? ""),
       workspaceId: String(workspaceId ?? ""),
@@ -190,6 +201,7 @@ export class ToolResultStore {
 
     if (this.storageDirectory) {
       this.cleanupExpired();
+      this.enforceQuota();
     }
   }
 
@@ -316,6 +328,69 @@ export class ToolResultStore {
     return removed;
   }
 
+  enforceQuota() {
+    if (
+      !this.storageDirectory ||
+      !fs.existsSync(this.storageDirectory)
+    ) {
+      return 0;
+    }
+
+    const files = [];
+
+    for (const name of fs.readdirSync(this.storageDirectory)) {
+      if (!name.endsWith(".json")) {
+        continue;
+      }
+
+      const filePath = path.join(this.storageDirectory, name);
+
+      try {
+        const stat = fs.statSync(filePath);
+        files.push({
+          filePath,
+          resultId: name.slice(0, -5),
+          size: stat.size,
+          modifiedAt: stat.mtimeMs
+        });
+      } catch {
+        // Ignore files concurrently removed by another run.
+      }
+    }
+
+    files.sort((left, right) =>
+      left.modifiedAt - right.modifiedAt
+    );
+
+    let totalBytes = files.reduce(
+      (sum, file) => sum + file.size,
+      0
+    );
+    let remaining = files.length;
+    let removed = 0;
+
+    for (const file of files) {
+      if (
+        remaining <= this.maxPersistedEntries &&
+        totalBytes <= this.maxPersistedBytes
+      ) {
+        break;
+      }
+
+      try {
+        fs.rmSync(file.filePath, { force: true });
+        this.entries.delete(file.resultId);
+        totalBytes -= file.size;
+        remaining -= 1;
+        removed += 1;
+      } catch {
+        // Quota cleanup is best-effort and must not fail a Tool call.
+      }
+    }
+
+    return removed;
+  }
+
   capture(
     value,
     {
@@ -387,6 +462,7 @@ export class ToolResultStore {
 
     this.entries.set(resultId, entry);
     this.persistEntry(entry);
+    this.enforceQuota();
 
     const compactValue = {
       ok: safeValue?.ok === false ? false : true,

@@ -89,3 +89,19 @@ Electron E2E
 - Personality 或 Memory 关闭后不加入系统上下文
 - E2E 测试模型读取 ContextAssembler 元数据
 - Playwright 从 Setting 修改人格，再在新会话中验证生效
+
+## 6. Tool Runtime 故障恢复测试
+
+Tool Runtime 重构增加以下 Node 测试类别：
+
+- Tool Call 状态机不变量；
+- Journal 截断恢复；
+- Receipt 持久化和重启重放；
+- 不确定远程写入的 reconciliation；
+- Runtime Checkpoint；
+- 普通/开发者状态投影；
+- 状态广播合并；
+- Activity/Event 有界投影；
+- 大结果目录配额。
+
+真实崩溃注入 E2E 应在可运行 Electron 的 CI 环境中执行。测试必须验证“无重复副作用”，而不只是验证界面最终出现成功文案。

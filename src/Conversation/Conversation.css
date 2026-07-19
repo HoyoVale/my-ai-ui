@@ -3814,3 +3814,43 @@ button.conversation-thinking-event:focus-visible > strong {
     grid-template-columns: 1fr;
   }
 }
+
+.conversation-runtime-recovery {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 10px 14px 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.conversation-runtime-recovery > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+
+.conversation-runtime-recovery > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.conversation-runtime-recovery strong,
+.conversation-runtime-recovery small {
+  line-height: 1.35;
+}
+
+.conversation-runtime-recovery small {
+  opacity: 0.72;
+}
+
+.conversation-tool-mark.is-attention,
+.conversation-activity-timeline__event.is-tool.is-attention > span,
+.conversation-activity-tool-batch.is-attention > summary > span {
+  opacity: 0.9;
+}

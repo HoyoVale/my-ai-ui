@@ -136,6 +136,14 @@ import {
 } from "./activeRunText.js";
 
 import {
+  CoalescedStatusBroadcaster
+} from "./CoalescedStatusBroadcaster.js";
+
+import {
+  projectAgentStatus
+} from "./statusProjection.js";
+
+import {
   SegmentExecutionLoop
 } from "./orchestration/SegmentExecutionLoop.js";
 
@@ -273,6 +281,10 @@ export class AgentRuntime {
       startedAt: null,
       lastError: null
     };
+    this.statusBroadcaster = new CoalescedStatusBroadcaster({
+      intervalMs: 40,
+      publish: () => this.publishStatus()
+    });
   }
 
   applyRunState(state) {
@@ -323,7 +335,9 @@ export class AgentRuntime {
   }
 
   getStatus() {
-    return cloneStatus({
+    const developerMode =
+      getSettings().tools?.developerMode === true;
+    const rawStatus = cloneStatus({
       ...this.status,
       stopReason:
         this.activeRun
@@ -403,8 +417,23 @@ export class AgentRuntime {
       checkpoint:
         this.activeRun
           ?.activityStore
-          ?.checkpoint ?? null
+          ?.checkpoint ?? null,
+      toolRuntime:
+        this.activeRun
+          ?.toolSession
+          ?.getRuntimeRecovery?.() ?? null,
+      toolRuntimeDiagnostics:
+        developerMode
+          ? this.activeRun
+              ?.toolSession
+              ?.getRuntimeDiagnostics?.() ?? null
+          : null
     });
+
+    return projectAgentStatus(
+      rawStatus,
+      { developerMode }
+    );
   }
 
   buildActiveCheckpoint() {
@@ -460,6 +489,9 @@ export class AgentRuntime {
       orchestration:
         this.activeRun.orchestrator
           ?.snapshot?.({ compact: true }) ?? null,
+      toolRuntime:
+        this.activeRun.toolSession
+          ?.getRuntimeRecovery?.() ?? null
     });
   }
 
@@ -625,7 +657,7 @@ export class AgentRuntime {
       stopReason: state.executionStopReason,
       outcome: state.outcome,
       resumable: state.resumable
-    });
+    }, { immediate: true });
 
     if (closeResponse) {
       endResponseStream();
@@ -645,12 +677,12 @@ export class AgentRuntime {
       stopReason: state.executionStopReason,
       outcome: state.outcome,
       resumable: state.resumable
-    });
+    }, { immediate: true });
 
     return finalState;
   }
 
-  finishCancelledRun({
+  async finishCancelledRun({
     runId,
     conversationId
   }) {
@@ -662,19 +694,52 @@ export class AgentRuntime {
       getSettings()
         .conversation
         .saveAbortedReplies;
-    const content = savePartial
+    const partialContent = savePartial
       ? resolveActiveRunText(
           this.activeRun,
           { trim: true }
         )
       : "";
+    const runtimeRecovery = this.activeRun
+      .toolSession
+      ?.getRuntimeRecovery?.();
+    const hasUncertainEffects =
+      Number(runtimeRecovery?.unresolvedCount) > 0;
+    const recoveryNotice = hasUncertainEffects
+      ? "已停止继续执行，但有工具操作的最终状态尚未确认。请先核验或确认这些操作，再继续任务。"
+      : "";
+    const content = [
+      partialContent,
+      recoveryNotice
+    ].filter(Boolean).join("\n\n");
+
+    const checkpoint = this.buildActiveCheckpoint();
+    if (checkpoint) {
+      await this.activeRun.toolSession
+        ?.storeRuntimeCheckpoint?.(checkpoint, {
+          runId,
+          segmentId: this.activeRun.currentSegmentId
+        });
+    }
+    await this.activeRun.toolSession
+      ?.recordRuntimeEvent?.(
+        hasUncertainEffects ? "RUN_INTERRUPTED" : "RUN_CANCELLED",
+        {
+          outcome: hasUncertainEffects ? "interrupted" : "cancelled",
+          unresolvedTools: runtimeRecovery?.unresolvedCount ?? 0
+        },
+        { runId }
+      );
 
     this.finalizeRun({
       runId,
       conversationId,
-      executionStopReason:
-        RUN_STOP_REASONS.CANCELLED_BY_USER,
-      outcome: RUN_OUTCOMES.CANCELLED,
+      executionStopReason: hasUncertainEffects
+        ? RUN_STOP_REASONS.INTERRUPTED
+        : RUN_STOP_REASONS.CANCELLED_BY_USER,
+      outcome: hasUncertainEffects
+        ? RUN_OUTCOMES.INTERRUPTED
+        : RUN_OUTCOMES.CANCELLED,
       content
     });
   }
@@ -1282,6 +1347,19 @@ export class AgentRuntime {
         classified.text;
     }
 
+    void this.activeRun.toolSession?.recordRuntimeEvent?.(
+      "MODEL_STEP_COMPLETED",
+      {
+        stepNumber: this.activeRun.stepNumber,
+        kind: classified.kind,
+        hasToolCalls: classified.kind === "commentary"
+      },
+      {
+        runId,
+        segmentId: this.activeRun.currentSegmentId
+      }
+    );
+
     this.activeRun.currentStepText =
       "";
     this.activeRun.toolSession?.endStep?.(
@@ -1569,7 +1647,7 @@ export class AgentRuntime {
           .signal
           .aborted
       ) {
-        this.finishCancelledRun({
+        await this.finishCancelledRun({
           runId,
           conversationId
         });
@@ -1601,7 +1679,7 @@ export class AgentRuntime {
           .aborted ||
         isAbortError(error)
       ) {
-        this.finishCancelledRun({
+        await this.finishCancelledRun({
           runId,
           conversationId
         });
@@ -1920,10 +1998,16 @@ export class AgentRuntime {
         this.activeRun.currentStepText = "";
         this.activeRun.stepNumber =
           Number(stepNumber) || 0;
+        const stepId = `${segment.id}:step:${this.activeRun.stepNumber}`;
         this.activeRun.toolSession?.beginStep?.({
-          stepId: `${segment.id}:step:${this.activeRun.stepNumber}`,
+          stepId,
           segmentId: segment.id
         });
+        void this.activeRun.toolSession?.recordRuntimeEvent?.(
+          "MODEL_STEP_STARTED",
+          { stepId, stepNumber: this.activeRun.stepNumber },
+          { runId, segmentId: segment.id }
+        );
         this.setStatus({
           ...this.status
         });
@@ -2048,6 +2132,7 @@ export class AgentRuntime {
           this.activeRun.taskId
         ),
         taskId: this.activeRun.taskId,
+        runId,
         workspaceId:
           this.activeRun.workspaceId ?? "",
         getSegmentId: () => orchestrator.currentSegmentId(),
@@ -2055,6 +2140,22 @@ export class AgentRuntime {
       });
 
       this.activeRun.toolSession = toolSession;
+      await toolSession.recordRuntimeEvent?.(
+        "RUN_STARTED",
+        {
+          goalId: this.activeRun.goalId,
+          objective: this.activeRun.objective,
+          continuationCount: this.activeRun.continuationCount
+        },
+        { runId }
+      );
+      await toolSession.reconcileRuntime?.();
+      const runtimeRecovery = toolSession.getRuntimeRecovery?.();
+      if (runtimeRecovery?.unresolvedCount > 0) {
+        this.activeRun.activityStore?.recordRecovery(
+          runtimeRecovery
+        );
+      }
       const activeCapabilityContext = buildCapabilityContext({
         toolSettings: runSettings.tools,
         toolManifest: toolSession.registryManifest
@@ -2107,8 +2208,16 @@ export class AgentRuntime {
             }
             return checkpoint;
           },
-          onSegmentStart: ({ segment }) => {
+          onSegmentStart: async ({ segment }) => {
             this.activeRun.currentSegmentId = segment.id;
+            await toolSession.recordRuntimeEvent?.(
+              "SEGMENT_STARTED",
+              {
+                segmentIndex: segment.index,
+                objective: segment.objective ?? this.activeRun.objective
+              },
+              { runId, segmentId: segment.id }
+            );
             this.markRunExecuting();
             this.persistActiveRunCheckpoint({
               status: "running"
@@ -2134,8 +2243,10 @@ export class AgentRuntime {
               abortController,
               remainingRunMs
             }),
-          onSegmentComplete: ({
-            segmentOutcome
+          onSegmentComplete: async ({
+            segment,
+            segmentOutcome,
+            checkpoint
           }) => {
             this.activeRun.currentSegmentId = "";
             const title =
@@ -2155,6 +2266,24 @@ export class AgentRuntime {
                 : "failed",
               stopReason: segmentOutcome.stopReason
             });
+            if (checkpoint) {
+              await toolSession.storeRuntimeCheckpoint?.(
+                {
+                  ...checkpoint,
+                  toolRuntime: toolSession.getRuntimeRecovery?.()
+                },
+                { runId, segmentId: segment.id }
+              );
+            }
+            await toolSession.recordRuntimeEvent?.(
+              "SEGMENT_COMMITTED",
+              {
+                decision: segmentOutcome.decision,
+                stopReason: segmentOutcome.stopReason,
+                checkpointStored: Boolean(checkpoint)
+              },
+              { runId, segmentId: segment.id }
+            );
           },
           onContinue: ({ checkpoint }) => {
             this.activeRun.finalText = "";
@@ -2225,7 +2354,7 @@ export class AgentRuntime {
         abortController.signal.aborted ||
         engineResult.cancelled
       ) {
-        this.finishCancelledRun({
+        await this.finishCancelledRun({
           runId,
           conversationId
         });
@@ -2235,6 +2364,22 @@ export class AgentRuntime {
       if (!this.isCurrentRun(runId)) {
         return;
       }
+
+      const finalCheckpoint = this.buildActiveCheckpoint();
+      if (finalCheckpoint) {
+        await toolSession.storeRuntimeCheckpoint?.(
+          finalCheckpoint,
+          { runId }
+        );
+      }
+      await toolSession.recordRuntimeEvent?.(
+        "RUN_COMPLETED",
+        {
+          outcome: engineResult.outcome,
+          stopReason: engineResult.executionStopReason
+        },
+        { runId }
+      );
 
       this.finalizeRun({
         runId,
@@ -2250,7 +2395,7 @@ export class AgentRuntime {
         abortController.signal.aborted ||
         isAbortError(error)
       ) {
-        this.finishCancelledRun({
+        await this.finishCancelledRun({
           runId,
           conversationId
         });
@@ -2297,6 +2442,24 @@ export class AgentRuntime {
           records,
           executionStopReason
         });
+        const recoveryCheckpoint = this.buildActiveCheckpoint();
+        if (recoveryCheckpoint) {
+          await this.activeRun.toolSession
+            ?.storeRuntimeCheckpoint?.(
+              recoveryCheckpoint,
+              { runId }
+            );
+        }
+        await this.activeRun.toolSession
+          ?.recordRuntimeEvent?.(
+            "RUN_INTERRUPTED",
+            {
+              outcome: "continuable",
+              stopReason: executionStopReason,
+              error: friendlyMessage
+            },
+            { runId }
+          );
 
         startResponseStream();
         appendResponseChunk(fallback);
@@ -2309,6 +2472,25 @@ export class AgentRuntime {
           content: fallback
         });
         return;
+      }
+
+      await this.activeRun.toolSession
+        ?.recordRuntimeEvent?.(
+          "RUN_FAILED",
+          {
+            outcome: "failed",
+            stopReason: executionStopReason,
+            error: friendlyMessage
+          },
+          { runId }
+        );
+      const failedCheckpoint = this.buildActiveCheckpoint();
+      if (failedCheckpoint) {
+        await this.activeRun.toolSession
+          ?.storeRuntimeCheckpoint?.(
+            failedCheckpoint,
+            { runId }
+          );
       }
 
       const errorText = `⚠ ${friendlyMessage}`;
@@ -2333,10 +2515,8 @@ export class AgentRuntime {
     );
   }
 
-  setStatus(nextStatus) {
-    this.status = {
-      ...nextStatus
-    };
+  publishStatus() {
+    const snapshot = this.getStatus();
 
     for (
       const window
@@ -2358,10 +2538,19 @@ export class AgentRuntime {
           IPC_CHANNELS
             .agent
             .STATUS_CHANGED,
-
-          this.getStatus()
+          snapshot
         );
     }
+  }
+
+  setStatus(
+    nextStatus,
+    { immediate = false } = {}
+  ) {
+    this.status = {
+      ...nextStatus
+    };
+    this.statusBroadcaster.schedule({ immediate });
   }
 }
 
