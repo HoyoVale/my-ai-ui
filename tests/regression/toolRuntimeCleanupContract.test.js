@@ -45,7 +45,7 @@ describe("Tool Runtime cleanup contract", () => {
       "../../src/Conversation/components/TaskPanel.jsx"
     ]) {
       const source = read(file);
-      assert.match(source, /activityVisibility === "developer"/u);
+      assert.match(source, /isActivityEventVisible/u);
       assert.doesNotMatch(source, /\[\s*"update_plan"|developerToolNames|hiddenToolNames/u);
     }
   });

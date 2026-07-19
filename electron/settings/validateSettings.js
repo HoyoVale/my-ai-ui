@@ -92,10 +92,6 @@ const TOOL_MODES = [
   "coding"
 ];
 
-const TOOL_DETAIL_LEVELS = [
-  "detailed"
-];
-
 const TOOL_OVERRIDE_VALUES = [
   "inherit",
   "enabled",
@@ -812,7 +808,6 @@ function sanitizeToolSettings(
 ) {
   const runtime = tools?.runtime ?? {};
   const workspace = tools?.workspace ?? {};
-  const display = tools?.display ?? {};
   const developer = tools?.developer ?? {};
   const sourceToolsetOverrides =
     developer.toolsetOverrides ?? {};
@@ -924,13 +919,6 @@ function sanitizeToolSettings(
       mode === "coding"
         ? "workspace"
         : "chat",
-    display: {
-      detailLevel: enumValue(
-        display.detailLevel,
-        TOOL_DETAIL_LEVELS,
-        defaults.display.detailLevel
-      )
-    },
     runtime: {
       maxSteps: integerValue(
         runtime.maxSteps,

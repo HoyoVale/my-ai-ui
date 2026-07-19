@@ -204,7 +204,6 @@ export function SettingsContent({
           settings.general
             .developerMode
         }
-        modelSettings={settings.model}
         onUpdate={(patch) => {
           onUpdateSection(
             "tools",

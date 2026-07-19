@@ -78,9 +78,6 @@ describe(
               enabled: true,
               profile: "custom",
               mode: "coding",
-              display: {
-                detailLevel: "detailed"
-              },
               runtime: {
                 maxSteps: 999,
                 maxSegments: 999,
@@ -145,8 +142,8 @@ describe(
           "coding"
         );
         assert.equal(
-          settings.tools.display.detailLevel,
-          "detailed"
+          Object.hasOwn(settings.tools, "display"),
+          false
         );
         assert.equal(
           settings.tools.runtime

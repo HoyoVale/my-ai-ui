@@ -19,6 +19,7 @@ import {
   formatTaskDuration,
   getToolTitle,
   groupToolActivityEvents,
+  isActivityEventVisible,
   stopReasonLabel
 } from "../utils/taskActivity.js";
 
@@ -82,7 +83,6 @@ export function ConversationMessageList({
   liveActivity = null,
   busy = false,
   developerMode = false,
-  toolDetailLevel = "compact",
   onOpenTaskPanel,
   onOpenInput,
   onUpdateMessageContext,
@@ -333,7 +333,6 @@ export function ConversationMessageList({
                     <AssistantActivity
                       message={message}
                       developerMode={developerMode}
-                      detailLevel={toolDetailLevel}
                       onOpenTaskPanel={() => {
                         onOpenTaskPanel?.(
                           message.id
@@ -478,7 +477,6 @@ export function ConversationMessageList({
           <LiveAgentActivity
             activity={liveActivity}
             developerMode={developerMode}
-            detailLevel={toolDetailLevel}
             onOpenTaskPanel={() => {
               onOpenTaskPanel?.("live");
             }}
@@ -511,8 +509,12 @@ export function ConversationMessageList({
   );
 }
 
-function visibleTimelineEvents(snapshot) {
+function visibleTimelineEvents(snapshot, developerMode = false) {
   return snapshot.events.filter((event) => {
+    if (!isActivityEventVisible(event, { developerMode })) {
+      return false;
+    }
+
     if ([
       "batch",
       "plan"
@@ -520,19 +522,12 @@ function visibleTimelineEvents(snapshot) {
       return false;
     }
 
-    if (
-      event.type === "tool" &&
-event.tool?.activityVisibility === "developer"
-    ) {
-      return false;
-    }
-
     if (event.type !== "status") {
       return true;
     }
 
-    return String(event.id ?? "").startsWith("progress:") ||
-      ["failed", "cancelled"].includes(event.status);
+    return developerMode ||
+      ["failed", "cancelled", "interrupted"].includes(event.status);
   });
 }
 
@@ -551,9 +546,12 @@ function ThinkingTimeline({
   live = false,
   stopping = false,
   liveText = "",
-  onOpenTaskPanel
+  onOpenTaskPanel,
+  developerMode = false
 }) {
-  const events = groupToolActivityEvents(visibleTimelineEvents(snapshot));
+  const events = groupToolActivityEvents(
+    visibleTimelineEvents(snapshot, developerMode)
+  );
 
   if (
     !live &&
@@ -695,7 +693,6 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
 function LiveAgentActivity({
   activity,
   developerMode,
-  detailLevel,
   onOpenTaskPanel
 }) {
   const snapshot =
@@ -717,7 +714,6 @@ function LiveAgentActivity({
       className="conversation-message conversation-message--assistant conversation-message--live"
       data-testid="conversation-live-agent-activity"
       data-developer-mode={developerMode}
-      data-detail-level={detailLevel}
     >
       <div className="conversation-message__content">
         <div className="conversation-agent-activity is-live">
@@ -736,6 +732,7 @@ function LiveAgentActivity({
             onOpenTaskPanel={
               onOpenTaskPanel
             }
+            developerMode={developerMode}
           />
 
           {String(
@@ -830,7 +827,6 @@ function PlanDashboard({
 function AssistantActivity({
   message,
   developerMode,
-  detailLevel,
   onOpenTaskPanel
 }) {
   const snapshot =
@@ -839,7 +835,7 @@ function AssistantActivity({
     );
 
   if (
-    snapshot.events.length === 0
+    visibleTimelineEvents(snapshot, developerMode).length === 0
   ) {
     return null;
   }
@@ -848,10 +844,10 @@ function AssistantActivity({
     <div
       className="conversation-agent-activity"
       data-developer-mode={developerMode}
-      data-detail-level={detailLevel}
     >
       <ThinkingTimeline
         snapshot={snapshot}
+        developerMode={developerMode}
         onOpenTaskPanel={
           onOpenTaskPanel
         }

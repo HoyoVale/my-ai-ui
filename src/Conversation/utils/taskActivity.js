@@ -152,6 +152,41 @@ export function toolStatusMark(status) {
   return "✓";
 }
 
+export function isActivityEventVisible(
+  event,
+  {
+    developerMode = false
+  } = {}
+) {
+  if (!event || typeof event !== "object") {
+    return false;
+  }
+
+  if (
+    event.type === "status" &&
+    ["failed", "cancelled", "interrupted"].includes(event.status)
+  ) {
+    return true;
+  }
+
+  if (developerMode) {
+    return true;
+  }
+
+  if (event.activityVisibility === "developer") {
+    return false;
+  }
+
+  if (
+    event.type === "tool" &&
+    event.tool?.activityVisibility === "developer"
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function eventBatchId(event) {
   return String(
     event?.batchId ??

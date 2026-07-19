@@ -3265,11 +3265,6 @@ button.conversation-thinking-event:focus-visible > strong {
   white-space: nowrap;
 }
 
-.setting-static-value {
-  color: var(--settings-soft, currentColor);
-  font-size: 13px;
-}
-
 /* ============================================================
    Tool UX 1.4.1 — live activity and plan dashboard
    ============================================================ */

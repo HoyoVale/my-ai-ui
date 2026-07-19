@@ -318,11 +318,6 @@ export default function Conversation() {
               settings.general
                 .developerMode
             }
-            toolDetailLevel={
-              settings.tools
-                .display
-                .detailLevel
-            }
             conversation={
               history.current
             }
@@ -396,11 +391,6 @@ export default function Conversation() {
           developerMode={
             settings.general
               .developerMode
-          }
-          detailLevel={
-            settings.tools
-              .display
-              .detailLevel
           }
           onClose={() => {
             setTaskOpen(false);

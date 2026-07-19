@@ -19,6 +19,7 @@ import {
   formatTaskDuration,
   getToolTitle,
   groupToolActivityEvents,
+  isActivityEventVisible,
   stopReasonLabel,
   stringifyTaskValue,
   toolStatusLabel,
@@ -41,16 +42,13 @@ function planStatusMark(status) {
   return "";
 }
 
-function panelTimelineEvents(snapshot) {
+function panelTimelineEvents(snapshot, developerMode = false) {
   return snapshot.events.filter((event) => {
-    if (["summary", "batch"].includes(event.type)) {
+    if (!isActivityEventVisible(event, { developerMode })) {
       return false;
     }
 
-    if (
-      event.type === "tool" &&
-event.tool?.activityVisibility === "developer"
-    ) {
+    if (["summary", "batch"].includes(event.type)) {
       return false;
     }
 
@@ -58,7 +56,7 @@ event.tool?.activityVisibility === "developer"
       return true;
     }
 
-    return String(event.id ?? "").startsWith("progress:") ||
+    return developerMode ||
       ["failed", "cancelled", "interrupted"].includes(event.status);
   });
 }
@@ -103,7 +101,9 @@ export function ConversationTaskPanel({
     snapshot.toolCalls[0] ??
     null;
 
-  const events = groupToolActivityEvents(panelTimelineEvents(snapshot));
+  const events = groupToolActivityEvents(
+    panelTimelineEvents(snapshot, developerMode)
+  );
 
   return (
     <aside
@@ -298,7 +298,16 @@ function ActivityTimelineEvent({ event }) {
   return (
     <div className="conversation-activity-timeline__event is-status">
       <span>
-        <ConversationIcon name="warning" size={15} />
+        <ConversationIcon
+          name={
+            ["failed", "interrupted"].includes(event.status)
+              ? "warning"
+              : event.status === "cancelled"
+                ? "minus"
+                : "activity"
+          }
+          size={15}
+        />
       </span>
       <div className="conversation-activity-timeline__copy">
         <strong>{event.title || stopReasonLabel(event.stopReason)}</strong>

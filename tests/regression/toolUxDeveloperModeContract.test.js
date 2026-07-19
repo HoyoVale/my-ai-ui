@@ -32,11 +32,11 @@ describe(
         assert.match(panel, /Chat/u);
         assert.match(panel, /Coding/u);
         assert.match(panel, /添加工作区/u);
-        assert.match(panel, /展示层级/u);
+        assert.doesNotMatch(panel, /展示层级|活动显示/u);
         assert.doesNotMatch(panel, /tool-display-detail/u);
         assert.doesNotMatch(
           panel,
-          /启用工具调用/u
+          /启用工具调用|当前模型|固定安全边界/u
         );
       }
     );

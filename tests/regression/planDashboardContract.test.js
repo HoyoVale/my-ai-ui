@@ -50,8 +50,8 @@ describe("automatic plan dashboard", () => {
       "../../src/Conversation/components/TaskPanel.jsx"
     );
 
-    assert.match(messageList, /activityVisibility === "developer"/u);
-    assert.match(taskPanel, /activityVisibility === "developer"/u);
+    assert.match(messageList, /isActivityEventVisible/u);
+    assert.match(taskPanel, /isActivityEventVisible/u);
     assert.doesNotMatch(messageList, /"update_plan"/u);
     assert.doesNotMatch(taskPanel, /"update_plan"/u);
   });

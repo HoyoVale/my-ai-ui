@@ -59,6 +59,29 @@ describe("RunActivityStore", () => {
     assert.equal(first.id, "progress:run-3:1");
     assert.equal(second.id, "progress:run-3:2");
     assert.equal(progress[1].status, "completed");
+    assert.equal(progress[0].category, "runtime");
+    assert.equal(progress[0].activityVisibility, "developer");
+    assert.equal(progress[1].activityVisibility, "developer");
+  });
+
+  it("keeps lifecycle status events developer-only while preserving real failures", () => {
+    const store = new RunActivityStore({
+      taskId: "task-runtime",
+      runId: "run-runtime",
+      startedAt: 100
+    });
+
+    const running = store.snapshot().events.find((event) => event.type === "status");
+    assert.equal(running.category, "runtime");
+    assert.equal(running.activityVisibility, "developer");
+
+    const failed = store.finalize("model_error", 140, {
+      status: "failed",
+      outcome: "failed"
+    }).events.find((event) => event.id === "run:run-runtime");
+
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.activityVisibility, "developer");
   });
   it("persists the internal reason separately from the public run outcome", () => {
     const store = new RunActivityStore({

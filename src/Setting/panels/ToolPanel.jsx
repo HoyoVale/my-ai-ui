@@ -1,5 +1,4 @@
 import {
-  useMemo,
   useState
 } from "react";
 
@@ -28,80 +27,6 @@ function formatBytes(value) {
   return `${Math.round(value / 1000)} KB`;
 }
 
-function resolveActiveModel(modelSettings = {}) {
-  const provider =
-    modelSettings.providers?.[
-      modelSettings.activeProvider
-    ] ?? Object.values(
-      modelSettings.providers ?? {}
-    )[0];
-
-  const model =
-    provider?.models?.find(
-      (item) =>
-        item.id ===
-        provider.activeModelId
-    ) ?? provider?.models?.[0];
-
-  return {
-    providerName:
-      provider?.name ?? "未配置",
-    providerType:
-      provider?.type ?? "unknown",
-    modelName:
-      model?.name ?? "未配置",
-    modelId:
-      model?.modelId ?? "unknown"
-  };
-}
-
-function resolveToolsetEnabled(
-  settings,
-  toolsetId
-) {
-  let enabled =
-    toolsetId === "workspace.read"
-      ? settings.mode === "coding"
-      : true;
-
-  const override =
-    settings.developer
-      ?.toolsetOverrides?.[
-        toolsetId
-      ] ?? "inherit";
-
-  if (override === "enabled") {
-    enabled = true;
-  } else if (override === "disabled") {
-    enabled = false;
-  }
-
-  return enabled;
-}
-
-function resolveToolEnabled(
-  settings,
-  toolsetId,
-  toolName
-) {
-  if (
-    !resolveToolsetEnabled(
-      settings,
-      toolsetId
-    )
-  ) {
-    return false;
-  }
-
-  const override =
-    settings.developer
-      ?.toolOverrides?.[
-        toolName
-      ] ?? "inherit";
-
-  return override !== "disabled";
-}
-
 function hasDeveloperOverrides(
   settings
 ) {
@@ -123,37 +48,10 @@ function hasDeveloperOverrides(
 export function ToolPanel({
   settings,
   developerMode = false,
-  modelSettings,
   onUpdate
 }) {
   const [rootDraft, setRootDraft] =
     useState("");
-
-  const activeModel = useMemo(
-    () =>
-      resolveActiveModel(
-        modelSettings
-      ),
-    [modelSettings]
-  );
-
-  const enabledTools = useMemo(
-    () =>
-      TOOLSET_OPTIONS.reduce(
-        (count, toolset) =>
-          count +
-          toolset.tools.filter(
-            (tool) =>
-              resolveToolEnabled(
-                settings,
-                toolset.id,
-                tool.name
-              )
-          ).length,
-        0
-      ),
-    [settings]
-  );
 
   const updateRuntime = (patch) => {
     onUpdate({
@@ -257,18 +155,11 @@ export function ToolPanel({
             </span>
           </div>
 
-          <div className="tool-mode-card__status">
-            <span>
-              {enabledTools} 个工具可用
-            </span>
-            {hasDeveloperOverrides(
-              settings
-            ) && (
-              <span>
-                开发者覆盖生效
-              </span>
-            )}
-          </div>
+          {hasDeveloperOverrides(settings) && (
+            <div className="tool-mode-card__notice">
+              开发者覆盖生效
+            </div>
+          )}
         </div>
       </SettingsSection>
 
@@ -331,12 +222,6 @@ export function ToolPanel({
           </SettingsSection>
         </div>
       </section>
-
-      <SettingsSection title="活动显示">
-        <SettingRow title="展示层级">
-          <span className="setting-static-value">详细</span>
-        </SettingRow>
-      </SettingsSection>
 
       {developerMode && (
         <div className="developer-reveal">
@@ -732,42 +617,6 @@ export function ToolPanel({
                 </div>
               </details>
 
-              <div className="developer-model-capability">
-                <div>
-                  <span>当前模型</span>
-                  <strong>
-                    {activeModel.providerName} / {activeModel.modelName}
-                  </strong>
-                  <small>
-                    {activeModel.modelId}
-                  </small>
-                </div>
-                <dl>
-                  <div>
-                    <dt>Provider</dt>
-                    <dd>{activeModel.providerType}</dd>
-                  </div>
-                  <div>
-                    <dt>工具接口</dt>
-                    <dd>AI SDK</dd>
-                  </div>
-                  <div>
-                    <dt>当前可见</dt>
-                    <dd>{enabledTools} 个</dd>
-                  </div>
-                  <div>
-                    <dt>能力验证</dt>
-                    <dd>请求时完成</dd>
-                  </div>
-                </dl>
-              </div>
-
-              <div className="tool-safety-note">
-                <strong>固定安全边界</strong>
-                <span>
-                  开发者模式不会开放敏感文件、工作区逃逸、写文件、命令执行或任意联网。
-                </span>
-              </div>
             </div>
           </details>
         </div>

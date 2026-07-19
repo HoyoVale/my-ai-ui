@@ -101,6 +101,8 @@ export class RunActivityStore {
       type: "status",
       status: "running",
       title: "开始处理任务",
+      category: "runtime",
+      activityVisibility: "developer",
       createdAt: this.startedAt,
       updatedAt: this.startedAt
     });
@@ -399,6 +401,8 @@ export class RunActivityStore {
       title: normalizedTitle,
       stopReason: String(stopReason || ""),
       batchId: String(batchId || ""),
+      category: "runtime",
+      activityVisibility: "developer",
       createdAt: timestamp,
       updatedAt: timestamp
     });
@@ -433,6 +437,8 @@ export class RunActivityStore {
       status: this.status,
       title: title || this.status,
       stopReason: this.stopReason,
+      category: "runtime",
+      activityVisibility: "developer",
       updatedAt: timestamp
     });
   }
@@ -475,6 +481,8 @@ export class RunActivityStore {
           ? "当前进展已整理"
           : this.status,
       stopReason: this.stopReason,
+      category: "runtime",
+      activityVisibility: "developer",
       updatedAt: this.endedAt
     });
 

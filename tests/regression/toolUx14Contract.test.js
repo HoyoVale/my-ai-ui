@@ -43,7 +43,7 @@ describe("Tool UX 1.4 contract", () => {
     assert.match(panel, /conversation-activity-timeline__copy/u);
   });
 
-  it("uses detailed display by default and developer mode for raw data", () => {
+  it("uses one normal view and developer mode for raw data", () => {
     const settings = read(
       "../../src/Setting/panels/ToolPanel.jsx"
     );
@@ -54,10 +54,8 @@ describe("Tool UX 1.4 contract", () => {
       "../../src/Conversation/components/TaskPanel.jsx"
     );
 
-    assert.match(settings, /展示层级/u);
-    assert.match(settings, />详细</u);
-    assert.doesNotMatch(settings, /tool-display-detail/u);
-    assert.match(defaults, /detailLevel: "detailed"/u);
+    assert.doesNotMatch(settings, /展示层级|活动显示|当前模型|固定安全边界/u);
+    assert.doesNotMatch(defaults, /detailLevel|display:/u);
     assert.match(panel, /developerMode &&/u);
     assert.match(panel, /title="Input"/u);
     assert.match(panel, /title="Result"/u);

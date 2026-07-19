@@ -222,9 +222,6 @@ export const FALLBACK_SETTINGS = {
     enabled: true,
     mode: "coding",
     profile: "workspace",
-    display: {
-      detailLevel: "detailed"
-    },
     runtime: {
       maxSteps: 6,
       maxSegments: 24,

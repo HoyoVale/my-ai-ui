@@ -25,8 +25,8 @@ describe("Tool Runtime boundary fallback contract", () => {
     const messageList = read("../../src/Conversation/components/MessageList.jsx");
     const taskPanel = read("../../src/Conversation/components/TaskPanel.jsx");
 
-    assert.match(messageList, /activityVisibility === "developer"/u);
-    assert.match(taskPanel, /activityVisibility === "developer"/u);
+    assert.match(messageList, /isActivityEventVisible/u);
+    assert.match(taskPanel, /isActivityEventVisible/u);
   });
 
   it("uses deterministic progress handoff when model finalization is unavailable", () => {

@@ -341,13 +341,22 @@ function sanitizeActivityEvent(source, index) {
     return null;
   }
 
+  const eventId =
+    stringValue(
+      source.id,
+      `event-${index + 1}`,
+      160
+    ) || `event-${index + 1}`;
+  const runtimeLifecycle =
+    type === "status" &&
+    (
+      source.category === "runtime" ||
+      eventId.startsWith("progress:") ||
+      eventId.startsWith("run:")
+    );
+
   const event = {
-    id:
-      stringValue(
-        source.id,
-        `event-${index + 1}`,
-        160
-      ) || `event-${index + 1}`,
+    id: eventId,
     type,
     sequence: timestampValue(
       source.sequence,
@@ -375,7 +384,16 @@ function sanitizeActivityEvent(source, index) {
       source.batchId,
       "",
       160
-    )
+    ),
+    category:
+      runtimeLifecycle
+        ? "runtime"
+        : "work",
+    activityVisibility:
+      runtimeLifecycle ||
+      source.activityVisibility === "developer"
+        ? "developer"
+        : "normal"
   };
 
   if (type === "tool") {
