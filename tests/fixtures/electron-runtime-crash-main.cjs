@@ -3,7 +3,26 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { app } = require("electron");
 
-const [stage, workspaceRoot, runtimeRoot, resultFile] = process.argv.slice(2);
+function readArgument(name) {
+  const prefix = `--${name}=`;
+  const value = process.argv.find((argument) =>
+    String(argument).startsWith(prefix)
+  );
+  return value ? value.slice(prefix.length) : "";
+}
+
+function requireArgument(name) {
+  const value = readArgument(name);
+  if (!value) {
+    throw new Error(`Missing Electron crash fixture argument: ${name}`);
+  }
+  return value;
+}
+
+const stage = requireArgument("stage");
+const workspaceRoot = requireArgument("workspace-root");
+const runtimeRoot = requireArgument("runtime-root");
+const resultFile = requireArgument("result-file");
 const boundary = "write:after_atomic_rename";
 const callId = "electron-atomic-write-call";
 const taskId = "electron-runtime-crash-task";

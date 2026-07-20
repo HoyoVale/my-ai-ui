@@ -17,10 +17,10 @@ function launch(stage, workspaceRoot, runtimeRoot, resultFile) {
       [
         ...(process.platform === "linux" ? ["--no-sandbox"] : []),
         fixture,
-        stage,
-        workspaceRoot,
-        runtimeRoot,
-        resultFile
+        `--stage=${stage}`,
+        `--workspace-root=${workspaceRoot}`,
+        `--runtime-root=${runtimeRoot}`,
+        `--result-file=${resultFile}`
       ],
       {
         cwd: path.resolve(__dirname, "../.."),

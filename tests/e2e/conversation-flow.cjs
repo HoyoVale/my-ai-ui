@@ -197,6 +197,27 @@ async function waitForAttribute(
   );
 }
 
+async function revealDetails(locator) {
+  await locator.waitFor({
+    state: "attached"
+  });
+
+  await locator.evaluate((element) => {
+    let current = element;
+
+    while (current) {
+      if (current.tagName === "DETAILS") {
+        current.open = true;
+      }
+      current = current.parentElement;
+    }
+  });
+
+  await locator.waitFor({
+    state: "visible"
+  });
+}
+
 async function waitForCount(
   locator,
   expected,
@@ -1158,21 +1179,16 @@ async function main() {
         '[data-testid="tool-manifest-calculator"]'
       );
 
-    await calculatorToolCard.waitFor();
-
-    if (
-      await calculatorToolCard.getAttribute("open") === null
-    ) {
-      await calculatorToolCard
-        .locator("summary")
-        .first()
-        .click();
-    }
+    await revealDetails(calculatorToolCard);
 
     const calculatorOverride =
       calculatorToolCard.locator(
         '[data-testid="tool-override-calculator"]'
       );
+
+    await calculatorOverride.waitFor({
+      state: "visible"
+    });
 
     await calculatorOverride
       .selectOption("disabled");

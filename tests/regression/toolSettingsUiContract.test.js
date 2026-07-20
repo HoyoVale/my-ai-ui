@@ -56,6 +56,7 @@ describe(
 
         assert.match(flow, /tool-manifest-calculator/u);
         assert.match(flow, /tool-override-calculator/u);
+        assert.match(flow, /revealDetails\(calculatorToolCard\)/u);
         assert.doesNotMatch(flow, /tool-developer-overrides/u);
       }
     );
