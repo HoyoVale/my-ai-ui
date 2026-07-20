@@ -327,6 +327,8 @@ export function createAgentToolSession({
       runtime.getEvents(),
     getRuntimeRecovery: () =>
       executionLedger.publicSnapshot(),
+    getRuntimeCursor: () =>
+      executionLedger.recoveryCursor(),
     getRuntimeDiagnostics: () => ({
       ...executionLedger.developerSnapshot(),
       circuitBreakers: toolCircuitBreakers.snapshot(),
@@ -345,6 +347,8 @@ export function createAgentToolSession({
       executionLedger.storeCheckpoint(checkpoint, options),
     getPersistedRuntimeCheckpoint: () =>
       executionLedger.loadCheckpoint(),
+    recoverRuntimeCheckpoint: () =>
+      executionLedger.recoverCheckpoint(),
     beginStep: (scope) =>
       executor.beginStep(scope),
     endStep: (stepId) =>

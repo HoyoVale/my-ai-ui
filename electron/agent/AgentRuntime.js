@@ -124,7 +124,8 @@ import {
 
 import {
   RunStateMachine,
-  RUN_OUTCOMES
+  RUN_OUTCOMES,
+  recoveryOutcomeFromSnapshot
 } from "./RunStateMachine.js";
 
 import {
@@ -517,6 +518,9 @@ export class AgentRuntime {
       return null;
     }
 
+    const runtimeCursor = this.activeRun.toolSession
+      ?.getRuntimeCursor?.() ?? {};
+
     return createRunCheckpoint({
       taskId: this.activeRun.taskId,
       workspaceId:
@@ -567,7 +571,8 @@ export class AgentRuntime {
           ?.snapshot?.({ compact: true }) ?? null,
       toolRuntime:
         this.activeRun.toolSession
-          ?.getRuntimeRecovery?.() ?? null
+          ?.getRuntimeRecovery?.() ?? null,
+      ...runtimeCursor
     });
   }
 
@@ -658,10 +663,19 @@ export class AgentRuntime {
     }
 
     const run = this.activeRun;
+    const runtimeRecovery = run.toolSession
+      ?.getRuntimeRecovery?.() ?? null;
+    const recoveryOutcome = recoveryOutcomeFromSnapshot(
+      runtimeRecovery
+    );
+    const effectiveOutcome = recoveryOutcome || outcome;
+    const effectiveStopReason = recoveryOutcome
+      ? RUN_STOP_REASONS.INTERRUPTED
+      : executionStopReason;
     const state = this.applyRunState(
       run.stateMachine.finalize({
-        executionStopReason,
-        outcome,
+        executionStopReason: effectiveStopReason,
+        outcome: effectiveOutcome,
         lastError
       })
     );
@@ -814,7 +828,7 @@ export class AgentRuntime {
         ? RUN_STOP_REASONS.INTERRUPTED
         : RUN_STOP_REASONS.CANCELLED_BY_USER,
       outcome: hasUncertainEffects
-        ? RUN_OUTCOMES.INTERRUPTED
+        ? recoveryOutcomeFromSnapshot(runtimeRecovery) || RUN_OUTCOMES.UNKNOWN
         : RUN_OUTCOMES.CANCELLED,
       content
     });
@@ -2431,15 +2445,6 @@ export class AgentRuntime {
                 : "failed",
               stopReason: segmentOutcome.stopReason
             });
-            if (checkpoint) {
-              await toolSession.storeRuntimeCheckpoint?.(
-                {
-                  ...checkpoint,
-                  toolRuntime: toolSession.getRuntimeRecovery?.()
-                },
-                { runId, segmentId: segment.id }
-              );
-            }
             await toolSession.recordRuntimeEvent?.(
               "SEGMENT_COMMITTED",
               {
@@ -2449,6 +2454,16 @@ export class AgentRuntime {
               },
               { runId, segmentId: segment.id }
             );
+            if (checkpoint) {
+              await toolSession.storeRuntimeCheckpoint?.(
+                {
+                  ...checkpoint,
+                  toolRuntime: toolSession.getRuntimeRecovery?.(),
+                  ...toolSession.getRuntimeCursor?.()
+                },
+                { runId, segmentId: segment.id }
+              );
+            }
           },
           onContinue: ({ checkpoint }) => {
             this.activeRun.finalText = "";

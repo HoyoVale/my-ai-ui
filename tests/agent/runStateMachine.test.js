@@ -68,6 +68,21 @@ describe("RunStateMachine", () => {
     assert.equal(cancelled.outcome, RUN_OUTCOMES.CANCELLED);
   });
 
+  it("promotes unresolved Tool effects to a run-level recovery state", () => {
+    const machine = new RunStateMachine();
+    const state = machine.requireRecovery({
+      unresolvedCount: 1,
+      needsConfirmation: 0,
+      needsReconciliation: 1
+    });
+
+    assert.equal(state.outcome, RUN_OUTCOMES.NEEDS_RECONCILIATION);
+    assert.equal(state.phase, RUN_PHASES.RECONCILING);
+    assert.equal(state.activityStatus, "needs_reconciliation");
+    assert.equal(state.messageStatus, "interrupted");
+    assert.equal(state.resumable, true);
+  });
+
   it("does not let later branches overwrite a terminal state", () => {
     const machine = new RunStateMachine();
     const completed = machine.finalize({

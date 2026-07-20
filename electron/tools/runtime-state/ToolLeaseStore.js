@@ -115,6 +115,27 @@ export class ToolLeaseStore {
     return true;
   }
 
+
+  async clearOrphaned({ now = Date.now(), force = false } = {}) {
+    const leases = this.list();
+    let removed = 0;
+
+    for (const lease of leases) {
+      const orphaned = force
+        ? lease.ownerId !== this.ownerId || Number(lease.expiresAt) <= Number(now)
+        : Number(lease.expiresAt) <= Number(now);
+      if (!orphaned) {
+        continue;
+      }
+      const filePath = this.leasePath(lease.callId);
+      if (filePath) {
+        await fs.promises.rm(filePath, { force: true });
+        removed += 1;
+      }
+    }
+
+    return removed;
+  }
   list() {
     const directory = this.directory
       ? path.join(this.directory, "leases")

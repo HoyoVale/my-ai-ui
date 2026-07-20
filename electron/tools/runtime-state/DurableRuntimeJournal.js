@@ -3,6 +3,11 @@ import path from "node:path";
 
 import { redactSensitiveValue } from "../core/redaction.js";
 
+import {
+  createRuntimeJournalEvent,
+  migrateRuntimeJournalEvent
+} from "./RuntimeJournalSchema.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -49,6 +54,11 @@ export class DurableRuntimeJournal {
     this.sequence = 0;
     this.writeChain = Promise.resolve();
     this.closed = false;
+    this.loadReport = {
+      loaded: 0,
+      migrated: 0,
+      skipped: 0
+    };
     this.load();
   }
 
@@ -57,7 +67,6 @@ export class DurableRuntimeJournal {
       return;
     }
 
-    let skipped = 0;
     const lines = fs.readFileSync(this.storageFile, "utf8").split("\n");
 
     for (const line of lines) {
@@ -66,10 +75,14 @@ export class DurableRuntimeJournal {
       }
 
       try {
-        const event = JSON.parse(line);
-        if (!event || typeof event !== "object" || !event.type) {
-          skipped += 1;
+        const source = JSON.parse(line);
+        const event = migrateRuntimeJournalEvent(source);
+        if (!event) {
+          this.loadReport.skipped += 1;
           continue;
+        }
+        if (Number(source.version) < Number(event.version)) {
+          this.loadReport.migrated += 1;
         }
         const normalized = Object.freeze(event);
         this.events.push(normalized);
@@ -77,14 +90,15 @@ export class DurableRuntimeJournal {
           this.sequence,
           positiveInteger(event.sequence)
         );
+        this.loadReport.loaded += 1;
       } catch {
-        skipped += 1;
+        this.loadReport.skipped += 1;
       }
     }
 
-    if (skipped > 0) {
+    if (this.loadReport.skipped > 0) {
       console.warn(
-        `恢复 Tool Runtime Journal 时忽略了 ${skipped} 条损坏记录。`
+        `恢复 Tool Runtime Journal 时忽略了 ${this.loadReport.skipped} 条损坏记录。`
       );
     }
   }
@@ -94,18 +108,21 @@ export class DurableRuntimeJournal {
       return Promise.reject(new Error("Tool Runtime Journal is closed."));
     }
 
-    const event = Object.freeze({
-      version: 1,
+    const event = Object.freeze(createRuntimeJournalEvent({
       sequence: ++this.sequence,
       timestamp: positiveInteger(options.timestamp, Date.now()),
       taskId: String(options.taskId ?? this.taskId),
       runId: String(options.runId ?? this.runId),
       workspaceId: String(options.workspaceId ?? this.workspaceId),
       segmentId: String(options.segmentId ?? payload.segmentId ?? ""),
+      stepId: String(options.stepId ?? payload.stepId ?? ""),
       callId: String(options.callId ?? payload.callId ?? ""),
       type: String(type ?? "runtime_event"),
+      actor: String(options.actor ?? "runtime"),
+      reason: String(options.reason ?? payload.reason ?? ""),
+      durability: options.durability,
       payload: clone(this.redact(payload))
-    });
+    }));
 
     this.events.push(event);
 
@@ -115,7 +132,11 @@ export class DurableRuntimeJournal {
 
     const line = `${JSON.stringify(event)}\n`;
     const write = async () => {
-      await appendDurably(this.storageFile, line, this.durable);
+      await appendDurably(
+        this.storageFile,
+        line,
+        this.durable && event.durability === "critical"
+      );
       return clone(event);
     };
 
@@ -149,6 +170,15 @@ export class DurableRuntimeJournal {
       calls.set(event.callId, existing);
     }
     return [...calls.values()];
+  }
+
+  cursor() {
+    const latest = this.events.at(-1) ?? null;
+    return {
+      sequence: this.sequence,
+      checksum: String(latest?.integrity?.checksum ?? ""),
+      eventId: String(latest?.eventId ?? "")
+    };
   }
 
   flush() {

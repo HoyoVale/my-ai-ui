@@ -1013,9 +1013,16 @@ export class ConversationManager {
     }
   }
 
-  recoverInterruptedRuns() {
+  recoverInterruptedRuns({ runtimeRecoveries = [] } = {}) {
     const data = this.ensureLoaded();
     const timestamp = this.now();
+    const recoveryMap = new Map(
+      Array.isArray(runtimeRecoveries)
+        ? runtimeRecoveries
+            .filter((item) => item?.taskId)
+            .map((item) => [String(item.taskId), item])
+        : Object.entries(runtimeRecoveries ?? {})
+    );
     let recovered = 0;
 
     for (const conversation of data.conversations) {
@@ -1025,16 +1032,32 @@ export class ConversationManager {
         }
 
         const activity = message.activity;
+        const runtimeDecision = recoveryMap.get(String(message.taskId ?? ""));
         const unfinished =
           ["running", "cancelling"].includes(message.status) ||
-          ["running", "cancelling", "resumed"].includes(activity?.status);
+          ["running", "cancelling", "resumed"].includes(activity?.status) ||
+          runtimeDecision?.applyToConversation === true;
 
         if (!unfinished) {
           continue;
         }
 
-        message.status = "interrupted";
-        message.stopReason = "interrupted";
+        const activityStatus = String(
+          runtimeDecision?.activityStatus ?? "interrupted"
+        );
+        const messageStatus = String(
+          runtimeDecision?.messageStatus ?? "interrupted"
+        );
+        const stopReason = String(
+          runtimeDecision?.stopReason ?? "interrupted"
+        );
+        const statusTitle = String(
+          runtimeDecision?.title ?? "执行被中断"
+        );
+        const recoveryCalls = runtimeDecision?.recovery?.calls ?? [];
+
+        message.status = messageStatus;
+        message.stopReason = stopReason;
 
         if (Array.isArray(message.plan)) {
           message.plan = message.plan.map((item) =>
@@ -1042,30 +1065,42 @@ export class ConversationManager {
               ? {
                   ...item,
                   status: "blocked",
-                  reason: item.reason || "应用退出导致执行中断"
+                  reason: item.reason || (
+                    runtimeDecision?.recovery?.unresolvedCount > 0
+                      ? "请先处理尚未确认的工具操作"
+                      : "应用退出导致执行中断"
+                  )
                 }
               : item
           );
         }
 
         if (activity && typeof activity === "object") {
-          activity.status = "interrupted";
-          activity.stopReason = "interrupted";
+          activity.status = activityStatus;
+          activity.outcome = runtimeDecision?.outcome ?? "interrupted";
+          activity.resumable = runtimeDecision?.resumable !== false;
+          activity.stopReason = stopReason;
           activity.endedAt = timestamp;
           activity.durationMs = Math.max(
             0,
             timestamp - Number(activity.startedAt || timestamp)
           );
 
-          if (activity.checkpoint) {
-            activity.checkpoint = {
-              ...activity.checkpoint,
-              phase: "interrupted",
-              stopReason: "interrupted",
-              updatedAt: timestamp,
-              plan: clone(message.plan ?? activity.checkpoint.plan ?? [])
-            };
-          }
+          activity.checkpoint = {
+            ...(activity.checkpoint ?? {}),
+            ...(runtimeDecision?.checkpoint ?? {}),
+            phase: runtimeDecision?.phase ?? "interrupted",
+            outcome: runtimeDecision?.outcome ?? "interrupted",
+            resumable: runtimeDecision?.resumable !== false,
+            publicStatus: messageStatus,
+            stopReason,
+            toolRuntime:
+              runtimeDecision?.recovery ??
+              activity.checkpoint?.toolRuntime ??
+              null,
+            updatedAt: timestamp,
+            plan: clone(message.plan ?? activity.checkpoint?.plan ?? [])
+          };
 
           const events = Array.isArray(activity.events)
             ? activity.events
@@ -1074,6 +1109,46 @@ export class ConversationManager {
 
           activity.events = events.map((event) => {
             if (event.type === "tool" && ["queued", "running", "retrying"].includes(event.status)) {
+              const callId = String(
+                event.tool?.runtime?.callId ??
+                event.tool?.callId ??
+                event.tool?.id ??
+                ""
+              );
+              const toolName = String(event.tool?.name ?? "");
+              const unresolved = recoveryCalls.find((call) =>
+                (callId && call.callId === callId) ||
+                (!callId && toolName && call.toolName === toolName)
+              );
+
+              if (unresolved) {
+                return {
+                  ...event,
+                  status: "attention",
+                  updatedAt: timestamp,
+                  tool: {
+                    ...event.tool,
+                    status: "attention",
+                    endedAt: timestamp,
+                    runtime: {
+                      ...(event.tool?.runtime ?? {}),
+                      callId: unresolved.callId,
+                      recovery: unresolved.recovery,
+                      actions: clone(unresolved.actions ?? [])
+                    },
+                    result: event.tool?.result ?? {
+                      ok: false,
+                      error: {
+                        type: "RECOVERY_REQUIRED",
+                        code: "TOOL_RECOVERY_REQUIRED",
+                        message: statusTitle,
+                        retryable: false
+                      }
+                    }
+                  }
+                };
+              }
+
               return {
                 ...event,
                 status: "cancelled",
@@ -1098,7 +1173,9 @@ export class ConversationManager {
             if (event.type === "plan" && Array.isArray(event.plan)) {
               return {
                 ...event,
-                status: "failed",
+                status: runtimeDecision?.recovery?.unresolvedCount > 0
+                  ? "attention"
+                  : "failed",
                 updatedAt: timestamp,
                 plan: clone(message.plan ?? event.plan)
               };
@@ -1108,9 +1185,9 @@ export class ConversationManager {
               statusEventFound = true;
               return {
                 ...event,
-                status: "interrupted",
-                title: "执行被中断",
-                stopReason: "interrupted",
+                status: activityStatus,
+                title: statusTitle,
+                stopReason,
                 updatedAt: timestamp
               };
             }
@@ -1123,9 +1200,9 @@ export class ConversationManager {
               id: `run:${activity.runId || message.id}`,
               type: "status",
               sequence: activity.events.length,
-              status: "interrupted",
-              title: "执行被中断",
-              stopReason: "interrupted",
+              status: activityStatus,
+              title: statusTitle,
+              stopReason,
               createdAt: timestamp,
               updatedAt: timestamp
             });

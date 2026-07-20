@@ -21,12 +21,17 @@ import {
 } from "./settings/settingsRuntime.js";
 
 import {
-  conversationManager
+  conversationManager,
+  getConversationPath
 } from "./conversation/index.js";
 
 import {
   flushAllPersistenceQueues
 } from "./persistence/AsyncPersistenceQueue.js";
+
+import {
+  RuntimeRecoveryManager
+} from "./tools/runtime-state/RuntimeRecoveryManager.js";
 
 import {
   createPetWindow
@@ -51,9 +56,32 @@ if (e2eUserData) {
 
 registerIpcHandlers();
 
-app.whenReady().then(() => {
-  conversationManager
-    .recoverInterruptedRuns();
+app.whenReady().then(async () => {
+  let runtimeRecoveryReport = { decisions: [] };
+  try {
+    const runtimeRecoveryManager = new RuntimeRecoveryManager({
+      rootDirectory: path.join(
+        path.dirname(getConversationPath()),
+        "tool-results"
+      )
+    });
+    runtimeRecoveryReport = await runtimeRecoveryManager.recoverAll();
+    if (!runtimeRecoveryReport.ok) {
+      console.warn(
+        "部分 Tool Runtime 启动恢复失败：",
+        runtimeRecoveryReport.errors
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "Tool Runtime 启动恢复失败：",
+      error
+    );
+  }
+
+  conversationManager.recoverInterruptedRuns({
+    runtimeRecoveries: runtimeRecoveryReport.decisions
+  });
 
   installRendererSessionSecurity(
     session.defaultSession

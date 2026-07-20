@@ -154,6 +154,12 @@ export function createRunCheckpoint({
   previousSegmentCount = 0,
   orchestration = null,
   toolRuntime = null,
+  journalSequence = 0,
+  journalChecksum = "",
+  committedSegmentId = "",
+  reportedReceiptIds = [],
+  unresolvedCallIds = [],
+  snapshotSource = "checkpoint",
   updatedAt = Date.now()
 } = {}) {
   const compactedPlan =
@@ -181,8 +187,19 @@ export function createRunCheckpoint({
       compactedPlan.length
   };
 
+  const compactedRuntime = compactToolRuntime(toolRuntime);
+  const runtimeReportedReceiptIds = (compactedRuntime?.calls ?? [])
+    .filter((call) => call.hasReceipt && call.receiptId)
+    .map((call) => call.receiptId);
+  const runtimeUnresolvedCallIds = (compactedRuntime?.calls ?? [])
+    .filter((call) => [
+      "needs_confirmation",
+      "needs_reconciliation"
+    ].includes(call.recovery))
+    .map((call) => call.callId);
+
   return {
-    version: 2,
+    version: 3,
     goalId: text(goalId, 120),
     taskId: text(taskId, 120),
     workspaceId: text(workspaceId, 120),
@@ -239,7 +256,19 @@ export function createRunCheckpoint({
     orchestration:
       orchestration && typeof orchestration === "object"
         ? structuredClone(orchestration) : null,
-    toolRuntime: compactToolRuntime(toolRuntime)
+    toolRuntime: compactedRuntime,
+    journalSequence: Math.max(0, Math.round(Number(journalSequence) || 0)),
+    journalChecksum: text(journalChecksum, 128),
+    committedSegmentId: text(committedSegmentId, 120),
+    reportedReceiptIds: [...new Set([
+      ...(Array.isArray(reportedReceiptIds) ? reportedReceiptIds : []),
+      ...runtimeReportedReceiptIds
+    ].map((value) => text(value, 120)).filter(Boolean))].slice(0, 200),
+    unresolvedCallIds: [...new Set([
+      ...(Array.isArray(unresolvedCallIds) ? unresolvedCallIds : []),
+      ...runtimeUnresolvedCallIds
+    ].map((value) => text(value, 120)).filter(Boolean))].slice(0, 200),
+    snapshotSource: text(snapshotSource, 80) || "checkpoint"
   };
 }
 

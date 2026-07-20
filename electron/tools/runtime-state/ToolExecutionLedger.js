@@ -223,12 +223,47 @@ export class ToolExecutionLedger {
     return this.journal.append(type, payload, {
       runId: options.runId ?? this.runId,
       segmentId: options.segmentId ?? "",
-      callId: options.callId ?? ""
+      stepId: options.stepId ?? "",
+      callId: options.callId ?? "",
+      actor: options.actor ?? "runtime",
+      reason: options.reason ?? payload.reason ?? "",
+      durability: options.durability
     });
   }
 
+  recoveryCursor() {
+    const journalCursor = this.journal.cursor();
+    const committed = [...this.journal.events]
+      .reverse()
+      .find((event) => event.type === "SEGMENT_COMMITTED");
+    const recovery = this.recoverySnapshot();
+    const reportedReceiptIds = recovery.calls
+      .filter((call) => call.hasReceipt)
+      .map((call) => call.receiptId)
+      .filter(Boolean);
+    const unresolvedCallIds = recovery.calls
+      .filter((call) => [
+        "needs_confirmation",
+        "needs_reconciliation"
+      ].includes(call.recovery))
+      .map((call) => call.callId);
+
+    return {
+      journalSequence: journalCursor.sequence,
+      journalChecksum: journalCursor.checksum,
+      committedSegmentId: String(committed?.segmentId ?? ""),
+      reportedReceiptIds: [...new Set(reportedReceiptIds)],
+      unresolvedCallIds: [...new Set(unresolvedCallIds)]
+    };
+  }
+
   async storeCheckpoint(checkpoint, options = {}) {
-    const stored = await this.checkpoints.store(checkpoint);
+    const cursor = this.recoveryCursor();
+    const stored = await this.checkpoints.store({
+      ...clone(checkpoint),
+      ...cursor,
+      toolRuntime: checkpoint?.toolRuntime ?? this.publicSnapshot()
+    });
     await this.recordRuntimeEvent(
       "CHECKPOINT_STORED",
       {
@@ -238,11 +273,13 @@ export class ToolExecutionLedger {
         resumable: stored.resumable === true,
         unresolvedTools:
           stored.toolRuntime?.unresolvedCount ?? 0,
-        updatedAt: stored.updatedAt ?? stored.persistedAt
+        updatedAt: stored.updatedAt ?? stored.persistedAt,
+        checkpoint: stored
       },
       {
         runId: options.runId ?? stored.runId ?? this.runId,
-        segmentId: options.segmentId ?? ""
+        segmentId: options.segmentId ?? stored.committedSegmentId ?? "",
+        durability: "critical"
       }
     );
     return stored;
@@ -250,6 +287,157 @@ export class ToolExecutionLedger {
 
   loadCheckpoint() {
     return this.checkpoints.load();
+  }
+
+  buildMinimalCheckpointFromJournal() {
+    const events = this.journal.list();
+    const latest = events.at(-1) ?? null;
+    const latestRunEvent = [...events]
+      .reverse()
+      .find((event) => event.type.startsWith("RUN_"));
+    const latestCheckpointEvent = [...events]
+      .reverse()
+      .find((event) => event.type === "CHECKPOINT_STORED");
+    const embedded = latestCheckpointEvent?.payload?.checkpoint;
+
+    if (embedded && typeof embedded === "object") {
+      return {
+        ...clone(embedded),
+        ...this.recoveryCursor(),
+        snapshotSource: "journal-rebuild",
+        recoveredAt: Date.now()
+      };
+    }
+
+    const terminalMap = {
+      RUN_COMPLETED: ["completed", "completed", false, "complete"],
+      RUN_CANCELLED: ["cancelled", "cancelled", false, "aborted"],
+      RUN_FAILED: ["failed", "failed", false, "complete"],
+      RUN_INTERRUPTED: ["interrupted", "interrupted", true, "interrupted"]
+    };
+    const terminal = terminalMap[latestRunEvent?.type];
+    const recovery = this.publicSnapshot();
+    const needsConfirmation = recovery.needsConfirmation > 0;
+    const needsReconciliation = recovery.needsReconciliation > 0;
+    const phase = needsConfirmation
+      ? "needs_confirmation"
+      : needsReconciliation
+        ? "reconciling"
+        : terminal?.[0] ?? "interrupted";
+    const outcome = needsConfirmation
+      ? "needs_confirmation"
+      : needsReconciliation
+        ? "needs_reconciliation"
+        : terminal?.[1] ?? "interrupted";
+
+    return {
+      version: 3,
+      taskId: this.taskId,
+      runId: String(latest?.runId ?? this.runId),
+      workspaceId: this.workspaceId,
+      objective: String(
+        events.find((event) => event.type === "RUN_STARTED")
+          ?.payload?.objective ?? ""
+      ),
+      phase,
+      outcome,
+      resumable: needsConfirmation || needsReconciliation || terminal?.[2] === true,
+      publicStatus: needsConfirmation || needsReconciliation
+        ? "interrupted"
+        : terminal?.[3] ?? "interrupted",
+      stopReason: needsConfirmation
+        ? "needs_confirmation"
+        : needsReconciliation
+          ? "needs_reconciliation"
+          : String(latestRunEvent?.payload?.stopReason ?? "interrupted"),
+      updatedAt: Number(latest?.timestamp) || Date.now(),
+      plan: [],
+      tools: [],
+      counts: {
+        tools: recovery.totalCalls,
+        completedTools: recovery.receiptCount,
+        failedTools: 0,
+        completedPlanSteps: 0,
+        totalPlanSteps: 0,
+        contextCompactions: 0
+      },
+      toolRuntime: recovery,
+      ...this.recoveryCursor(),
+      snapshotSource: "journal-synthesized",
+      recoveredAt: Date.now()
+    };
+  }
+
+  async recoverCheckpoint() {
+    const detail = this.checkpoints.loadDetailed();
+    if (["valid", "migrated"].includes(detail.status)) {
+      if (detail.status === "migrated") {
+        return this.checkpoints.store({
+          ...detail.checkpoint,
+          snapshotSource: "checkpoint-migrated"
+        });
+      }
+      return detail.checkpoint;
+    }
+
+    if (detail.status === "owner_mismatch") {
+      return null;
+    }
+
+    if (detail.status === "corrupt") {
+      await this.checkpoints.quarantine("corrupt");
+    }
+
+    const rebuilt = this.buildMinimalCheckpointFromJournal();
+    if (!rebuilt) {
+      return null;
+    }
+
+    const stored = await this.checkpoints.store(rebuilt);
+    await this.recordRuntimeEvent(
+      "CHECKPOINT_REBUILT",
+      {
+        sourceStatus: detail.status,
+        checkpointVersion: stored.version,
+        checkpoint: stored
+      },
+      {
+        runId: stored.runId || this.runId,
+        segmentId: stored.committedSegmentId,
+        actor: "recovery-manager",
+        reason: "checkpoint_rebuild",
+        durability: "critical"
+      }
+    );
+    return stored;
+  }
+
+  async materializeRecoveryStates() {
+    const transitions = [];
+    for (const snapshot of this.recoverySnapshot().calls) {
+      const call = this.calls.get(snapshot.callId);
+      if (!call) {
+        continue;
+      }
+      if (
+        snapshot.recovery === "needs_confirmation" &&
+        call.state !== TOOL_CALL_STATES.NEEDS_CONFIRMATION
+      ) {
+        await this.transition(call, "TOOL_CONFIRMATION_REQUIRED", {
+          reason: "startup_recovery"
+        });
+        transitions.push({ callId: call.callId, state: call.state });
+      } else if (
+        snapshot.recovery === "needs_reconciliation" &&
+        call.state !== TOOL_CALL_STATES.NEEDS_RECONCILIATION
+      ) {
+        await this.transition(call, "TOOL_RECONCILIATION_REQUIRED", {
+          reason: "startup_recovery"
+        });
+        transitions.push({ callId: call.callId, state: call.state });
+      }
+    }
+    return transitions;
   }
 
   makeIdempotencyKey({ definition, input, explicitKey = "" }) {
@@ -861,7 +1049,7 @@ export class ToolExecutionLedger {
     ].includes(call.recovery));
 
     return {
-      version: 1,
+      version: 2,
       taskId: this.taskId,
       runId: this.runId,
       totalCalls: calls.length,
