@@ -27,6 +27,10 @@ import {
   mcpClientManager
 } from "../../mcp/McpClientManager.js";
 
+import {
+  declarativeHttpToolManager
+} from "../../custom-tools/DeclarativeHttpToolManager.js";
+
 const OVERRIDE_VALUES = new Set([
   "inherit",
   "enabled",
@@ -76,6 +80,37 @@ function toolAvailability(tool, settings) {
       return {
         available: false,
         reason: serverState.error || "MCP Server 连接失败。"
+      };
+    }
+  }
+
+  if (String(tool.source ?? "").startsWith("custom.http.")) {
+    const customId = String(tool.source).slice("custom.http.".length);
+    const config = (settings.customTools?.tools ?? []).find(
+      (item) => item.id === customId
+    );
+    if (settings.customTools?.enabled === false) {
+      return {
+        available: false,
+        reason: "自定义工具已全局关闭。"
+      };
+    }
+    if (!config || config.enabled === false) {
+      return {
+        available: false,
+        reason: "该自定义 HTTP 工具未启用。"
+      };
+    }
+    if (!config.url) {
+      return {
+        available: false,
+        reason: "尚未配置请求地址。"
+      };
+    }
+    if (config.method === "DELETE" && config.allowDestructive !== true) {
+      return {
+        available: false,
+        reason: "DELETE 工具需要在开发者模式下显式允许破坏性操作。"
       };
     }
   }
@@ -163,6 +198,11 @@ export function getToolManifestSnapshot({ settings = {} } = {}) {
   });
   registry.registerMany(
     mcpClientManager.getToolDefinitions()
+  );
+  registry.registerMany(
+    declarativeHttpToolManager.getToolDefinitions(settings, {
+      includeDisabled: true
+    })
   );
   const rawTools = registry.manifest();
   const enabledNames = new Set(

@@ -7,6 +7,10 @@ import {
 } from "./handlers/conversationIpc.js";
 
 import {
+  registerCustomToolIpc
+} from "./handlers/customToolIpc.js";
+
+import {
   registerInputIpc
 } from "./handlers/inputIpc.js";
 
@@ -61,6 +65,7 @@ export function registerIpcHandlers() {
 
   registerAgentIpc();
   registerConversationIpc();
+  registerCustomToolIpc();
   registerPetIpc();
   registerInputIpc();
   registerMemoryIpc();

@@ -231,6 +231,23 @@ const IPC_CHANNELS =
         "mcp-changed"
     }),
 
+    customTools: Object.freeze({
+      GET_STATE:
+        "custom-tools-get-state",
+
+      GET_SECRET_STATUS:
+        "custom-tools-get-secret-status",
+
+      SET_SECRET:
+        "custom-tools-set-secret",
+
+      CLEAR_SECRET:
+        "custom-tools-clear-secret",
+
+      TEST:
+        "custom-tools-test"
+    }),
+
     developer: Object.freeze({
       INSPECT_PROMPT:
         "developer-inspect-prompt"

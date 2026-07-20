@@ -194,6 +194,21 @@ const CHANNELS = Object.freeze({
   MCP_CHANGED:
     "mcp-changed",
 
+  CUSTOM_TOOLS_GET_STATE:
+    "custom-tools-get-state",
+
+  CUSTOM_TOOLS_GET_SECRET_STATUS:
+    "custom-tools-get-secret-status",
+
+  CUSTOM_TOOLS_SET_SECRET:
+    "custom-tools-set-secret",
+
+  CUSTOM_TOOLS_CLEAR_SECRET:
+    "custom-tools-clear-secret",
+
+  CUSTOM_TOOLS_TEST:
+    "custom-tools-test",
+
   DEVELOPER_INSPECT_PROMPT:
     "developer-inspect-prompt",
 
@@ -931,6 +946,47 @@ const api = Object.freeze({
       CHANNELS.MCP_CHANGED,
       callback,
       (state) => state
+    );
+  },
+
+  getCustomToolState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.CUSTOM_TOOLS_GET_STATE
+    );
+  },
+
+  getCustomToolSecretStatus: (toolId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CUSTOM_TOOLS_GET_SECRET_STATUS,
+      String(toolId ?? "")
+    );
+  },
+
+  setCustomToolSecret: (toolId, value) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CUSTOM_TOOLS_SET_SECRET,
+      {
+        toolId: String(toolId ?? ""),
+        value: String(value ?? "")
+      }
+    );
+  },
+
+  clearCustomToolSecret: (toolId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CUSTOM_TOOLS_CLEAR_SECRET,
+      String(toolId ?? "")
+    );
+  },
+
+  testCustomHttpTool: (toolId, input = {}, config = null) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CUSTOM_TOOLS_TEST,
+      {
+        toolId: String(toolId ?? ""),
+        input: input && typeof input === "object" ? input : {},
+        config: config && typeof config === "object" ? config : null
+      }
     );
   },
 

@@ -41,6 +41,7 @@ function previewSettings(request = {}) {
   for (const key of [
     "tools",
     "mcp",
+    "customTools",
     "prompts",
     "personality",
     "context",

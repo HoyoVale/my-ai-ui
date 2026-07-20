@@ -94,6 +94,10 @@ import {
 } from "../mcp/index.js";
 
 import {
+  declarativeHttpToolManager
+} from "../custom-tools/index.js";
+
+import {
   configureRuntimeCircuitBreakers,
   getRuntimeCircuitBreakerSnapshot,
   providerCircuitBreakers,
@@ -1654,9 +1658,13 @@ export class AgentRuntime {
       activeModel = null;
     }
 
-    const externalDefinitions = await mcpClientManager
+    const mcpDefinitions = await mcpClientManager
       .prepareForAgent(settings)
       .catch(() => []);
+    const externalDefinitions = [
+      ...mcpDefinitions,
+      ...declarativeHttpToolManager.getToolDefinitions(settings)
+    ];
 
     const session = createAgentToolSession({
       activeModel,
@@ -2523,12 +2531,16 @@ export class AgentRuntime {
       });
       this.activeRun.orchestrator = orchestrator;
 
-      const externalDefinitions = await mcpClientManager
+      const mcpDefinitions = await mcpClientManager
         .prepareForAgent(runSettings)
         .catch((error) => {
-          console.warn("MCP 工具准备失败，将继续使用内置工具：", error);
+          console.warn("MCP 工具准备失败，将继续使用其他工具：", error);
           return [];
         });
+      const externalDefinitions = [
+        ...mcpDefinitions,
+        ...declarativeHttpToolManager.getToolDefinitions(runSettings)
+      ];
 
       const toolSession = createAgentToolSession({
         activeModel: modelSettings,

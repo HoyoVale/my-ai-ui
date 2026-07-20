@@ -16,6 +16,10 @@ import {
 
 
 import {
+  CustomToolsPanel
+} from "../panels/CustomToolsPanel.jsx";
+
+import {
   DeveloperPanel
 } from "../panels/DeveloperPanel.jsx";
 
@@ -222,6 +226,22 @@ export function SettingsContent({
         onUpdate={(patch) => {
           onUpdateSection(
             "mcp",
+            patch
+          );
+        }}
+      />
+    ),
+
+    "custom-tools": (
+      <CustomToolsPanel
+        settings={settings}
+        developerMode={
+          settings.general
+            .developerMode
+        }
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "customTools",
             patch
           );
         }}

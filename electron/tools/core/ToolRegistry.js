@@ -323,6 +323,9 @@ function manifestEntry(definition) {
     mcp: definition.mcp
       ? cloneMetadata(definition.mcp)
       : null,
+    customHttp: definition.customHttp
+      ? cloneMetadata(definition.customHttp)
+      : null,
     inputSchema: serializeToolSchema(definition.inputSchema),
     outputSchema: serializeToolSchema(definition.outputSchema)
   };

@@ -168,6 +168,16 @@ describe(
     );
 
     it(
+      "exposes declarative custom Tool channels",
+      () => {
+        assert.equal(channels.customTools.GET_STATE, "custom-tools-get-state");
+        assert.equal(channels.customTools.SET_SECRET, "custom-tools-set-secret");
+        assert.equal(channels.customTools.CLEAR_SECRET, "custom-tools-clear-secret");
+        assert.equal(channels.customTools.TEST, "custom-tools-test");
+      }
+    );
+
+    it(
       "exposes memory channels",
       () => {
         assert.equal(

@@ -238,6 +238,37 @@ const MCP_AUTH_MODES = [
   "oauth"
 ];
 
+const CUSTOM_HTTP_METHODS = [
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE"
+];
+
+const CUSTOM_HTTP_AUTH_MODES = [
+  "none",
+  "bearer",
+  "api-key"
+];
+
+const CUSTOM_HTTP_PARAMETER_LOCATIONS = [
+  "path",
+  "query",
+  "header",
+  "body"
+];
+
+const CUSTOM_HTTP_PARAMETER_TYPES = [
+  "string",
+  "number",
+  "integer",
+  "boolean",
+  "object",
+  "array"
+];
+
 const MCP_SERVER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,47}$/u;
 const MCP_ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]{0,63}$/u;
 const EXTERNAL_TOOLSET_PATTERN = /^(?:mcp|custom)\.[a-z0-9][a-z0-9._-]{0,79}$/u;
@@ -1248,6 +1279,132 @@ function sanitizeMcpSettings(source, defaults) {
   };
 }
 
+
+function sanitizeCustomHttpParameter(source, index) {
+  const requestedName = String(source?.name ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/gu, "_")
+    .replace(/^_+|_+$/gu, "")
+    .slice(0, 48);
+  const name = /^[a-zA-Z][a-zA-Z0-9_-]{0,47}$/u.test(requestedName)
+    ? requestedName
+    : `param_${index + 1}`;
+  return {
+    name,
+    location: enumValue(
+      source?.location,
+      CUSTOM_HTTP_PARAMETER_LOCATIONS,
+      "query"
+    ),
+    type: enumValue(
+      source?.type,
+      CUSTOM_HTTP_PARAMETER_TYPES,
+      "string"
+    ),
+    required: booleanValue(source?.required, false),
+    description: stringValue(source?.description, "", 240),
+    defaultValue:
+      source?.defaultValue === undefined
+        ? null
+        : source.defaultValue
+  };
+}
+
+function sanitizeCustomHttpTool(source, index) {
+  const fallbackId = `http-tool-${index + 1}`;
+  const requestedId = String(source?.id ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 40);
+  const id = /^[a-z0-9][a-z0-9_-]{0,39}$/u.test(requestedId)
+    ? requestedId
+    : fallbackId;
+  const method = enumValue(
+    String(source?.method ?? "GET").toUpperCase(),
+    CUSTOM_HTTP_METHODS,
+    "GET"
+  );
+  const authMode = enumValue(
+    source?.authMode,
+    CUSTOM_HTTP_AUTH_MODES,
+    "none"
+  );
+  const rawParameters = Array.isArray(source?.parameters)
+    ? source.parameters.slice(0, 48).map(sanitizeCustomHttpParameter)
+    : [];
+  const parameters = [];
+  const usedNames = new Set();
+  for (const parameter of rawParameters) {
+    let name = parameter.name;
+    let suffix = 2;
+    while (usedNames.has(name)) {
+      name = `${parameter.name.slice(0, 42)}_${suffix}`;
+      suffix += 1;
+    }
+    usedNames.add(name);
+    parameters.push({ ...parameter, name });
+  }
+  const apiKeyHeader = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,80}$/u.test(
+    String(source?.apiKeyHeader ?? "").trim()
+  )
+    ? String(source.apiKeyHeader).trim()
+    : "X-API-Key";
+  return {
+    id,
+    name: nonEmptyStringValue(source?.name, id, 80),
+    description: stringValue(source?.description, "", 1200),
+    enabled: booleanValue(source?.enabled, false),
+    method,
+    url: sanitizeMcpUrl(source?.url),
+    authMode,
+    apiKeyHeader,
+    headers: sanitizeMcpHeaders(source?.headers),
+    parameters,
+    responsePath: stringValue(source?.responsePath, "", 240)
+      .trim()
+      .replace(/^\.+|\.+$/gu, ""),
+    timeoutMs: integerValue(source?.timeoutMs, 30000, 2000, 300000),
+    maxResponseBytes: integerValue(
+      source?.maxResponseBytes,
+      262144,
+      4096,
+      2000000
+    ),
+    allowPrivateNetwork: booleanValue(source?.allowPrivateNetwork, false),
+    allowDestructive: booleanValue(source?.allowDestructive, false)
+  };
+}
+
+function sanitizeCustomToolSettings(source, defaults) {
+  const rawTools = Array.isArray(source?.tools)
+    ? source.tools.slice(0, 64).map(sanitizeCustomHttpTool)
+    : [];
+  const tools = [];
+  const usedIds = new Set();
+  for (const tool of rawTools) {
+    let id = tool.id;
+    let suffix = 2;
+    while (usedIds.has(id)) {
+      id = `${tool.id.slice(0, 34)}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(id);
+    tools.push({ ...tool, id });
+  }
+  return {
+    enabled: booleanValue(source?.enabled, defaults.enabled),
+    maxResponseBytes: integerValue(
+      source?.maxResponseBytes,
+      defaults.maxResponseBytes,
+      4096,
+      2000000
+    ),
+    tools
+  };
+}
+
 function sanitizeToolSettings(
   tools,
   defaults
@@ -1644,6 +1801,8 @@ export function sanitizeSettings(
     source.tools ?? {};
   const mcp =
     source.mcp ?? {};
+  const customTools =
+    source.customTools ?? {};
   const workspaces =
     source.workspaces ?? {};
   const memory =
@@ -1962,6 +2121,11 @@ export function sanitizeSettings(
     mcp: sanitizeMcpSettings(
       mcp,
       defaults.mcp
+    ),
+
+    customTools: sanitizeCustomToolSettings(
+      customTools,
+      defaults.customTools
     ),
 
     workspaces: sanitizeWorkspaceRegistry(

@@ -146,6 +146,16 @@ app.whenReady().then(
 
     ipcMain.handle(
       CHANNELS
+        .customTools
+        .GET_STATE,
+      () => ({
+        enabled: true,
+        tools: []
+      })
+    );
+
+    ipcMain.handle(
+      CHANNELS
         .developer
         .INSPECT_PROMPT,
       () => ({
@@ -244,6 +254,11 @@ app.whenReady().then(
               "clearMcpSecret",
               "clearMcpAuthentication",
               "onMcpChanged",
+              "getCustomToolState",
+              "getCustomToolSecretStatus",
+              "setCustomToolSecret",
+              "clearCustomToolSecret",
+              "testCustomHttpTool",
               "inspectEffectivePrompt",
               "selectWorkspaceDirectory",
               "openExternalLink",
@@ -305,6 +320,10 @@ app.whenReady().then(
               mcpState:
                 await window.api
                   .getMcpState(),
+
+              customToolState:
+                await window.api
+                  .getCustomToolState(),
 
               promptInspection:
                 await window.api
@@ -381,6 +400,11 @@ app.whenReady().then(
 
     assert.equal(
       result.mcpState.serverCount,
+      0
+    );
+
+    assert.equal(
+      result.customToolState.tools.length,
       0
     );
 

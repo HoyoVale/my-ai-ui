@@ -115,6 +115,14 @@ export function Icon({
       </>
     ),
 
+    "custom-tools": (
+      <>
+        <path d="M4 7.5h16M7 4v7M17 4v7" />
+        <rect x="4" y="11" width="16" height="9" rx="2.5" />
+        <path d="M8 15.5h3M14 15.5h2" />
+      </>
+    ),
+
     developer: (
       <>
         <path d="m8 8-4 4 4 4" />

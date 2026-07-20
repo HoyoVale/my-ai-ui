@@ -246,6 +246,11 @@ export const FALLBACK_SETTINGS = {
     maxToolsPerServer: 128,
     servers: []
   },
+  customTools: {
+    enabled: true,
+    maxResponseBytes: 262144,
+    tools: []
+  },
   tools: {
     enabled: true,
     mode: "coding",
