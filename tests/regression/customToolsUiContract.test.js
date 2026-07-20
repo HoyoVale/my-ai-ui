@@ -14,6 +14,10 @@ const content = fs.readFileSync(
   new URL("../../src/Setting/components/Content.jsx", import.meta.url),
   "utf8"
 );
+const toolPanel = fs.readFileSync(
+  new URL("../../src/Setting/panels/ToolPanel.jsx", import.meta.url),
+  "utf8"
+);
 const panel = fs.readFileSync(
   new URL("../../src/Setting/panels/CustomToolsPanel.jsx", import.meta.url),
   "utf8"
@@ -21,13 +25,12 @@ const panel = fs.readFileSync(
 
 
 describe("Custom Tools Setting UX contract", () => {
-  it("places Custom Tools under the AI group for normal users", () => {
-    const aiStart = tabs.indexOf('id: "ai"');
-    const customIndex = tabs.indexOf('id: "custom-tools"');
-    const developerStart = tabs.indexOf('id: "developer"');
-    assert.equal(customIndex > aiStart, true);
-    assert.equal(customIndex < developerStart, true);
-    assert.match(content, /<CustomToolsPanel/u);
+  it("merges Custom Tools into Tools instead of exposing a standalone tab", () => {
+    assert.doesNotMatch(tabs, /id: "custom-tools"/u);
+    assert.doesNotMatch(content, /custom-tools:/u);
+    assert.match(toolPanel, /<CustomToolsPanel/u);
+    assert.match(toolPanel, /custom-tools-in-tools/u);
+    assert.match(toolPanel, /Custom HTTP/u);
   });
 
   it("supports CRUD, credentials, structured parameters and test calls", () => {

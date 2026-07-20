@@ -244,6 +244,26 @@ export const FALLBACK_SETTINGS = {
     connectTimeoutMs: 15000,
     callTimeoutMs: 60000,
     maxToolsPerServer: 128,
+    logLevel: "developer",
+    health: {
+      enabled: true,
+      intervalMs: 30000,
+      timeoutMs: 8000,
+      unhealthyThreshold: 2
+    },
+    recovery: {
+      enabled: true,
+      maxAttempts: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 15000
+    },
+    resultLimits: {
+      maxTextBytes: 51200,
+      maxStructuredBytes: 1048576,
+      maxJsonFields: 10000,
+      maxContentBlocks: 128,
+      stripHtml: true
+    },
     servers: []
   },
   customTools: {

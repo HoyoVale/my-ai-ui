@@ -81,13 +81,6 @@ export const SETTING_GROUPS = [
           "连接本地或远程 MCP 服务，为 AI 添加外部工具和数据能力。"
       },
       {
-        id: "custom-tools",
-        label: "Custom Tools",
-        title: "自定义工具",
-        description:
-          "把普通 HTTP API 配置成可由模型安全调用的工具。"
-      },
-      {
         id: "conversation",
         label: "Context",
         title: "会话与上下文",

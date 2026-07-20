@@ -101,12 +101,10 @@ describe(
         );
 
         assert.match(runtime, /let executionConversation;/u);
-        assert.match(runtime, /executionConversation = continuationState/u);
-        assert.match(runtime, /executionConversation\.modelSelection/u);
-        assert.doesNotMatch(
-          runtime,
-          /const executionConversation = continuationState/u
-        );
+        assert.match(runtime, /resolveConversationExecutionContext/u);
+        assert.match(runtime, /overrides: continuationState \?\? \{\}/u);
+        assert.match(runtime, /executionConversation = execution\.conversation/u);
+        assert.match(runtime, /modelSelection:/u);
       }
     );
   }

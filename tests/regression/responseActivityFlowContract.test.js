@@ -109,4 +109,16 @@ describe("structured Response activity flow", () => {
     );
   });
 
+  it("streams finalization chunks into the structured final answer", () => {
+    const runtime = read(
+      "../../electron/agent/AgentRuntime.js"
+    );
+
+    assert.doesNotMatch(runtime, /bufferProgressHandoff/u);
+    assert.match(
+      runtime,
+      /for await \([\s\S]*result\.textStream[\s\S]*this\.activeRun\.finalText =\s*text;[\s\S]*appendResponseChunk\(\s*textPart/u
+    );
+  });
+
 });

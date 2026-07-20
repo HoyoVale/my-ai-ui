@@ -6,6 +6,8 @@
   --setting-topbar: #ffffff;
   --setting-surface: #ffffff;
   --setting-surface-soft: #f7f7f8;
+  --setting-panel: var(--setting-surface);
+  --setting-panel-soft: var(--setting-surface-soft);
 
   --setting-text: #202123;
   --setting-text-soft: #6f7074;
@@ -4366,6 +4368,73 @@
   }
 
   .custom-tool-parameter {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* MCP stability phase 1-2 */
+.mcp-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mcp-connection-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mcp-status--reconnecting {
+  color: #aa7a20;
+}
+
+.mcp-status--offline {
+  color: #c54b4b;
+}
+
+.mcp-security-note {
+  margin: 12px 18px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--setting-border));
+  border-radius: 10px;
+  color: var(--setting-text-soft);
+  background: color-mix(in srgb, var(--accent) 4%, var(--setting-panel-soft));
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.tool-source-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 18px;
+}
+
+.tool-source-overview > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--setting-border);
+  border-radius: 11px;
+  background: var(--setting-panel-soft);
+}
+
+.tool-source-overview strong {
+  color: var(--setting-text);
+  font-size: 17px;
+}
+
+.tool-source-overview span {
+  color: var(--setting-text-soft);
+  font-size: 11px;
+}
+
+.tool-custom-source {
+  margin-top: 16px;
+}
+
+@media (max-width: 760px) {
+  .mcp-overview,
+  .tool-source-overview {
     grid-template-columns: 1fr;
   }
 }

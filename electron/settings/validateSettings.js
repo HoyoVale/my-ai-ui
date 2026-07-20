@@ -271,6 +271,7 @@ const CUSTOM_HTTP_PARAMETER_TYPES = [
 
 const MCP_SERVER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,47}$/u;
 const MCP_ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]{0,63}$/u;
+const MCP_SECRET_ENV_NAME_PATTERN = /(?:^|_)(?:TOKEN|API_KEY|KEY|SECRET|PASSWORD|PASSCODE|CREDENTIAL)(?:$|_)/u;
 const EXTERNAL_TOOLSET_PATTERN = /^(?:mcp|custom)\.[a-z0-9][a-z0-9._-]{0,79}$/u;
 const EXTERNAL_TOOL_NAME_PATTERN = /^(?=.{1,64}$)(?:mcp|custom)_[a-zA-Z0-9_-]+$/u;
 
@@ -1184,6 +1185,41 @@ function sanitizeMcpEnvironment(source = {}) {
   return output;
 }
 
+
+function sanitizeMcpToolRules(source = {}) {
+  const output = {};
+  const entries = source && typeof source === "object" && !Array.isArray(source)
+    ? Object.entries(source)
+    : [];
+  for (const [rawName, rawRule] of entries.slice(0, 512)) {
+    const name = String(rawName ?? "").trim().slice(0, 256);
+    if (!name) continue;
+    output[name] = enumValue(rawRule, ["inherit", "allow", "deny"], "inherit");
+  }
+  return output;
+}
+
+function sanitizeMcpPermissions(source = {}, { readOnly = false } = {}) {
+  const writable = readOnly !== true;
+  return {
+    localProcess: booleanValue(source?.localProcess, true),
+    network: booleanValue(source?.network, true),
+    account: booleanValue(source?.account, true),
+    fileRead: booleanValue(source?.fileRead, true),
+    fileWrite: booleanValue(source?.fileWrite, writable),
+    externalWrite: booleanValue(source?.externalWrite, writable),
+    destructive: booleanValue(source?.destructive, false),
+    tools: sanitizeMcpToolRules(source?.tools)
+  };
+}
+
+function sanitizeMcpServerRecovery(source = {}) {
+  return {
+    enabled: booleanValue(source?.enabled, true),
+    maxAttempts: integerValue(source?.maxAttempts, 3, 0, 20)
+  };
+}
+
 function sanitizeMcpServer(source, index) {
   const fallbackId = `mcp-${index + 1}`;
   const requestedId = String(source?.id ?? "")
@@ -1205,6 +1241,7 @@ function sanitizeMcpServer(source, index) {
         .filter((name) => MCP_ENV_NAME_PATTERN.test(name))
       )].slice(0, 16)
     : [];
+  const sanitizedEnvironment = sanitizeMcpEnvironment(source?.env);
   let cwd = String(source?.cwd ?? "").trim();
   if (cwd && !(path.isAbsolute(cwd) || path.win32.isAbsolute(cwd))) {
     cwd = "";
@@ -1222,6 +1259,14 @@ function sanitizeMcpServer(source, index) {
     ? String(source.apiKeyHeader).trim()
     : "X-API-Key";
   const normalizedSecretKeys = [...secretEnvKeys];
+  for (const name of Object.keys(sanitizedEnvironment)) {
+    if (normalizedSecretKeys.includes(name) || MCP_SECRET_ENV_NAME_PATTERN.test(name)) {
+      if (!normalizedSecretKeys.includes(name) && normalizedSecretKeys.length < 16) {
+        normalizedSecretKeys.push(name);
+      }
+      delete sanitizedEnvironment[name];
+    }
+  }
   if (
     transport === "streamable-http" &&
     ["bearer", "api-key"].includes(authMode) &&
@@ -1229,6 +1274,7 @@ function sanitizeMcpServer(source, index) {
   ) {
     normalizedSecretKeys.push("MCP_REMOTE_TOKEN");
   }
+  const readOnly = booleanValue(source?.readOnly, false);
 
   return {
     id,
@@ -1244,10 +1290,12 @@ function sanitizeMcpServer(source, index) {
     command: transport === "stdio" ? command : "",
     args: transport === "stdio" ? args : [],
     cwd: transport === "stdio" ? cwd : "",
-    env: transport === "stdio" ? sanitizeMcpEnvironment(source?.env) : {},
+    env: transport === "stdio" ? sanitizedEnvironment : {},
     secretEnvKeys: normalizedSecretKeys.slice(0, 16),
-    readOnly: booleanValue(source?.readOnly, false),
-    preset: enumValue(source?.preset, ["custom", "github-readonly", "remote"], "custom"),
+    readOnly,
+    permissions: sanitizeMcpPermissions(source?.permissions, { readOnly }),
+    recovery: sanitizeMcpServerRecovery(source?.recovery),
+    preset: enumValue(source?.preset, ["custom", "remote"], "custom"),
     connectTimeoutMs: integerValue(source?.connectTimeoutMs, 15000, 2000, 120000),
     callTimeoutMs: integerValue(source?.callTimeoutMs, 60000, 2000, 600000)
   };
@@ -1275,6 +1323,26 @@ function sanitizeMcpSettings(source, defaults) {
     connectTimeoutMs: integerValue(source?.connectTimeoutMs, defaults.connectTimeoutMs, 2000, 120000),
     callTimeoutMs: integerValue(source?.callTimeoutMs, defaults.callTimeoutMs, 2000, 600000),
     maxToolsPerServer: integerValue(source?.maxToolsPerServer, defaults.maxToolsPerServer, 1, 512),
+    logLevel: enumValue(source?.logLevel, ["user", "developer", "debug"], defaults.logLevel ?? "developer"),
+    health: {
+      enabled: booleanValue(source?.health?.enabled, defaults.health?.enabled ?? true),
+      intervalMs: integerValue(source?.health?.intervalMs, defaults.health?.intervalMs ?? 30000, 5000, 3600000),
+      timeoutMs: integerValue(source?.health?.timeoutMs, defaults.health?.timeoutMs ?? 8000, 1000, 60000),
+      unhealthyThreshold: integerValue(source?.health?.unhealthyThreshold, defaults.health?.unhealthyThreshold ?? 2, 1, 10)
+    },
+    recovery: {
+      enabled: booleanValue(source?.recovery?.enabled, defaults.recovery?.enabled ?? true),
+      maxAttempts: integerValue(source?.recovery?.maxAttempts, defaults.recovery?.maxAttempts ?? 3, 0, 20),
+      baseDelayMs: integerValue(source?.recovery?.baseDelayMs, defaults.recovery?.baseDelayMs ?? 1000, 250, 60000),
+      maxDelayMs: integerValue(source?.recovery?.maxDelayMs, defaults.recovery?.maxDelayMs ?? 15000, 1000, 300000)
+    },
+    resultLimits: {
+      maxTextBytes: integerValue(source?.resultLimits?.maxTextBytes, defaults.resultLimits?.maxTextBytes ?? 51200, 4096, 2000000),
+      maxStructuredBytes: integerValue(source?.resultLimits?.maxStructuredBytes, defaults.resultLimits?.maxStructuredBytes ?? 1048576, 16384, 10000000),
+      maxJsonFields: integerValue(source?.resultLimits?.maxJsonFields, defaults.resultLimits?.maxJsonFields ?? 10000, 100, 100000),
+      maxContentBlocks: integerValue(source?.resultLimits?.maxContentBlocks, defaults.resultLimits?.maxContentBlocks ?? 128, 1, 512),
+      stripHtml: booleanValue(source?.resultLimits?.stripHtml, defaults.resultLimits?.stripHtml ?? true)
+    },
     servers: deduplicated
   };
 }

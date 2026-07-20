@@ -67,6 +67,7 @@ export function createAgentToolSession({
   taskId = "",
   runId = "",
   workspaceId = "",
+  mode = "chat",
   segmentId = "",
   faultInjector = null,
   externalDefinitions = []
@@ -156,7 +157,7 @@ export function createAgentToolSession({
         taskId,
         workspaceId,
         segmentId,
-        mode: "interactive",
+        mode: mode === "coding" ? "coding" : "chat",
         subprocessSupervisor
       },
       policyEngine: new ToolPolicyEngine({

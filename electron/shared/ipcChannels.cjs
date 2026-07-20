@@ -227,6 +227,12 @@ const IPC_CHANNELS =
       CLEAR_AUTH:
         "mcp-clear-auth",
 
+      IMPORT_CONFIG:
+        "mcp-import-config",
+
+      EXPORT_CONFIG:
+        "mcp-export-config",
+
       CHANGED:
         "mcp-changed"
     }),

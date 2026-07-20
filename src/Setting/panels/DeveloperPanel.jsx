@@ -148,15 +148,31 @@ export function DeveloperPanel({
   settings,
   onUpdatePrompts
 }) {
-  const activeModel = resolveActiveModel(settings.model);
-  const { manifest } = useToolManifest(settings.tools);
+  const { manifest } = useToolManifest(settings);
+  const fallbackModel = resolveActiveModel(settings.model);
+  const activeModel = manifest?.activeModel
+    ? {
+        provider: manifest.activeModel.providerName,
+        model: manifest.activeModel.modelName,
+        modelId: manifest.activeModel.modelId
+      }
+    : fallbackModel;
   const [modeEditor, setModeEditor] = useState(
-    settings.tools.mode === "coding" ? "coding" : "chat"
+    manifest?.mode === "coding" ? "coding" : "chat"
   );
   const promptSettings = settings.prompts ?? {
     modeOverrides: { chat: "", coding: "" },
     developerInstructions: ""
   };
+
+  useEffect(() => {
+    if (manifest?.mode) {
+      setModeEditor(manifest.mode);
+    }
+  }, [
+    manifest?.executionContext?.conversationId,
+    manifest?.mode
+  ]);
 
   const updateModePrompt = (value) => {
     onUpdatePrompts?.({
@@ -175,11 +191,12 @@ export function DeveloperPanel({
     <>
       <SettingsSection title="Agent Runtime">
         <div className="developer-diagnostic-grid">
-          <div><span>工作模式</span><strong>{settings.tools.mode === "coding" ? "Coding" : "Chat"}</strong></div>
+          <div><span>工作模式</span><strong>{manifest?.mode === "coding" ? "Coding" : "Chat"}</strong></div>
           <div><span>已注册工具</span><strong>{totalTools}</strong></div>
           <div><span>模型可见工具</span><strong>{visibleTools}</strong></div>
           <div><span>Manifest</span><strong>{manifest?.revision ?? "加载中"}</strong></div>
-          <div><span>授权工作区</span><strong>{settings.tools.workspace?.roots?.length ?? 0}</strong></div>
+          <div><span>当前会话</span><strong>{manifest?.executionContext?.conversationTitle ?? "加载中"}</strong></div>
+          <div><span>授权工作区</span><strong>{manifest?.executionContext?.workspaceAvailable ? 1 : 0}</strong></div>
           <div><span>最大工具调用</span><strong>{settings.tools.runtime.maxToolCalls}</strong></div>
         </div>
       </SettingsSection>

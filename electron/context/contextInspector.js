@@ -3,6 +3,10 @@ import {
 } from "../conversation/index.js";
 
 import {
+  resolveConversationExecutionContext
+} from "../conversation/executionContext.js";
+
+import {
   memoryManager
 } from "../memory/index.js";
 
@@ -51,10 +55,16 @@ export function inspectConversationContext(
       trackUsage: false
     });
 
+  const execution =
+    resolveConversationExecutionContext({
+      settings: getSettings(),
+      conversation
+    });
+
   const context =
     assembleAgentContext({
-      settings: getSettings(),
-      conversation,
+      settings: execution.settings,
+      conversation: execution.conversation,
       memories
     });
 
@@ -62,6 +72,8 @@ export function inspectConversationContext(
     conversationId:
       conversation.id,
     title: conversation.title,
+    mode: execution.metadata.mode,
+    workspaceId: execution.metadata.workspaceId,
     contextStartAfterMessageId:
       conversation
         .contextStartAfterMessageId,

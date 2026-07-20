@@ -1,5 +1,8 @@
+import fs from "node:fs/promises";
+
 import {
   BrowserWindow,
+  dialog,
   ipcMain
 } from "electron";
 
@@ -26,8 +29,15 @@ import {
 } from "../../mcp/McpOAuthFlow.js";
 
 import {
+  exportMcpConfiguration,
+  importMcpConfiguration
+} from "../../mcp/McpConfigPortability.js";
+
+import {
   isSettingSender
 } from "../../windows/setting/settingWindow.js";
+
+const MAX_MCP_CONFIG_FILE_BYTES = 2 * 1024 * 1024;
 
 function assertSettingSender(event) {
   if (!isSettingSender(event.sender)) {
@@ -177,6 +187,52 @@ export function registerMcpIpc() {
       await mcpClientManager.disconnectServer(request.serverId, { forgetTools: false });
       broadcastState();
       return status;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.mcp.IMPORT_CONFIG,
+    async (event) => {
+      assertSettingSender(event);
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(owner ?? undefined, {
+        title: "导入 MCP 配置",
+        properties: ["openFile"],
+        filters: [{ name: "JSON", extensions: ["json"] }]
+      });
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: false, canceled: true, servers: [], warnings: [] };
+      }
+      const filePath = result.filePaths[0];
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile() || stat.size > MAX_MCP_CONFIG_FILE_BYTES) {
+        throw new Error("MCP 配置文件必须是小于 2 MB 的 JSON 文件。");
+      }
+      const text = await fs.readFile(filePath, "utf8");
+      const payload = JSON.parse(text);
+      return { ok: true, canceled: false, ...importMcpConfiguration(payload) };
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.mcp.EXPORT_CONFIG,
+    async (event) => {
+      assertSettingSender(event);
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showSaveDialog(owner ?? undefined, {
+        title: "导出 MCP 备份",
+        defaultPath: "my-ai-ui-mcp-backup.json",
+        filters: [{ name: "JSON", extensions: ["json"] }]
+      });
+      if (result.canceled || !result.filePath) {
+        return { ok: false, canceled: true };
+      }
+      const payload = exportMcpConfiguration(getSettings());
+      await fs.writeFile(result.filePath, `${JSON.stringify(payload, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600
+      });
+      return { ok: true, canceled: false };
     }
   );
 

@@ -8,6 +8,7 @@ export function ConversationTopbar({
   contextOpen,
   taskOpen,
   recoveryOpen,
+  showRecovery = false,
   recoveryCount = 0,
   onToggleSidebar,
   onToggleContext,
@@ -66,31 +67,33 @@ export function ConversationTopbar({
           />
         </button>
 
-        <button
-          type="button"
-          className={
-            `conversation-icon-button conversation-recovery-toggle${
-              recoveryOpen
-                ? " is-active"
-                : ""
-            }`
-          }
-          data-testid="conversation-recovery-toggle"
-          title={recoveryCount > 0 ? `恢复中心 · ${recoveryCount} 个待处理操作` : "恢复中心"}
-          aria-label="恢复中心"
-          aria-pressed={recoveryOpen}
-          onClick={onToggleRecovery}
-        >
-          <ConversationIcon
-            name={recoveryCount > 0 ? "warning" : "activity"}
-            size={17}
-          />
-          {recoveryCount > 0 && (
-            <span className="conversation-icon-button__badge">
-              {Math.min(99, recoveryCount)}
-            </span>
-          )}
-        </button>
+        {showRecovery && (
+          <button
+            type="button"
+            className={
+              `conversation-icon-button conversation-recovery-toggle${
+                recoveryOpen
+                  ? " is-active"
+                  : ""
+              }`
+            }
+            data-testid="conversation-recovery-toggle"
+            title={recoveryCount > 0 ? `恢复中心 · ${recoveryCount} 个待处理操作` : "恢复中心"}
+            aria-label="恢复中心"
+            aria-pressed={recoveryOpen}
+            onClick={onToggleRecovery}
+          >
+            <ConversationIcon
+              name={recoveryCount > 0 ? "warning" : "activity"}
+              size={17}
+            />
+            {recoveryCount > 0 && (
+              <span className="conversation-icon-button__badge">
+                {Math.min(99, recoveryCount)}
+              </span>
+            )}
+          </button>
+        )}
 
         <button
           type="button"

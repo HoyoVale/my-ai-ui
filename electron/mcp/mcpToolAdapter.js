@@ -3,11 +3,10 @@ import crypto from "node:crypto";
 import Ajv from "ajv";
 import { jsonSchema } from "ai";
 
+import { sanitizeMcpToolResult } from "./McpResultSanitizer.js";
+
 const MAX_LOCAL_TOOL_NAME = 64;
 const MAX_DESCRIPTION_LENGTH = 4000;
-const MAX_TEXT_CONTENT_CHARS = 2_000_000;
-const MAX_STRUCTURED_CONTENT_BYTES = 5_000_000;
-const MAX_RESOURCE_BLOCK_BYTES = 1_000_000;
 
 const ajv = new Ajv({
   allErrors: true,
@@ -102,125 +101,12 @@ export function createMcpInputSchema(value) {
   return schema;
 }
 
-function boundedStructuredContent(value) {
-  if (value === undefined) {
-    return null;
-  }
-
-  try {
-    const text = JSON.stringify(value);
-    if (Buffer.byteLength(text, "utf8") <= MAX_STRUCTURED_CONTENT_BYTES) {
-      return value;
-    }
-    return {
-      truncated: true,
-      reason: "MCP structuredContent exceeds the local safety limit.",
-      byteLength: Buffer.byteLength(text, "utf8")
-    };
-  } catch {
-    return {
-      truncated: true,
-      reason: "MCP structuredContent is not JSON serializable."
-    };
-  }
-}
-
-function normalizeContentBlocks(blocks) {
-  const output = [];
-  let remainingText = MAX_TEXT_CONTENT_CHARS;
-
-  for (const block of Array.isArray(blocks) ? blocks.slice(0, 256) : []) {
-    if (!block || typeof block !== "object") {
-      continue;
-    }
-
-    if (block.type === "text") {
-      const text = String(block.text ?? "");
-      const kept = text.slice(0, Math.max(0, remainingText));
-      remainingText -= kept.length;
-      output.push({
-        type: "text",
-        text: kept,
-        truncated: kept.length < text.length
-      });
-      continue;
-    }
-
-    if (block.type === "resource" || block.type === "resource_link") {
-      try {
-        const serialized = JSON.stringify(block);
-        if (Buffer.byteLength(serialized, "utf8") <= MAX_RESOURCE_BLOCK_BYTES) {
-          output.push(JSON.parse(serialized));
-        } else {
-          output.push({
-            type: block.type,
-            omitted: true,
-            reason: "MCP resource result exceeds the local safety limit."
-          });
-        }
-      } catch {
-        output.push({
-          type: block.type,
-          omitted: true,
-          reason: "MCP resource result is not JSON serializable."
-        });
-      }
-      continue;
-    }
-
-    if (block.type === "image" || block.type === "audio") {
-      output.push({
-        type: block.type,
-        mimeType: String(block.mimeType ?? "application/octet-stream"),
-        omitted: true,
-        reason: "Binary MCP result content is not injected into the model context by this build."
-      });
-      continue;
-    }
-
-    output.push({
-      type: String(block.type ?? "unknown"),
-      omitted: true
-    });
-  }
-
-  return output;
-}
-
-export function normalizeMcpToolResult(result, { serverId, toolName } = {}) {
-  const content = normalizeContentBlocks(result?.content);
-  const structuredContent = boundedStructuredContent(result?.structuredContent);
-
-  if (result?.isError === true) {
-    const text = content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-
-    return {
-      ok: false,
-      serverId,
-      toolName,
-      content,
-      structuredContent,
-      error: {
-        code: "MCP_TOOL_ERROR",
-        type: "execution_failed",
-        message: text || "MCP Server 返回了工具执行错误。",
-        retryable: false
-      }
-    };
-  }
-
-  return {
-    ok: true,
-    serverId,
-    toolName,
-    content,
-    structuredContent,
-    meta: boundedStructuredContent(result?._meta)
-  };
+export function normalizeMcpToolResult(result, {
+  serverId,
+  toolName,
+  limits
+} = {}) {
+  return sanitizeMcpToolResult(result, { serverId, toolName }, limits);
 }
 
 function runtimeSemantics(server, tool) {
@@ -267,7 +153,7 @@ function runtimeSemantics(server, tool) {
   };
 }
 
-export function createMcpToolDefinition({ manager, server, tool }) {
+export function createMcpToolDefinition({ manager, server, tool, manifestRevision = 1, manifestHash = "" }) {
   const localName = createMcpLocalToolName(server.id, tool.name);
   const semantics = runtimeSemantics(server, tool);
   const title = String(tool.title ?? tool.name ?? localName).slice(0, 160);
@@ -311,6 +197,8 @@ export function createMcpToolDefinition({ manager, server, tool }) {
     mcp: {
       serverId: server.id,
       remoteName: tool.name,
+      manifestRevision,
+      manifestHash,
       annotations: structuredClone(tool.annotations ?? {}),
       outputSchema: structuredClone(tool.outputSchema ?? null)
     }

@@ -1519,9 +1519,26 @@ export class ConversationManager {
           continue;
         }
 
+        const checkpoint =
+          message.activity?.checkpoint &&
+          typeof message.activity.checkpoint === "object"
+            ? message.activity.checkpoint
+            : null;
+
         byTask.set(taskId, {
           conversationId: conversation.id,
           conversationTitle: conversation.title,
+          mode: checkpoint?.mode === "coding"
+            ? "coding"
+            : conversation.mode === "coding"
+              ? "coding"
+              : "chat",
+          workspaceId:
+            checkpoint?.workspaceId ?? conversation.workspaceId ?? null,
+          workspaceName:
+            checkpoint?.workspaceSnapshot?.name ??
+            conversation.workspaceSnapshot?.name ??
+            null,
           messageId: message.id,
           taskId,
           runId: String(message.activity?.runId ?? ""),

@@ -21,23 +21,40 @@ describe("MCP Setting UX contract", () => {
     assert.doesNotMatch(setting, /\["developer", "mcp"\]/u);
   });
 
-  it("offers remote, local and GitHub connection paths", () => {
+  it("offers only generic remote and local connection paths", () => {
     const panel = read("../../src/Setting/panels/McpPanel.jsx");
 
     assert.match(panel, /mcp-add-connection/u);
     assert.match(panel, /mcp-add-remote/u);
-    assert.match(panel, /mcp-add-github/u);
+    assert.match(panel, /mcp-add-local/u);
     assert.match(panel, /streamable-http/u);
     assert.match(panel, /浏览器登录（OAuth）/u);
     assert.match(panel, /Bearer Token/u);
     assert.match(panel, /API Key/u);
+    assert.doesNotMatch(panel, /mcp-add-github/u);
+    assert.doesNotMatch(panel, /github-readonly/u);
   });
 
-  it("keeps advanced MCP diagnostics developer-only", () => {
+  it("supports portable config, health, permissions and recovery", () => {
+    const panel = read("../../src/Setting/panels/McpPanel.jsx");
+
+    assert.match(panel, /mcp-import-config/u);
+    assert.match(panel, /exportMcpConfig/u);
+    assert.match(panel, /导出备份/u);
+    assert.doesNotMatch(panel, /Claude 格式/u);
+    assert.match(panel, /权限矩阵/u);
+    assert.match(panel, /健康检查/u);
+    assert.match(panel, /恢复策略/u);
+    assert.match(panel, /Manifest r/u);
+    assert.match(panel, /结果上限/u);
+  });
+
+  it("keeps raw MCP diagnostics developer-only", () => {
     const panel = read("../../src/Setting/panels/McpPanel.jsx");
 
     assert.match(panel, /developerMode &&/u);
-    assert.match(panel, /高级设置/u);
+    assert.match(panel, /连接诊断/u);
     assert.match(panel, /Server 日志/u);
+    assert.match(panel, /日志级别/u);
   });
 });

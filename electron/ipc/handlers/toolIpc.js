@@ -9,6 +9,14 @@ import {
 } from "../../settings/settingsStore.js";
 
 import {
+  conversationManager
+} from "../../conversation/index.js";
+
+import {
+  resolveConversationExecutionContext
+} from "../../conversation/executionContext.js";
+
+import {
   sanitizeSettings
 } from "../../settings/validateSettings.js";
 
@@ -46,7 +54,9 @@ function previewSettings(request = {}) {
     "personality",
     "context",
     "conversation",
-    "memory"
+    "memory",
+    "model",
+    "workspaces"
   ]) {
     if (preview[key] && typeof preview[key] === "object") {
       allowed[key] = {
@@ -67,8 +77,13 @@ export function registerToolIpc() {
     IPC_CHANNELS.tools.GET_MANIFEST,
     (event, request = {}) => {
       assertSettingSender(event);
+      const execution = resolveConversationExecutionContext({
+        settings: previewSettings(request),
+        conversation: conversationManager.getCurrentConversation()
+      });
       return getToolManifestSnapshot({
-        settings: previewSettings(request)
+        settings: execution.settings,
+        executionContext: execution.metadata
       });
     }
   );

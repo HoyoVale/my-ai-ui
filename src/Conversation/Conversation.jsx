@@ -70,6 +70,9 @@ export default function Conversation() {
         .theme
     );
 
+  const developerMode =
+    settings.general?.developerMode === true;
+
   const isMaximized =
     useWindowMaximized();
 
@@ -151,6 +154,12 @@ export default function Conversation() {
   ]);
 
   const refreshRecoveryHistory = useCallback(async () => {
+    if (!developerMode) {
+      setRecoveryHistory(null);
+      setRecoveryError("");
+      return null;
+    }
+
     setRecoveryLoading(true);
     setRecoveryError("");
     try {
@@ -166,18 +175,28 @@ export default function Conversation() {
     } finally {
       setRecoveryLoading(false);
     }
-  }, []);
+  }, [developerMode]);
 
   useEffect(() => {
+    if (!developerMode) {
+      setRecoveryOpen(false);
+      setRecoveryHistory(null);
+      setRecoveryError("");
+      return;
+    }
     void refreshRecoveryHistory();
-  }, [refreshRecoveryHistory]);
+  }, [developerMode, refreshRecoveryHistory]);
 
   useEffect(() => {
-    if (agentStatus.toolRuntime?.unresolvedCount > 0 || recoveryOpen) {
+    if (
+      developerMode &&
+      (agentStatus.toolRuntime?.unresolvedCount > 0 || recoveryOpen)
+    ) {
       void refreshRecoveryHistory();
     }
   }, [
     agentStatus.toolRuntime?.unresolvedCount,
+    developerMode,
     recoveryOpen,
     refreshRecoveryHistory
   ]);
@@ -300,7 +319,8 @@ export default function Conversation() {
         }
         contextOpen={contextOpen}
         taskOpen={taskOpen}
-        recoveryOpen={recoveryOpen}
+        recoveryOpen={developerMode && recoveryOpen}
+        showRecovery={developerMode}
         recoveryCount={recoveryHistory?.unresolvedCount ?? 0}
         isMaximized={isMaximized}
         onToggleSidebar={() => {
@@ -337,6 +357,7 @@ export default function Conversation() {
           );
         }}
         onToggleRecovery={() => {
+          if (!developerMode) return;
           setContextOpen(false);
           setTaskOpen(false);
           setRecoveryOpen((current) => !current);
@@ -471,12 +492,12 @@ export default function Conversation() {
         </main>
 
         <ConversationRecoveryPanel
-          open={recoveryOpen}
+          open={developerMode && recoveryOpen}
           history={recoveryHistory}
           loading={recoveryLoading}
           busy={recoveryBusy}
           error={recoveryError}
-          developerMode={settings.general.developerMode}
+          developerMode={developerMode}
           onRefresh={refreshRecoveryHistory}
           onAction={handleRecoveryHistoryAction}
           onOpenTask={async (item) => {

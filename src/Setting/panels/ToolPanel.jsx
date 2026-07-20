@@ -20,6 +20,10 @@ import {
   useToolManifest
 } from "../hooks/useToolManifest.js";
 
+import {
+  CustomToolsPanel
+} from "./CustomToolsPanel.jsx";
+
 function formatBytes(value) {
   if (value >= 1_000_000) {
     return `${Math.round(value / 100_000) / 10} MB`;
@@ -81,7 +85,8 @@ function ManifestToolCard({
   developerMode,
   expanded = false,
   onExpandedChange,
-  onOverride
+  onOverride,
+  onMcpPermission
 }) {
   return (
     <details
@@ -130,6 +135,21 @@ function ManifestToolCard({
           </SettingRow>
         )}
 
+        {tool.sourceKind === "mcp" && (
+          <SettingRow title="MCP 调用权限">
+            <Select
+              testId={`mcp-tool-permission-${tool.name}`}
+              value={tool.mcp?.permission?.rule ?? "inherit"}
+              options={[
+                { value: "inherit", label: "跟随连接权限" },
+                { value: "allow", label: "允许（仍受连接权限）" },
+                { value: "deny", label: "显式拒绝" }
+              ]}
+              onChange={onMcpPermission}
+            />
+          </SettingRow>
+        )}
+
         <div className="tool-manifest-facts">
           <div><span>Tool ID</span><code>{tool.id}</code></div>
           <div><span>Toolset</span><code>{tool.toolsetId}</code></div>
@@ -156,7 +176,8 @@ function ManifestToolset({
   expandedTools,
   onToolExpandedChange,
   onToolsetOverride,
-  onToolOverride
+  onToolOverride,
+  onMcpPermission
 }) {
   return (
     <details
@@ -196,6 +217,7 @@ function ManifestToolset({
               onToolExpandedChange(tool.id, expanded);
             }}
             onOverride={(value) => onToolOverride(tool.name, value)}
+            onMcpPermission={(value) => onMcpPermission(tool, value)}
           />
         ))}
       </div>
@@ -205,14 +227,18 @@ function ManifestToolset({
 
 export function ToolPanel({
   settings,
+  appSettings = null,
+  customToolSettings = null,
   developerMode = false,
-  onUpdate
+  onUpdate,
+  onUpdateMcp,
+  onUpdateCustomTools
 }) {
   const {
     manifest,
     status: manifestStatus,
     error: manifestError
-  } = useToolManifest(settings);
+  } = useToolManifest(appSettings ?? { tools: settings });
 
   const [expandedTools, setExpandedTools] =
     useState({});
@@ -298,6 +324,30 @@ export function ToolPanel({
     });
   };
 
+
+  const updateMcpToolPermission = (tool, value) => {
+    const mcp = appSettings?.mcp;
+    const serverId = tool.mcp?.serverId;
+    const remoteName = tool.mcp?.remoteName;
+    if (!mcp || !serverId || !remoteName || !onUpdateMcp) return;
+    onUpdateMcp({
+      ...mcp,
+      servers: (mcp.servers ?? []).map((server) => {
+        if (server.id !== serverId) return server;
+        return {
+          ...server,
+          permissions: {
+            ...(server.permissions ?? {}),
+            tools: {
+              ...(server.permissions?.tools ?? {}),
+              [remoteName]: value
+            }
+          }
+        };
+      })
+    });
+  };
+
   const visibleToolsets = (manifest?.toolsets ?? []).filter(
     (toolset) => developerMode || toolset.userVisible !== false
   );
@@ -315,11 +365,21 @@ export function ToolPanel({
 
         <div className="tool-manifest-overview">
           <span>当前模式</span>
-          <strong>{settings.mode === "coding" ? "Coding" : "Chat"}</strong>
+          <strong>{manifest?.mode === "coding" ? "Coding" : "Chat"}</strong>
+          <span>当前会话</span>
+          <strong>{manifest?.executionContext?.conversationTitle ?? "加载中"}</strong>
           <span>Manifest</span>
           <code>{manifest?.revision ?? "加载中"}</code>
           <span>模型可见</span>
           <strong>{manifest?.tools?.filter((tool) => tool.ready).length ?? 0} 个工具</strong>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="工具来源">
+        <div className="tool-source-overview" data-testid="tool-source-overview">
+          <div><strong>{manifest?.sourceSummary?.builtin ?? 0}</strong><span>Built-in</span></div>
+          <div><strong>{manifest?.sourceSummary?.mcp ?? 0}</strong><span>MCP</span></div>
+          <div><strong>{manifest?.sourceSummary?.custom ?? 0}</strong><span>Custom HTTP</span></div>
         </div>
       </SettingsSection>
 
@@ -339,9 +399,20 @@ export function ToolPanel({
             onToolExpandedChange={updateExpandedTool}
             onToolsetOverride={(value) => updateToolsetOverride(toolset.id, value)}
             onToolOverride={updateToolOverride}
+            onMcpPermission={updateMcpToolPermission}
           />
         ))}
       </SettingsSection>
+
+      {customToolSettings && onUpdateCustomTools && (
+        <div className="tool-custom-source" data-testid="custom-tools-in-tools">
+          <CustomToolsPanel
+            settings={{ customTools: customToolSettings }}
+            developerMode={developerMode}
+            onUpdate={onUpdateCustomTools}
+          />
+        </div>
+      )}
 
       <details className="settings-disclosure" data-testid="tool-advanced-settings">
         <summary>高级设置</summary>

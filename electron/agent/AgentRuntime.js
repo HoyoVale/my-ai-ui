@@ -20,12 +20,13 @@ import {
 } from "../conversation/index.js";
 
 import {
-  getSettings
-} from "../settings/settingsStore.js";
+  getRecoveryExecutionOverrides,
+  resolveConversationExecutionContext
+} from "../conversation/executionContext.js";
 
 import {
-  bindSettingsToConversationWorkspace
-} from "../workspace/workspaceRegistry.js";
+  getSettings
+} from "../settings/settingsStore.js";
 
 import {
   memoryManager
@@ -110,7 +111,6 @@ import {
 
 import {
   inferRunStopReason,
-  isGracefulRunBoundary,
   RUN_STOP_REASONS
 } from "./runStopReasons.js";
 
@@ -843,9 +843,8 @@ export class AgentRuntime {
     }
 
     const savePartial =
-      getSettings()
-        .conversation
-        .saveAbortedReplies;
+      this.activeRun.runtimePreferences
+        ?.saveAbortedReplies !== false;
     const partialContent = savePartial
       ? resolveActiveRunText(
           this.activeRun,
@@ -938,10 +937,10 @@ export class AgentRuntime {
     }
 
     const credentialBinding =
-      bindSettingsToConversationWorkspace(
-        getSettings(),
-        credentialConversation
-      );
+      resolveConversationExecutionContext({
+        settings: getSettings(),
+        conversation: credentialConversation
+      });
     const credentialError =
       isE2EMode()
         ? null
@@ -1029,29 +1028,15 @@ export class AgentRuntime {
           query: message
         });
 
-      executionConversation = continuationState
-        ? {
-            ...conversation,
-            mode: continuationState.mode ?? conversation.mode,
-            workspaceId:
-              continuationState.workspaceId === undefined
-                ? conversation.workspaceId
-                : continuationState.workspaceId,
-            workspaceSnapshot:
-              continuationState.workspaceSnapshot ?? conversation.workspaceSnapshot,
-            modelSelection:
-              continuationState.modelSelection ?? conversation.modelSelection,
-            modelSnapshot:
-              continuationState.modelSnapshot ?? conversation.modelSnapshot
-          }
-        : conversation;
-      const binding =
-        bindSettingsToConversationWorkspace(
-          getSettings(),
-          executionConversation
-        );
-      runSettings = binding.settings;
-      activeWorkspace = binding.workspace;
+      const execution =
+        resolveConversationExecutionContext({
+          settings: getSettings(),
+          conversation,
+          overrides: continuationState ?? {}
+        });
+      executionConversation = execution.conversation;
+      runSettings = execution.settings;
+      activeWorkspace = execution.workspace;
 
       context =
         assembleAgentContext({
@@ -1142,6 +1127,12 @@ export class AgentRuntime {
       modelSnapshot:
         executionConversation.modelSnapshot ?? null,
       activeWorkspace,
+      runtimePreferences: {
+        saveAbortedReplies:
+          runSettings.conversation?.saveAbortedReplies !== false,
+        saveToolHistory:
+          runSettings.tools?.runtime?.saveToolHistory !== false
+      },
       conversationId:
         conversation.id,
       abortController,
@@ -1266,13 +1257,13 @@ export class AgentRuntime {
               .content
         });
 
-      const binding =
-        bindSettingsToConversationWorkspace(
-          getSettings(),
-          plan.conversation
-        );
-      runSettings = binding.settings;
-      activeWorkspace = binding.workspace;
+      const execution =
+        resolveConversationExecutionContext({
+          settings: getSettings(),
+          conversation: plan.conversation
+        });
+      runSettings = execution.settings;
+      activeWorkspace = execution.workspace;
 
       context =
         assembleAgentContext({
@@ -1341,6 +1332,12 @@ export class AgentRuntime {
       modelSnapshot:
         plan.conversation.modelSnapshot ?? null,
       activeWorkspace,
+      runtimePreferences: {
+        saveAbortedReplies:
+          runSettings.conversation?.saveAbortedReplies !== false,
+        saveToolHistory:
+          runSettings.tools?.runtime?.saveToolHistory !== false
+      },
       conversationId:
         plan.conversation.id,
       abortController,
@@ -1537,8 +1534,7 @@ export class AgentRuntime {
     }
 
     const saveToolHistory =
-      getSettings().tools
-        ?.runtime
+      this.activeRun.runtimePreferences
         ?.saveToolHistory !== false;
     const activitySnapshot =
       this.activeRun
@@ -1650,7 +1646,21 @@ export class AgentRuntime {
       };
     }
 
-    const settings = getSettings();
+    const record = conversationManager.getTaskRuntimeRecord(normalizedTaskId);
+    if (!record) {
+      return {
+        ok: false,
+        code: "task-not-found",
+        message: "找不到该任务的会话与运行上下文。"
+      };
+    }
+
+    const execution = resolveConversationExecutionContext({
+      settings: getSettings(),
+      conversation: record.conversation,
+      overrides: getRecoveryExecutionOverrides(record.message)
+    });
+    const settings = execution.settings;
     let activeModel = null;
     try {
       activeModel = resolveActiveModelSettings(settings.model);
@@ -1673,7 +1683,8 @@ export class AgentRuntime {
       resultStoreDirectory: getTaskResultDirectory(normalizedTaskId),
       taskId: normalizedTaskId,
       runId: `recovery-${crypto.randomUUID()}`,
-      workspaceId: "",
+      workspaceId: execution.conversation.workspaceId ?? "",
+      mode: execution.metadata.mode,
       segmentId: "recovery"
     });
 
@@ -1695,12 +1706,23 @@ export class AgentRuntime {
   }
 
   getRuntimeRecoveryHistory() {
+    if (getSettings().general?.developerMode !== true) {
+      return {
+        ok: false,
+        code: "developer-mode-required",
+        message: "恢复中心仅在开发者模式下可用。"
+      };
+    }
+
     const storedHistory = conversationManager.listToolRuntimeRecoveryHistory();
     const history = {
       ...storedHistory,
       items: (storedHistory.items ?? []).map((item) => ({
         conversationId: item.conversationId,
         conversationTitle: item.conversationTitle,
+        mode: item.mode,
+        workspaceId: item.workspaceId,
+        workspaceName: item.workspaceName,
         messageId: item.messageId,
         taskId: item.taskId,
         runId: item.runId,
@@ -1732,6 +1754,9 @@ export class AgentRuntime {
       conversationTitle:
         conversationManager.getConversation(this.activeRun.conversationId)?.title ??
         "当前会话",
+      mode: this.activeRun.mode ?? "chat",
+      workspaceId: this.activeRun.workspaceId ?? null,
+      workspaceName: this.activeRun.activeWorkspace?.name ?? null,
       messageId: this.activeRun.replaceMessageId ?? "live",
       taskId: this.activeRun.taskId,
       runId: this.activeRun.runId,
@@ -2138,10 +2163,6 @@ export class AgentRuntime {
     executionStopReason,
     abortController
   }) {
-    const bufferProgressHandoff =
-      isGracefulRunBoundary(
-        executionStopReason
-      );
     const maxAttempts =
       settings.tools
         ?.runtime
@@ -2197,6 +2218,8 @@ export class AgentRuntime {
         .finalizationAttemptCount =
         attempt;
       this.activeRun.currentStepText =
+        "";
+      this.activeRun.finalText =
         "";
 
       this.setStatus({
@@ -2256,22 +2279,19 @@ export class AgentRuntime {
           }
 
           if (textPart) {
+            const firstFinalChunk = text.length === 0;
             text += textPart;
-            if (!bufferProgressHandoff) {
-              this.activeRun
-                .currentStepText =
-                text;
-              this.activeRun.finalText =
-                text;
+            this.activeRun.finalText =
+              text;
 
-              appendResponseChunk(
-                textPart
-              );
+            this.setStatus(
+              { ...this.status },
+              { immediate: firstFinalChunk }
+            );
 
-              this.setStatus({
-                ...this.status
-              });
-            }
+            appendResponseChunk(
+              textPart
+            );
           }
         }
       } catch (error) {
@@ -2303,12 +2323,6 @@ export class AgentRuntime {
         this.activeRun
           .currentStepText =
           "";
-        if (bufferProgressHandoff) {
-          appendResponseChunk(
-            normalized
-          );
-        }
-
         this.setStatus({
           ...this.status
         });
@@ -2577,6 +2591,7 @@ export class AgentRuntime {
         runId,
         workspaceId:
           this.activeRun.workspaceId ?? "",
+        mode: this.activeRun.mode ?? "chat",
         getSegmentId: () => orchestrator.currentSegmentId(),
         segmentId: runId
       });

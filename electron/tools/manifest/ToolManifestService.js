@@ -82,6 +82,12 @@ function toolAvailability(tool, settings) {
         reason: serverState.error || "MCP Server 连接失败。"
       };
     }
+    if (tool.mcp?.permission?.allowed === false) {
+      return {
+        available: false,
+        reason: tool.mcp.permission.reason || "该 MCP 工具未获授权。"
+      };
+    }
   }
 
   if (String(tool.source ?? "").startsWith("custom.http.")) {
@@ -187,17 +193,21 @@ function toolsetEffectiveState(toolsetId, settings) {
   };
 }
 
-export function getToolManifestSnapshot({ settings = {} } = {}) {
+export function getToolManifestSnapshot({
+  settings = {},
+  executionContext = null
+} = {}) {
   const toolSettings = settings.tools ?? {};
+  const activeModel = resolveActiveModel(settings);
   const registry = createBuiltinToolRegistry({
-    activeModel: resolveActiveModel(settings),
+    activeModel,
     settings,
     workspaceSettings: toolSettings.workspace ?? {},
     includeWorkspaceDefinitions: true,
     includeWorkspaceInfo: true
   });
   registry.registerMany(
-    mcpClientManager.getToolDefinitions()
+    mcpClientManager.getToolDefinitions(null, { includeDenied: true })
   );
   registry.registerMany(
     declarativeHttpToolManager.getToolDefinitions(settings, {
@@ -279,6 +289,18 @@ export function getToolManifestSnapshot({ settings = {} } = {}) {
     schemaVersion: 1,
     generatedAt: Date.now(),
     mode: resolveToolMode(toolSettings),
+    executionContext: executionContext && typeof executionContext === "object"
+      ? structuredClone(executionContext)
+      : null,
+    activeModel: activeModel
+      ? {
+          providerId: activeModel.providerId,
+          providerName: activeModel.providerName,
+          modelConfigId: activeModel.modelConfigId,
+          modelName: activeModel.modelName,
+          modelId: activeModel.model
+        }
+      : null,
     globalEnabled: toolSettings.enabled !== false,
     sourceSummary: {
       builtin: tools.filter((tool) => tool.sourceKind === "builtin").length,

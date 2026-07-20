@@ -51,7 +51,7 @@ export function ConversationRecoveryPanel({
   onOpenTask,
   onClose
 }) {
-  if (!open) {
+  if (!open || !developerMode) {
     return null;
   }
 
@@ -70,11 +70,11 @@ export function ConversationRecoveryPanel({
     >
       <header className="conversation-recovery-panel__header">
         <div>
-          <strong>恢复中心</strong>
+          <strong>Tool Runtime 恢复</strong>
           <span>
             {history?.unresolvedCount > 0
-              ? `${history.unresolvedCount} 个操作待处理`
-              : "没有待处理操作"}
+              ? `${history.unresolvedCount} 个状态不确定的操作待处理`
+              : "开发者诊断 · 当前没有待处理操作"}
           </span>
         </div>
         <div>
@@ -177,7 +177,11 @@ function RecoveryHistoryItem({
       <header>
         <div>
           <strong>{item.conversationTitle || "会话任务"}</strong>
-          <small>{formatUpdatedAt(item.updatedAt)}</small>
+          <small>
+            {item.mode === "coding" ? "Coding" : "Chat"}
+            {item.workspaceName ? ` · ${item.workspaceName}` : ""}
+            {formatUpdatedAt(item.updatedAt) ? ` · ${formatUpdatedAt(item.updatedAt)}` : ""}
+          </small>
         </div>
         <button
           type="button"

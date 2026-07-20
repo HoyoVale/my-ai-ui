@@ -138,4 +138,25 @@ describe("Tool Manifest API", () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("publishes the conversation-bound execution context used by the settings UI", () => {
+    const manifest = getToolManifestSnapshot({
+      settings: settingsWith({
+        tools: { mode: "coding" }
+      }),
+      executionContext: {
+        conversationId: "conversation-a",
+        conversationTitle: "Coding session",
+        mode: "coding",
+        workspaceId: "workspace-a",
+        workspaceAvailable: true
+      }
+    });
+
+    assert.equal(manifest.mode, "coding");
+    assert.equal(manifest.executionContext.conversationId, "conversation-a");
+    assert.equal(manifest.executionContext.mode, "coding");
+    assert.equal(manifest.activeModel === null || typeof manifest.activeModel === "object", true);
+  });
+
 });

@@ -163,6 +163,8 @@ describe(
         assert.equal(channels.mcp.SET_SECRET, "mcp-set-secret");
         assert.equal(channels.mcp.CLEAR_SECRET, "mcp-clear-secret");
         assert.equal(channels.mcp.CLEAR_AUTH, "mcp-clear-auth");
+        assert.equal(channels.mcp.IMPORT_CONFIG, "mcp-import-config");
+        assert.equal(channels.mcp.EXPORT_CONFIG, "mcp-export-config");
         assert.equal(channels.mcp.CHANGED, "mcp-changed");
       }
     );

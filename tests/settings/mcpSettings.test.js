@@ -92,6 +92,26 @@ describe("MCP settings validation", () => {
   });
 });
 
+it("moves secret-looking stdio environment names out of plain settings", () => {
+  const settings = sanitizeSettings({
+    mcp: {
+      servers: [{
+        id: "secret-env",
+        transport: "stdio",
+        command: "node",
+        env: {
+          MODE: "safe",
+          API_TOKEN: "must-not-survive"
+        }
+      }]
+    }
+  });
+
+  const server = settings.mcp.servers[0];
+  assert.deepEqual(server.env, { MODE: "safe" });
+  assert.deepEqual(server.secretEnvKeys, ["API_TOKEN"]);
+});
+
 it("sanitizes Streamable HTTP connections and remote authentication", () => {
   const settings = sanitizeSettings({
     mcp: {

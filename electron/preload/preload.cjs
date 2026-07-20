@@ -191,6 +191,12 @@ const CHANNELS = Object.freeze({
   MCP_CLEAR_AUTH:
     "mcp-clear-auth",
 
+  MCP_IMPORT_CONFIG:
+    "mcp-import-config",
+
+  MCP_EXPORT_CONFIG:
+    "mcp-export-config",
+
   MCP_CHANGED:
     "mcp-changed",
 
@@ -938,6 +944,16 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS.MCP_CLEAR_AUTH,
       { serverId: String(serverId ?? "") }
+    );
+  },
+
+  importMcpConfig: () => {
+    return ipcRenderer.invoke(CHANNELS.MCP_IMPORT_CONFIG);
+  },
+
+  exportMcpConfig: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_EXPORT_CONFIG
     );
   },
 

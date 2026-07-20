@@ -15,9 +15,6 @@ import {
 } from "../panels/ConversationPanel.jsx";
 
 
-import {
-  CustomToolsPanel
-} from "../panels/CustomToolsPanel.jsx";
 
 import {
   DeveloperPanel
@@ -203,6 +200,8 @@ export function SettingsContent({
     tools: (
       <ToolPanel
         settings={settings.tools}
+        appSettings={settings}
+        customToolSettings={settings.customTools}
         developerMode={
           settings.general
             .developerMode
@@ -210,6 +209,18 @@ export function SettingsContent({
         onUpdate={(patch) => {
           onUpdateSection(
             "tools",
+            patch
+          );
+        }}
+        onUpdateMcp={(patch) => {
+          onUpdateSection(
+            "mcp",
+            patch
+          );
+        }}
+        onUpdateCustomTools={(patch) => {
+          onUpdateSection(
+            "customTools",
             patch
           );
         }}
@@ -226,22 +237,6 @@ export function SettingsContent({
         onUpdate={(patch) => {
           onUpdateSection(
             "mcp",
-            patch
-          );
-        }}
-      />
-    ),
-
-    "custom-tools": (
-      <CustomToolsPanel
-        settings={settings}
-        developerMode={
-          settings.general
-            .developerMode
-        }
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "customTools",
             patch
           );
         }}

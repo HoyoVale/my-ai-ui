@@ -3,6 +3,10 @@ import {
 } from "../conversation/index.js";
 
 import {
+  resolveConversationExecutionContext
+} from "../conversation/executionContext.js";
+
+import {
   memoryManager
 } from "../memory/index.js";
 
@@ -41,17 +45,22 @@ export function inspectEffectivePrompt({
 
   const conversation = conversationId
     ? conversationManager.getConversation(conversationId)
-    : null;
-  const memories = conversation
-    ? memoryManager.retrieve({
-        query: latestUserQuery(conversation),
-        trackUsage: false
-      })
-    : [];
-  const manifest = getToolManifestSnapshot({ settings });
-  const context = assembleAgentContext({
+    : conversationManager.getCurrentConversation();
+  const execution = resolveConversationExecutionContext({
     settings,
-    conversation: conversation ?? { messages: [] },
+    conversation
+  });
+  const memories = memoryManager.retrieve({
+    query: latestUserQuery(execution.conversation),
+    trackUsage: false
+  });
+  const manifest = getToolManifestSnapshot({
+    settings: execution.settings,
+    executionContext: execution.metadata
+  });
+  const context = assembleAgentContext({
+    settings: execution.settings,
+    conversation: execution.conversation,
     memories,
     toolManifest: manifest.tools
   });
@@ -60,7 +69,9 @@ export function inspectEffectivePrompt({
     schemaVersion: 1,
     generatedAt: Date.now(),
     conversationId: conversation?.id ?? null,
-    conversationTitle: conversation?.title ?? "当前设置预览",
+    conversationTitle: execution.conversation?.title ?? "当前会话",
+    mode: execution.metadata.mode,
+    workspaceId: execution.metadata.workspaceId,
     manifestRevision: manifest.revision,
     effectivePrompt: context.system,
     promptTokens: estimateTextTokens(context.system),
