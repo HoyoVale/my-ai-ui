@@ -177,7 +177,7 @@ function healthCopy(serverState) {
 }
 
 function waitForSettingsCommit() {
-  return new Promise((resolve) => setTimeout(resolve, 180));
+  return new Promise((resolve) => setTimeout(resolve, 320));
 }
 
 function CredentialEditor({ server, state, onAction }) {
@@ -416,9 +416,9 @@ export function McpPanel({ settings, developerMode = false, onUpdate }) {
                   ) : (
                     <>
                       <SettingRow title="Command"><TextInput value={server.command ?? ""} placeholder="node / npx / uvx" onChange={(command) => updateServer(server.id, { command })} /></SettingRow>
-                      <SettingRow title="Arguments"><TextArea rows={3} value={(server.args ?? []).join("\n")} placeholder="每行一个参数" onChange={(value) => updateServer(server.id, { args: value.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean) })} /></SettingRow>
+                      <SettingRow title="Arguments"><TextArea testId={`mcp-args-${server.id}`} rows={3} value={(server.args ?? []).join("\n")} placeholder="每行一个参数" onChange={(value) => updateServer(server.id, { args: value.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean) })} /></SettingRow>
                       <SettingRow title="Working Directory"><TextInput value={server.cwd ?? ""} placeholder="可选的绝对路径" onChange={(cwd) => updateServer(server.id, { cwd })} /></SettingRow>
-                      <SettingRow title="普通环境变量"><TextArea rows={4} value={formatEnvironment(server.env)} placeholder="NAME=value" onChange={(value) => updateServer(server.id, { env: parseEnvironment(value) })} /></SettingRow>
+                      <SettingRow title="普通环境变量"><TextArea testId={`mcp-env-${server.id}`} rows={4} value={formatEnvironment(server.env)} placeholder="NAME=value" onChange={(value) => updateServer(server.id, { env: parseEnvironment(value) })} /></SettingRow>
                       <SettingRow title="敏感变量名"><TextInput value={(server.secretEnvKeys ?? []).join(", ")} placeholder="TOKEN, API_KEY" onChange={(value) => updateServer(server.id, { secretEnvKeys: parseSecretKeys(value) })} /></SettingRow>
                     </>
                   )}

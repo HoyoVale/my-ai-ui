@@ -867,23 +867,15 @@ async function main() {
       "E2E_REGENERATED_2:second message"
     );
 
-    await conversation
-      .locator(
-        '[data-testid="conversation-recovery-toggle"]'
-      )
-      .click();
-
-    await conversation
-      .locator(
-        '[data-testid="conversation-recovery-panel"]'
-      )
-      .waitFor();
-
-    await conversation
-      .locator(
-        '[data-testid="conversation-recovery-toggle"]'
-      )
-      .click();
+    assert.equal(
+      await conversation
+        .locator(
+          '[data-testid="conversation-recovery-toggle"]'
+        )
+        .count(),
+      0,
+      "恢复中心入口不应向普通用户显示"
+    );
 
     await conversation
       .locator(
@@ -1081,6 +1073,27 @@ async function main() {
       "true"
     );
 
+    await conversation.bringToFront();
+
+    const recoveryToggle =
+      conversation.locator(
+        '[data-testid="conversation-recovery-toggle"]'
+      );
+
+    await recoveryToggle.waitFor({
+      state: "visible"
+    });
+    await recoveryToggle.click();
+
+    await conversation
+      .locator(
+        '[data-testid="conversation-recovery-panel"]'
+      )
+      .waitFor();
+
+    await recoveryToggle.click();
+    await setting.bringToFront();
+
     await setting
       .locator(
         '[data-testid="setting-tab-mcp"]'
@@ -1103,15 +1116,49 @@ async function main() {
       .click();
 
     await setting
-      .locator('[data-testid="mcp-add-github"]')
+      .locator('[data-testid="mcp-add-local"]')
       .click();
 
-    const githubMcpCard = setting.locator(
-      '[data-testid="mcp-server-github"]'
+    const localMcpCard = setting.locator(
+      '[data-testid="mcp-server-local-mcp"]'
     );
-    await githubMcpCard.waitFor();
-    await waitForText(githubMcpCard, "GitHub");
-    await waitForText(githubMcpCard, "只读");
+    await localMcpCard.waitFor();
+    await waitForText(localMcpCard, "本地 MCP");
+    await waitForText(localMcpCard, "只读");
+
+    const mcpArguments = setting.locator(
+      '[data-testid="mcp-args-local-mcp"]'
+    );
+
+    await mcpArguments.fill("--first");
+    await delay(520);
+    await mcpArguments.press("End");
+    await mcpArguments.press("Enter");
+    await delay(520);
+    await mcpArguments.type("--second");
+
+    assert.equal(
+      await mcpArguments.inputValue(),
+      "--first\n--second",
+      "结构化设置文本框应允许在自动保存期间继续输入新行"
+    );
+
+    const mcpEnvironment = setting.locator(
+      '[data-testid="mcp-env-local-mcp"]'
+    );
+
+    await mcpEnvironment.fill("GREETING=hello");
+    await delay(520);
+    await mcpEnvironment.press("End");
+    await mcpEnvironment.type(" ");
+    await delay(520);
+    await mcpEnvironment.type("world");
+
+    assert.equal(
+      await mcpEnvironment.inputValue(),
+      "GREETING=hello world",
+      "自动规范化不应吞掉用户正在输入的空格"
+    );
 
     await setting
       .locator(
@@ -1252,11 +1299,41 @@ async function main() {
       "个性"
     );
 
-    await setting
-      .locator(
-        '[data-testid="personality-name"]'
-      )
-      .fill("Nova");
+    const personalityName = setting.locator(
+      '[data-testid="personality-name"]'
+    );
+
+    await personalityName.fill("Nova");
+    await delay(520);
+    await personalityName.press("End");
+    await personalityName.type(" ");
+    await delay(520);
+    await personalityName.type("Assistant");
+
+    assert.equal(
+      await personalityName.inputValue(),
+      "Nova Assistant",
+      "普通文本设置不应在保存回写时丢失空格"
+    );
+
+    const personalityInstructions = setting.locator(
+      '[data-testid="personality-instructions"]'
+    );
+
+    await personalityInstructions.fill("First line");
+    await delay(520);
+    await personalityInstructions.press("End");
+    await personalityInstructions.press("Enter");
+    await delay(520);
+    await personalityInstructions.type("Second line");
+
+    assert.equal(
+      await personalityInstructions.inputValue(),
+      "First line\nSecond line",
+      "多行设置不应在保存回写时丢失换行"
+    );
+
+    await personalityName.fill("Nova");
 
     await setting
       .locator(
@@ -1340,11 +1417,19 @@ async function main() {
       )
       .fill("E2E Model");
 
-    await setting
-      .locator(
-        '[data-testid="model-id-input"]'
-      )
-      .fill("e2e-model");
+    const modelIdInput = setting.locator(
+      '[data-testid="model-id-input"]'
+    );
+
+    await modelIdInput.fill("");
+    await delay(420);
+    await modelIdInput.type("e2e-model");
+
+    assert.equal(
+      await modelIdInput.inputValue(),
+      "e2e-model",
+      "必填设置在暂时清空时不应被旧值回写，导致无法重新输入"
+    );
 
     await setting
       .locator(

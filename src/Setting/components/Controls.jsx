@@ -1,3 +1,73 @@
+import {
+  useEffect,
+  useRef,
+  useState
+} from "react";
+
+
+function normalizeTextValue(value) {
+  return value === null || value === undefined
+    ? ""
+    : String(value);
+}
+
+function useDraftTextValue(value, onChange) {
+  const normalizedValue = normalizeTextValue(value);
+  const [draftValue, setDraftValue] = useState(normalizedValue);
+  const focusedRef = useRef(false);
+  const composingRef = useRef(false);
+  const externalValueRef = useRef(normalizedValue);
+
+  useEffect(() => {
+    externalValueRef.current = normalizedValue;
+
+    if (!focusedRef.current && !composingRef.current) {
+      setDraftValue(normalizedValue);
+    }
+  }, [normalizedValue]);
+
+  const commitValue = (nextValue) => {
+    setDraftValue(nextValue);
+    onChange?.(nextValue);
+  };
+
+  return {
+    value: draftValue,
+
+    onFocus: () => {
+      focusedRef.current = true;
+    },
+
+    onBlur: () => {
+      focusedRef.current = false;
+
+      queueMicrotask(() => {
+        if (!focusedRef.current && !composingRef.current) {
+          setDraftValue(externalValueRef.current);
+        }
+      });
+    },
+
+    onCompositionStart: () => {
+      composingRef.current = true;
+    },
+
+    onCompositionEnd: (event) => {
+      composingRef.current = false;
+      commitValue(event.currentTarget.value);
+    },
+
+    onChange: (event) => {
+      const nextValue = event.currentTarget.value;
+      setDraftValue(nextValue);
+
+      if (!composingRef.current) {
+        onChange?.(nextValue);
+      }
+    }
+  };
+}
+
 export function SettingsSection({
   title,
   children
@@ -164,20 +234,25 @@ export function TextInput({
   onChange,
   testId
 }) {
+  const draft = useDraftTextValue(
+    value,
+    onChange
+  );
+
   return (
     <input
       className="settings-text-input"
       data-testid={testId}
       type={type}
-      value={value}
+      value={draft.value}
       placeholder={placeholder}
       disabled={disabled}
       autoComplete={autoComplete}
-      onChange={(event) => {
-        onChange?.(
-          event.target.value
-        );
-      }}
+      onFocus={draft.onFocus}
+      onBlur={draft.onBlur}
+      onCompositionStart={draft.onCompositionStart}
+      onCompositionEnd={draft.onCompositionEnd}
+      onChange={draft.onChange}
     />
   );
 }
@@ -191,20 +266,25 @@ export function TextArea({
   onChange,
   testId
 }) {
+  const draft = useDraftTextValue(
+    value,
+    onChange
+  );
+
   return (
     <textarea
       className="settings-textarea"
       data-testid={testId}
-      value={value}
+      value={draft.value}
       placeholder={placeholder}
       disabled={disabled}
       rows={rows}
       maxLength={maxLength}
-      onChange={(event) => {
-        onChange?.(
-          event.target.value
-        );
-      }}
+      onFocus={draft.onFocus}
+      onBlur={draft.onBlur}
+      onCompositionStart={draft.onCompositionStart}
+      onCompositionEnd={draft.onCompositionEnd}
+      onChange={draft.onChange}
     />
   );
 }
