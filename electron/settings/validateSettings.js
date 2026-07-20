@@ -1036,6 +1036,8 @@ function sanitizeToolSettings(
   defaults
 ) {
   const runtime = tools?.runtime ?? {};
+  const circuitBreakers = runtime.circuitBreakers ?? {};
+  const defaultCircuitBreakers = defaults.runtime.circuitBreakers ?? {};
   const workspace = tools?.workspace ?? {};
   const developer = tools?.developer ?? {};
   const sourceToolsetOverrides =
@@ -1236,7 +1238,61 @@ function sanitizeToolSettings(
       saveToolHistory: booleanValue(
         runtime.saveToolHistory,
         defaults.runtime.saveToolHistory
-      )
+      ),
+      circuitBreakers: {
+        provider: {
+          failureThreshold: integerValue(
+            circuitBreakers.provider?.failureThreshold,
+            defaultCircuitBreakers.provider?.failureThreshold ?? 3,
+            1,
+            20
+          ),
+          failureWindowMs: integerValue(
+            circuitBreakers.provider?.failureWindowMs,
+            defaultCircuitBreakers.provider?.failureWindowMs ?? 90000,
+            5000,
+            1800000
+          ),
+          cooldownMs: integerValue(
+            circuitBreakers.provider?.cooldownMs,
+            defaultCircuitBreakers.provider?.cooldownMs ?? 45000,
+            1000,
+            1800000
+          ),
+          halfOpenMaxCalls: integerValue(
+            circuitBreakers.provider?.halfOpenMaxCalls,
+            defaultCircuitBreakers.provider?.halfOpenMaxCalls ?? 1,
+            1,
+            10
+          )
+        },
+        tool: {
+          failureThreshold: integerValue(
+            circuitBreakers.tool?.failureThreshold,
+            defaultCircuitBreakers.tool?.failureThreshold ?? 3,
+            1,
+            20
+          ),
+          failureWindowMs: integerValue(
+            circuitBreakers.tool?.failureWindowMs,
+            defaultCircuitBreakers.tool?.failureWindowMs ?? 60000,
+            5000,
+            1800000
+          ),
+          cooldownMs: integerValue(
+            circuitBreakers.tool?.cooldownMs,
+            defaultCircuitBreakers.tool?.cooldownMs ?? 30000,
+            1000,
+            1800000
+          ),
+          halfOpenMaxCalls: integerValue(
+            circuitBreakers.tool?.halfOpenMaxCalls,
+            defaultCircuitBreakers.tool?.halfOpenMaxCalls ?? 1,
+            1,
+            10
+          )
+        }
+      }
     },
     workspace: {
       enabled: true,

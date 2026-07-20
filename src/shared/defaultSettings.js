@@ -250,7 +250,21 @@ export const FALLBACK_SETTINGS = {
       runTimeoutMs: 1800000,
       defaultTimeoutMs: 15000,
       maxIdenticalCalls: 3,
-      saveToolHistory: true
+      saveToolHistory: true,
+      circuitBreakers: {
+        provider: {
+          failureThreshold: 3,
+          failureWindowMs: 90000,
+          cooldownMs: 45000,
+          halfOpenMaxCalls: 1
+        },
+        tool: {
+          failureThreshold: 3,
+          failureWindowMs: 60000,
+          cooldownMs: 30000,
+          halfOpenMaxCalls: 1
+        }
+      }
     },
     workspace: {
       enabled: true,

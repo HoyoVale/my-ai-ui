@@ -14,6 +14,33 @@ const PUBLIC_TARGET_KEYS = Object.freeze([
   "targetTimezone"
 ]);
 
+const PUBLIC_STATUS_FIELDS = Object.freeze([
+  "state",
+  "runId",
+  "conversationId",
+  "startedAt",
+  "lastError",
+  "stopReason",
+  "taskId",
+  "phase",
+  "outcome",
+  "executionStopReason",
+  "resumable",
+  "publicStatus",
+  "replaceMessageId",
+  "stepNumber"
+]);
+
+function pick(source, keys) {
+  const projected = {};
+  for (const key of keys) {
+    if (source[key] !== undefined) {
+      projected[key] = clone(source[key]);
+    }
+  }
+  return projected;
+}
+
 function publicInput(input) {
   if (!input || typeof input !== "object") {
     return undefined;
@@ -38,20 +65,30 @@ function publicInput(input) {
 }
 
 function publicError(error) {
-  if (!error || typeof error !== "object") {
+  if (!error) {
     return undefined;
   }
 
-  const message = String(error.message ?? "").trim();
+  const message = String(
+    typeof error === "object"
+      ? error.message ?? ""
+      : error
+  ).trim();
 
   if (!message) {
     return undefined;
   }
 
   return {
-    code: String(error.code ?? "TOOL_EXECUTION_FAILED"),
+    code: String(
+      typeof error === "object"
+        ? error.code ?? "TOOL_EXECUTION_FAILED"
+        : "AGENT_ERROR"
+    ),
     message: message.slice(0, 400),
-    retryable: error.retryable === true
+    retryable:
+      typeof error === "object" &&
+      error.retryable === true
   };
 }
 
@@ -62,8 +99,9 @@ function publicResult(result) {
 
   const summary = String(result.summary ?? "").trim();
   const status = String(result.status ?? "").trim();
+  const error = publicError(result.error);
 
-  if (!summary && !status) {
+  if (!summary && !status && !error) {
     return undefined;
   }
 
@@ -72,7 +110,7 @@ function publicResult(result) {
     summary: summary.slice(0, 400),
     truncated: result.truncated === true,
     clipped: result.clipped === true,
-    error: publicError(result.error)
+    error
   };
 }
 
@@ -83,7 +121,7 @@ function publicRuntime(runtime) {
 
   const state = String(runtime.state ?? "").trim();
   const recoveryAction = String(
-    runtime.recoveryAction ?? ""
+    runtime.recoveryAction ?? runtime.recovery ?? ""
   ).trim();
 
   if (!state && !recoveryAction) {
@@ -94,6 +132,17 @@ function publicRuntime(runtime) {
     state,
     recoveryAction
   };
+}
+
+function compactPlan(plan = []) {
+  return (Array.isArray(plan) ? plan : []).map((item, index) => ({
+    id: String(item?.id ?? `plan-${index}`),
+    title: String(item?.title ?? item?.step ?? "未命名步骤").slice(0, 240),
+    status: String(item?.status ?? "pending"),
+    reason: item?.reason
+      ? String(item.reason).slice(0, 300)
+      : ""
+  }));
 }
 
 export function projectToolRecord(
@@ -149,11 +198,16 @@ function publicEvent(event) {
         "failed",
         "cancelled",
         "interrupted",
-        "attention"
+        "attention",
+        "needs_reconciliation",
+        "needs_confirmation"
       ].includes(event.status);
 
     return visible
-      ? clone(event)
+      ? {
+          ...clone(event),
+          error: publicError(event.error)
+        }
       : null;
   }
 
@@ -175,7 +229,10 @@ function publicEvent(event) {
 
 export function projectActivitySnapshot(
   activity,
-  { developerMode = false } = {}
+  {
+    developerMode = false,
+    maxEvents = Number.POSITIVE_INFINITY
+  } = {}
 ) {
   if (!activity || typeof activity !== "object") {
     return activity ?? null;
@@ -185,12 +242,149 @@ export function projectActivitySnapshot(
     return clone(activity);
   }
 
+  const events = (activity.events ?? [])
+    .map(publicEvent)
+    .filter(Boolean);
+  const limited = Number.isFinite(maxEvents)
+    ? events.slice(-Math.max(0, maxEvents))
+    : events;
+
   return {
-    ...clone(activity),
-    events: (activity.events ?? [])
-      .map(publicEvent)
-      .filter(Boolean)
+    ...pick(activity, [
+      "taskId",
+      "runId",
+      "status",
+      "outcome",
+      "resumable",
+      "stopReason",
+      "startedAt",
+      "endedAt",
+      "durationMs"
+    ]),
+    events: limited
   };
+}
+
+export function projectRuntimeRecovery(
+  runtime,
+  {
+    unresolvedOnly = false,
+    maxCalls = 50
+  } = {}
+) {
+  if (!runtime || typeof runtime !== "object") {
+    return null;
+  }
+
+  const calls = (Array.isArray(runtime.calls) ? runtime.calls : [])
+    .filter((call) =>
+      !unresolvedOnly ||
+      ["needs_confirmation", "needs_reconciliation"].includes(
+        String(call?.recovery ?? "")
+      )
+    );
+  const limitedCalls = Number.isFinite(maxCalls)
+    ? calls.slice(-Math.max(0, maxCalls))
+    : calls;
+
+  return {
+    version: runtime.version,
+    totalCalls: Number(runtime.totalCalls ?? 0),
+    unresolvedCount: Number(runtime.unresolvedCount ?? 0),
+    needsConfirmation: Number(runtime.needsConfirmation ?? 0),
+    needsReconciliation: Number(runtime.needsReconciliation ?? 0),
+    calls: limitedCalls.map((call) => ({
+      callId: String(call.callId ?? ""),
+      toolName: String(call.toolName ?? ""),
+      state: String(call.state ?? ""),
+      publicStatus: String(call.publicStatus ?? ""),
+      recovery: String(call.recovery ?? ""),
+      effect: String(call.effect ?? ""),
+      hasReceipt: call.hasReceipt === true,
+      actions: Array.isArray(call.actions)
+        ? [...call.actions]
+        : []
+    }))
+  };
+}
+
+function basePublicStatus(source) {
+  return {
+    ...pick(source, PUBLIC_STATUS_FIELDS),
+    lastError: publicError(source.lastError)?.message ?? null
+  };
+}
+
+export function projectInputStatus(status) {
+  const source = status && typeof status === "object"
+    ? status
+    : {};
+
+  return basePublicStatus(source);
+}
+
+export function projectResponseStatus(status) {
+  const source = status && typeof status === "object"
+    ? status
+    : {};
+
+  return {
+    ...basePublicStatus(source),
+    plan: compactPlan(source.plan),
+    activity: projectActivitySnapshot(source.activity, {
+      maxEvents: 30
+    }),
+    toolRuntime: projectRuntimeRecovery(source.toolRuntime, {
+      unresolvedOnly: true,
+      maxCalls: 12
+    }),
+    liveStepText: String(source.liveStepText ?? ""),
+    finalText: String(source.finalText ?? ""),
+    assistantText: String(
+      source.finalText || source.liveStepText || source.assistantText || ""
+    )
+  };
+}
+
+export function projectConversationStatus(status) {
+  const source = status && typeof status === "object"
+    ? status
+    : {};
+
+  return {
+    ...basePublicStatus(source),
+    plan: compactPlan(source.plan),
+    activeToolCalls: (source.activeToolCalls ?? [])
+      .slice(-80)
+      .map((record) => projectToolRecord(record)),
+    activity: projectActivitySnapshot(source.activity, {
+      maxEvents: 240
+    }),
+    toolRuntime: projectRuntimeRecovery(source.toolRuntime, {
+      unresolvedOnly: true,
+      maxCalls: 24
+    }),
+    liveStepText: String(source.liveStepText ?? ""),
+    finalText: String(source.finalText ?? ""),
+    assistantText: String(
+      source.finalText || source.liveStepText || source.assistantText || ""
+    )
+  };
+}
+
+export function projectAgentSnapshot(
+  status,
+  { target = "generic" } = {}
+) {
+  if (target === "response") {
+    return projectResponseStatus(status);
+  }
+
+  if (target === "conversation") {
+    return projectConversationStatus(status);
+  }
+
+  return projectInputStatus(status);
 }
 
 export function projectAgentStatus(
@@ -201,31 +395,25 @@ export function projectAgentStatus(
     ? status
     : {};
 
+  if (developerMode) {
+    return clone(source);
+  }
+
   return {
-    ...clone(source),
-    activeToolCalls: (source.activeToolCalls ?? []).map(
-      (record) => projectToolRecord(record, { developerMode })
-    ),
-    activity: projectActivitySnapshot(
-      source.activity,
-      { developerMode }
-    ),
+    ...projectConversationStatus(source),
     ...(Array.isArray(source.toolRegistry)
       ? {
-          toolRegistry: developerMode
-            ? clone(source.toolRegistry)
-            : source.toolRegistry.map((tool) => ({
-                name: tool.name,
-                title: tool.title,
-                description: tool.description,
-                riskLevel: tool.riskLevel,
-                sideEffect: tool.sideEffect,
-                activityVisibility: tool.activityVisibility
-              }))
+          toolRegistry: source.toolRegistry.map((tool) => ({
+            name: tool.name,
+            title: tool.title,
+            description: tool.description,
+            riskLevel: tool.riskLevel,
+            sideEffect: tool.sideEffect,
+            activityVisibility: tool.activityVisibility
+          }))
         }
       : {}),
-    toolRuntimeDiagnostics: developerMode
-      ? clone(source.toolRuntimeDiagnostics)
-      : null
+    toolRuntimeDiagnostics: null,
+    providerRuntimeDiagnostics: null
   };
 }

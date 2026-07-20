@@ -843,6 +843,24 @@ async function main() {
 
     await conversation
       .locator(
+        '[data-testid="conversation-recovery-toggle"]'
+      )
+      .click();
+
+    await conversation
+      .locator(
+        '[data-testid="conversation-recovery-panel"]'
+      )
+      .waitFor();
+
+    await conversation
+      .locator(
+        '[data-testid="conversation-recovery-toggle"]'
+      )
+      .click();
+
+    await conversation
+      .locator(
         '[data-testid="conversation-context-toggle"]'
       )
       .click();
@@ -1098,6 +1116,14 @@ async function main() {
       .locator("summary")
       .first()
       .click();
+
+    await developerSettings
+      .locator('[data-testid="circuit-breaker-diagnostics"]')
+      .waitFor();
+
+    await developerSettings
+      .locator('[data-testid="circuit-breaker-reset-all"]')
+      .waitFor();
 
     await developerSettings
       .locator(

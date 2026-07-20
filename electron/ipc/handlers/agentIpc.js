@@ -113,6 +113,21 @@ export function registerAgentIpc() {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.agent.GET_SNAPSHOT,
+    (event) => {
+      return agentRuntime.getSnapshotForWebContents(event.sender);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.agent.GET_RUN_DETAILS,
+    (event, request = {}) => {
+      requireConversationSender(event);
+      return agentRuntime.getDeveloperRunDetails(request);
+    }
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.agent.GET_RUNTIME_RECOVERY,
     (event, request = {}) => {
       requireConversationSender(event);
@@ -125,6 +140,30 @@ export function registerAgentIpc() {
     (event, request = {}) => {
       requireConversationSender(event);
       return agentRuntime.resolveToolRuntimeRecovery(request);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.agent.GET_RUNTIME_RECOVERY_HISTORY,
+    (event) => {
+      requireConversationSender(event);
+      return agentRuntime.getRuntimeRecoveryHistory();
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.agent.GET_CIRCUIT_BREAKERS,
+    (event) => {
+      requireSettingSender(event);
+      return agentRuntime.getCircuitBreakers();
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.agent.RESET_CIRCUIT_BREAKER,
+    (event, request = {}) => {
+      requireSettingSender(event);
+      return agentRuntime.resetCircuitBreaker(request);
     }
   );
 

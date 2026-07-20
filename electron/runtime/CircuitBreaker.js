@@ -70,6 +70,43 @@ export class CircuitBreakerRegistry {
     this.entries = new Map();
   }
 
+  configure({
+    failureThreshold,
+    failureWindowMs,
+    cooldownMs,
+    halfOpenMaxCalls
+  } = {}) {
+    this.failureThreshold = normalizePositive(
+      failureThreshold,
+      this.failureThreshold
+    );
+    this.failureWindowMs = normalizePositive(
+      failureWindowMs,
+      this.failureWindowMs
+    );
+    this.cooldownMs = normalizePositive(
+      cooldownMs,
+      this.cooldownMs
+    );
+    this.halfOpenMaxCalls = normalizePositive(
+      halfOpenMaxCalls,
+      this.halfOpenMaxCalls
+    );
+
+    const now = this.now();
+    for (const entry of this.entries.values()) {
+      this.prune(entry, now);
+      if (entry.state === "open") {
+        entry.openUntil = Math.max(
+          now,
+          entry.openedAt + this.cooldownMs
+        );
+      }
+    }
+
+    return this.snapshot();
+  }
+
   ensure(key, metadata = {}) {
     const id = normalizeKey(key);
     if (!id) {
@@ -216,6 +253,12 @@ export class CircuitBreakerRegistry {
     return this.entries.delete(id);
   }
 
+  resetAll() {
+    const count = this.entries.size;
+    this.entries.clear();
+    return count;
+  }
+
   snapshotEntry(entry) {
     const now = this.now();
     this.prune(entry, now);
@@ -244,6 +287,7 @@ export class CircuitBreakerRegistry {
       failureThreshold: this.failureThreshold,
       failureWindowMs: this.failureWindowMs,
       cooldownMs: this.cooldownMs,
+      halfOpenMaxCalls: this.halfOpenMaxCalls,
       openCount: [...this.entries.values()].filter(
         (entry) => entry.state === "open"
       ).length,

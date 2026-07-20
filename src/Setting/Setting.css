@@ -3043,3 +3043,111 @@
   font-size: 11px;
   line-height: 1.6;
 }
+
+/* Tool Runtime circuit breakers */
+.circuit-breaker-diagnostics {
+  display: grid;
+  gap: 12px;
+}
+
+.circuit-breaker-diagnostics__header,
+.circuit-breaker-diagnostics__scope > header,
+.circuit-breaker-diagnostics__entries article {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.circuit-breaker-diagnostics__header {
+  justify-content: space-between;
+}
+
+.circuit-breaker-diagnostics__header h3,
+.circuit-breaker-diagnostics__scope strong {
+  margin: 0;
+}
+
+.circuit-breaker-diagnostics__header > div,
+.circuit-breaker-diagnostics__scope > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.circuit-breaker-diagnostics button {
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid var(--setting-border);
+  border-radius: 8px;
+  color: var(--setting-text-soft);
+  background: var(--setting-surface);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.circuit-breaker-diagnostics button:hover:not(:disabled) {
+  color: var(--setting-text);
+  background: var(--setting-surface-soft);
+}
+
+.circuit-breaker-diagnostics button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.circuit-breaker-diagnostics__scope {
+  overflow: hidden;
+  border: 1px solid var(--setting-border);
+  border-radius: 11px;
+  background: var(--setting-surface-soft);
+}
+
+.circuit-breaker-diagnostics__scope > header {
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--setting-border);
+}
+
+.circuit-breaker-diagnostics__scope > header span {
+  flex: 1;
+  color: var(--setting-text-faint);
+  font-size: 10.5px;
+}
+
+.circuit-breaker-diagnostics__scope > p {
+  margin: 0;
+  padding: 12px;
+  color: var(--setting-text-faint);
+  font-size: 11px;
+}
+
+.circuit-breaker-diagnostics__entries article {
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.circuit-breaker-diagnostics__entries article + article {
+  border-top: 1px solid var(--setting-border);
+}
+
+.circuit-breaker-diagnostics__entries article > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.circuit-breaker-diagnostics__entries small {
+  color: var(--setting-text-faint);
+  font-size: 10px;
+}
+
+.circuit-breaker-diagnostics__entries .is-open strong {
+  color: #d97706;
+}
+
+.circuit-breaker-diagnostics__error {
+  margin: 0;
+  color: #d92d3d;
+  font-size: 11px;
+}

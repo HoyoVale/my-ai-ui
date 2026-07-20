@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState
@@ -15,6 +16,10 @@ import {
 import {
   ConversationPlanDock
 } from "./components/PlanDock.jsx";
+
+import {
+  ConversationRecoveryPanel
+} from "./components/RecoveryPanel.jsx";
 
 import {
   ConversationTaskPanel
@@ -91,6 +96,16 @@ export default function Conversation() {
   ] = useState(false);
 
   const [
+    recoveryOpen,
+    setRecoveryOpen
+  ] = useState(false);
+
+  const [recoveryHistory, setRecoveryHistory] = useState(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+
+  const [
     taskTargetMessageId,
     setTaskTargetMessageId
   ] = useState(null);
@@ -135,6 +150,71 @@ export default function Conversation() {
     currentConversationId
   ]);
 
+  const refreshRecoveryHistory = useCallback(async () => {
+    setRecoveryLoading(true);
+    setRecoveryError("");
+    try {
+      const result = await window.api?.getToolRuntimeRecoveryHistory?.();
+      if (!result?.ok) {
+        throw new Error(result?.message ?? "读取恢复记录失败。");
+      }
+      setRecoveryHistory(result.history ?? null);
+      return result.history ?? null;
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+      return null;
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshRecoveryHistory();
+  }, [refreshRecoveryHistory]);
+
+  useEffect(() => {
+    if (agentStatus.toolRuntime?.unresolvedCount > 0 || recoveryOpen) {
+      void refreshRecoveryHistory();
+    }
+  }, [
+    agentStatus.toolRuntime?.unresolvedCount,
+    recoveryOpen,
+    refreshRecoveryHistory
+  ]);
+
+  const handleRecoveryHistoryAction = useCallback(async (request) => {
+    if (!request?.taskId || !request?.callId || !request?.action || recoveryBusy) {
+      return;
+    }
+
+    const confirmations = {
+      confirm_applied: "确认该工具操作已经生效？确认后不会再次执行。",
+      confirm_not_applied: "确认该工具操作没有生效？之后继续任务时允许重新执行。",
+      abandon: "放弃该工具操作？该调用会被记为已取消。"
+    };
+    if (
+      confirmations[request.action] &&
+      !window.confirm(confirmations[request.action])
+    ) {
+      return;
+    }
+
+    const token = `${request.taskId}:${request.callId}:${request.action}`;
+    setRecoveryBusy(token);
+    setRecoveryError("");
+    try {
+      const result = await window.api?.resolveToolRuntimeRecovery?.(request);
+      if (!result?.ok) {
+        throw new Error(result?.message ?? "恢复操作失败。");
+      }
+      await refreshRecoveryHistory();
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy("");
+    }
+  }, [recoveryBusy, refreshRecoveryHistory]);
+
   const rootClassName =
     useMemo(
       () => {
@@ -151,7 +231,7 @@ export default function Conversation() {
           sidebarCollapsed
             ? "is-sidebar-collapsed"
             : "",
-          contextOpen || taskOpen
+          contextOpen || taskOpen || recoveryOpen
             ? "is-context-open"
             : "",
           isMaximized
@@ -163,6 +243,7 @@ export default function Conversation() {
       },
       [
         contextOpen,
+        recoveryOpen,
         isMaximized,
         settings
           .appearance
@@ -219,6 +300,8 @@ export default function Conversation() {
         }
         contextOpen={contextOpen}
         taskOpen={taskOpen}
+        recoveryOpen={recoveryOpen}
+        recoveryCount={recoveryHistory?.unresolvedCount ?? 0}
         isMaximized={isMaximized}
         onToggleSidebar={() => {
           setSidebarCollapsed(
@@ -228,6 +311,7 @@ export default function Conversation() {
         }}
         onToggleContext={() => {
           setTaskOpen(false);
+          setRecoveryOpen(false);
           setContextOpen(
             (current) =>
               !current
@@ -235,6 +319,7 @@ export default function Conversation() {
         }}
         onToggleTask={() => {
           setContextOpen(false);
+          setRecoveryOpen(false);
           setTaskOpen(
             (current) =>
               !current
@@ -250,6 +335,11 @@ export default function Conversation() {
                 ? "live"
                 : null)
           );
+        }}
+        onToggleRecovery={() => {
+          setContextOpen(false);
+          setTaskOpen(false);
+          setRecoveryOpen((current) => !current);
         }}
         onCreate={() => {
           void history.create({
@@ -337,6 +427,7 @@ export default function Conversation() {
               messageId
             ) => {
               setContextOpen(false);
+              setRecoveryOpen(false);
               setTaskTargetMessageId(
                 messageId
               );
@@ -379,6 +470,27 @@ export default function Conversation() {
           />
         </main>
 
+        <ConversationRecoveryPanel
+          open={recoveryOpen}
+          history={recoveryHistory}
+          loading={recoveryLoading}
+          busy={recoveryBusy}
+          error={recoveryError}
+          developerMode={settings.general.developerMode}
+          onRefresh={refreshRecoveryHistory}
+          onAction={handleRecoveryHistoryAction}
+          onOpenTask={async (item) => {
+            if (item.conversationId) {
+              await history.select(item.conversationId);
+            }
+            setRecoveryOpen(false);
+            setContextOpen(false);
+            setTaskTargetMessageId(item.messageId || null);
+            setTaskOpen(true);
+          }}
+          onClose={() => setRecoveryOpen(false)}
+        />
+
         <ConversationTaskPanel
           open={taskOpen}
           conversation={history.current}
@@ -392,6 +504,9 @@ export default function Conversation() {
           }
           onLoadRecovery={(taskId) =>
             window.api?.getToolRuntimeRecovery?.(taskId)
+          }
+          onLoadDeveloperDetails={(request) =>
+            window.api?.getAgentRunDetails?.(request)
           }
           onRecoveryAction={(request) =>
             window.api?.resolveToolRuntimeRecovery?.(request)

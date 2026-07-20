@@ -91,7 +91,21 @@ describe(
                 runTimeoutMs: 1,
                 defaultTimeoutMs: 50,
                 maxIdenticalCalls: 99,
-                saveToolHistory: false
+                saveToolHistory: false,
+                circuitBreakers: {
+                  provider: {
+                    failureThreshold: 99,
+                    failureWindowMs: 1,
+                    cooldownMs: 99999999,
+                    halfOpenMaxCalls: 99
+                  },
+                  tool: {
+                    failureThreshold: 0,
+                    failureWindowMs: 99999999,
+                    cooldownMs: 0,
+                    halfOpenMaxCalls: 0
+                  }
+                }
               },
               workspace: {
                 enabled: true,
@@ -187,6 +201,23 @@ describe(
           settings.tools.runtime
             .saveToolHistory,
           false
+        );
+        assert.deepEqual(
+          settings.tools.runtime.circuitBreakers,
+          {
+            provider: {
+              failureThreshold: 20,
+              failureWindowMs: 5000,
+              cooldownMs: 1800000,
+              halfOpenMaxCalls: 10
+            },
+            tool: {
+              failureThreshold: 1,
+              failureWindowMs: 1800000,
+              cooldownMs: 1000,
+              halfOpenMaxCalls: 1
+            }
+          }
         );
         assert.deepEqual(
           settings.workspaces.items.map(

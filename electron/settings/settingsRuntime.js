@@ -30,6 +30,11 @@ import {
   applySettingWindowSettings
 } from "../windows/setting/settingWindow.js";
 
+import {
+  configureRuntimeCircuitBreakers
+} from "../runtime/runtimeCircuitBreakers.js";
+
+
 export function applyGeneralSettings(
   settings
 ) {
@@ -57,6 +62,8 @@ export function applyGeneralSettings(
 export function applySettingsToOpenWindows(
   settings
 ) {
+  configureRuntimeCircuitBreakers(settings);
+
   applyGeneralSettings(
     settings
   );

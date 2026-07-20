@@ -13,6 +13,7 @@ import {
 } from "./MarkdownContent.jsx";
 
 import {
+  createActivitySnapshot,
   createTaskSnapshot,
   describeToolBatch,
   describeToolTarget,
@@ -68,6 +69,7 @@ export function ConversationTaskPanel({
   targetMessageId,
   developerMode,
   onLoadRecovery,
+  onLoadDeveloperDetails,
   onRecoveryAction,
   onClose
 }) {
@@ -85,6 +87,9 @@ export function ConversationTaskPanel({
   const [runtimeRecovery, setRuntimeRecovery] = useState(null);
   const [recoveryBusy, setRecoveryBusy] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
+  const [developerDetails, setDeveloperDetails] = useState(null);
+  const [developerLoading, setDeveloperLoading] = useState(false);
+  const [developerError, setDeveloperError] = useState("");
   const firstToolId =
     snapshot.toolCalls[0]?.activityId ??
     snapshot.toolCalls[0]?.id ??
@@ -99,6 +104,12 @@ export function ConversationTaskPanel({
     setRecoveryBusy("");
     setRecoveryError("");
   }, [snapshot.taskId, snapshot.messageId, snapshot.runtimeRecovery]);
+
+  useEffect(() => {
+    setDeveloperDetails(null);
+    setDeveloperLoading(false);
+    setDeveloperError("");
+  }, [snapshot.taskId, snapshot.runId, snapshot.messageId, developerMode]);
 
   useEffect(() => {
     if (!open || !snapshot.taskId || !snapshot.runtimeRecovery?.unresolvedCount) {
@@ -170,16 +181,53 @@ export function ConversationTaskPanel({
     }
   };
 
+
+  const loadDeveloperDetails = async () => {
+    if (
+      !developerMode ||
+      developerLoading ||
+      (!snapshot.taskId && !snapshot.runId)
+    ) {
+      return;
+    }
+
+    setDeveloperLoading(true);
+    setDeveloperError("");
+    try {
+      const result = await onLoadDeveloperDetails?.({
+        taskId: snapshot.taskId,
+        runId: snapshot.runId
+      });
+      if (!result?.ok || !result.details) {
+        throw new Error(result?.message ?? "读取运行诊断失败。");
+      }
+      setDeveloperDetails(result.details);
+    } catch (error) {
+      setDeveloperError(
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setDeveloperLoading(false);
+    }
+  };
+
   if (!open) {
     return null;
   }
 
+  const developerSnapshot = developerDetails
+    ? createActivitySnapshot(developerDetails, {
+        conversation,
+        live: developerDetails.state !== "historical"
+      })
+    : null;
+  const developerToolCalls = developerSnapshot?.toolCalls ?? snapshot.toolCalls;
   const selectedTool =
-    snapshot.toolCalls.find(
+    developerToolCalls.find(
       (toolCall) =>
         (toolCall.activityId ?? toolCall.id) === selectedToolId
     ) ??
-    snapshot.toolCalls[0] ??
+    developerToolCalls[0] ??
     null;
 
   const events = groupToolActivityEvents(
@@ -294,9 +342,13 @@ export function ConversationTaskPanel({
 
         {developerMode && (
           <DeveloperActivity
-            snapshot={snapshot}
+            snapshot={developerSnapshot ?? snapshot}
+            detailsLoaded={Boolean(developerSnapshot)}
+            loading={developerLoading}
+            error={developerError}
             selectedTool={selectedTool}
             selectedToolId={selectedToolId}
+            onLoad={() => void loadDeveloperDetails()}
             onSelectTool={setSelectedToolId}
           />
         )}
@@ -495,17 +547,40 @@ function ActivityTimelineEvent({ event }) {
 
 function DeveloperActivity({
   snapshot,
+  detailsLoaded,
+  loading,
+  error,
   selectedTool,
   selectedToolId,
+  onLoad,
   onSelectTool
 }) {
   return (
     <section className="conversation-activity-section conversation-activity-developer">
       <header className="conversation-activity-section__header">
         <h2>开发者</h2>
-        <span>{snapshot.toolCalls.length} 个工具</span>
+        <span>{detailsLoaded ? `${snapshot.toolCalls.length} 个工具` : "按需加载"}</span>
       </header>
 
+      {!detailsLoaded && (
+        <div className="conversation-activity-developer__loader">
+          <div>
+            <strong>运行诊断尚未载入</strong>
+            <small>原始工具输入、结果、内部 ID 与 Runtime 诊断只在请求后读取。</small>
+          </div>
+          <button
+            type="button"
+            data-testid="conversation-load-run-details"
+            disabled={loading}
+            onClick={onLoad}
+          >
+            {loading ? "读取中…" : "加载诊断详情"}
+          </button>
+          {error && <p>{error}</p>}
+        </div>
+      )}
+
+      {detailsLoaded && (<>
       <dl className="conversation-activity-identifiers">
         <div>
           <dt>Message</dt>
@@ -529,9 +604,9 @@ function DeveloperActivity({
         />
       )}
 
-      {snapshot.providerRuntimeDiagnostics?.entries?.length > 0 && (
+      {snapshot.providerRuntimeDiagnostics && (
         <RawDetail
-          title="Provider circuit breakers"
+          title="Provider / Tool circuit breakers"
           value={stringifyTaskValue(snapshot.providerRuntimeDiagnostics)}
           code
         />
@@ -574,6 +649,7 @@ function DeveloperActivity({
           {stopReasonLabel(snapshot.stopReason)} · {snapshot.stopReason}
         </div>
       )}
+      </>)}
     </section>
   );
 }

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  projectAgentStatus
+  projectAgentStatus,
+  projectConversationStatus,
+  projectResponseStatus,
+  projectRuntimeRecovery
 } from "../../electron/agent/statusProjection.js";
 
 test("public status keeps tool flow but removes raw diagnostics", () => {
@@ -91,4 +94,92 @@ test("developer status retains runtime diagnostics", () => {
     projectAgentStatus(source, { developerMode: true }),
     source
   );
+});
+
+
+test("Response consumes a compact public projection", () => {
+  const events = Array.from({ length: 36 }, (_, index) => ({
+    id: `event-${index}`,
+    sequence: index,
+    type: "commentary",
+    content: `step ${index}`
+  }));
+  const projected = projectResponseStatus({
+    state: "running",
+    runId: "run-compact",
+    liveStepText: "stream",
+    activeToolCalls: [{ id: "raw", input: { secret: "hidden" } }],
+    activity: {
+      status: "running",
+      checkpoint: { rawContext: "must-not-cross-ipc" },
+      events
+    },
+    orchestration: { raw: true },
+    toolRuntimeDiagnostics: { journal: [1, 2, 3] }
+  });
+
+  assert.equal(projected.liveStepText, "stream");
+  assert.equal(projected.activity.events.length, 30);
+  assert.equal(projected.activity.events[0].id, "event-6");
+  assert.equal(projected.activity.checkpoint, undefined);
+  assert.equal(projected.activeToolCalls, undefined);
+  assert.equal(projected.orchestration, undefined);
+  assert.equal(projected.toolRuntimeDiagnostics, undefined);
+});
+
+test("Conversation receives a larger public projection without raw Tool fields", () => {
+  const projected = projectConversationStatus({
+    state: "running",
+    runId: "run-conversation",
+    activeToolCalls: [{
+      id: "call-1",
+      name: "workspace.read_file",
+      input: { path: "README.md", apiKey: "secret" },
+      output: { content: "raw" },
+      runtime: { state: "reported", receiptId: "secret-receipt" }
+    }],
+    activity: { events: [] }
+  });
+
+  assert.equal(projected.activeToolCalls.length, 1);
+  assert.equal(projected.activeToolCalls[0].input.path, "README.md");
+  assert.equal(projected.activeToolCalls[0].input.apiKey, undefined);
+  assert.equal(projected.activeToolCalls[0].output, undefined);
+  assert.deepEqual(projected.activeToolCalls[0].runtime, {
+    state: "reported",
+    recoveryAction: ""
+  });
+});
+
+test("public recovery projection exposes only fields required by recovery UI", () => {
+  const projected = projectRuntimeRecovery({
+    version: 2,
+    totalCalls: 1,
+    unresolvedCount: 1,
+    needsConfirmation: 1,
+    calls: [{
+      callId: "call-1",
+      toolName: "remote.write",
+      state: "unknown",
+      publicStatus: "需要确认",
+      recovery: "needs_confirmation",
+      effect: "remote_write",
+      hasReceipt: false,
+      actions: ["confirm_applied"],
+      idempotencyKey: "private-key",
+      lease: { ownerId: "private-owner" },
+      receipt: { checksum: "private-checksum" }
+    }]
+  });
+
+  assert.deepEqual(projected.calls[0], {
+    callId: "call-1",
+    toolName: "remote.write",
+    state: "unknown",
+    publicStatus: "需要确认",
+    recovery: "needs_confirmation",
+    effect: "remote_write",
+    hasReceipt: false,
+    actions: ["confirm_applied"]
+  });
 });

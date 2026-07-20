@@ -7,9 +7,12 @@ export function ConversationTopbar({
   isMaximized,
   contextOpen,
   taskOpen,
+  recoveryOpen,
+  recoveryCount = 0,
   onToggleSidebar,
   onToggleContext,
   onToggleTask,
+  onToggleRecovery,
   onCreate,
   onOpenInput,
   onMinimize,
@@ -61,6 +64,32 @@ export function ConversationTopbar({
             name="activity"
             size={17}
           />
+        </button>
+
+        <button
+          type="button"
+          className={
+            `conversation-icon-button conversation-recovery-toggle${
+              recoveryOpen
+                ? " is-active"
+                : ""
+            }`
+          }
+          data-testid="conversation-recovery-toggle"
+          title={recoveryCount > 0 ? `恢复中心 · ${recoveryCount} 个待处理操作` : "恢复中心"}
+          aria-label="恢复中心"
+          aria-pressed={recoveryOpen}
+          onClick={onToggleRecovery}
+        >
+          <ConversationIcon
+            name={recoveryCount > 0 ? "warning" : "activity"}
+            size={17}
+          />
+          {recoveryCount > 0 && (
+            <span className="conversation-icon-button__badge">
+              {Math.min(99, recoveryCount)}
+            </span>
+          )}
         </button>
 
         <button

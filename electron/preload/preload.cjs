@@ -70,6 +70,21 @@ const CHANNELS = Object.freeze({
   AGENT_STATUS_CHANGED:
     "agent-status-changed",
 
+  AGENT_GET_SNAPSHOT:
+    "agent-get-snapshot",
+
+  AGENT_SNAPSHOT_CHANGED:
+    "agent-snapshot-changed",
+
+  AGENT_STATUS_PATCH:
+    "agent-status-patch",
+
+  AGENT_TEXT_CHUNK:
+    "agent-text-chunk",
+
+  AGENT_GET_RUN_DETAILS:
+    "agent-get-run-details",
+
   AGENT_GET_CREDENTIAL_STATUS:
     "agent-get-credential-status",
 
@@ -87,6 +102,15 @@ const CHANNELS = Object.freeze({
 
   AGENT_RESOLVE_RUNTIME_RECOVERY:
     "agent-resolve-runtime-recovery",
+
+  AGENT_GET_RUNTIME_RECOVERY_HISTORY:
+    "agent-get-runtime-recovery-history",
+
+  AGENT_GET_CIRCUIT_BREAKERS:
+    "agent-get-circuit-breakers",
+
+  AGENT_RESET_CIRCUIT_BREAKER:
+    "agent-reset-circuit-breaker",
 
   CONVERSATION_GET_STATE:
     "conversation-get-state",
@@ -460,6 +484,22 @@ const api = Object.freeze({
     );
   },
 
+  getAgentSnapshot: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_GET_SNAPSHOT
+    );
+  },
+
+  getAgentRunDetails: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_GET_RUN_DETAILS,
+      {
+        taskId: String(request.taskId ?? ""),
+        runId: String(request.runId ?? "")
+      }
+    );
+  },
+
   getToolRuntimeRecovery: (taskId) => {
     return ipcRenderer.invoke(
       CHANNELS.AGENT_GET_RUNTIME_RECOVERY,
@@ -478,6 +518,28 @@ const api = Object.freeze({
     );
   },
 
+  getToolRuntimeRecoveryHistory: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_GET_RUNTIME_RECOVERY_HISTORY
+    );
+  },
+
+  getCircuitBreakerState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_GET_CIRCUIT_BREAKERS
+    );
+  },
+
+  resetCircuitBreaker: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_RESET_CIRCUIT_BREAKER,
+      {
+        scope: String(request.scope ?? "all"),
+        key: String(request.key ?? "")
+      }
+    );
+  },
+
   onAgentStatusChanged: (
     callback
   ) => {
@@ -486,6 +548,30 @@ const api = Object.freeze({
         .AGENT_STATUS_CHANGED,
       callback,
       (status) => status
+    );
+  },
+
+  onAgentSnapshotChanged: (callback) => {
+    return subscribe(
+      CHANNELS.AGENT_SNAPSHOT_CHANGED,
+      callback,
+      (snapshot) => snapshot
+    );
+  },
+
+  onAgentStatusPatch: (callback) => {
+    return subscribe(
+      CHANNELS.AGENT_STATUS_PATCH,
+      callback,
+      (patch) => patch
+    );
+  },
+
+  onAgentTextChunk: (callback) => {
+    return subscribe(
+      CHANNELS.AGENT_TEXT_CHUNK,
+      callback,
+      (chunk) => chunk
     );
   },
 

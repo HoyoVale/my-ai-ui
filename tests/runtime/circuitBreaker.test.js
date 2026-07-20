@@ -79,3 +79,56 @@ test("ToolExecutor stops dispatching a repeatedly unavailable tool while the cir
   assert.equal(blocked.error.code, "TOOL_CIRCUIT_OPEN");
   assert.equal(breakers.publicSnapshot().openCount, 1);
 });
+
+test("runtime circuit breaker configuration and manual reset are observable", async () => {
+  const {
+    configureRuntimeCircuitBreakers,
+    getRuntimeCircuitBreakerSnapshot,
+    providerCircuitBreakers,
+    resetRuntimeCircuitBreaker,
+    toolCircuitBreakers
+  } = await import("../../electron/runtime/runtimeCircuitBreakers.js");
+
+  resetRuntimeCircuitBreaker({ scope: "all" });
+  configureRuntimeCircuitBreakers({
+    tools: {
+      runtime: {
+        circuitBreakers: {
+          provider: {
+            failureThreshold: 5,
+            failureWindowMs: 20_000,
+            cooldownMs: 7_000,
+            halfOpenMaxCalls: 2
+          },
+          tool: {
+            failureThreshold: 4,
+            failureWindowMs: 15_000,
+            cooldownMs: 6_000,
+            halfOpenMaxCalls: 3
+          }
+        }
+      }
+    }
+  });
+
+  providerCircuitBreakers.recordFailure("provider:model", new Error("temporary"));
+  toolCircuitBreakers.recordFailure("tool:name", new Error("temporary"));
+
+  const configured = getRuntimeCircuitBreakerSnapshot();
+  assert.equal(configured.provider.failureThreshold, 5);
+  assert.equal(configured.provider.halfOpenMaxCalls, 2);
+  assert.equal(configured.tool.failureThreshold, 4);
+  assert.equal(configured.tool.halfOpenMaxCalls, 3);
+  assert.equal(configured.provider.entries.length, 1);
+  assert.equal(configured.tool.entries.length, 1);
+
+  const resetProvider = resetRuntimeCircuitBreaker({
+    scope: "provider",
+    key: "provider:model"
+  });
+  assert.equal(resetProvider.ok, true);
+  assert.equal(resetProvider.snapshot.provider.entries.length, 0);
+  assert.equal(resetProvider.snapshot.tool.entries.length, 1);
+
+  resetRuntimeCircuitBreaker({ scope: "all" });
+});

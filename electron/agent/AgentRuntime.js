@@ -54,8 +54,17 @@ import {
 import {
   appendResponseChunk,
   endResponseStream,
+  isResponseSender,
   startResponseStream
 } from "../windows/response/index.js";
+
+import {
+  isConversationSender
+} from "../windows/conversation/conversationWindow.js";
+
+import {
+  isInputSender
+} from "../windows/input/inputWindow.js";
 
 import {
   createModelRuntime,
@@ -81,7 +90,10 @@ import {
 } from "../tools/index.js";
 
 import {
-  providerCircuitBreakers
+  configureRuntimeCircuitBreakers,
+  getRuntimeCircuitBreakerSnapshot,
+  providerCircuitBreakers,
+  resetRuntimeCircuitBreaker
 } from "../runtime/runtimeCircuitBreakers.js";
 
 import {
@@ -145,8 +157,16 @@ import {
 } from "./CoalescedStatusBroadcaster.js";
 
 import {
-  projectAgentStatus
+  projectAgentSnapshot,
+  projectAgentStatus,
+  projectRuntimeRecovery
 } from "./statusProjection.js";
+
+import {
+  createAgentSnapshotEnvelope,
+  createAgentStatusPatch,
+  createAgentTextEvents
+} from "../../src/shared/agentStatusProtocol.js";
 
 import {
   SegmentExecutionLoop
@@ -177,6 +197,22 @@ function cloneStatus(status) {
   return {
     ...status
   };
+}
+
+function projectionTargetForWebContents(webContents) {
+  if (isResponseSender(webContents)) {
+    return "response";
+  }
+
+  if (isConversationSender(webContents)) {
+    return "conversation";
+  }
+
+  if (isInputSender(webContents)) {
+    return "input";
+  }
+
+  return "generic";
 }
 
 function appendTaskContinuationToContext(
@@ -325,6 +361,8 @@ export class AgentRuntime {
       startedAt: null,
       lastError: null
     };
+    this.statusRevision = 0;
+    this.windowStatusState = new Map();
     this.statusBroadcaster = new CoalescedStatusBroadcaster({
       intervalMs: 40,
       publish: () => this.publishStatus()
@@ -407,10 +445,11 @@ export class AgentRuntime {
     );
   }
 
-  getStatus() {
+  getRawStatus() {
     const developerMode =
-      getSettings().tools?.developerMode === true;
-    const rawStatus = cloneStatus({
+      getSettings().general?.developerMode === true;
+
+    return cloneStatus({
       ...this.status,
       stopReason:
         this.activeRun
@@ -503,13 +542,28 @@ export class AgentRuntime {
           : null,
       providerRuntimeDiagnostics:
         developerMode
-          ? providerCircuitBreakers.snapshot()
+          ? getRuntimeCircuitBreakerSnapshot()
           : null
     });
+  }
 
+  getStatus() {
     return projectAgentStatus(
-      rawStatus,
-      { developerMode }
+      this.getRawStatus(),
+      { developerMode: false }
+    );
+  }
+
+  getSnapshot(target = "generic") {
+    return createAgentSnapshotEnvelope(
+      projectAgentSnapshot(
+        this.getRawStatus(),
+        { target }
+      ),
+      {
+        revision: this.statusRevision,
+        target
+      }
     );
   }
 
@@ -1617,8 +1671,183 @@ export class AgentRuntime {
   async getToolRuntimeRecovery({ taskId } = {}) {
     return this.withToolRecoverySession(taskId, async (session) => ({
       ok: true,
-      recovery: session.getRuntimeRecovery?.() ?? null
+      recovery: projectRuntimeRecovery(
+        session.getRuntimeRecovery?.() ?? null
+      )
     }));
+  }
+
+  getRuntimeRecoveryHistory() {
+    const storedHistory = conversationManager.listToolRuntimeRecoveryHistory();
+    const history = {
+      ...storedHistory,
+      items: (storedHistory.items ?? []).map((item) => ({
+        conversationId: item.conversationId,
+        conversationTitle: item.conversationTitle,
+        messageId: item.messageId,
+        taskId: item.taskId,
+        runId: item.runId,
+        messageStatus: item.messageStatus,
+        stopReason: item.stopReason,
+        updatedAt: item.updatedAt,
+        recovery: projectRuntimeRecovery(item.recovery)
+      }))
+    };
+    const activeRecovery = projectRuntimeRecovery(
+      this.activeRun
+      ?.toolSession
+      ?.getRuntimeRecovery?.() ?? null
+    );
+
+    if (
+      !this.activeRun?.taskId ||
+      !activeRecovery ||
+      (
+        Number(activeRecovery.totalCalls ?? 0) === 0 &&
+        Number(activeRecovery.unresolvedCount ?? 0) === 0
+      )
+    ) {
+      return { ok: true, history };
+    }
+
+    const activeItem = {
+      conversationId: this.activeRun.conversationId,
+      conversationTitle:
+        conversationManager.getConversation(this.activeRun.conversationId)?.title ??
+        "当前会话",
+      messageId: this.activeRun.replaceMessageId ?? "live",
+      taskId: this.activeRun.taskId,
+      runId: this.activeRun.runId,
+      messageStatus: "running",
+      stopReason: "",
+      updatedAt: Date.now(),
+      recovery: activeRecovery
+    };
+    const items = history.items.filter(
+      (item) => item.taskId !== activeItem.taskId
+    );
+    items.unshift(activeItem);
+
+    return {
+      ok: true,
+      history: {
+        ...history,
+        taskCount: items.length,
+        unresolvedCount: items.reduce(
+          (total, item) =>
+            total + Number(item.recovery?.unresolvedCount ?? 0),
+          0
+        ),
+        items
+      }
+    };
+  }
+
+  async getDeveloperRunDetails({ taskId, runId } = {}) {
+    if (getSettings().general?.developerMode !== true) {
+      return {
+        ok: false,
+        code: "developer-mode-required",
+        message: "请先启用开发者模式。"
+      };
+    }
+
+    const normalizedTaskId = String(taskId ?? "").trim();
+    const normalizedRunId = String(runId ?? "").trim();
+    if (
+      this.activeRun &&
+      (
+        (!normalizedTaskId && !normalizedRunId) ||
+        this.activeRun.taskId === normalizedTaskId ||
+        this.activeRun.runId === normalizedRunId
+      )
+    ) {
+      return {
+        ok: true,
+        source: "active",
+        details: {
+          ...projectAgentStatus(
+            this.getRawStatus(),
+            { developerMode: true }
+          ),
+          id: "live"
+        }
+      };
+    }
+
+    const record = conversationManager.getTaskRuntimeRecord(normalizedTaskId);
+    if (!record) {
+      return {
+        ok: false,
+        code: "task-not-found",
+        message: "找不到该任务的运行记录。"
+      };
+    }
+
+    let runtimeDiagnostics = null;
+    if (!this.activeRun) {
+      const result = await this.withToolRecoverySession(
+        normalizedTaskId,
+        async (session) => ({
+          ok: true,
+          diagnostics: session.getRuntimeDiagnostics?.() ?? null
+        })
+      );
+      if (result?.ok) {
+        runtimeDiagnostics = result.diagnostics;
+      }
+    }
+
+    const message = record.message;
+    return {
+      ok: true,
+      source: "history",
+      details: {
+        id: message.id,
+        state: "historical",
+        runId: message.activity?.runId ?? normalizedRunId,
+        conversationId: record.conversation.id,
+        taskId: normalizedTaskId,
+        startedAt: message.activity?.startedAt ?? message.createdAt,
+        stopReason: message.stopReason ?? message.activity?.stopReason ?? "",
+        plan: message.plan ?? [],
+        activeToolCalls: message.toolCalls ?? [],
+        activity: message.activity ?? null,
+        liveStepText: "",
+        finalText: message.content ?? "",
+        assistantText: message.content ?? "",
+        toolRuntime:
+          message.activity?.checkpoint?.toolRuntime ?? null,
+        toolRuntimeDiagnostics: runtimeDiagnostics,
+        providerRuntimeDiagnostics: getRuntimeCircuitBreakerSnapshot()
+      }
+    };
+  }
+
+  getCircuitBreakers() {
+    if (getSettings().general?.developerMode !== true) {
+      return {
+        ok: false,
+        code: "developer-mode-required",
+        message: "请先启用开发者模式。"
+      };
+    }
+    configureRuntimeCircuitBreakers(getSettings());
+    return {
+      ok: true,
+      snapshot: getRuntimeCircuitBreakerSnapshot()
+    };
+  }
+
+  resetCircuitBreaker(request = {}) {
+    if (getSettings().general?.developerMode !== true) {
+      return {
+        ok: false,
+        code: "developer-mode-required",
+        message: "请先启用开发者模式。"
+      };
+    }
+    return resetRuntimeCircuitBreaker(request);
   }
 
   async resolveToolRuntimeRecovery({
@@ -1638,7 +1867,12 @@ export class AgentRuntime {
         });
       }
       this.setStatus({ ...this.status }, { immediate: true });
-      return result;
+      return result
+        ? {
+            ...result,
+            recovery: projectRuntimeRecovery(result.recovery)
+          }
+        : result;
     });
   }
 
@@ -2696,8 +2930,24 @@ export class AgentRuntime {
     );
   }
 
+  getSnapshotForWebContents(webContents) {
+    const target = projectionTargetForWebContents(webContents);
+    const envelope = this.getSnapshot(target);
+    if (webContents && !webContents.isDestroyed?.()) {
+      this.windowStatusState.set(webContents.id, {
+        target,
+        revision: envelope.revision,
+        status: envelope.status
+      });
+    }
+    return envelope;
+  }
+
   publishStatus() {
-    const snapshot = this.getStatus();
+    this.statusRevision += 1;
+    const revision = this.statusRevision;
+    const rawStatus = this.getRawStatus();
+    const liveWindowIds = new Set();
 
     for (
       const window
@@ -2713,14 +2963,78 @@ export class AgentRuntime {
         continue;
       }
 
-      window
-        .webContents
-        .send(
-          IPC_CHANNELS
-            .agent
-            .STATUS_CHANGED,
-          snapshot
+      const webContents = window.webContents;
+      const windowId = webContents.id;
+      const target = projectionTargetForWebContents(webContents);
+      const projected = projectAgentSnapshot(rawStatus, { target });
+      const previousState = this.windowStatusState.get(windowId);
+      const previous = previousState?.status ?? null;
+      const runChanged = String(previous?.runId ?? "") !== String(projected.runId ?? "");
+      const targetChanged = previousState?.target !== target;
+      const shouldSnapshot = !previous || runChanged || targetChanged;
+
+      liveWindowIds.add(windowId);
+
+      if (shouldSnapshot) {
+        const envelope = createAgentSnapshotEnvelope(projected, {
+          revision,
+          target
+        });
+        webContents.send(
+          IPC_CHANNELS.agent.SNAPSHOT_CHANGED,
+          envelope
         );
+      } else {
+        for (const textEvent of createAgentTextEvents(previous, projected, {
+          revision,
+          target
+        })) {
+          webContents.send(
+            IPC_CHANNELS.agent.TEXT_CHUNK,
+            textEvent
+          );
+        }
+
+        const patch = createAgentStatusPatch(previous, projected, {
+          revision,
+          target
+        });
+        if (patch) {
+          webContents.send(
+            IPC_CHANNELS.agent.STATUS_PATCH,
+            patch
+          );
+        }
+      }
+
+      const lifecycleChanged =
+        shouldSnapshot ||
+        previous?.state !== projected.state ||
+        previous?.outcome !== projected.outcome ||
+        previous?.stopReason !== projected.stopReason ||
+        previous?.publicStatus !== projected.publicStatus;
+      if (lifecycleChanged) {
+        /*
+         * Keep old preload builds functional without restoring token-by-token
+         * full snapshots. Legacy listeners receive only run/lifecycle changes.
+         */
+        webContents.send(
+          IPC_CHANNELS.agent.STATUS_CHANGED,
+          projected
+        );
+      }
+
+      this.windowStatusState.set(windowId, {
+        target,
+        revision,
+        status: projected
+      });
+    }
+
+    for (const windowId of this.windowStatusState.keys()) {
+      if (!liveWindowIds.has(windowId)) {
+        this.windowStatusState.delete(windowId);
+      }
     }
   }
 

@@ -1,4 +1,10 @@
 import {
+  useCallback,
+  useEffect,
+  useState
+} from "react";
+
+import {
   SettingRow,
   SettingsSection,
   Slider,
@@ -29,6 +35,18 @@ export function ToolPanel({
       runtime: {
         ...settings.runtime,
         ...patch
+      }
+    });
+  };
+
+  const updateCircuitBreaker = (scope, patch) => {
+    updateRuntime({
+      circuitBreakers: {
+        ...(settings.runtime.circuitBreakers ?? {}),
+        [scope]: {
+          ...(settings.runtime.circuitBreakers?.[scope] ?? {}),
+          ...patch
+        }
       }
     });
   };
@@ -353,6 +371,102 @@ export function ToolPanel({
                 />
               </SettingRow>
 
+              <div className="developer-subsection" data-testid="circuit-breaker-settings">
+                <h3>Provider 熔断器</h3>
+                <SettingRow title="触发阈值" description="在统计窗口内达到该失败次数后暂停请求。">
+                  <Slider
+                    value={settings.runtime.circuitBreakers?.provider?.failureThreshold ?? 3}
+                    min={1}
+                    max={20}
+                    unit=" 次"
+                    onChange={(failureThreshold) =>
+                      updateCircuitBreaker("provider", { failureThreshold })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow title="统计窗口" description="只统计该时间范围内的临时故障。">
+                  <Slider
+                    value={(settings.runtime.circuitBreakers?.provider?.failureWindowMs ?? 90000) / 1000}
+                    min={5}
+                    max={600}
+                    unit=" 秒"
+                    onChange={(seconds) =>
+                      updateCircuitBreaker("provider", { failureWindowMs: seconds * 1000 })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow title="冷却时间">
+                  <Slider
+                    value={(settings.runtime.circuitBreakers?.provider?.cooldownMs ?? 45000) / 1000}
+                    min={1}
+                    max={600}
+                    unit=" 秒"
+                    onChange={(seconds) =>
+                      updateCircuitBreaker("provider", { cooldownMs: seconds * 1000 })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow title="试探请求数" description="冷却结束后 Half-open 阶段允许同时放行的探测请求。">
+                  <Slider
+                    value={settings.runtime.circuitBreakers?.provider?.halfOpenMaxCalls ?? 1}
+                    min={1}
+                    max={10}
+                    unit=" 次"
+                    onChange={(halfOpenMaxCalls) =>
+                      updateCircuitBreaker("provider", { halfOpenMaxCalls })
+                    }
+                  />
+                </SettingRow>
+
+                <h3>Tool 熔断器</h3>
+                <SettingRow title="触发阈值" description="单个工具连续临时故障达到阈值后暂停调用。">
+                  <Slider
+                    value={settings.runtime.circuitBreakers?.tool?.failureThreshold ?? 3}
+                    min={1}
+                    max={20}
+                    unit=" 次"
+                    onChange={(failureThreshold) =>
+                      updateCircuitBreaker("tool", { failureThreshold })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow title="统计窗口">
+                  <Slider
+                    value={(settings.runtime.circuitBreakers?.tool?.failureWindowMs ?? 60000) / 1000}
+                    min={5}
+                    max={600}
+                    unit=" 秒"
+                    onChange={(seconds) =>
+                      updateCircuitBreaker("tool", { failureWindowMs: seconds * 1000 })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow title="冷却时间">
+                  <Slider
+                    value={(settings.runtime.circuitBreakers?.tool?.cooldownMs ?? 30000) / 1000}
+                    min={1}
+                    max={600}
+                    unit=" 秒"
+                    onChange={(seconds) =>
+                      updateCircuitBreaker("tool", { cooldownMs: seconds * 1000 })
+                    }
+                  />
+                </SettingRow>
+                <SettingRow title="试探请求数" description="冷却结束后允许并行试探的工具调用数。">
+                  <Slider
+                    value={settings.runtime.circuitBreakers?.tool?.halfOpenMaxCalls ?? 1}
+                    min={1}
+                    max={10}
+                    unit=" 次"
+                    onChange={(halfOpenMaxCalls) =>
+                      updateCircuitBreaker("tool", { halfOpenMaxCalls })
+                    }
+                  />
+                </SettingRow>
+              </div>
+
+              <CircuitBreakerDiagnostics />
+
               <div className="developer-subsection">
                 <h3>Toolset 强制覆盖</h3>
                 {TOOLSET_OPTIONS.map((toolset) => (
@@ -409,5 +523,136 @@ export function ToolPanel({
         </div>
       )}
     </>
+  );
+}
+
+function formatCircuitState(state) {
+  if (state === "open") {
+    return "已熔断";
+  }
+  if (state === "half_open") {
+    return "试探恢复";
+  }
+  return "正常";
+}
+
+function CircuitBreakerDiagnostics() {
+  const [snapshot, setSnapshot] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  const refresh = useCallback(async () => {
+    setError("");
+    try {
+      const result = await window.api?.getCircuitBreakerState?.();
+      if (!result?.ok) {
+        throw new Error(result?.message ?? "读取熔断器状态失败。");
+      }
+      setSnapshot(result.snapshot ?? null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const reset = async (scope, key = "") => {
+    const token = `${scope}:${key || "all"}`;
+    setBusy(token);
+    setError("");
+    try {
+      const result = await window.api?.resetCircuitBreaker?.({ scope, key });
+      if (!result?.ok) {
+        throw new Error(result?.message ?? "重置熔断器失败。");
+      }
+      setSnapshot(result.snapshot ?? null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const scopes = [
+    ["provider", "Provider"],
+    ["tool", "Tool"]
+  ];
+
+  return (
+    <div
+      className="developer-subsection circuit-breaker-diagnostics"
+      data-testid="circuit-breaker-diagnostics"
+    >
+      <div className="circuit-breaker-diagnostics__header">
+        <h3>当前熔断状态</h3>
+        <div>
+          <button type="button" onClick={() => void refresh()}>
+            刷新
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            data-testid="circuit-breaker-reset-all"
+            onClick={() => void reset("all")}
+          >
+            {busy === "all:all" ? "重置中…" : "全部重置"}
+          </button>
+        </div>
+      </div>
+
+      {scopes.map(([scope, label]) => {
+        const state = snapshot?.[scope];
+        const entries = state?.entries ?? [];
+        return (
+          <section key={scope} className="circuit-breaker-diagnostics__scope">
+            <header>
+              <strong>{label}</strong>
+              <span>
+                阈值 {state?.failureThreshold ?? "-"} · 窗口 {Math.round((state?.failureWindowMs ?? 0) / 1000)} 秒 · 冷却 {Math.round((state?.cooldownMs ?? 0) / 1000)} 秒 · 试探 {state?.halfOpenMaxCalls ?? "-"}
+              </span>
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void reset(scope)}
+              >
+                重置该组
+              </button>
+            </header>
+
+            {entries.length === 0 ? (
+              <p>暂无运行记录。</p>
+            ) : (
+              <div className="circuit-breaker-diagnostics__entries">
+                {entries.map((entry) => (
+                  <article key={entry.key} className={`is-${entry.state}`}>
+                    <div>
+                      <strong>{entry.label || entry.key}</strong>
+                      <small>
+                        {formatCircuitState(entry.state)} · 失败 {entry.failureCount}
+                        {entry.retryAfterMs > 0
+                          ? ` · ${Math.ceil(entry.retryAfterMs / 1000)} 秒后可试探`
+                          : ""}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      data-testid={`circuit-breaker-reset-${scope}`}
+                      onClick={() => void reset(scope, entry.key)}
+                    >
+                      {busy === `${scope}:${entry.key}` ? "重置中…" : "重置"}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      {error && <p className="circuit-breaker-diagnostics__error">{error}</p>}
+    </div>
   );
 }

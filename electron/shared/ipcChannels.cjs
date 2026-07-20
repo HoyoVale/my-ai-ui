@@ -69,6 +69,21 @@ const IPC_CHANNELS =
       STATUS_CHANGED:
         "agent-status-changed",
 
+      GET_SNAPSHOT:
+        "agent-get-snapshot",
+
+      SNAPSHOT_CHANGED:
+        "agent-snapshot-changed",
+
+      STATUS_PATCH:
+        "agent-status-patch",
+
+      TEXT_CHUNK:
+        "agent-text-chunk",
+
+      GET_RUN_DETAILS:
+        "agent-get-run-details",
+
       GET_CREDENTIAL_STATUS:
         "agent-get-credential-status",
 
@@ -85,7 +100,16 @@ const IPC_CHANNELS =
         "agent-get-runtime-recovery",
 
       RESOLVE_RUNTIME_RECOVERY:
-        "agent-resolve-runtime-recovery"
+        "agent-resolve-runtime-recovery",
+
+      GET_RUNTIME_RECOVERY_HISTORY:
+        "agent-get-runtime-recovery-history",
+
+      GET_CIRCUIT_BREAKERS:
+        "agent-get-circuit-breakers",
+
+      RESET_CIRCUIT_BREAKER:
+        "agent-reset-circuit-breaker"
     }),
 
     conversation: Object.freeze({
