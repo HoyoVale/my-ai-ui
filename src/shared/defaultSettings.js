@@ -251,6 +251,9 @@ export const FALLBACK_SETTINGS = {
       defaultTimeoutMs: 15000,
       maxIdenticalCalls: 3,
       saveToolHistory: true,
+      journalMaxFileBytes: 8000000,
+      journalMaxArchives: 6,
+      journalMaxTotalBytes: 48000000,
       circuitBreakers: {
         provider: {
           failureThreshold: 3,
@@ -273,12 +276,16 @@ export const FALLBACK_SETTINGS = {
       maxDirectoryEntries: 200,
       maxSearchResults: 100,
       maxSearchDepth: 6,
-      maxHashFileBytes: 50000000
+      maxHashFileBytes: 50000000,
+      maxWriteFileBytes: 5000000,
+      allowedCommands: []
     },
     developer: {
       toolsetOverrides: {
         "core.runtime": "inherit",
         "workspace.read": "inherit",
+        "workspace.write": "inherit",
+        "workspace.exec": "inherit",
         "agent.internal": "inherit"
       },
       toolOverrides: {}
@@ -286,6 +293,8 @@ export const FALLBACK_SETTINGS = {
     toolsets: {
       "core.runtime": true,
       "workspace.read": true,
+      "workspace.write": true,
+      "workspace.exec": false,
       "agent.internal": true
     },
     overrides: {
@@ -303,6 +312,9 @@ export const FALLBACK_SETTINGS = {
       search_text: true,
       detect_project: true,
       compute_file_hash: true,
+      write_text_file: true,
+      git_inspect: true,
+      run_workspace_command: true,
       update_plan: true,
       read_tool_result: true
     }

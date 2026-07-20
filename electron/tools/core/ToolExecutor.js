@@ -17,7 +17,8 @@ import {
   shouldRetryToolError
 } from "./toolErrors.js";
 import {
-  isUnsafeToolEffect
+  isUnsafeToolEffect,
+  publicToolRuntimeContract
 } from "./ToolRuntimeContract.js";
 
 import {
@@ -258,7 +259,8 @@ export class ToolExecutor {
     budget = null,
     eventStore = null,
     executionLedger = null,
-    circuitBreakers = null
+    circuitBreakers = null,
+    faultInjector = null
   } = {}) {
     this.context = { ...context };
     this.onRecord = onRecord;
@@ -289,7 +291,20 @@ export class ToolExecutor {
     this.eventStore = eventStore ?? new ToolEventStore();
     this.executionLedger = executionLedger;
     this.circuitBreakers = circuitBreakers;
+    this.faultInjector = typeof faultInjector === "function"
+      ? faultInjector
+      : null;
     this.callSequence = 0;
+  }
+
+  async injectFault(boundary, details = {}) {
+    if (!this.faultInjector) {
+      return;
+    }
+    await this.faultInjector(String(boundary ?? ""), {
+      ...details,
+      timestamp: Date.now()
+    });
   }
 
   circuitKey(definition) {
@@ -615,7 +630,9 @@ export class ToolExecutor {
           source: definition.source ?? "builtin",
           riskLevel: definition.riskLevel ?? "none",
           sideEffect: definition.sideEffect ?? "none",
-          runtimeContract: definition.runtimeContract ?? null
+          runtimeContract: publicToolRuntimeContract(
+            definition.runtimeContract ?? {}
+          )
         },
         input: validatedInput.value,
         taskId,
@@ -713,6 +730,54 @@ export class ToolExecutor {
         );
       }
 
+      await this.injectFault("after_prepare", {
+        definition,
+        input: validatedInput.value,
+        callId: id,
+        prepared
+      });
+
+      if (prepared.replayed && definition.runtimeContract?.canVerify) {
+        const verification = await this.executionLedger.verifyReceipt(
+          definition,
+          prepared.receipt,
+          {
+            input: validatedInput.value,
+            callId: id
+          }
+        );
+        if (!verification.ok) {
+          const output = createRuntimeError(
+            "TOOL_RECEIPT_VERIFICATION_FAILED",
+            verification.status === "not_applied"
+              ? "已保存的工具收据与当前文件状态不一致，需要核验后再继续。"
+              : "无法确认已保存工具收据对应的外部状态。",
+            false,
+            TOOL_ERROR_TYPES.CONFLICT,
+            "needs_reconciliation",
+            {
+              receiptId: prepared.receipt?.receiptId ?? "",
+              verificationStatus: verification.status,
+              evidence: verification.evidence ?? null
+            }
+          );
+          this.emit({
+            ...baseRecord,
+            status: "needs_reconciliation",
+            output,
+            lastError: output.error,
+            endedAt: Date.now(),
+            runtime: {
+              state: "needs_reconciliation",
+              replayed: false,
+              recovery: "needs_reconciliation",
+              receiptId: prepared.receipt?.receiptId ?? ""
+            }
+          });
+          return output;
+        }
+      }
+
       if (prepared.replayed) {
         const receipt = prepared.receipt;
         const endedAt = Date.now();
@@ -741,34 +806,46 @@ export class ToolExecutor {
 
       if (!prepared.ok) {
         const needsConfirmation = prepared.code === "TOOL_CONFIRMATION_REQUIRED";
+        const leased = prepared.code === "TOOL_CALL_LEASED";
         const output = createRuntimeError(
           prepared.code,
           needsConfirmation
             ? "此前的写操作结果无法自动确认，需要用户确认后才能继续。"
-            : prepared.code === "TOOL_CALL_LEASED"
-              ? "该工具调用正在由另一个执行器处理。"
+            : leased
+              ? "相同的工具操作正在由另一个执行器处理，请稍后重试。"
               : "此前的写操作状态不确定，需要先核验实际结果。",
-          false,
+          leased,
           TOOL_ERROR_TYPES.CONFLICT,
-          needsConfirmation ? "needs_confirmation" : "needs_reconciliation",
+          leased
+            ? "conflict"
+            : needsConfirmation
+              ? "needs_confirmation"
+              : "needs_reconciliation",
           {
             previousCallId: prepared.previousCall?.callId ?? "",
             state: prepared.state ?? "",
             lease: prepared.lease ?? null
           }
         );
+        const status = leased
+          ? "failed"
+          : needsConfirmation
+            ? "needs_confirmation"
+            : "needs_reconciliation";
         this.emit({
           ...baseRecord,
-          status: needsConfirmation ? "needs_confirmation" : "needs_reconciliation",
+          status,
           output,
           lastError: output.error,
           endedAt: Date.now(),
           runtime: {
-            state: prepared.state ?? "needs_reconciliation",
+            state: prepared.state ?? status,
             replayed: false,
-            recovery: needsConfirmation
-              ? "needs_confirmation"
-              : "needs_reconciliation"
+            recovery: leased
+              ? "in_progress"
+              : needsConfirmation
+                ? "needs_confirmation"
+                : "needs_reconciliation"
           }
         });
         return output;
@@ -798,6 +875,12 @@ export class ToolExecutor {
           ledgerCall,
           { dispatchedAt: Date.now() }
         );
+        await this.injectFault("after_dispatch", {
+          definition,
+          input: validatedInput.value,
+          callId: id,
+          ledgerCall
+        });
         const heartbeatMs = Math.max(
           1_000,
           Number(definition.runtimeContract?.heartbeatMs) || 10_000
@@ -925,7 +1008,16 @@ export class ToolExecutor {
             deadline: this.deadline,
             abortSignal,
             idempotencyKey: options.idempotencyKey ?? "",
-            metadata: options.metadata ?? null
+            metadata: options.metadata ?? null,
+            onWriteBoundary: async (boundary, details = {}) => {
+              await this.injectFault(`write:${boundary}`, {
+                definition,
+                input,
+                callId: baseRecord.id,
+                ledgerCall,
+                ...details
+              });
+            }
           }),
           abortSignal
         );
@@ -993,6 +1085,28 @@ export class ToolExecutor {
           );
         }
 
+        const effectEvidence =
+          normalizedOutput?.data?.effectEvidence ??
+          normalizedOutput?.effectEvidence ??
+          null;
+        if (ledgerCall && isUnsafeToolEffect(definition.runtimeContract)) {
+          ledgerCall = await this.executionLedger.markEffectConfirmed(
+            ledgerCall,
+            {
+              confirmedAt: Date.now(),
+              evidence: effectEvidence
+            }
+          );
+          await this.injectFault("after_effect", {
+            definition,
+            input,
+            callId: baseRecord.id,
+            ledgerCall,
+            output: normalizedOutput,
+            effectEvidence
+          });
+        }
+
         const captured = this.resultStore
           ? this.resultStore.capture(normalizedOutput, {
               toolName: definition.name,
@@ -1033,9 +1147,19 @@ export class ToolExecutor {
               attempt,
               startedAt,
               endedAt,
-              metadata: captured.meta
+              metadata: {
+                ...captured.meta,
+                effectEvidence
+              }
             }
           );
+          await this.injectFault("after_receipt", {
+            definition,
+            input,
+            callId: baseRecord.id,
+            ledgerCall,
+            receipt
+          });
         }
 
         try {
@@ -1074,6 +1198,13 @@ export class ToolExecutor {
 
         if (ledgerCall && receipt) {
           await this.executionLedger.markReported(ledgerCall, receipt);
+          await this.injectFault("after_report", {
+            definition,
+            input,
+            callId: baseRecord.id,
+            ledgerCall,
+            receipt
+          });
         }
         this.noteCircuitSuccess(definition);
         return captured.value;

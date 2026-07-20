@@ -27,6 +27,10 @@ import {
   RuntimeCheckpointStore
 } from "./RuntimeCheckpointStore.js";
 
+import {
+  ToolCallSnapshotStore
+} from "./ToolCallSnapshotStore.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -144,7 +148,8 @@ export class ToolExecutionLedger {
     runId = "",
     workspaceId = "",
     ownerId = "",
-    durable = true
+    durable = true,
+    journalOptions = {}
   } = {}) {
     this.directory = String(directory ?? "").trim();
     this.taskId = String(taskId ?? "");
@@ -159,7 +164,8 @@ export class ToolExecutionLedger {
       taskId: this.taskId,
       runId: this.runId,
       workspaceId: this.workspaceId,
-      durable
+      durable,
+      ...journalOptions
     });
     this.receipts = new ToolReceiptStore({
       directory: this.directory,
@@ -175,11 +181,35 @@ export class ToolExecutionLedger {
       taskId: this.taskId,
       workspaceId: this.workspaceId
     });
+    this.callSnapshots = new ToolCallSnapshotStore({
+      directory: this.directory,
+      taskId: this.taskId,
+      workspaceId: this.workspaceId
+    });
     this.rebuild();
   }
 
   rebuild() {
     this.calls.clear();
+
+    for (const snapshot of this.callSnapshots.list()) {
+      this.calls.set(snapshot.callId, {
+        callId: snapshot.callId,
+        state: String(snapshot.state ?? ""),
+        history: [],
+        latestEvent: snapshot.latestEvent ?? null,
+        latestSequence: Math.max(0, Number(snapshot.journalSequence) || 0),
+        idempotencyKey: String(snapshot.idempotencyKey ?? ""),
+        toolName: String(snapshot.toolName ?? ""),
+        toolId: String(snapshot.toolId ?? ""),
+        runId: String(snapshot.runId ?? this.runId),
+        segmentId: String(snapshot.segmentId ?? ""),
+        contract: snapshot.contract ?? null,
+        input: snapshot.input ?? undefined,
+        attempt: Math.max(0, Number(snapshot.attempt) || 0),
+        receiptId: String(snapshot.receiptId ?? "")
+      });
+    }
 
     for (const event of this.journal.list()) {
       if (!event.callId) {
@@ -188,11 +218,17 @@ export class ToolExecutionLedger {
       const current = this.calls.get(event.callId) ?? {
         callId: event.callId,
         state: "",
-        history: []
+        history: [],
+        latestSequence: 0
       };
-      const nextState = stateForEvent(event.type);
       current.history.push(event);
+      if (Number(event.sequence) <= Number(current.latestSequence ?? 0)) {
+        this.calls.set(event.callId, current);
+        continue;
+      }
+      const nextState = stateForEvent(event.type);
       current.latestEvent = event;
+      current.latestSequence = Number(event.sequence) || 0;
       current.state = nextState || current.state;
       current.idempotencyKey = String(
         event.payload?.idempotencyKey ?? current.idempotencyKey ?? ""
@@ -203,6 +239,7 @@ export class ToolExecutionLedger {
       current.toolId = String(
         event.payload?.toolId ?? current.toolId ?? ""
       );
+      current.runId = String(event.runId ?? current.runId ?? this.runId);
       current.segmentId = String(
         event.segmentId ?? current.segmentId ?? ""
       );
@@ -469,6 +506,85 @@ export class ToolExecutionLedger {
         : null);
   }
 
+  async verifyReceipt(definition, receipt, { input = null, callId = "" } = {}) {
+    const verify = definition?.runtimeContract?.verify;
+    if (typeof verify !== "function") {
+      return { ok: true, status: "not_supported", receipt };
+    }
+
+    let verification;
+    try {
+      verification = await verify({
+        receipt: clone(receipt),
+        input: clone(input),
+        callId: String(callId || receipt?.callId || ""),
+        idempotencyKey: String(receipt?.idempotencyKey ?? ""),
+        taskId: this.taskId,
+        runId: String(receipt?.runId ?? this.runId),
+        segmentId: String(receipt?.segmentId ?? ""),
+        workspaceId: this.workspaceId
+      });
+    } catch (error) {
+      verification = {
+        status: "unknown",
+        evidence: {
+          error: error instanceof Error ? error.message : String(error)
+        }
+      };
+    }
+
+    const status = String(verification?.status ?? "unknown");
+    const valid = ["valid", "applied"].includes(status);
+    await this.recordRuntimeEvent(
+      valid ? "TOOL_RECEIPT_VERIFIED" : "TOOL_RECEIPT_VERIFICATION_FAILED",
+      {
+        receiptId: String(receipt?.receiptId ?? ""),
+        receiptCallId: String(receipt?.callId ?? ""),
+        verificationStatus: status,
+        evidence: verification?.evidence ?? null
+      },
+      {
+        callId: String(callId || receipt?.callId || ""),
+        runId: String(receipt?.runId ?? this.runId),
+        segmentId: String(receipt?.segmentId ?? ""),
+        actor: "receipt-verifier",
+        reason: valid ? "receipt_verified" : "receipt_verification_failed",
+        durability: "critical"
+      }
+    );
+
+    if (!valid) {
+      await this.receipts.invalidate(receipt, {
+        reason: status === "not_applied"
+          ? "verification_not_applied"
+          : "verification_unknown",
+        evidence: verification?.evidence ?? null
+      });
+      const mutable = this.calls.get(receipt?.callId);
+      if (mutable) {
+        mutable.input = input === undefined ? mutable.input : clone(input);
+      }
+      if (mutable && [
+        TOOL_CALL_STATES.RECEIPT_STORED,
+        TOOL_CALL_STATES.REPORTED
+      ].includes(mutable.state)) {
+        await this.transition(mutable, "TOOL_RECONCILIATION_REQUIRED", {
+          reason: "receipt_verification_failed",
+          receiptId: String(receipt?.receiptId ?? ""),
+          verificationStatus: status,
+          evidence: verification?.evidence ?? null
+        });
+      }
+    }
+
+    return {
+      ok: valid,
+      status,
+      receipt,
+      evidence: verification?.evidence ?? null
+    };
+  }
+
   unresolvedByIdempotencyKey(idempotencyKey) {
     if (!idempotencyKey) {
       return null;
@@ -509,11 +625,18 @@ export class ToolExecutionLedger {
 
     call.state = nextState || call.state;
     call.latestEvent = event;
+    call.latestSequence = Number(event.sequence) || call.latestSequence || 0;
     call.history = [...(call.history ?? []), event];
+    if (payload.input !== undefined) {
+      call.input = clone(payload.input);
+    }
     if (payload.receiptId) {
       call.receiptId = String(payload.receiptId);
     }
     this.calls.set(call.callId, call);
+    await this.callSnapshots.store(call, {
+      journalSequence: call.latestSequence
+    });
     return clone(event);
   }
 
@@ -555,8 +678,32 @@ export class ToolExecutionLedger {
       };
     }
 
+    const existing = this.calls.get(id);
     const unresolved = this.unresolvedByIdempotencyKey(idempotencyKey);
-    if (unresolved) {
+    const sameUnresolvedCall = unresolved?.callId === id;
+    const restartRetryAllowed = Boolean(
+      sameUnresolvedCall &&
+      (
+        contract.retryMode === "safe" ||
+        (contract.retryMode === "idempotency_key" && idempotencyKey)
+      )
+    );
+
+    if (
+      unresolved &&
+      !restartRetryAllowed &&
+      contract.retryMode === "idempotency_key" &&
+      idempotencyKey
+    ) {
+      return {
+        ok: false,
+        code: "TOOL_CALL_LEASED",
+        state: unresolved.state,
+        previousCall: clone(unresolved)
+      };
+    }
+
+    if (unresolved && !restartRetryAllowed) {
       if (requiresReconciliation(contract)) {
         return {
           ok: false,
@@ -575,12 +722,11 @@ export class ToolExecutionLedger {
       }
     }
 
-    const existing = this.calls.get(id);
     if (existing && [
       TOOL_CALL_STATES.NEEDS_RECONCILIATION,
       TOOL_CALL_STATES.NEEDS_CONFIRMATION,
       TOOL_CALL_STATES.UNKNOWN
-    ].includes(existing.state)) {
+    ].includes(existing.state) && !restartRetryAllowed) {
       return {
         ok: false,
         code: existing.state === TOOL_CALL_STATES.NEEDS_CONFIRMATION
@@ -614,7 +760,27 @@ export class ToolExecutionLedger {
       });
     }
 
-    if (call.state === TOOL_CALL_STATES.PLANNED) {
+    if (restartRetryAllowed && [
+      TOOL_CALL_STATES.DISPATCHED,
+      TOOL_CALL_STATES.EFFECT_CONFIRMED,
+      TOOL_CALL_STATES.CANCEL_REQUESTED,
+      TOOL_CALL_STATES.UNKNOWN
+    ].includes(call.state)) {
+      await this.transition(call, "TOOL_RECONCILIATION_REQUIRED", {
+        reason: "restart_retry_boundary",
+        recovery: contract.retryMode === "safe"
+          ? "safe_to_retry"
+          : "retry_with_idempotency_key"
+      });
+    }
+
+    if (restartRetryAllowed && call.state === TOOL_CALL_STATES.NEEDS_RECONCILIATION) {
+      await this.transition(call, "TOOL_PREPARED", {
+        input,
+        inputHash: hash(canonicalJson(input)),
+        reason: "restart_retry_prepared"
+      });
+    } else if (call.state === TOOL_CALL_STATES.PLANNED) {
       await this.transition(call, "TOOL_PREPARED", {
         input,
         inputHash: hash(canonicalJson(input))
@@ -1087,7 +1253,22 @@ export class ToolExecutionLedger {
   }
 
   developerSnapshot() {
-    return this.recoverySnapshot();
+    return {
+      ...this.recoverySnapshot(),
+      journal: {
+        cursor: this.journal.cursor(),
+        storage: this.journal.storageSnapshot(),
+        loadReport: clone(this.journal.loadReport)
+      },
+      callStateCount: this.callSnapshots.list().length,
+      leases: this.leases.list().map((lease) => ({
+        callId: String(lease.callId ?? ""),
+        ownerId: String(lease.ownerId ?? ""),
+        attempt: Number(lease.attempt) || 1,
+        heartbeatAt: Number(lease.heartbeatAt) || 0,
+        expiresAt: Number(lease.expiresAt) || 0
+      }))
+    };
   }
 
   async flush() {

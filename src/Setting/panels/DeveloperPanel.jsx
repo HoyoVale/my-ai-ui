@@ -35,9 +35,11 @@ function countVisibleTools(tools) {
   return TOOLSET_OPTIONS.reduce(
     (count, toolset) => {
       let enabled =
-        toolset.id === "workspace.read"
+        toolset.id === "workspace.write"
           ? tools.mode === "coding"
-          : true;
+          : toolset.id === "workspace.exec"
+            ? false
+            : true;
 
       const toolsetOverride =
         tools.developer
@@ -153,8 +155,8 @@ export function DeveloperPanel({
           <span>敏感文件保护</span>
           <span>工作区与符号链接边界</span>
           <span>Renderer 外部资源限制</span>
-          <span>无文件写入</span>
-          <span>无任意命令执行</span>
+          <span>写入仅限 Coding 绑定工作区并使用原子替换</span>
+          <span>任意 Shell 被禁用；进程工具仅允许显式可执行文件与参数</span>
           <span>无任意网络工具</span>
         </div>
       </SettingsSection>

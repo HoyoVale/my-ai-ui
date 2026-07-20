@@ -245,6 +245,20 @@ export function ToolPanel({
               onChange={(maxSearchResults) => updateWorkspace({ maxSearchResults })}
             />
           </SettingRow>
+
+          <SettingRow
+            title="单文件写入上限"
+            description="Coding 模式的原子文本写入工具不会超过该大小。"
+          >
+            <Slider
+              value={settings.workspace.maxWriteFileBytes ?? 5000000}
+              min={65536}
+              max={20000000}
+              step={65536}
+              formatValue={formatBytes}
+              onChange={(maxWriteFileBytes) => updateWorkspace({ maxWriteFileBytes })}
+            />
+          </SettingRow>
         </div>
       </details>
 
@@ -370,6 +384,48 @@ export function ToolPanel({
                   onChange={(maxIdenticalCalls) => updateRuntime({ maxIdenticalCalls })}
                 />
               </SettingRow>
+
+              <div className="developer-subsection" data-testid="journal-storage-settings">
+                <h3>Runtime Journal 存储</h3>
+                <SettingRow title="单文件滚动阈值" description="Journal 达到该大小后滚动到归档文件。">
+                  <Slider
+                    value={settings.runtime.journalMaxFileBytes ?? 8000000}
+                    min={256000}
+                    max={100000000}
+                    step={256000}
+                    formatValue={formatBytes}
+                    onChange={(journalMaxFileBytes) => updateRuntime({
+                      journalMaxFileBytes,
+                      journalMaxTotalBytes: Math.max(
+                        settings.runtime.journalMaxTotalBytes ?? 48000000,
+                        journalMaxFileBytes
+                      )
+                    })}
+                  />
+                </SettingRow>
+                <SettingRow title="归档文件上限">
+                  <Slider
+                    value={settings.runtime.journalMaxArchives ?? 6}
+                    min={1}
+                    max={32}
+                    unit=" 个"
+                    onChange={(journalMaxArchives) => updateRuntime({ journalMaxArchives })}
+                  />
+                </SettingRow>
+                <SettingRow title="Journal 总配额">
+                  <Slider
+                    value={settings.runtime.journalMaxTotalBytes ?? 48000000}
+                    min={Math.max(
+                      1000000,
+                      settings.runtime.journalMaxFileBytes ?? 8000000
+                    )}
+                    max={1000000000}
+                    step={1000000}
+                    formatValue={formatBytes}
+                    onChange={(journalMaxTotalBytes) => updateRuntime({ journalMaxTotalBytes })}
+                  />
+                </SettingRow>
+              </div>
 
               <div className="developer-subsection" data-testid="circuit-breaker-settings">
                 <h3>Provider 熔断器</h3>

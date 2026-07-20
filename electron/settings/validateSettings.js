@@ -1044,6 +1044,21 @@ function sanitizeToolSettings(
     developer.toolsetOverrides ?? {};
   const sourceToolOverrides =
     developer.toolOverrides ?? {};
+  const journalMaxFileBytes = integerValue(
+    runtime.journalMaxFileBytes,
+    defaults.runtime.journalMaxFileBytes,
+    256000,
+    100000000
+  );
+  const journalMaxTotalBytes = Math.max(
+    journalMaxFileBytes,
+    integerValue(
+      runtime.journalMaxTotalBytes,
+      defaults.runtime.journalMaxTotalBytes,
+      1000000,
+      1000000000
+    )
+  );
 
   const legacyCustom =
     tools?.profile === "custom";
@@ -1084,9 +1099,11 @@ function sanitizeToolSettings(
     }
 
     const baseEnabled =
-      id === "workspace.read"
+      id === "workspace.write"
         ? mode === "coding"
-        : true;
+        : id === "workspace.exec"
+          ? false
+          : true;
     const legacyEnabled =
       tools?.toolsets?.[id];
 
@@ -1239,6 +1256,14 @@ function sanitizeToolSettings(
         runtime.saveToolHistory,
         defaults.runtime.saveToolHistory
       ),
+      journalMaxFileBytes,
+      journalMaxArchives: integerValue(
+        runtime.journalMaxArchives,
+        defaults.runtime.journalMaxArchives,
+        1,
+        32
+      ),
+      journalMaxTotalBytes,
       circuitBreakers: {
         provider: {
           failureThreshold: integerValue(
@@ -1331,7 +1356,19 @@ function sanitizeToolSettings(
         defaults.workspace.maxHashFileBytes,
         1000000,
         200000000
-      )
+      ),
+      maxWriteFileBytes: integerValue(
+        workspace.maxWriteFileBytes,
+        defaults.workspace.maxWriteFileBytes,
+        65536,
+        20000000
+      ),
+      allowedCommands: Array.isArray(workspace.allowedCommands)
+        ? [...new Set(workspace.allowedCommands
+            .map((value) => String(value ?? "").trim())
+            .filter((value) => /^[a-zA-Z0-9_.-]{1,80}$/u.test(value))
+          )].slice(0, 32)
+        : [...(defaults.workspace.allowedCommands ?? [])]
     },
     developer: {
       toolsetOverrides,

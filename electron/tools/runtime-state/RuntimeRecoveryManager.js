@@ -26,17 +26,33 @@ function readJson(filePath) {
 
 function readRuntimeIdentity(runtimeDirectory, fallbackTaskId) {
   const checkpoint = readJson(path.join(runtimeDirectory, "checkpoint.json"));
-  const journalFile = path.join(runtimeDirectory, "runtime-journal.jsonl");
+  const journalFiles = fs.existsSync(runtimeDirectory)
+    ? fs.readdirSync(runtimeDirectory)
+        .filter((name) =>
+          name === "runtime-journal.jsonl" ||
+          /^runtime-journal\.\d{6}\.jsonl$/u.test(name)
+        )
+        .sort((left, right) => {
+          if (left === "runtime-journal.jsonl") return 1;
+          if (right === "runtime-journal.jsonl") return -1;
+          return left.localeCompare(right);
+        })
+        .map((name) => path.join(runtimeDirectory, name))
+    : [];
   let latest = null;
 
-  if (fs.existsSync(journalFile)) {
+  for (const journalFile of journalFiles) {
     for (const line of fs.readFileSync(journalFile, "utf8").split("\n")) {
       if (!line.trim()) {
         continue;
       }
       try {
         const event = JSON.parse(line);
-        if (event && typeof event === "object") {
+        if (
+          event &&
+          typeof event === "object" &&
+          Number(event.sequence ?? 0) >= Number(latest?.sequence ?? -1)
+        ) {
           latest = event;
         }
       } catch {
@@ -59,9 +75,11 @@ function readRuntimeIdentity(runtimeDirectory, fallbackTaskId) {
 function hasRuntimeFiles(directory) {
   return [
     "runtime-journal.jsonl",
+    "runtime-journal.manifest.json",
     "checkpoint.json",
     "receipts",
-    "leases"
+    "leases",
+    "call-state"
   ].some((name) => fs.existsSync(path.join(directory, name)));
 }
 

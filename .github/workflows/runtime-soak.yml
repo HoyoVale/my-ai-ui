@@ -1,0 +1,39 @@
+name: Tool Runtime Soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Soak duration in minutes
+        required: false
+        default: "30"
+  schedule:
+    - cron: "17 3 * * 0"
+
+jobs:
+  runtime-soak:
+    name: Runtime soak and benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: npm ci --registry=https://registry.npmjs.org/
+
+      - name: Runtime benchmark
+        run: npm run test:benchmark
+
+      - name: Runtime soak
+        env:
+          TOOL_RUNTIME_SOAK_MINUTES: ${{ github.event.inputs.minutes || '30' }}
+        run: npm run test:soak

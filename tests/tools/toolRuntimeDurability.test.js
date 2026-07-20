@@ -315,3 +315,164 @@ test("confirming an operation was not applied returns it to a retryable prepared
     "prepared"
   );
 });
+
+test("idempotent writes can restart from ambiguous pre-receipt states", async () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "tool-runtime-idempotent-restart-")
+  );
+
+  try {
+    const definition = {
+      id: "write-text",
+      name: "write_text_file",
+      idempotency: "natural",
+      runtimeContract: {
+        effect: "local_write",
+        retryMode: "idempotency_key",
+        supportsAbort: true,
+        supportsResume: true,
+        leaseTtlMs: 60_000
+      }
+    };
+    const input = { path: "file.txt", content: "same" };
+    const first = new ToolExecutionLedger({
+      directory,
+      taskId: "task-restart",
+      runId: "run-first",
+      workspaceId: "workspace-restart",
+      ownerId: "owner-first"
+    });
+    const prepared = await first.prepare({
+      definition,
+      input,
+      callId: "call-restart"
+    });
+    const dispatched = await first.markDispatched(prepared.call);
+    await first.markEffectConfirmed(dispatched, {
+      effectEvidence: { sha256: "abc" }
+    });
+    await first.flush();
+
+    const second = new ToolExecutionLedger({
+      directory,
+      taskId: "task-restart",
+      runId: "run-second",
+      workspaceId: "workspace-restart",
+      ownerId: "owner-second"
+    });
+    await second.leases.clearOrphaned({ force: true });
+    const restarted = await second.prepare({
+      definition,
+      input,
+      callId: "call-restart"
+    });
+
+    assert.equal(restarted.ok, true);
+    assert.equal(restarted.replayed, false);
+    assert.equal(restarted.call.state, "prepared");
+    assert.equal(
+      second.journal.eventsForCall("call-restart")
+        .some((event) =>
+          event.type === "TOOL_RECONCILIATION_REQUIRED" &&
+          event.reason === "restart_retry_boundary"
+        ),
+      true
+    );
+    await second.close();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("an unverifiable receipt stays unresolved instead of being replayable", async () => {
+  const directory = temporaryDirectory();
+
+  try {
+    const tool = definition({
+      sideEffect: "write",
+      idempotency: "natural",
+      runtimeContract: {
+        effect: "local_write",
+        retryMode: "idempotency_key",
+        verify: async () => ({ status: "unknown", evidence: { offline: true } })
+      }
+    });
+    const firstLedger = ledger(directory, { ownerId: "verify-owner-1" });
+    const firstExecutor = new ToolExecutor({
+      executionLedger: firstLedger,
+      context: {
+        taskId: "task-1",
+        workspaceId: "workspace-1",
+        segmentId: "segment-1"
+      }
+    });
+    const first = await firstExecutor.execute(
+      tool,
+      { value: 3 },
+      { toolCallId: "call-unknown-verification" }
+    );
+    assert.equal(first.ok, true);
+    await firstLedger.close();
+
+    const secondLedger = ledger(directory, { ownerId: "verify-owner-2" });
+    const secondExecutor = new ToolExecutor({
+      executionLedger: secondLedger,
+      context: {
+        taskId: "task-1",
+        workspaceId: "workspace-1",
+        segmentId: "segment-2"
+      }
+    });
+    const replay = await secondExecutor.execute(
+      tool,
+      { value: 3 },
+      { toolCallId: "call-unknown-verification" }
+    );
+
+    assert.equal(replay.ok, false);
+    assert.equal(replay.error.code, "TOOL_RECEIPT_VERIFICATION_FAILED");
+    assert.equal(secondLedger.publicSnapshot().unresolvedCount, 1);
+    assert.equal(
+      secondLedger.publicSnapshot().calls[0].recovery,
+      "needs_reconciliation"
+    );
+    await secondLedger.close();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("duplicate idempotency keys cannot dispatch through different call ids", async () => {
+  const directory = temporaryDirectory();
+
+  try {
+    const tool = definition({
+      sideEffect: "write",
+      idempotency: "natural",
+      runtimeContract: {
+        effect: "local_write",
+        retryMode: "idempotency_key"
+      }
+    });
+    const runtimeLedger = ledger(directory, { ownerId: "duplicate-owner" });
+    const first = await runtimeLedger.prepare({
+      definition: tool,
+      input: { value: 11 },
+      callId: "call-first"
+    });
+    assert.equal(first.ok, true);
+
+    const duplicate = await runtimeLedger.prepare({
+      definition: tool,
+      input: { value: 11 },
+      callId: "call-second"
+    });
+    assert.equal(duplicate.ok, false);
+    assert.equal(duplicate.code, "TOOL_CALL_LEASED");
+    assert.equal(duplicate.previousCall.callId, "call-first");
+    assert.equal(runtimeLedger.developerSnapshot().totalCalls, 1);
+    await runtimeLedger.close();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

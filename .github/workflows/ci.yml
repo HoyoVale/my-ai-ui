@@ -34,6 +34,12 @@ jobs:
       - name: Lint, unit tests and build
         run: npm run check
 
+      - name: Tool Runtime crash recovery matrix
+        run: npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash
+
+      - name: Tool Runtime performance benchmark
+        run: npm run test:benchmark
+
   electron-smoke:
     name: Electron smoke (${{ matrix.os }})
     needs: core
@@ -96,8 +102,13 @@ jobs:
       - name: Install
         run: npm ci --registry=https://registry.npmjs.org/
 
-      - name: Tool Runtime crash recovery E2E
-        run: npm run test:e2e:runtime-crash
+      - name: Real Electron crash recovery E2E (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e:electron-runtime-crash
+
+      - name: Real Electron crash recovery E2E (Windows)
+        if: runner.os == 'Windows'
+        run: npm run test:e2e:electron-runtime-crash
 
       - name: Playwright Electron E2E (Linux)
         if: runner.os == 'Linux'

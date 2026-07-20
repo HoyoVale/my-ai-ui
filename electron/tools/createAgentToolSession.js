@@ -63,6 +63,14 @@ import {
 } from "./workspace/workspaceTools.js";
 
 import {
+  createWorkspaceWriteToolDefinitions
+} from "./workspace/workspaceWriteTools.js";
+
+import {
+  createWorkspaceProcessToolDefinitions
+} from "./workspace/workspaceProcessTools.js";
+
+import {
   getWorkspaceRoots
 } from "./workspace/workspacePolicy.js";
 
@@ -80,7 +88,8 @@ export function createAgentToolSession({
   taskId = "",
   runId = "",
   workspaceId = "",
-  segmentId = ""
+  segmentId = "",
+  faultInjector = null
 } = {}) {
   const planStore =
     new RunPlanStore(
@@ -105,7 +114,15 @@ export function createAgentToolSession({
     taskId,
     runId,
     workspaceId,
-    ownerId: runId || undefined
+    ownerId: runId || undefined,
+    journalOptions: {
+      maxFileBytes:
+        settings.tools?.runtime?.journalMaxFileBytes ?? 8_000_000,
+      maxArchiveFiles:
+        settings.tools?.runtime?.journalMaxArchives ?? 6,
+      maxTotalBytes:
+        settings.tools?.runtime?.journalMaxTotalBytes ?? 48_000_000
+    }
   });
   const subprocessSupervisor = new SubprocessSupervisor({
     defaultTimeoutMs:
@@ -156,6 +173,32 @@ export function createAgentToolSession({
         toolset: "workspace.read",
         sideEffect: "read",
         riskLevel: "low"
+      }
+    )
+    .registerMany(
+      hasWorkspace
+        ? createWorkspaceWriteToolDefinitions(
+            workspaceSettings
+          )
+        : [],
+      {
+        source: "builtin.workspace",
+        toolset: "workspace.write",
+        sideEffect: "write",
+        riskLevel: "medium"
+      }
+    )
+    .registerMany(
+      hasWorkspace
+        ? createWorkspaceProcessToolDefinitions(
+            workspaceSettings
+          )
+        : [],
+      {
+        source: "builtin.workspace",
+        toolset: "workspace.exec",
+        sideEffect: "external",
+        riskLevel: "high"
       }
     )
     .registerMany(
@@ -284,7 +327,8 @@ export function createAgentToolSession({
           ?.maxConcurrent ??
         4,
       executionLedger,
-      circuitBreakers: toolCircuitBreakers
+      circuitBreakers: toolCircuitBreakers,
+      faultInjector
     });
   const runtime = new ToolRuntime({
     definitions: enabledDefinitions,

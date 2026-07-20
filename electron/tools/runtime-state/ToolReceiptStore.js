@@ -43,10 +43,12 @@ async function atomicWrite(filePath, value) {
   try {
     await fs.promises.rename(temporary, filePath);
   } catch (error) {
-    await fs.promises.rm(temporary, { force: true });
-    if (error?.code !== "EEXIST" && error?.code !== "EPERM") {
+    if (!["EEXIST", "EPERM"].includes(error?.code)) {
+      await fs.promises.rm(temporary, { force: true });
       throw error;
     }
+    await fs.promises.rm(filePath, { force: true });
+    await fs.promises.rename(temporary, filePath);
   }
 }
 
@@ -74,6 +76,17 @@ export class ToolReceiptStore {
       : "";
   }
 
+  invalidationPath(callId) {
+    return this.directory && callId
+      ? path.join(this.directory, "invalidations", `${digest(callId)}.json`)
+      : "";
+  }
+
+  isInvalidated(callId) {
+    const filePath = this.invalidationPath(callId);
+    return Boolean(filePath && fs.existsSync(filePath));
+  }
+
   isOwned(receipt) {
     return (
       (!this.taskId || receipt?.taskId === this.taskId) &&
@@ -84,6 +97,11 @@ export class ToolReceiptStore {
   load(callId) {
     const id = String(callId ?? "");
     if (!id) {
+      return null;
+    }
+
+    if (this.isInvalidated(id)) {
+      this.memory.delete(id);
       return null;
     }
 
@@ -194,10 +212,40 @@ export class ToolReceiptStore {
           }
         );
       }
+      await fs.promises.rm(this.invalidationPath(id), { force: true });
     }
 
     this.memory.set(id, receipt);
     return clone(receipt);
+  }
+
+  async invalidate(receiptOrCallId, { reason = "verification_failed", evidence = null } = {}) {
+    const receipt = typeof receiptOrCallId === "object"
+      ? receiptOrCallId
+      : this.load(receiptOrCallId);
+    const callId = String(receipt?.callId ?? receiptOrCallId ?? "").trim();
+    if (!callId) {
+      return false;
+    }
+
+    const filePath = this.invalidationPath(callId);
+    if (filePath) {
+      await atomicWrite(filePath, {
+        version: 1,
+        callId,
+        receiptId: String(receipt?.receiptId ?? ""),
+        idempotencyKey: String(receipt?.idempotencyKey ?? ""),
+        taskId: this.taskId,
+        workspaceId: this.workspaceId,
+        reason: String(reason ?? "verification_failed"),
+        evidence: evidence && typeof evidence === "object"
+          ? clone(evidence)
+          : null,
+        invalidatedAt: Date.now()
+      });
+    }
+    this.memory.delete(callId);
+    return true;
   }
 
   list() {
@@ -215,7 +263,11 @@ export class ToolReceiptStore {
           const parsed = JSON.parse(
             fs.readFileSync(path.join(directory, name), "utf8")
           );
-          if (parsed?.callId && this.isOwned(parsed)) {
+          if (
+            parsed?.callId &&
+            this.isOwned(parsed) &&
+            !this.isInvalidated(parsed.callId)
+          ) {
             receipts.set(parsed.callId, parsed);
           }
         } catch {

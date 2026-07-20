@@ -333,3 +333,17 @@ describe(
     );
   }
 );
+
+it("Journal total quota never falls below the rolling file limit", () => {
+  const sanitized = sanitizeSettings({
+    tools: {
+      runtime: {
+        journalMaxFileBytes: 12_000_000,
+        journalMaxTotalBytes: 1_000_000
+      }
+    }
+  });
+
+  assert.equal(sanitized.tools.runtime.journalMaxFileBytes, 12_000_000);
+  assert.equal(sanitized.tools.runtime.journalMaxTotalBytes, 12_000_000);
+});

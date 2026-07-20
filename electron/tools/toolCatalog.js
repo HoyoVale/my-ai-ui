@@ -13,6 +13,9 @@ export const SAFE_TOOL_CATALOG = Object.freeze([
   { name: "search_text", title: "Search text", toolset: "workspace.read" },
   { name: "detect_project", title: "Detect project", toolset: "workspace.read" },
   { name: "compute_file_hash", title: "Compute file hash", toolset: "workspace.read" },
+  { name: "write_text_file", title: "Write text file", toolset: "workspace.write" },
+  { name: "git_inspect", title: "Inspect Git repository", toolset: "workspace.exec" },
+  { name: "run_workspace_command", title: "Run workspace command", toolset: "workspace.exec" },
   { name: "update_plan", title: "Update task plan", toolset: "agent.internal" },
   { name: "read_tool_result", title: "Read tool result", toolset: "agent.internal" }
 ]);
@@ -20,6 +23,8 @@ export const SAFE_TOOL_CATALOG = Object.freeze([
 export const TOOLSET_IDS = Object.freeze([
   "core.runtime",
   "workspace.read",
+  "workspace.write",
+  "workspace.exec",
   "agent.internal"
 ]);
 
@@ -53,12 +58,18 @@ function overrideValue(value) {
     : "inherit";
 }
 
-function baseToolsetEnabled(_mode, toolset) {
-  // Chat sessions may opt into a bound read-only workspace.
-  // Coding sessions use the same read tools today and can gain
-  // separate write toolsets later without changing this rule.
+function baseToolsetEnabled(mode, toolset) {
   if (toolset === "workspace.read") {
     return true;
+  }
+
+  if (toolset === "workspace.write") {
+    return mode === "coding";
+  }
+
+  // Process execution is intentionally opt-in through a developer override.
+  if (toolset === "workspace.exec") {
+    return false;
   }
 
   return true;
@@ -95,6 +106,14 @@ export function resolveEnabledToolCatalog(
       toolsetEnabled = true;
     } else if (toolsetOverride === "disabled") {
       toolsetEnabled = false;
+    }
+
+    // Fixed safety boundaries cannot be relaxed by legacy toggles.
+    if (toolset === "workspace.write" && mode !== "coding") {
+      return false;
+    }
+    if (toolset === "workspace.exec" && toolsetOverride !== "enabled") {
+      return false;
     }
 
     if (!toolsetEnabled) {

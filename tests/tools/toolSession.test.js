@@ -133,12 +133,52 @@ describe(
             }
           });
 
-        assert.deepEqual(
-          Object.keys(
-            codingSession.tools
-          ).sort(),
-          [...SAFE_TOOL_NAMES].sort()
+        assert.equal(
+          "write_text_file" in codingSession.tools,
+          true
         );
+        assert.equal(
+          "write_text_file" in chatWorkspaceSession.tools,
+          false
+        );
+        assert.equal(
+          "git_inspect" in codingSession.tools,
+          false
+        );
+        assert.equal(
+          "run_workspace_command" in codingSession.tools,
+          false
+        );
+
+        const expectedDefaultTools = SAFE_TOOL_NAMES.filter(
+          (name) => ![
+            "git_inspect",
+            "run_workspace_command"
+          ].includes(name)
+        );
+        assert.deepEqual(
+          Object.keys(codingSession.tools).sort(),
+          expectedDefaultTools.sort()
+        );
+
+        const developerSession = createAgentToolSession({
+          getAgentStatus: () => ({ state: "running" }),
+          settings: {
+            tools: {
+              mode: "coding",
+              workspace: { roots: [root] },
+              runtime: {},
+              developer: {
+                toolsetOverrides: {
+                  "workspace.exec": "enabled"
+                },
+                toolOverrides: {}
+              }
+            }
+          }
+        });
+        assert.equal("git_inspect" in developerSession.tools, true);
+        assert.equal("run_workspace_command" in developerSession.tools, true);
       }
     );
 

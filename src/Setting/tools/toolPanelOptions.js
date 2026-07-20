@@ -102,6 +102,43 @@ export const TOOLSET_OPTIONS = [
     ]
   },
   {
+    id: "workspace.write",
+    title: "工作区写入",
+    description:
+      "仅在 Coding 模式中使用原子写入修改授权工作区内的文本文件。",
+    risk: "Local write",
+    tools: [
+      {
+        name: "write_text_file",
+        title: "原子写入文本文件",
+        description:
+          "通过临时文件、fsync、原子替换、SHA-256 校验和幂等收据安全写入一个文本文件。"
+      }
+    ]
+  },
+  {
+    id: "workspace.exec",
+    userVisible: false,
+    title: "工作区进程",
+    description:
+      "通过受监管的子进程运行只读 Git 检查或显式允许的工作区命令。",
+    risk: "High risk",
+    tools: [
+      {
+        name: "git_inspect",
+        title: "检查 Git 仓库",
+        description:
+          "通过 Subprocess Supervisor 运行只读 Git 子命令，不启用 Shell 展开。"
+      },
+      {
+        name: "run_workspace_command",
+        title: "运行工作区命令",
+        description:
+          "仅运行允许列表中的可执行文件，并提供超时、取消、输出上限和进程树终止。"
+      }
+    ]
+  },
+  {
     id: "agent.internal",
     userVisible: false,
     title: "Agent 内部",

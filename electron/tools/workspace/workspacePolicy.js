@@ -314,3 +314,98 @@ export function resolveWorkspacePath(
       ) || "."
   };
 }
+
+export function resolveWorkspaceWritePath(
+  inputPath,
+  {
+    workspaceSettings = {},
+    allowCreateDirectories = false
+  } = {}
+) {
+  const roots = getWorkspaceRoots(workspaceSettings);
+  if (roots.length === 0) {
+    const error = new Error("没有配置可写入的工作区。");
+    error.code = "WORKSPACE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  const source = String(inputPath ?? "").trim();
+  if (!source || source === ".") {
+    const error = new Error("写入工具需要明确的文件路径。");
+    error.code = "FILE_REQUIRED";
+    throw error;
+  }
+
+  const candidates = path.isAbsolute(source)
+    ? [path.resolve(source)]
+    : roots.map((root) => path.resolve(root, source));
+
+  for (const candidate of candidates) {
+    const configuredRoot = roots.find((root) => isWithinRoot(candidate, root));
+    if (!configuredRoot) {
+      continue;
+    }
+
+    const realRoot = fs.existsSync(configuredRoot)
+      ? fs.realpathSync(configuredRoot)
+      : configuredRoot;
+    const parent = path.dirname(candidate);
+    let probe = parent;
+
+    while (!fs.existsSync(probe)) {
+      const next = path.dirname(probe);
+      if (next === probe || !isWithinRoot(next, configuredRoot)) {
+        probe = "";
+        break;
+      }
+      probe = next;
+    }
+
+    if (!probe) {
+      continue;
+    }
+
+    const realProbe = fs.realpathSync(probe);
+    if (!isWithinRoot(realProbe, realRoot)) {
+      const error = new Error("符号链接指向了工作区之外。");
+      error.code = "SYMLINK_ESCAPE_BLOCKED";
+      throw error;
+    }
+
+    if (!allowCreateDirectories && !fs.existsSync(parent)) {
+      const error = new Error("目标目录不存在。");
+      error.code = "DIRECTORY_NOT_FOUND";
+      throw error;
+    }
+
+    if (fs.existsSync(candidate)) {
+      const stat = fs.lstatSync(candidate);
+      if (stat.isSymbolicLink()) {
+        const error = new Error("拒绝覆盖符号链接。");
+        error.code = "SYMLINK_WRITE_BLOCKED";
+        throw error;
+      }
+      if (!stat.isFile()) {
+        const error = new Error("该工具只接受文件路径。");
+        error.code = "FILE_REQUIRED";
+        throw error;
+      }
+    }
+
+    if (isSensitiveWorkspacePath(candidate)) {
+      const error = new Error("该路径属于敏感文件或凭据目录，已拒绝写入。");
+      error.code = "SENSITIVE_PATH_BLOCKED";
+      throw error;
+    }
+
+    return {
+      path: candidate,
+      root: realRoot,
+      relativePath: path.relative(realRoot, candidate) || "."
+    };
+  }
+
+  const error = new Error("路径不在允许的工作区内。");
+  error.code = "PATH_OUTSIDE_WORKSPACE";
+  throw error;
+}
