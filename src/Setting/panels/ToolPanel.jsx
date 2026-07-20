@@ -79,12 +79,18 @@ function ToolSchema({ title, schema }) {
 function ManifestToolCard({
   tool,
   developerMode,
+  expanded = false,
+  onExpandedChange,
   onOverride
 }) {
   return (
     <details
       className={`tool-manifest-card${tool.ready ? " is-enabled" : ""}`}
       data-testid={`tool-manifest-${tool.name}`}
+      open={expanded}
+      onToggle={(event) => {
+        onExpandedChange?.(event.currentTarget.open);
+      }}
     >
       <summary>
         <span className="tool-manifest-card__summary-copy">
@@ -147,6 +153,8 @@ function ManifestToolCard({
 function ManifestToolset({
   toolset,
   developerMode,
+  expandedTools,
+  onToolExpandedChange,
   onToolsetOverride,
   onToolOverride
 }) {
@@ -183,6 +191,10 @@ function ManifestToolset({
             key={tool.id}
             tool={tool}
             developerMode={developerMode}
+            expanded={Boolean(expandedTools[tool.id])}
+            onExpandedChange={(expanded) => {
+              onToolExpandedChange(tool.id, expanded);
+            }}
             onOverride={(value) => onToolOverride(tool.name, value)}
           />
         ))}
@@ -201,6 +213,33 @@ export function ToolPanel({
     status: manifestStatus,
     error: manifestError
   } = useToolManifest(settings);
+
+  const [expandedTools, setExpandedTools] =
+    useState({});
+
+  const updateExpandedTool = useCallback(
+    (toolId, expanded) => {
+      setExpandedTools((current) => {
+        if (Boolean(current[toolId]) === expanded) {
+          return current;
+        }
+
+        if (expanded) {
+          return {
+            ...current,
+            [toolId]: true
+          };
+        }
+
+        const next = {
+          ...current
+        };
+        delete next[toolId];
+        return next;
+      });
+    },
+    []
+  );
 
   const updateRuntime = (patch) => {
     onUpdate({
@@ -296,6 +335,8 @@ export function ToolPanel({
             key={toolset.id}
             toolset={toolset}
             developerMode={developerMode}
+            expandedTools={expandedTools}
+            onToolExpandedChange={updateExpandedTool}
             onToolsetOverride={(value) => updateToolsetOverride(toolset.id, value)}
             onToolOverride={updateToolOverride}
           />

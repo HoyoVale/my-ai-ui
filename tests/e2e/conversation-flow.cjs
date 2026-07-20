@@ -202,20 +202,25 @@ async function revealDetails(locator) {
     state: "attached"
   });
 
-  await locator.evaluate((element) => {
-    let current = element;
+  const isOpen = await locator.evaluate(
+    (element) => element.open
+  );
 
-    while (current) {
-      if (current.tagName === "DETAILS") {
-        current.open = true;
-      }
-      current = current.parentElement;
-    }
-  });
+  if (!isOpen) {
+    await locator
+      .locator(
+        ":scope > summary"
+      )
+      .click();
+  }
 
-  await locator.waitFor({
-    state: "visible"
-  });
+  await locator
+    .locator(
+      ":scope > .tool-manifest-card__body"
+    )
+    .waitFor({
+      state: "visible"
+    });
 }
 
 async function waitForCount(

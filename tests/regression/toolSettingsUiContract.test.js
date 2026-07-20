@@ -39,6 +39,9 @@ describe(
         assert.match(panel, /title="工具清单"/u);
         assert.match(panel, /useToolManifest/u);
         assert.match(panel, /tool-manifest-card/u);
+        assert.match(panel, /expandedTools/u);
+        assert.match(panel, /onToggle=\{\(event\) =>/u);
+        assert.match(panel, /open=\{expanded\}/u);
         assert.match(panel, /tool-advanced-settings/u);
         assert.match(panel, /developerMode &&/u);
         assert.match(panel, /tool-developer-settings/u);
@@ -57,6 +60,7 @@ describe(
         assert.match(flow, /tool-manifest-calculator/u);
         assert.match(flow, /tool-override-calculator/u);
         assert.match(flow, /revealDetails\(calculatorToolCard\)/u);
+        assert.match(flow, /:scope > summary/u);
         assert.doesNotMatch(flow, /tool-developer-overrides/u);
       }
     );
