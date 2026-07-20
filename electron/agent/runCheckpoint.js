@@ -112,7 +112,10 @@ function compactToolRuntime(runtime) {
       recovery: text(call?.recovery, 60),
       effect: text(call?.effect, 40),
       hasReceipt: call?.hasReceipt === true,
-      receiptId: text(call?.receiptId, 120)
+      receiptId: text(call?.receiptId, 120),
+      actions: (Array.isArray(call?.actions) ? call.actions : [])
+        .map((action) => text(action, 40))
+        .filter(Boolean)
     }));
 
   return {

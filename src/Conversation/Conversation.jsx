@@ -390,6 +390,12 @@ export default function Conversation() {
             settings.general
               .developerMode
           }
+          onLoadRecovery={(taskId) =>
+            window.api?.getToolRuntimeRecovery?.(taskId)
+          }
+          onRecoveryAction={(request) =>
+            window.api?.resolveToolRuntimeRecovery?.(request)
+          }
           onClose={() => {
             setTaskOpen(false);
           }}

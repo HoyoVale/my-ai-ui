@@ -79,7 +79,13 @@ const IPC_CHANNELS =
         "agent-clear-api-key",
 
       TEST_CONNECTION:
-        "agent-test-connection"
+        "agent-test-connection",
+
+      GET_RUNTIME_RECOVERY:
+        "agent-get-runtime-recovery",
+
+      RESOLVE_RUNTIME_RECOVERY:
+        "agent-resolve-runtime-recovery"
     }),
 
     conversation: Object.freeze({

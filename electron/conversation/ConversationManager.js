@@ -1370,6 +1370,58 @@ export class ConversationManager {
       kept;
   }
 
+  updateToolRuntimeRecovery({
+    taskId,
+    recovery
+  } = {}) {
+    const normalizedTaskId = String(taskId ?? "").trim();
+    if (!normalizedTaskId || !recovery || typeof recovery !== "object") {
+      return {
+        ok: false,
+        code: "invalid-runtime-recovery",
+        message: "工具恢复状态无效。"
+      };
+    }
+
+    const data = this.ensureLoaded();
+    let updatedMessage = null;
+
+    for (const conversation of data.conversations) {
+      const message = conversation.messages.find(
+        (item) => item.role === "assistant" && item.taskId === normalizedTaskId
+      );
+      if (!message) {
+        continue;
+      }
+
+      message.activity = {
+        ...(message.activity ?? {}),
+        checkpoint: {
+          ...(message.activity?.checkpoint ?? {}),
+          toolRuntime: clone(recovery),
+          updatedAt: this.now()
+        }
+      };
+      conversation.updatedAt = this.now();
+      updatedMessage = message;
+      break;
+    }
+
+    if (!updatedMessage) {
+      return {
+        ok: false,
+        code: "task-message-not-found",
+        message: "找不到该任务对应的会话记录。"
+      };
+    }
+
+    this.commit();
+    return {
+      ok: true,
+      message: clone(updatedMessage)
+    };
+  }
+
   reconcileSettings() {
     this.ensureLoaded();
     this.prune();

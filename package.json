@@ -15,9 +15,10 @@
     "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec",
     "check": "npm run lint && npm run test && npm run build",
     "test:electron": "electron tests/electron/preload-smoke.cjs",
-    "check:full": "npm run check && npm run test:electron && npm run test:e2e",
+    "check:full": "npm run check && npm run test:e2e:runtime-crash && npm run test:electron && npm run test:e2e",
     "test:electron:ci": "electron --no-sandbox tests/electron/preload-smoke.cjs",
-    "test:e2e": "node tests/e2e/conversation-flow.cjs"
+    "test:e2e": "node tests/e2e/conversation-flow.cjs",
+    "test:e2e:runtime-crash": "node tests/e2e/tool-runtime-crash-recovery.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.16",

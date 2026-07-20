@@ -27,6 +27,10 @@ import {
   isSettingSender
 } from "../../windows/setting/settingWindow.js";
 
+import {
+  isConversationSender
+} from "../../windows/conversation/conversationWindow.js";
+
 function requireInputSender(
   event
 ) {
@@ -51,6 +55,14 @@ function requireSettingSender(
   ) {
     throw new Error(
       "Only the Setting window can manage model credentials."
+    );
+  }
+}
+
+function requireConversationSender(event) {
+  if (!isConversationSender(event.sender)) {
+    throw new Error(
+      "Only the Conversation window can manage Tool Runtime recovery."
     );
   }
 }
@@ -97,6 +109,22 @@ export function registerAgentIpc() {
     () => {
       return agentRuntime
         .getStatus();
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.agent.GET_RUNTIME_RECOVERY,
+    (event, request = {}) => {
+      requireConversationSender(event);
+      return agentRuntime.getToolRuntimeRecovery(request);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.agent.RESOLVE_RUNTIME_RECOVERY,
+    (event, request = {}) => {
+      requireConversationSender(event);
+      return agentRuntime.resolveToolRuntimeRecovery(request);
     }
   );
 

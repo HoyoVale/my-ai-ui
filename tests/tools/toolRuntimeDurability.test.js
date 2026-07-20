@@ -235,3 +235,83 @@ test("recovers valid Journal entries around a truncated final record", async () 
   assert.equal(call.state, "dispatched");
   assert.equal(call.recovery, "safe_to_retry");
 });
+
+test("manual recovery actions resolve uncertain calls without blind replay", async () => {
+  const directory = temporaryDirectory();
+  const runtimeLedger = ledger(directory);
+  const tool = definition({
+    sideEffect: "external",
+    idempotency: "none",
+    runtimeContract: {
+      effect: "remote_write",
+      retryMode: "manual_only"
+    }
+  });
+
+  const prepared = await runtimeLedger.prepare({
+    definition: tool,
+    input: { value: 12 },
+    callId: "manual-call",
+    segmentId: "segment-1"
+  });
+  const dispatched = await runtimeLedger.markDispatched(prepared.call);
+  await runtimeLedger.markUnknown(dispatched, { reason: "worker lost" });
+
+  const unresolved = runtimeLedger.publicSnapshot().calls[0];
+  assert.deepEqual(unresolved.actions, [
+    "confirm_applied",
+    "confirm_not_applied",
+    "abandon"
+  ]);
+
+  const resolved = await runtimeLedger.resolveRecovery({
+    callId: "manual-call",
+    action: "confirm_applied",
+    definitions: [tool]
+  });
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.recovery.unresolvedCount, 0);
+
+  const replay = await runtimeLedger.prepare({
+    definition: tool,
+    input: { value: 12 },
+    callId: "manual-call",
+    segmentId: "segment-2"
+  });
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.receipt.output.data.manuallyConfirmed, true);
+});
+
+test("confirming an operation was not applied returns it to a retryable prepared state", async () => {
+  const directory = temporaryDirectory();
+  const runtimeLedger = ledger(directory);
+  const tool = definition({
+    sideEffect: "external",
+    idempotency: "none",
+    runtimeContract: {
+      effect: "remote_write",
+      retryMode: "reconcile_before_retry"
+    }
+  });
+
+  const prepared = await runtimeLedger.prepare({
+    definition: tool,
+    input: { value: 4 },
+    callId: "not-applied-call",
+    segmentId: "segment-1"
+  });
+  const dispatched = await runtimeLedger.markDispatched(prepared.call);
+  await runtimeLedger.markUnknown(dispatched, { reason: "unknown" });
+
+  const resolved = await runtimeLedger.resolveRecovery({
+    callId: "not-applied-call",
+    action: "confirm_not_applied",
+    definitions: [tool]
+  });
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.retryAllowed, true);
+  assert.equal(
+    runtimeLedger.developerSnapshot().calls[0].state,
+    "prepared"
+  );
+});

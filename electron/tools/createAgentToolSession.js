@@ -29,9 +29,17 @@ import {
 } from "./runtime-state/ToolExecutionLedger.js";
 
 import {
+  SubprocessSupervisor
+} from "./process/SubprocessSupervisor.js";
+
+import {
   createAiSdkToolSet,
   supportsStrictToolSchemas
 } from "./adapters/aiSdkToolAdapter.js";
+
+import {
+  toolCircuitBreakers
+} from "../runtime/runtimeCircuitBreakers.js";
 
 import {
   RunPlanStore,
@@ -98,6 +106,11 @@ export function createAgentToolSession({
     runId,
     workspaceId,
     ownerId: runId || undefined
+  });
+  const subprocessSupervisor = new SubprocessSupervisor({
+    defaultTimeoutMs:
+      settings.tools?.runtime?.defaultTimeoutMs ?? 15_000,
+    terminationGraceMs: 2_000
   });
   const toolSettings =
     settings.tools ?? {};
@@ -182,7 +195,8 @@ export function createAgentToolSession({
         taskId,
         workspaceId,
         segmentId,
-        mode: "interactive"
+        mode: "interactive",
+        subprocessSupervisor
       },
       policyEngine: new ToolPolicyEngine({
         authorize: ({ definition, input }) => {
@@ -269,7 +283,8 @@ export function createAgentToolSession({
         toolSettings.runtime
           ?.maxConcurrent ??
         4,
-      executionLedger
+      executionLedger,
+      circuitBreakers: toolCircuitBreakers
     });
   const runtime = new ToolRuntime({
     definitions: enabledDefinitions,
@@ -312,10 +327,18 @@ export function createAgentToolSession({
       runtime.getEvents(),
     getRuntimeRecovery: () =>
       executionLedger.publicSnapshot(),
-    getRuntimeDiagnostics: () =>
-      executionLedger.developerSnapshot(),
-    reconcileRuntime: () =>
-      executionLedger.reconcile(enabledDefinitions),
+    getRuntimeDiagnostics: () => ({
+      ...executionLedger.developerSnapshot(),
+      circuitBreakers: toolCircuitBreakers.snapshot(),
+      subprocesses: subprocessSupervisor.snapshot()
+    }),
+    reconcileRuntime: (options = {}) =>
+      executionLedger.reconcile(enabledDefinitions, options),
+    resolveRuntimeRecovery: (request = {}) =>
+      executionLedger.resolveRecovery({
+        ...request,
+        definitions: enabledDefinitions
+      }),
     recordRuntimeEvent: (type, payload, options) =>
       executionLedger.recordRuntimeEvent(type, payload, options),
     storeRuntimeCheckpoint: (checkpoint, options) =>
@@ -334,6 +357,7 @@ export function createAgentToolSession({
       return true;
     },
     closePersistence: async () => {
+      await subprocessSupervisor.terminateAll("session-close");
       const results = await Promise.all([
         executor.eventStore.close(),
         executionLedger.close()

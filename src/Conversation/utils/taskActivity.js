@@ -691,6 +691,8 @@ export function createActivitySnapshot(
     null;
   const runtimeDiagnostics =
     lastSource?.toolRuntimeDiagnostics ?? null;
+  const providerRuntimeDiagnostics =
+    lastSource?.providerRuntimeDiagnostics ?? null;
 
   return {
     source: lastSource,
@@ -716,6 +718,7 @@ export function createActivitySnapshot(
     stopReason,
     runtimeRecovery,
     runtimeDiagnostics,
+    providerRuntimeDiagnostics,
     status:
       lastSource?.activity?.status ??
       (running ? "running" : "completed")

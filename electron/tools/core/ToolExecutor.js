@@ -199,6 +199,28 @@ function resolveConcurrencyKey(definition, input) {
   return String(definition.concurrencyKey ?? "");
 }
 
+function shouldCountCircuitFailure(error = {}) {
+  const category = String(error?.category ?? "");
+  const type = String(error?.type ?? "");
+
+  if (["cancelled", "invalid_input", "permission_denied", "policy_denied", "approval_required", "budget_exceeded", "conflict"].includes(category)) {
+    return false;
+  }
+
+  return [
+    "timeout",
+    "unavailable",
+    "rate_limited",
+    "internal",
+    "persistence"
+  ].includes(category) || [
+    TOOL_ERROR_TYPES.TIMEOUT,
+    TOOL_ERROR_TYPES.TEMPORARY_FAILURE,
+    TOOL_ERROR_TYPES.RATE_LIMITED,
+    TOOL_ERROR_TYPES.EXECUTION_FAILED
+  ].includes(type);
+}
+
 function categoryForType(type) {
   return {
     [TOOL_ERROR_TYPES.INVALID_ARGUMENTS]: "invalid_input",
@@ -235,7 +257,8 @@ export class ToolExecutor {
     maxToolCallsPerBatch = 24,
     budget = null,
     eventStore = null,
-    executionLedger = null
+    executionLedger = null,
+    circuitBreakers = null
   } = {}) {
     this.context = { ...context };
     this.onRecord = onRecord;
@@ -265,7 +288,35 @@ export class ToolExecutor {
     });
     this.eventStore = eventStore ?? new ToolEventStore();
     this.executionLedger = executionLedger;
+    this.circuitBreakers = circuitBreakers;
     this.callSequence = 0;
+  }
+
+  circuitKey(definition) {
+    return String(
+      definition?.circuitBreakerKey ??
+      definition?.id ??
+      definition?.name ??
+      ""
+    );
+  }
+
+  noteCircuitSuccess(definition) {
+    this.circuitBreakers?.recordSuccess?.(
+      this.circuitKey(definition),
+      { label: definition?.title ?? definition?.name ?? "工具" }
+    );
+  }
+
+  noteCircuitFailure(definition, error) {
+    this.circuitBreakers?.recordFailure?.(
+      this.circuitKey(definition),
+      error,
+      {
+        counted: shouldCountCircuitFailure(error),
+        label: definition?.title ?? definition?.name ?? "工具"
+      }
+    );
   }
 
   beginStep({
@@ -601,6 +652,27 @@ export class ToolExecutor {
       );
     }
 
+    const circuitDecision = this.circuitBreakers?.beforeRequest?.(
+      this.circuitKey(definition),
+      { label: definition.title ?? definition.name }
+    );
+    if (circuitDecision && circuitDecision.ok === false) {
+      return this.finishRejected(
+        baseRecord,
+        createRuntimeError(
+          "TOOL_CIRCUIT_OPEN",
+          "该工具连续失败后已暂时停用，请稍后重试。",
+          true,
+          TOOL_ERROR_TYPES.TEMPORARY_FAILURE,
+          "unavailable",
+          { retryAfterMs: circuitDecision.retryAfterMs ?? 0 }
+        )
+      );
+    }
+    if (circuitDecision?.state) {
+      baseRecord.runtime.circuitState = circuitDecision.state;
+    }
+
     const timeoutMs = this.effectiveTimeout(definition, options, Date.now());
     if (timeoutMs <= 0 && (this.deadline > 0 || Number(options.deadline) > 0)) {
       return this.finishRejected(
@@ -751,6 +823,10 @@ export class ToolExecutor {
       );
     } catch (error) {
       const classified = classifyToolError(error, { abortSignal: scope.signal });
+      this.noteCircuitFailure(definition, {
+        ...classified,
+        category: categoryForType(classified.type)
+      });
       if (ledgerCall && isUnsafeToolEffect(definition.runtimeContract)) {
         try {
           const unresolved = await this.executionLedger.markUnknown(
@@ -999,6 +1075,7 @@ export class ToolExecutor {
         if (ledgerCall && receipt) {
           await this.executionLedger.markReported(ledgerCall, receipt);
         }
+        this.noteCircuitSuccess(definition);
         return captured.value;
       } catch (error) {
         const classified = classifyToolError(error, { abortSignal });
@@ -1060,6 +1137,7 @@ export class ToolExecutor {
     cancelled,
     ledgerCall = null
   ) {
+    this.noteCircuitFailure(definition, output?.error);
     this.budget.noteOutput(output);
     const captured = this.captureFailure(output, {
       toolName: baseRecord.name,

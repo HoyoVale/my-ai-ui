@@ -67,6 +67,8 @@ export function ConversationTaskPanel({
   liveActivity,
   targetMessageId,
   developerMode,
+  onLoadRecovery,
+  onRecoveryAction,
   onClose
 }) {
   const snapshot = useMemo(
@@ -80,6 +82,9 @@ export function ConversationTaskPanel({
   );
 
   const [selectedToolId, setSelectedToolId] = useState(null);
+  const [runtimeRecovery, setRuntimeRecovery] = useState(null);
+  const [recoveryBusy, setRecoveryBusy] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
   const firstToolId =
     snapshot.toolCalls[0]?.activityId ??
     snapshot.toolCalls[0]?.id ??
@@ -88,6 +93,82 @@ export function ConversationTaskPanel({
   useEffect(() => {
     setSelectedToolId(firstToolId);
   }, [snapshot.messageId, snapshot.runId, firstToolId]);
+
+  useEffect(() => {
+    setRuntimeRecovery(snapshot.runtimeRecovery ?? null);
+    setRecoveryBusy("");
+    setRecoveryError("");
+  }, [snapshot.taskId, snapshot.messageId, snapshot.runtimeRecovery]);
+
+  useEffect(() => {
+    if (!open || !snapshot.taskId || !snapshot.runtimeRecovery?.unresolvedCount) {
+      return undefined;
+    }
+
+    let disposed = false;
+    const request = onLoadRecovery?.(snapshot.taskId);
+    if (!request || typeof request.then !== "function") {
+      return undefined;
+    }
+    request.then((result) => {
+        if (!disposed && result?.ok && result.recovery) {
+          setRuntimeRecovery(result.recovery);
+        }
+      })
+      .catch((error) => {
+        if (!disposed) {
+          setRecoveryError(
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [
+    open,
+    onLoadRecovery,
+    snapshot.taskId,
+    snapshot.runtimeRecovery?.unresolvedCount
+  ]);
+
+  const handleRecoveryAction = async (call, action) => {
+    if (!snapshot.taskId || !call?.callId || !action || recoveryBusy) {
+      return;
+    }
+
+    const confirmations = {
+      confirm_applied: "确认该工具操作已经生效？确认后不会再次执行。",
+      confirm_not_applied: "确认该工具操作没有生效？之后继续任务时允许重新执行。",
+      abandon: "放弃该工具操作？该调用会被记为已取消。"
+    };
+    if (confirmations[action] && !window.confirm(confirmations[action])) {
+      return;
+    }
+
+    setRecoveryBusy(`${call.callId}:${action}`);
+    setRecoveryError("");
+    try {
+      const result = await onRecoveryAction?.({
+        taskId: snapshot.taskId,
+        callId: call.callId,
+        action
+      });
+      if (!result?.ok) {
+        throw new Error(result?.message ?? "恢复操作失败。请稍后重试。");
+      }
+      if (result.recovery) {
+        setRuntimeRecovery(result.recovery);
+      }
+    } catch (error) {
+      setRecoveryError(
+        error instanceof Error ? error.message : String(error)
+      );
+    } finally {
+      setRecoveryBusy("");
+    }
+  };
 
   if (!open) {
     return null;
@@ -133,27 +214,14 @@ export function ConversationTaskPanel({
       </header>
 
       <div className="conversation-task-panel__scroll conversation-activity-panel__scroll">
-        {snapshot.runtimeRecovery?.unresolvedCount > 0 && (
-          <section
-            className="conversation-runtime-recovery"
-            data-testid="tool-runtime-recovery"
-          >
-            <span>
-              <ConversationIcon name="warning" size={15} />
-            </span>
-            <div>
-              <strong>
-                {snapshot.runtimeRecovery.needsConfirmation > 0
-                  ? "有工具操作需要确认"
-                  : "有工具操作需要核验"}
-              </strong>
-              <small>
-                {snapshot.runtimeRecovery.needsConfirmation > 0
-                  ? `${snapshot.runtimeRecovery.needsConfirmation} 个操作无法自动判断是否已经生效。`
-                  : `${snapshot.runtimeRecovery.needsReconciliation || snapshot.runtimeRecovery.unresolvedCount} 个操作需要先检查实际状态。`}
-              </small>
-            </div>
-          </section>
+        {runtimeRecovery?.unresolvedCount > 0 && (
+          <RecoveryCenter
+            recovery={runtimeRecovery}
+            busy={recoveryBusy}
+            error={recoveryError}
+            developerMode={developerMode}
+            onAction={handleRecoveryAction}
+          />
         )}
 
         <section className="conversation-activity-section">
@@ -234,6 +302,92 @@ export function ConversationTaskPanel({
         )}
       </div>
     </aside>
+  );
+}
+
+const RECOVERY_ACTION_LABELS = Object.freeze({
+  recheck: "重新核验",
+  confirm_applied: "确认已生效",
+  confirm_not_applied: "确认未生效",
+  abandon: "放弃操作"
+});
+
+function RecoveryCenter({
+  recovery,
+  busy,
+  error,
+  developerMode,
+  onAction
+}) {
+  const unresolvedCalls = (recovery.calls ?? []).filter((call) =>
+    ["needs_confirmation", "needs_reconciliation"].includes(call.recovery)
+  );
+
+  return (
+    <section
+      className="conversation-runtime-recovery"
+      data-testid="tool-runtime-recovery"
+    >
+      <header className="conversation-runtime-recovery__header">
+        <span>
+          <ConversationIcon name="warning" size={15} />
+        </span>
+        <div>
+          <strong>
+            {recovery.needsConfirmation > 0
+              ? "有工具操作需要确认"
+              : "有工具操作需要核验"}
+          </strong>
+          <small>
+            先处理这些不确定操作，再继续任务，避免重复写入。
+          </small>
+        </div>
+      </header>
+
+      <div className="conversation-runtime-recovery__calls">
+        {unresolvedCalls.map((call) => (
+          <article
+            className="conversation-runtime-recovery__call"
+            key={call.callId}
+            data-call-id={developerMode ? call.callId : undefined}
+          >
+            <div className="conversation-runtime-recovery__copy">
+              <strong>{getToolTitle(call.toolName)}</strong>
+              <small>
+                {call.recovery === "needs_confirmation"
+                  ? "无法自动判断该操作是否已经生效。"
+                  : "需要查询实际状态后才能安全继续。"}
+              </small>
+              {developerMode && (
+                <code>{call.callId}</code>
+              )}
+            </div>
+
+            <div className="conversation-runtime-recovery__actions">
+              {(call.actions ?? []).map((action) => (
+                <button
+                  type="button"
+                  key={action}
+                  disabled={Boolean(busy)}
+                  data-testid={`runtime-recovery-${action}`}
+                  onClick={() => {
+                    void onAction(call, action);
+                  }}
+                >
+                  {busy === `${call.callId}:${action}`
+                    ? "处理中…"
+                    : RECOVERY_ACTION_LABELS[action] ?? action}
+                </button>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {error && (
+        <p className="conversation-runtime-recovery__error">{error}</p>
+      )}
+    </section>
   );
 }
 
@@ -371,6 +525,14 @@ function DeveloperActivity({
         <RawDetail
           title="Runtime recovery"
           value={stringifyTaskValue(snapshot.runtimeDiagnostics)}
+          code
+        />
+      )}
+
+      {snapshot.providerRuntimeDiagnostics?.entries?.length > 0 && (
+        <RawDetail
+          title="Provider circuit breakers"
+          value={stringifyTaskValue(snapshot.providerRuntimeDiagnostics)}
           code
         />
       )}

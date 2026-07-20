@@ -82,6 +82,12 @@ const CHANNELS = Object.freeze({
   AGENT_TEST_CONNECTION:
     "agent-test-connection",
 
+  AGENT_GET_RUNTIME_RECOVERY:
+    "agent-get-runtime-recovery",
+
+  AGENT_RESOLVE_RUNTIME_RECOVERY:
+    "agent-resolve-runtime-recovery",
+
   CONVERSATION_GET_STATE:
     "conversation-get-state",
 
@@ -451,6 +457,24 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS
         .AGENT_GET_STATUS
+    );
+  },
+
+  getToolRuntimeRecovery: (taskId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_GET_RUNTIME_RECOVERY,
+      { taskId: String(taskId ?? "") }
+    );
+  },
+
+  resolveToolRuntimeRecovery: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_RESOLVE_RUNTIME_RECOVERY,
+      {
+        taskId: String(request.taskId ?? ""),
+        callId: String(request.callId ?? ""),
+        action: String(request.action ?? "")
+      }
     );
   },
 

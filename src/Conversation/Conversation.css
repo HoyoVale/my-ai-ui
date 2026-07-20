@@ -3854,3 +3854,83 @@ button.conversation-thinking-event:focus-visible > strong {
 .conversation-activity-tool-batch.is-attention > summary > span {
   opacity: 0.9;
 }
+
+.conversation-runtime-recovery {
+  display: grid;
+  gap: 10px;
+}
+
+.conversation-runtime-recovery__header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.conversation-runtime-recovery__header > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+
+.conversation-runtime-recovery__header > div,
+.conversation-runtime-recovery__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.conversation-runtime-recovery__calls {
+  display: grid;
+  gap: 8px;
+}
+
+.conversation-runtime-recovery__call {
+  display: grid;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.conversation-runtime-recovery__copy code {
+  overflow: hidden;
+  font-size: 10px;
+  opacity: 0.62;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-runtime-recovery__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.conversation-runtime-recovery__actions button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 8px;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.conversation-runtime-recovery__actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.conversation-runtime-recovery__actions button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.conversation-runtime-recovery__error {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.82;
+}

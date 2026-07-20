@@ -116,6 +116,27 @@ function publicStatusForState(state) {
   return "failed";
 }
 
+function recoveryActions(call) {
+  const recovery = call?.recovery ?? "none";
+  if (recovery === "needs_reconciliation") {
+    return [
+      "recheck",
+      "confirm_applied",
+      "confirm_not_applied",
+      "abandon"
+    ];
+  }
+  if (recovery === "needs_confirmation") {
+    return [
+      ...(call?.canReconcile ? ["recheck"] : []),
+      "confirm_applied",
+      "confirm_not_applied",
+      "abandon"
+    ];
+  }
+  return [];
+}
+
 export class ToolExecutionLedger {
   constructor({
     directory = "",
@@ -526,14 +547,18 @@ export class ToolExecutionLedger {
     return clone(mutable);
   }
 
-  async reconcile(definitions = []) {
+  async reconcile(definitions = [], { callId = "" } = {}) {
     const definitionMap = new Map(
       (Array.isArray(definitions) ? definitions : [])
         .map((definition) => [definition.name, definition])
     );
     const results = [];
 
+    const targetCallId = String(callId ?? "").trim();
     for (const call of [...this.calls.values()]) {
+      if (targetCallId && call.callId !== targetCallId) {
+        continue;
+      }
       const recovery = this.recoverySnapshot().calls.find(
         (item) => item.callId === call.callId
       )?.recovery;
@@ -620,6 +645,158 @@ export class ToolExecutionLedger {
     };
   }
 
+  async resolveRecovery({
+    callId,
+    action,
+    definitions = []
+  } = {}) {
+    const id = String(callId ?? "").trim();
+    const requestedAction = String(action ?? "").trim();
+    const call = this.calls.get(id);
+
+    if (!call) {
+      return {
+        ok: false,
+        code: "tool-call-not-found",
+        message: "找不到需要处理的工具操作。",
+        recovery: this.publicSnapshot()
+      };
+    }
+
+    const current = this.recoverySnapshot().calls.find(
+      (item) => item.callId === id
+    );
+    const allowed = recoveryActions(current);
+    if (!allowed.includes(requestedAction)) {
+      return {
+        ok: false,
+        code: "recovery-action-not-allowed",
+        message: "当前工具状态不允许执行该恢复操作。",
+        recovery: this.publicSnapshot()
+      };
+    }
+
+    await this.recordRuntimeEvent(
+      "TOOL_RECOVERY_ACTION_REQUESTED",
+      {
+        callId: id,
+        action: requestedAction,
+        previousState: call.state
+      },
+      { callId: id, runId: call.runId, segmentId: call.segmentId }
+    );
+
+    if (requestedAction === "recheck") {
+      const result = await this.reconcile(definitions, { callId: id });
+      return {
+        ok: result.results.some((item) =>
+          ["applied", "not_applied"].includes(item.status)
+        ),
+        action: requestedAction,
+        result: result.results[0] ?? null,
+        recovery: result.recovery
+      };
+    }
+
+    if (requestedAction === "confirm_applied") {
+      const receipt = await this.storeReceipt(call, {
+        status: "success",
+        output: {
+          ok: true,
+          data: {
+            manuallyConfirmed: true,
+            message: "用户确认该操作已经生效。"
+          }
+        },
+        result: {
+          status: "success",
+          summary: "用户已确认该操作生效。",
+          preview: "",
+          truncated: false,
+          clipped: false
+        },
+        startedAt: call.latestEvent?.timestamp ?? 0,
+        endedAt: Date.now(),
+        metadata: {
+          recoveryAction: requestedAction,
+          confirmedByUser: true
+        }
+      });
+      await this.markReported(call, receipt);
+      await this.recordRuntimeEvent(
+        "TOOL_RECOVERY_ACTION_COMPLETED",
+        { callId: id, action: requestedAction, receiptId: receipt.receiptId },
+        { callId: id, runId: call.runId, segmentId: call.segmentId }
+      );
+      return {
+        ok: true,
+        action: requestedAction,
+        receiptId: receipt.receiptId,
+        recovery: this.publicSnapshot()
+      };
+    }
+
+    if (requestedAction === "confirm_not_applied") {
+      const mutable = this.calls.get(id) ?? clone(call);
+      await this.transition(mutable, "TOOL_PREPARED", {
+        recoveryAction: requestedAction,
+        confirmedByUser: true,
+        previousState: call.state
+      });
+      await this.leases.release(id);
+      await this.recordRuntimeEvent(
+        "TOOL_RECOVERY_ACTION_COMPLETED",
+        { callId: id, action: requestedAction, nextState: "prepared" },
+        { callId: id, runId: call.runId, segmentId: call.segmentId }
+      );
+      return {
+        ok: true,
+        action: requestedAction,
+        retryAllowed: true,
+        recovery: this.publicSnapshot()
+      };
+    }
+
+    const receipt = await this.storeReceipt(call, {
+      status: "cancelled",
+      output: {
+        ok: false,
+        error: {
+          code: "TOOL_OPERATION_ABANDONED",
+          type: "CANCELLED",
+          category: "cancelled",
+          message: "用户已放弃该工具操作。",
+          retryable: false
+        }
+      },
+      result: {
+        status: "cancelled",
+        summary: "用户已放弃该操作。",
+        preview: "",
+        truncated: false,
+        clipped: false
+      },
+      startedAt: call.latestEvent?.timestamp ?? 0,
+      endedAt: Date.now(),
+      metadata: {
+        recoveryAction: requestedAction,
+        abandonedByUser: true
+      }
+    });
+    await this.markReported(call, receipt);
+    await this.recordRuntimeEvent(
+      "TOOL_RECOVERY_ACTION_COMPLETED",
+      { callId: id, action: requestedAction, receiptId: receipt.receiptId },
+      { callId: id, runId: call.runId, segmentId: call.segmentId }
+    );
+    return {
+      ok: true,
+      action: requestedAction,
+      receiptId: receipt.receiptId,
+      recovery: this.publicSnapshot()
+    };
+  }
+
   recoverySnapshot() {
     const receipts = new Map(
       this.receipts.list().map((receipt) => [receipt.callId, receipt])
@@ -664,6 +841,7 @@ export class ToolExecutionLedger {
         recovery,
         effect: call.contract?.effect ?? "read",
         retryMode: call.contract?.retryMode ?? "safe",
+        canReconcile: call.contract?.canReconcile === true,
         hasReceipt: Boolean(receipt),
         receiptId: receipt?.receiptId ?? call.receiptId ?? "",
         segmentId: call.segmentId,
@@ -672,6 +850,10 @@ export class ToolExecutionLedger {
         latestAt: call.latestEvent?.timestamp ?? 0
       };
     });
+
+    for (const call of calls) {
+      call.actions = recoveryActions(call);
+    }
 
     const unresolved = calls.filter((call) => [
       "needs_confirmation",
@@ -710,7 +892,8 @@ export class ToolExecutionLedger {
         publicStatus: call.publicStatus,
         recovery: call.recovery,
         effect: call.effect,
-        hasReceipt: call.hasReceipt
+        hasReceipt: call.hasReceipt,
+        actions: [...(call.actions ?? [])]
       }))
     };
   }

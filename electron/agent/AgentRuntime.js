@@ -81,6 +81,10 @@ import {
 } from "../tools/index.js";
 
 import {
+  providerCircuitBreakers
+} from "../runtime/runtimeCircuitBreakers.js";
+
+import {
   RunActivityStore
 } from "./RunActivityStore.js";
 
@@ -270,6 +274,45 @@ function createRunStateFields(startedAt) {
   };
 }
 
+function providerCircuitKey(runtime) {
+  const descriptor = runtime?.descriptor ?? {};
+  return [
+    descriptor.providerId,
+    descriptor.modelConfigId,
+    descriptor.modelId
+  ].filter(Boolean).join(":");
+}
+
+function shouldCountProviderFailure(error) {
+  if (!error || isAbortError(error)) {
+    return false;
+  }
+
+  const status = Number(
+    error?.statusCode ?? error?.status ?? error?.response?.status ?? 0
+  );
+  const code = String(error?.code ?? error?.cause?.code ?? "").toUpperCase();
+
+  if ([400, 401, 403, 404, 422].includes(status)) {
+    return false;
+  }
+
+  if (status === 408 || status === 429 || status >= 500) {
+    return true;
+  }
+
+  return [
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ETIMEDOUT",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "UND_ERR_CONNECT_TIMEOUT"
+  ].includes(code) || /timeout|temporar|unavailable|network|rate limit/i.test(
+    String(error?.message ?? "")
+  );
+}
+
 export class AgentRuntime {
   constructor() {
     this.activeRun = null;
@@ -285,6 +328,35 @@ export class AgentRuntime {
       intervalMs: 40,
       publish: () => this.publishStatus()
     });
+  }
+
+  assertProviderAvailable(runtime) {
+    const key = providerCircuitKey(runtime);
+    if (!key) {
+      return null;
+    }
+    return providerCircuitBreakers.assertCanRequest(key, {
+      label: `${runtime?.descriptor?.providerName ?? "模型服务"} · ${runtime?.descriptor?.modelName ?? runtime?.descriptor?.modelId ?? "模型"}`
+    });
+  }
+
+  noteProviderSuccess(runtime) {
+    const key = providerCircuitKey(runtime);
+    if (key) {
+      providerCircuitBreakers.recordSuccess(key, {
+        label: `${runtime?.descriptor?.providerName ?? "模型服务"} · ${runtime?.descriptor?.modelName ?? runtime?.descriptor?.modelId ?? "模型"}`
+      });
+    }
+  }
+
+  noteProviderFailure(runtime, error) {
+    const key = providerCircuitKey(runtime);
+    if (key) {
+      providerCircuitBreakers.recordFailure(key, error, {
+        counted: shouldCountProviderFailure(error),
+        label: `${runtime?.descriptor?.providerName ?? "模型服务"} · ${runtime?.descriptor?.modelName ?? runtime?.descriptor?.modelId ?? "模型"}`
+      });
+    }
   }
 
   applyRunState(state) {
@@ -427,6 +499,10 @@ export class AgentRuntime {
           ? this.activeRun
               ?.toolSession
               ?.getRuntimeDiagnostics?.() ?? null
+          : null,
+      providerRuntimeDiagnostics:
+        developerMode
+          ? providerCircuitBreakers.snapshot()
           : null
     });
 
@@ -1473,6 +1549,85 @@ export class AgentRuntime {
   }
 
 
+  async withToolRecoverySession(taskId, callback) {
+    const normalizedTaskId = String(taskId ?? "").trim();
+    if (!normalizedTaskId) {
+      return {
+        ok: false,
+        code: "task-id-required",
+        message: "缺少任务标识。"
+      };
+    }
+
+    if (this.activeRun) {
+      if (this.activeRun.taskId === normalizedTaskId) {
+        return {
+          ok: false,
+          code: "run-active",
+          message: "任务仍在运行，停止任务后才能处理不确定的工具操作。"
+        };
+      }
+      return {
+        ok: false,
+        code: "agent-busy",
+        message: "当前有其他任务正在运行。"
+      };
+    }
+
+    const settings = getSettings();
+    let activeModel = null;
+    try {
+      activeModel = resolveActiveModelSettings(settings.model);
+    } catch {
+      activeModel = null;
+    }
+
+    const session = createAgentToolSession({
+      activeModel,
+      settings,
+      resultStoreDirectory: getTaskResultDirectory(normalizedTaskId),
+      taskId: normalizedTaskId,
+      runId: `recovery-${crypto.randomUUID()}`,
+      workspaceId: "",
+      segmentId: "recovery"
+    });
+
+    try {
+      return await callback(session);
+    } finally {
+      await session.flushPersistence?.().catch(() => false);
+      await session.closePersistence?.().catch(() => false);
+    }
+  }
+
+  async getToolRuntimeRecovery({ taskId } = {}) {
+    return this.withToolRecoverySession(taskId, async (session) => ({
+      ok: true,
+      recovery: session.getRuntimeRecovery?.() ?? null
+    }));
+  }
+
+  async resolveToolRuntimeRecovery({
+    taskId,
+    callId,
+    action
+  } = {}) {
+    return this.withToolRecoverySession(taskId, async (session) => {
+      const result = await session.resolveRuntimeRecovery?.({
+        callId,
+        action
+      });
+      if (result?.recovery) {
+        conversationManager.updateToolRuntimeRecovery({
+          taskId,
+          recovery: result.recovery
+        });
+      }
+      this.setStatus({ ...this.status }, { immediate: true });
+      return result;
+    });
+  }
+
   stop() {
     if (!this.activeRun) {
       return {
@@ -1536,12 +1691,14 @@ export class AgentRuntime {
 
     const startedAt =
       Date.now();
+    let runtime = null;
 
     try {
-      const runtime =
+      runtime =
         createModelRuntime(
           modelSettings
         );
+      this.assertProviderAvailable(runtime);
 
       const result =
         await generateText({
@@ -1572,6 +1729,7 @@ export class AgentRuntime {
           }
         });
 
+      this.noteProviderSuccess(runtime);
       return {
         ok: true,
         latencyMs:
@@ -1581,6 +1739,7 @@ export class AgentRuntime {
           result.text.trim()
       };
     } catch (error) {
+      this.noteProviderFailure(runtime, error);
       return {
         ok: false,
         latencyMs:
@@ -1788,6 +1947,7 @@ export class AgentRuntime {
       }
 
       try {
+        this.assertProviderAvailable(runtime);
         const result = streamText({
           model: runtime.model,
 
@@ -1857,6 +2017,7 @@ export class AgentRuntime {
           throw error;
         }
 
+        this.noteProviderFailure(runtime, error);
         console.warn(
           `最终总结第 ${attempt} 次尝试失败，准备使用下一次尝试或本地兜底：`,
           error
@@ -1871,6 +2032,7 @@ export class AgentRuntime {
         );
 
       if (normalized) {
+        this.noteProviderSuccess(runtime);
         this.activeRun.finalText =
           normalized;
         this.activeRun
@@ -1935,6 +2097,7 @@ export class AgentRuntime {
     abortController,
     remainingRunMs
   }) {
+    this.assertProviderAvailable(runtime);
     const result = streamText({
       model: runtime.model,
       system: segmentSystem,
@@ -2064,6 +2227,7 @@ export class AgentRuntime {
       batchFailed ? "failed" : "completed"
     );
 
+    this.noteProviderSuccess(runtime);
     return {
       records,
       finishReason,
@@ -2081,12 +2245,13 @@ export class AgentRuntime {
     settings,
     abortController
   }) {
+    let runtime = null;
     try {
       const runSettings = settings ?? getSettings();
       const modelSettings = resolveActiveModelSettings(
         runSettings.model
       );
-      const runtime = createModelRuntime(modelSettings);
+      runtime = createModelRuntime(modelSettings);
       const runtimeSettings = runSettings.tools?.runtime ?? {};
       const orchestrator = new LongTaskOrchestrator({
         goalId: this.activeRun.goalId,
@@ -2391,6 +2556,7 @@ export class AgentRuntime {
           engineResult.finalText || "任务已处理完成。"
       });
     } catch (error) {
+      this.noteProviderFailure(runtime, error);
       if (
         abortController.signal.aborted ||
         isAbortError(error)

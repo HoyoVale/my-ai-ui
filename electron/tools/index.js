@@ -44,3 +44,8 @@ export {
   ToolResultStore,
   redactSensitiveResult
 } from "./core/ToolResultStore.js";
+
+export {
+  SubprocessSupervisor,
+  terminateProcessTree
+} from "./process/SubprocessSupervisor.js";
