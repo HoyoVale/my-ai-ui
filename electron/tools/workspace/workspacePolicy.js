@@ -81,15 +81,16 @@ function isWithinRoot(
   );
 }
 
+function pathSegments(candidate) {
+  return path.normalize(candidate)
+    .split(path.sep)
+    .filter(Boolean);
+}
+
 function hasSensitiveSegment(
   candidate
 ) {
-  const parts =
-    path.normalize(candidate)
-      .split(path.sep)
-      .filter(Boolean);
-
-  return parts.some(
+  return pathSegments(candidate).some(
     (part) =>
       SENSITIVE_DIRECTORY_NAMES
         .has(part.toLowerCase())
@@ -159,6 +160,12 @@ export function isExcludedDirectory(
     );
 }
 
+export function isExcludedWorkspacePath(candidate) {
+  return pathSegments(candidate).some((segment) =>
+    isExcludedDirectory(segment)
+  );
+}
+
 export function resolveWorkspacePath(
   inputPath = ".",
   {
@@ -199,6 +206,7 @@ export function resolveWorkspacePath(
 
   let selected = null;
   let selectedRoot = null;
+  let insideConfiguredRoot = false;
 
   for (
     const candidate
@@ -217,6 +225,8 @@ export function resolveWorkspacePath(
       continue;
     }
 
+    insideConfiguredRoot = true;
+
     if (
       mustExist &&
       !fs.existsSync(candidate)
@@ -231,10 +241,13 @@ export function resolveWorkspacePath(
 
   if (!selected || !selectedRoot) {
     const error = new Error(
-      "路径不存在，或不在允许的工作区内。"
+      insideConfiguredRoot
+        ? "路径不存在。"
+        : "路径不在允许的工作区内。"
     );
-    error.code =
-      "PATH_OUTSIDE_WORKSPACE";
+    error.code = insideConfiguredRoot
+      ? "PATH_NOT_FOUND"
+      : "PATH_OUTSIDE_WORKSPACE";
     throw error;
   }
 
@@ -259,6 +272,14 @@ export function resolveWorkspacePath(
     );
     error.code =
       "SYMLINK_ESCAPE_BLOCKED";
+    throw error;
+  }
+
+  if (isExcludedWorkspacePath(realPath)) {
+    const error = new Error(
+      "该路径位于工具明确排除的目录中。"
+    );
+    error.code = "EXCLUDED_PATH_BLOCKED";
     throw error;
   }
 
@@ -390,6 +411,12 @@ export function resolveWorkspaceWritePath(
         error.code = "FILE_REQUIRED";
         throw error;
       }
+    }
+
+    if (isExcludedWorkspacePath(candidate)) {
+      const error = new Error("该路径位于工具明确排除的目录中。");
+      error.code = "EXCLUDED_PATH_BLOCKED";
+      throw error;
     }
 
     if (isSensitiveWorkspacePath(candidate)) {

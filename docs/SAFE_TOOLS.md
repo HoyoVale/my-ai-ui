@@ -1,198 +1,126 @@
-# Safe Core Tools 与 Tool UX 1.1
+# Safe Tools、Tool Runtime 与安全边界
 
-Xixi 当前工具系统只开放确定性、Agent 内部状态和授权工作区只读能力。普通用户通过简洁的工作模式使用工具；开发者模式提供完整描述、覆盖选项和诊断信息。
+Xixi 的工具能力由两层共同决定：
 
-## 普通设置
+1. 模型只会看到当前会话实际启用的工具名称、description 和输入 Schema；
+2. 主进程 Tool Runtime 再执行权限、工作区、预算、超时、幂等、收据和恢复校验。
 
-位置：
+模型提出调用并不等于调用一定会执行。Tool Runtime 始终是最终安全边界。
 
-```text
-Setting → AI → Tools
-```
-
-普通模式显示 Chat / Coding 工作模式和 Coding 授权工作区。工具活动由普通模式与开发者模式统一控制，不再提供额外展示层级。
+## 普通模式
 
 ### Chat
 
-启用：
+默认提供：
 
-- 时间与时区；
-- 日期计算；
-- 安全计算器；
-- 运行环境与 Agent 状态；
-- 任务计划；
-- 结构化向用户提问。
+- 当前时间、时区和日期计算；
+- 受限计算器；
+- 净化后的运行环境与 Agent 状态；
+- 任务计划和大型结果分页读取。
 
-Chat 不向模型暴露工作区文件工具。
+当会话绑定了工作区时，可以查看工作区授权和安全限制，但 Chat 不开放文件写入。
 
 ### Coding
 
-包含 Chat 的全部能力，并增加授权工作区只读工具：
+在 Chat 能力上增加：
 
-- 查看目录与路径信息；
-- 分段读取文本文件；
-- 搜索文件和文本；
-- 识别项目类型；
-- 计算文件哈希。
+- 确定性目录浏览；
+- 路径信息；
+- 分段文本读取；
+- 文件与文本搜索；
+- 项目清单识别；
+- 流式 SHA-256；
+- 原子文本写入。
 
-只有至少一个有效授权工作区时，文件工具才具有可操作目标。
-
-## 开发者模式
-
-位置：
-
-```text
-Setting → General → Developer mode
-```
-
-开发者模式只增加高级 UI 与诊断信息，不解除固定安全边界，也不会自动启用更多工具。
-
-开启后，Tools 页面额外显示：
-
-- Agent 最大步骤、工具调用总数、运行总超时、单工具超时和重复调用限制；
-- Toolset 三态覆盖：跟随模式、强制启用、强制禁用；
-- 单工具三态覆盖；
-- 每个工具的中文名称、内部 ID 和 description；
-- 当前模型与本轮可见工具数量；
-- 工作区读取和搜索的高级限制。
-
-Setting 侧栏还会出现 Developer 页面，用于查看 Tool Runtime、模型和安全边界摘要。
+没有用户明确授权的工作区时，不注册工作区工具。
 
 ## Toolsets
 
-### `core.runtime`
+- `core.runtime`：时间、日期、计算器、运行环境、Agent 精简状态；
+- `workspace.read`：工作区信息、目录、文件读取、搜索、项目识别和哈希；
+- `workspace.write`：原子文本写入；
+- `workspace.exec`：受控 Git 检查和显式允许的进程命令；
+- `agent.internal`：计划维护和大型工具结果分页。
 
-- `get_current_time`
-- `convert_time_zone`
-- `calculate_date`
-- `calculator`
-- `get_runtime_info`
-- `get_agent_status`
+## 工作区读取边界
 
-### `workspace.read`
+所有读取工具都会：
 
-- `get_workspace_info`
-- `list_directory`
-- `stat_path`
-- `read_text_file`
-- `search_files`
-- `search_text`
-- `detect_project`
-- `compute_file_hash`
+- 规范化路径并校验授权根目录；
+- 使用真实路径阻止符号链接逃逸；
+- 直接拒绝 `.git`、`node_modules`、`dist`、`build`、缓存与测试输出目录；
+- 拒绝 `.env*`、私钥、证书、Git 凭据、`.ssh`、`.aws`、`.azure` 和 `.kube`；
+- 拒绝二进制和超限文件；
+- 对目录、文件数、扫描字节、搜索结果和递归深度设置上限；
+- 支持 AbortSignal，并以确定性顺序返回结果。
 
-### `agent.internal`
+## 原子写入
 
-- `update_plan`
-
-普通模式由 Chat / Coding 自动决定 Toolset。开发者覆盖仅在显式设置时生效，默认全部为 `inherit`。
-
-## Tool Runtime
+`write_text_file` 仅在 Coding 模式和授权工作区内可用。写入流程为：
 
 ```text
-AgentRuntime
-→ createAgentToolSession
-→ resolve enabled tools
-→ ToolExecutor
-→ AI SDK tool()
-→ ToolAuditLog
+临时文件 → fsync → 原子替换 → 目录同步 → SHA-256 复核 → Receipt
 ```
+
+同时支持：
+
+- 敏感与排除路径拦截；
+- 符号链接防护；
+- `expectedSha256` 乐观并发控制；
+- 相同内容幂等重放；
+- 崩溃后的临时文件与 Receipt 恢复。
+
+## 进程工具
+
+`workspace.exec` 默认关闭，只有开发者显式强制启用后才会向模型公开。
+
+### `git_inspect`
+
+只允许保守的 Git 查看操作。Runtime 会拦截：
+
+- 分支创建、删除、移动和强制修改；
+- `--output` 等文件输出参数；
+- external diff、textconv 和 `--no-index`；
+- 工作区外 pathspec；
+- Shell 展开和交互式凭据提示。
+
+### `run_workspace_command`
+
+没有内置的默认命令白名单。只有开发者在 `allowedCommands` 中明确配置的命令才可运行。命令与参数以数组形式直接传给进程，不经过 Shell，并由 `SubprocessSupervisor` 提供超时、取消、输出上限和进程树终止。
+
+它不是容器或操作系统沙箱。被允许的程序仍拥有当前应用进程账户的系统权限，因此只应加入可信命令。
+
+## Tool Runtime 保护
 
 当前运行保护包括：
 
-- 最大 Agent 步数；
-- 最大工具调用总数；
-- Agent Run 总超时；
-- 单工具超时；
-- 相同工具与参数的重复调用限制；
-- Plan 需要额外信息时以 `needs_input` 自然结束，并在最终回复中说明缺失信息；
-- 标准化成功、失败和停止原因；
-- 可选的 Conversation 工具历史持久化。
+- Tool Registry 名称、Schema 和元数据校验；
+- Toolset 和单工具开关；
+- Run、Step、Batch 和重复调用预算；
+- Abort、Timeout、并发键与受控重试；
+- Provider/Tool 熔断器；
+- Journal、Lease、Receipt 和 Checkpoint；
+- 不确定写操作核验与人工 Recovery Center；
+- 大结果引用、分页和磁盘配额；
+- 增量 IPC 和普通/开发者数据投影；
+- 子进程树监督和崩溃恢复测试。
 
-`update_plan` 生成的计划会随 Assistant 消息保存，Conversation 可以展示任务进度。
+`update_plan` 的历史会被有界保留，防止长期反复改计划导致状态无限增长。`read_tool_result` 在计划已结束后仍可使用，以便模型读取最终所需的大结果。
 
-## Conversation 中的工具活动
+## 普通用户与开发者信息
 
-普通显示采用轻量活动卡片：
+普通用户可见：
 
-```text
-正在搜索项目文件…
-✓ 已找到相关文件
-```
+- 自然语言工具名称；
+- 当前进度、成功、失败和恢复提醒；
+- 计划和目标文件；
+- 必要的确认操作。
 
-完成后收拢为：
+开发者模式额外可见：
 
-```text
-已使用 3 个工具
-```
+- 内部工具名称与 Toolset；
+- 输入/输出与调用耗时；
+- Tool Contract、重试和恢复能力；
+- Journal、Receipt、Lease、熔断器和子进程诊断。
 
-简洁模式只显示自然语言状态。详细模式增加目标路径、范围和耗时。开发者模式展开后才显示内部工具名称、输入、输出和原始数据。
-
-## Workspace policy
-
-必须在 Tools 页面使用 Electron 原生目录选择器，或在开发者设置中手动添加一个或多个只读工作区。应用启动目录、进程当前目录和环境变量不会自动成为工作区。没有用户明确授权的目录时，工作区状态为 `null`，文件工具不会注册到本轮 Agent。
-
-所有已注册的文件工具都会：
-
-1. 规范化路径；
-2. 检查授权根目录；
-3. 使用 `realpath` 阻止符号链接逃逸；
-4. 拒绝敏感文件和凭据目录；
-5. 拒绝二进制文件和超大文本；
-6. 应用读取、搜索和哈希上限。
-
-默认忽略 `.git`、`node_modules`、`dist`、`build`、缓存和测试输出。默认拒绝 `.env*`、私钥、证书、Git 凭据、`.ssh`、`.aws`、`.azure` 和 `.kube`。
-
-## 固定安全边界
-
-无论普通模式还是开发者模式，当前版本都不会：
-
-- 写入或删除文件；
-- 执行 Shell 或任意代码；
-- 发起任意网络请求；
-- 读取敏感凭据；
-- 逃逸授权工作区；
-- 解除外部资源安全策略。
-
-## Tool Runtime 1.2
-
-### 实时工具活动
-
-Agent 运行期间，主进程会持续广播当前计划和工具调用状态。Conversation 会直接显示：
-
-- 正在思考
-- 正在调用的工具
-- 已完成或失败的工具
-- 当前任务计划
-
-工具执行结束后，活动会随 Assistant 消息持久化；普通模式保持简洁，开发者模式可查看内部名称、输入、输出和停止原因。
-
-### 大型工具结果
-
-工具结果超过行内阈值时，不再把完整内容一次性发送给模型。`ToolResultStore` 会：
-
-1. 保存当前 Agent Run 内的完整或受限结果；
-2. 返回预览、`resultId` 和大小信息；
-3. 允许模型调用 `read_tool_result` 分页继续读取。
-
-结果存储仅属于当前 Agent Run，结束后不会作为长期文件保存。
-
-### 缺少信息与任务继续
-
-运行时不提供结构化提问工具。计划缺少关键输入时，步骤会标记为 `needs_input`，最终回复会自然说明缺失信息。用户补充信息后，系统按正常对话创建下一轮运行；长任务的可继续检查点只在用户明确表达“继续”时继承。
-
-### 停止原因
-
-Assistant 消息可以保存标准化停止原因，例如：
-
-- `completed`
-- `needs_input`
-- `step_limit`
-- `tool_call_limit`
-- `run_timeout`
-- `tool_timeout`
-- `repeated_call`
-- `output_limit`
-- `content_filter`
-- `aborted`
-
-普通模式不展示内部代码；开发者模式可在工具活动详情中查看。
+开发者模式只增加配置和诊断可见性，不会自动放宽工作区、敏感文件、Shell 或外部资源安全策略。

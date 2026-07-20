@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 
 import { z } from "zod";
 
@@ -31,13 +32,24 @@ async function inspectTarget(input, workspaceSettings) {
     workspaceSettings,
     allowCreateDirectories: input?.createDirectories === true
   });
-  if (!fs.existsSync(resolved.path)) {
+  const stat = await fs.promises.lstat(resolved.path).catch((error) => {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  });
+  if (!stat) {
     return {
       resolved,
       exists: false,
       sha256: "",
       bytes: 0
     };
+  }
+  if (stat.isSymbolicLink()) {
+    const error = new Error("拒绝核验符号链接目标。");
+    error.code = "SYMLINK_WRITE_BLOCKED";
+    throw error;
   }
   const current = await sha256File(resolved.path, {
     maxBytes: workspaceSettings.maxWriteFileBytes ?? 5_000_000
@@ -52,9 +64,12 @@ async function inspectTarget(input, workspaceSettings) {
 export function createWorkspaceWriteToolDefinitions(
   workspaceSettings = {}
 ) {
-  const maxWriteFileBytes = Math.max(
-    1_024,
-    Number(workspaceSettings.maxWriteFileBytes) || 5_000_000
+  const maxWriteFileBytes = Math.min(
+    20_000_000,
+    Math.max(
+      1_024,
+      Number(workspaceSettings.maxWriteFileBytes) || 5_000_000
+    )
   );
 
   const inputSchema = z.object({
@@ -177,11 +192,44 @@ export function createWorkspaceWriteToolDefinitions(
       description:
         "Atomically create or replace one text file inside the authorized workspace. The write uses a same-directory temporary file, fsync, atomic rename, SHA-256 verification, optimistic concurrency, and durable receipts.",
       inputSchema,
+      outputSchema: z.object({
+        ok: z.literal(true),
+        data: z.object({
+          path: z.string(),
+          changed: z.boolean(),
+          created: z.boolean(),
+          beforeSha256: z.string(),
+          afterSha256: z.string(),
+          bytes: z.number().int().nonnegative(),
+          atomic: z.boolean(),
+          idempotentReplay: z.boolean(),
+          effectEvidence: z.object({
+            kind: z.literal("workspace_file_sha256"),
+            relativePath: z.string(),
+            sha256: z.string(),
+            bytes: z.number().int().nonnegative(),
+            atomic: z.boolean()
+          })
+        })
+      }),
       sideEffect: "write",
       riskLevel: "medium",
       idempotency: "natural",
       concurrencyKey(input) {
-        return `workspace-file:${String(input?.path ?? "")}`;
+        try {
+          const resolved = resolveWorkspaceWritePath(input?.path, {
+            workspaceSettings,
+            allowCreateDirectories: input?.createDirectories === true
+          });
+          const normalized = path.normalize(resolved.path);
+          return `workspace-file:${
+            process.platform === "win32"
+              ? normalized.toLowerCase()
+              : normalized
+          }`;
+        } catch {
+          return `workspace-file:${path.normalize(String(input?.path ?? ""))}`;
+        }
       },
       runtimeContract,
       async execute(input, context = {}) {

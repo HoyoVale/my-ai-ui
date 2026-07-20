@@ -1,4 +1,4 @@
-import { afterEach, describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,13 +8,49 @@ import { createAgentToolSession } from "../../electron/tools/createAgentToolSess
 
 const roots = [];
 
-afterEach(() => {
+after(() => {
   for (const root of roots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }
+  it("does not provide an implicit executable allowlist", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-proc-explicit-"));
+    roots.push(root);
+    const value = session(root, true, []);
+    const result = await value.tools.run_workspace_command.execute(
+      {
+        command: "node",
+        args: ["-e", "process.stdout.write('should-not-run')"],
+        cwd: ".",
+        timeoutMs: 10_000
+      },
+      { toolCallId: "process-call-explicit" }
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "COMMAND_NOT_ALLOWED");
+    await value.closePersistence();
+  });
+
+  it("blocks mutating git branch options before starting a process", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-git-block-"));
+    roots.push(root);
+    const value = session(root, true);
+    const result = await value.tools.git_inspect.execute(
+      {
+        command: "branch",
+        args: ["-D", "main"],
+        cwd: ".",
+        timeoutMs: 10_000
+      },
+      { toolCallId: "git-call-block" }
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "GIT_COMMAND_BLOCKED");
+    await value.closePersistence();
+  });
+
 });
 
-function session(root, developer = true) {
+function session(root, developer = true, allowedCommands = ["node"]) {
   return createAgentToolSession({
     taskId: "task-process",
     runId: "run-process",
@@ -25,7 +61,7 @@ function session(root, developer = true) {
       tools: {
         mode: "coding",
         runtime: { defaultTimeoutMs: 15_000 },
-        workspace: { roots: [root] },
+        workspace: { roots: [root], allowedCommands },
         developer: {
           toolsetOverrides: developer
             ? { "workspace.exec": "enabled" }
@@ -38,12 +74,13 @@ function session(root, developer = true) {
 }
 
 describe("supervised workspace process tools", () => {
-  it("keeps process execution opt-in", () => {
+  it("keeps process execution opt-in", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-proc-off-"));
     roots.push(root);
     const value = session(root, false);
     assert.equal("git_inspect" in value.tools, false);
     assert.equal("run_workspace_command" in value.tools, false);
+    await value.closePersistence();
   });
 
   it("runs an allowlisted executable without a shell", async () => {
@@ -82,4 +119,40 @@ describe("supervised workspace process tools", () => {
     assert.equal(result.error.code, "COMMAND_NOT_ALLOWED");
     await value.closePersistence();
   });
+  it("does not provide an implicit executable allowlist", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-proc-explicit-"));
+    roots.push(root);
+    const value = session(root, true, []);
+    const result = await value.tools.run_workspace_command.execute(
+      {
+        command: "node",
+        args: ["-e", "process.stdout.write('should-not-run')"],
+        cwd: ".",
+        timeoutMs: 10_000
+      },
+      { toolCallId: "process-call-explicit" }
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "COMMAND_NOT_ALLOWED");
+    await value.closePersistence();
+  });
+
+  it("blocks mutating git branch options before starting a process", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-git-block-"));
+    roots.push(root);
+    const value = session(root, true);
+    const result = await value.tools.git_inspect.execute(
+      {
+        command: "branch",
+        args: ["-D", "main"],
+        cwd: ".",
+        timeoutMs: 10_000
+      },
+      { toolCallId: "git-call-block" }
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, "GIT_COMMAND_BLOCKED");
+    await value.closePersistence();
+  });
+
 });

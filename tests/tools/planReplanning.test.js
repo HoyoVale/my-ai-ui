@@ -41,3 +41,22 @@ describe("Plan replanning foundation", () => {
     assert.equal(state.terminal, 3);
   });
 });
+
+it("bounds superseded plan history during repeated replanning", () => {
+  const store = new RunPlanStore();
+
+  for (let index = 0; index < 75; index += 1) {
+    store.update([
+      {
+        id: `step-${index}`,
+        title: `Revision ${index}`,
+        status: "in_progress"
+      }
+    ], { reason: `revision-${index}` });
+  }
+
+  const state = store.getExecutionState();
+  assert.equal(state.total, 40);
+  assert.equal(state.active.id, "step-74");
+  assert.equal(state.archived > 0, true);
+});

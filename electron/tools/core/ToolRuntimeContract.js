@@ -5,6 +5,9 @@ const EFFECTS = new Set([
   "destructive"
 ]);
 
+const MAX_RUNTIME_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const MAX_LEASE_TTL_MS = 24 * 60 * 60 * 1000;
+
 const RETRY_MODES = new Set([
   "safe",
   "idempotency_key",
@@ -65,23 +68,36 @@ export function normalizeToolRuntimeContract(
     ? ["read", "local_write"].includes(effect)
     : source.supportsResume === true;
 
+  const normalizedTimeoutMs = Math.min(
+    MAX_RUNTIME_TIMEOUT_MS,
+    Math.max(
+      0,
+      Number(source.timeoutMs ?? timeoutMs) || 0
+    )
+  );
+  const leaseTtlMs = Math.min(
+    MAX_LEASE_TTL_MS,
+    Math.max(
+      5_000,
+      Number(source.leaseTtlMs) || 60_000
+    )
+  );
+  const heartbeatMs = Math.min(
+    Math.max(1_000, Math.floor(leaseTtlMs / 2)),
+    Math.max(
+      1_000,
+      Number(source.heartbeatMs) || 10_000
+    )
+  );
+
   return {
     effect,
     retryMode,
     supportsAbort,
     supportsResume,
-    timeoutMs: Math.max(
-      0,
-      Number(source.timeoutMs ?? timeoutMs) || 0
-    ),
-    leaseTtlMs: Math.max(
-      5_000,
-      Number(source.leaseTtlMs) || 60_000
-    ),
-    heartbeatMs: Math.max(
-      1_000,
-      Number(source.heartbeatMs) || 10_000
-    ),
+    timeoutMs: normalizedTimeoutMs,
+    leaseTtlMs,
+    heartbeatMs,
     canReconcile: typeof source.reconcile === "function",
     canVerify: typeof source.verify === "function",
     canCompensate: typeof source.compensate === "function",
@@ -102,7 +118,10 @@ export function publicToolRuntimeContract(contract = {}) {
     effect: contract.effect ?? "read",
     retryMode: contract.retryMode ?? "safe",
     supportsAbort: contract.supportsAbort === true,
-    supportsResume: contract.supportsResume === true
+    supportsResume: contract.supportsResume === true,
+    canReconcile: contract.canReconcile === true,
+    canVerify: contract.canVerify === true,
+    canCompensate: contract.canCompensate === true
   };
 }
 

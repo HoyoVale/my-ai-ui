@@ -23,6 +23,8 @@ const TOOL_IDEMPOTENCY_MODES = new Set([
   "required"
 ]);
 
+const TOOL_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/u;
+
 const TOOL_ACTIVITY_VISIBILITY = new Set([
   "normal",
   "developer"
@@ -113,6 +115,12 @@ function normalizeDefinition(
   if (!name) {
     throw new TypeError(
       "Tool definition requires a name."
+    );
+  }
+
+  if (!TOOL_NAME_PATTERN.test(name)) {
+    throw new TypeError(
+      `Tool name ${name} must match ${TOOL_NAME_PATTERN}.`
     );
   }
 
@@ -216,6 +224,16 @@ function normalizeDefinition(
       timeoutMs: definition.timeoutMs ?? defaults.timeoutMs
     }
   );
+  const retryPolicy = normalizeRetryPolicy(
+    definition.retryPolicy,
+    { sideEffect }
+  );
+  if ([
+    "manual_only",
+    "reconcile_before_retry"
+  ].includes(runtimeContract.retryMode)) {
+    retryPolicy.maxAttempts = 1;
+  }
 
   return {
     ...definition,
@@ -258,11 +276,7 @@ function normalizeDefinition(
             )
           )
         : undefined,
-    retryPolicy:
-      normalizeRetryPolicy(
-        definition.retryPolicy,
-        { sideEffect }
-      )
+    retryPolicy
   };
 }
 

@@ -2,9 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import {
-  z
-} from "zod";
+import { z } from "zod";
 
 import {
   getWorkspaceRoots,
@@ -13,347 +11,482 @@ import {
   resolveWorkspacePath
 } from "./workspacePolicy.js";
 
+const fsp = fs.promises;
+const READ_RUNTIME_CONTRACT = Object.freeze({
+  effect: "read",
+  retryMode: "safe",
+  supportsAbort: true,
+  supportsResume: true
+});
+
+function workspaceToolError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (!signal?.aborted) {
+    return;
+  }
+  const error = workspaceToolError("CANCELLED_BY_USER", "工具执行已取消。");
+  error.name = "AbortError";
+  throw error;
+}
+
 function fileKind(stat) {
-  if (stat.isDirectory()) {
-    return "directory";
-  }
-
-  if (stat.isFile()) {
-    return "file";
-  }
-
-  if (stat.isSymbolicLink()) {
-    return "symlink";
-  }
-
+  if (stat.isDirectory()) return "directory";
+  if (stat.isFile()) return "file";
+  if (stat.isSymbolicLink()) return "symlink";
   return "other";
 }
 
-function ensureTextFile(
-  filePath,
-  maxBytes
-) {
-  const stat =
-    fs.statSync(filePath);
+function sizeLimitMessage(maxBytes) {
+  return `${Math.round(maxBytes / 100_000) / 10} MB`;
+}
 
-  if (stat.size > maxBytes) {
-    const error = new Error(
-      `文件超过 ${Math.round(maxBytes / 100000) / 10} MB 的只读工具上限。`
-    );
-    error.code =
-      "FILE_TOO_LARGE";
+async function openSafeReadHandle(filePath) {
+  const flags = process.platform === "win32"
+    ? "r"
+    : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;
+  try {
+    return await fsp.open(filePath, flags);
+  } catch (error) {
+    if (["ELOOP", "EMLINK"].includes(error?.code)) {
+      throw workspaceToolError(
+        "SYMLINK_READ_BLOCKED",
+        "拒绝读取符号链接文件。"
+      );
+    }
     throw error;
   }
+}
 
-  const buffer =
-    fs.readFileSync(filePath);
-
+function assertStableFile(before, after, bytesRead) {
   if (
-    buffer
-      .subarray(0, 8192)
-      .includes(0)
+    after.size !== before.size ||
+    after.size !== bytesRead ||
+    after.mtimeMs !== before.mtimeMs
   ) {
-    const error = new Error(
-      "检测到二进制文件，拒绝按文本读取。"
+    throw workspaceToolError(
+      "FILE_CHANGED_DURING_READ",
+      "文件在读取期间发生变化，请重试。"
     );
-    error.code =
-      "BINARY_FILE_BLOCKED";
-    throw error;
   }
+}
 
-  return buffer.toString("utf8");
+async function readSafeTextFile(filePath, maxBytes, { signal } = {}) {
+  throwIfAborted(signal);
+  const handle = await openSafeReadHandle(filePath);
+
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) {
+      throw workspaceToolError("FILE_REQUIRED", "该工具只接受普通文件。");
+    }
+    if (stat.size > maxBytes) {
+      throw workspaceToolError(
+        "FILE_TOO_LARGE",
+        `文件超过 ${sizeLimitMessage(maxBytes)} 的只读工具上限。`
+      );
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+
+    while (true) {
+      throwIfAborted(signal);
+      const { bytesRead } = await handle.read(
+        buffer,
+        0,
+        buffer.length,
+        null
+      );
+      if (bytesRead === 0) break;
+      totalBytes += bytesRead;
+      if (totalBytes > maxBytes) {
+        throw workspaceToolError(
+          "FILE_TOO_LARGE",
+          `文件读取期间增长并超过 ${sizeLimitMessage(maxBytes)} 上限。`
+        );
+      }
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+
+    const after = await handle.stat();
+    assertStableFile(stat, after, totalBytes);
+    const content = Buffer.concat(chunks, totalBytes);
+    if (content.subarray(0, 8192).includes(0)) {
+      throw workspaceToolError(
+        "BINARY_FILE_BLOCKED",
+        "检测到二进制文件，拒绝按文本读取。"
+      );
+    }
+
+    let text;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(content);
+    } catch {
+      throw workspaceToolError(
+        "INVALID_TEXT_ENCODING",
+        "文件不是有效的 UTF-8 文本。"
+      );
+    }
+
+    return {
+      text,
+      bytes: totalBytes,
+      stat: after
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+function escapeRegExp(character) {
+  return /[.*+?^${}()|[\]\\]/u.test(character)
+    ? `\\${character}`
+    : character;
 }
 
 function globToRegExp(pattern) {
-  const source =
-    String(pattern ?? "*")
-      .trim() || "*";
-
+  const source = String(pattern ?? "*").trim() || "*";
   let output = "^";
 
-  for (
-    let index = 0;
-    index < source.length;
-    index += 1
-  ) {
-    const character =
-      source[index];
-
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
     if (character === "*") {
       if (source[index + 1] === "*") {
-        output += ".*";
-        index += 1;
+        if (["/", "\\"].includes(source[index + 2])) {
+          output += "(?:.*[/\\\\])?";
+          index += 2;
+        } else {
+          output += ".*";
+          index += 1;
+        }
       } else {
         output += "[^/\\\\]*";
       }
-      continue;
-    }
-
-    if (character === "?") {
+    } else if (character === "?") {
       output += "[^/\\\\]";
-      continue;
+    } else if (["/", "\\"].includes(character)) {
+      output += "[/\\\\]";
+    } else {
+      output += escapeRegExp(character);
     }
-
-    output += character.replace(
-      /[.*+?^${}()|[\]\\]/gu,
-      "\\$&"
-    );
   }
 
-  output += "$";
-  return new RegExp(output, "iu");
+  return new RegExp(`${output}$`, "iu");
 }
 
-function walkFiles({
+async function walkFiles({
   directory,
   root,
   maxDepth,
+  maxFiles,
+  maxEntries,
   onFile,
   signal
 }) {
-  const stack = [
-    {
-      directory,
-      depth: 0
-    }
-  ];
+  const stack = [{ directory, depth: 0 }];
+  const stats = {
+    directoriesVisited: 0,
+    filesVisited: 0,
+    entriesVisited: 0,
+    skippedDirectories: 0,
+    skippedEntries: 0,
+    stopped: false,
+    limitReason: ""
+  };
 
   while (stack.length > 0) {
-    if (signal?.aborted) {
-      const error = new Error(
-        "工具执行已取消。"
-      );
-      error.name = "AbortError";
-      throw error;
-    }
-
+    throwIfAborted(signal);
     const current = stack.pop();
-
     let entries;
 
     try {
-      entries = fs.readdirSync(
-        current.directory,
-        {
-          withFileTypes: true
-        }
-      );
+      entries = await fsp.readdir(current.directory, { withFileTypes: true });
+      stats.directoriesVisited += 1;
     } catch {
+      stats.skippedDirectories += 1;
       continue;
     }
 
+    entries.sort((left, right) => left.name.localeCompare(right.name, "en"));
+    const childDirectories = [];
+
     for (const entry of entries) {
-      if (
-        entry.isDirectory() &&
-        isExcludedDirectory(
-          entry.name
-        )
-      ) {
+      throwIfAborted(signal);
+      stats.entriesVisited += 1;
+      if (stats.entriesVisited > maxEntries) {
+        stats.stopped = true;
+        stats.limitReason = "entry_limit";
+        return stats;
+      }
+
+      if (entry.isDirectory() && isExcludedDirectory(entry.name)) {
+        stats.skippedEntries += 1;
         continue;
       }
 
-      const absolutePath =
-        path.join(
-          current.directory,
-          entry.name
-        );
-
-      if (
-        entry.isSymbolicLink() ||
-        isSensitiveWorkspacePath(
-          absolutePath
-        )
-      ) {
+      const absolutePath = path.join(current.directory, entry.name);
+      if (entry.isSymbolicLink() || isSensitiveWorkspacePath(absolutePath)) {
+        stats.skippedEntries += 1;
         continue;
       }
 
       if (entry.isDirectory()) {
-        if (
-          current.depth <
-          maxDepth
-        ) {
-          stack.push({
-            directory:
-              absolutePath,
-            depth:
-              current.depth + 1
+        if (current.depth < maxDepth) {
+          childDirectories.push({
+            directory: absolutePath,
+            depth: current.depth + 1
           });
         }
-
         continue;
       }
 
       if (!entry.isFile()) {
+        stats.skippedEntries += 1;
         continue;
       }
 
-      const shouldContinue =
-        onFile({
-          absolutePath,
-          relativePath:
-            path.relative(
-              root,
-              absolutePath
-            )
-        });
+      stats.filesVisited += 1;
+      if (stats.filesVisited > maxFiles) {
+        stats.stopped = true;
+        stats.limitReason = "file_limit";
+        return stats;
+      }
 
+      const shouldContinue = await onFile({
+        absolutePath,
+        relativePath: path.relative(root, absolutePath)
+      });
       if (shouldContinue === false) {
-        return;
+        stats.stopped = true;
+        if (!stats.limitReason) stats.limitReason = "result_limit";
+        return stats;
       }
     }
+
+    for (let index = childDirectories.length - 1; index >= 0; index -= 1) {
+      stack.push(childDirectories[index]);
+    }
+  }
+
+  return stats;
+}
+
+function projectType(manifestName) {
+  const types = {
+    "package.json": "Node.js / JavaScript",
+    "pyproject.toml": "Python",
+    "requirements.txt": "Python",
+    "Cargo.toml": "Rust",
+    "go.mod": "Go",
+    "CMakeLists.txt": "C / C++",
+    "pom.xml": "Java / Maven",
+    "build.gradle": "Java / Gradle",
+    "build.gradle.kts": "Kotlin / Gradle"
+  };
+  return types[manifestName] ?? "Unknown";
+}
+
+function normalizedPath(relativePath) {
+  return relativePath.split(path.sep).join("/");
+}
+
+async function hashFile(filePath, maxBytes, { signal } = {}) {
+  throwIfAborted(signal);
+  const handle = await openSafeReadHandle(filePath);
+
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) {
+      throw workspaceToolError("FILE_REQUIRED", "该工具只接受普通文件。");
+    }
+    if (stat.size > maxBytes) {
+      throw workspaceToolError(
+        "FILE_TOO_LARGE",
+        `文件超过 ${sizeLimitMessage(maxBytes)} 的哈希计算上限。`
+      );
+    }
+
+    const hash = crypto.createHash("sha256");
+    const buffer = Buffer.allocUnsafe(128 * 1024);
+    let totalBytes = 0;
+
+    while (true) {
+      throwIfAborted(signal);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      totalBytes += bytesRead;
+      if (totalBytes > maxBytes) {
+        throw workspaceToolError(
+          "FILE_TOO_LARGE",
+          "文件读取期间增长并超过哈希计算上限。"
+        );
+      }
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+
+    const after = await handle.stat();
+    assertStableFile(stat, after, totalBytes);
+    return {
+      hash: hash.digest("hex"),
+      sizeBytes: totalBytes,
+      modifiedAt: after.mtime.toISOString()
+    };
+  } finally {
+    await handle.close();
   }
 }
 
-function projectType(
-  manifestName
-) {
-  const types = {
-    "package.json":
-      "Node.js / JavaScript",
-    "pyproject.toml":
-      "Python",
-    "requirements.txt":
-      "Python",
-    "Cargo.toml":
-      "Rust",
-    "go.mod": "Go",
-    "CMakeLists.txt":
-      "C / C++",
-    "pom.xml":
-      "Java / Maven",
-    "build.gradle":
-      "Java / Gradle",
-    "build.gradle.kts":
-      "Kotlin / Gradle"
-  };
+const pathSchema = z.string().trim().max(500);
+const runtimeReadMetadata = {
+  sideEffect: "read",
+  riskLevel: "low",
+  idempotency: "natural",
+  retryPolicy: {
+    maxAttempts: 2,
+    retryOn: ["TEMPORARY_FAILURE"],
+    backoffMs: 120
+  },
+  runtimeContract: READ_RUNTIME_CONTRACT
+};
 
-  return types[manifestName] ??
-    "Unknown";
-}
-
-export function createWorkspaceToolDefinitions(
-  workspaceSettings = {}
-) {
+export function createWorkspaceToolDefinitions(workspaceSettings = {}) {
   const limits = {
-    maxTextFileBytes:
-      workspaceSettings.maxTextFileBytes ??
-      2_000_000,
-    maxReadLines:
-      workspaceSettings.maxReadLines ??
-      1000,
-    maxDirectoryEntries:
-      workspaceSettings.maxDirectoryEntries ??
-      200,
-    maxSearchResults:
-      workspaceSettings.maxSearchResults ??
-      100,
-    maxSearchDepth:
-      workspaceSettings.maxSearchDepth ??
-      6,
-    maxHashFileBytes:
-      workspaceSettings.maxHashFileBytes ??
-      50_000_000
+    maxTextFileBytes: Math.min(
+      20_000_000,
+      Math.max(
+        1_024,
+        Number(workspaceSettings.maxTextFileBytes) || 2_000_000
+      )
+    ),
+    maxReadLines: Math.min(
+      5_000,
+      Math.max(
+        1,
+        Number(workspaceSettings.maxReadLines) || 1000
+      )
+    ),
+    maxDirectoryEntries: Math.min(
+      1_000,
+      Math.max(
+        1,
+        Number(workspaceSettings.maxDirectoryEntries) || 200
+      )
+    ),
+    maxSearchResults: Math.min(
+      500,
+      Math.max(
+        1,
+        Number(workspaceSettings.maxSearchResults) || 100
+      )
+    ),
+    maxSearchDepth: Math.min(
+      12,
+      Math.max(
+        0,
+        Number(workspaceSettings.maxSearchDepth) || 6
+      )
+    ),
+    maxHashFileBytes: Math.min(
+      200_000_000,
+      Math.max(
+        1_024,
+        Number(workspaceSettings.maxHashFileBytes) || 50_000_000
+      )
+    )
   };
-
-  const resolve = (
-    inputPath,
-    options = {}
-  ) => resolveWorkspacePath(
-    inputPath,
-    {
-      ...options,
-      workspaceSettings
-    }
+  limits.maxSearchFiles = Math.min(
+    20_000,
+    Math.max(500, limits.maxSearchResults * 100)
   );
+  limits.maxSearchEntries = Math.min(
+    100_000,
+    Math.max(2_000, limits.maxSearchFiles * 5)
+  );
+  limits.maxSearchBytes = Math.min(
+    256_000_000,
+    Math.max(10_000_000, limits.maxTextFileBytes * 50)
+  );
+
+  const resolve = (inputPath, options = {}) => resolveWorkspacePath(inputPath, {
+    ...options,
+    workspaceSettings
+  });
 
   return [
     {
       name: "list_directory",
       title: "List directory",
       description:
-        "List a directory inside an authorized workspace. Hidden credential directories, dependencies, build output, and symlink escapes are excluded.",
+        "List one authorized workspace directory in deterministic name order. Excluded, sensitive, unreadable, and symlink entries are omitted; truncation is reported accurately.",
       inputSchema: z.object({
-        path: z.string()
-          .max(500)
-          .default("."),
-        maxEntries: z.number()
-          .int()
-          .min(1)
+        path: pathSchema.default("."),
+        maxEntries: z.number().int().min(1)
           .max(limits.maxDirectoryEntries)
           .default(limits.maxDirectoryEntries)
       }),
-      async execute(input) {
-        const resolved =
-          resolve(
-            input.path,
-            {
-              allowFile: false
-            }
-          );
+      outputSchema: z.object({
+        root: z.string(),
+        path: z.string(),
+        entries: z.array(z.object({
+          name: z.string(),
+          type: z.enum(["directory", "file", "symlink", "other"]),
+          sizeBytes: z.number().int().nullable(),
+          modifiedAt: z.string()
+        })),
+        truncated: z.boolean(),
+        skippedEntries: z.number().int()
+      }),
+      timeoutMs: 15_000,
+      ...runtimeReadMetadata,
+      async execute(input, context = {}) {
+        throwIfAborted(context.abortSignal);
+        const resolved = resolve(input.path, { allowFile: false });
+        const rawEntries = await fsp.readdir(resolved.path, {
+          withFileTypes: true
+        });
+        rawEntries.sort((left, right) => left.name.localeCompare(right.name, "en"));
 
-        const entries =
-          fs.readdirSync(
-            resolved.path,
-            {
-              withFileTypes: true
-            }
-          )
-            .filter(
-              (entry) => {
-                if (
-                  isExcludedDirectory(
-                    entry.name
-                  )
-                ) {
-                  return false;
-                }
+        const visible = [];
+        let skippedEntries = 0;
+        for (const entry of rawEntries) {
+          throwIfAborted(context.abortSignal);
+          const absolutePath = path.join(resolved.path, entry.name);
+          if (
+            isExcludedDirectory(entry.name) ||
+            entry.isSymbolicLink() ||
+            isSensitiveWorkspacePath(absolutePath)
+          ) {
+            skippedEntries += 1;
+            continue;
+          }
 
-                const absolutePath =
-                  path.join(
-                    resolved.path,
-                    entry.name
-                  );
-
-                return (
-                  !entry.isSymbolicLink() &&
-                  !isSensitiveWorkspacePath(
-                    absolutePath
-                  )
-                );
-              }
-            )
-            .slice(0, input.maxEntries)
-            .map((entry) => {
-              const absolutePath =
-                path.join(
-                  resolved.path,
-                  entry.name
-                );
-              const stat =
-                fs.lstatSync(
-                  absolutePath
-                );
-
-              return {
-                name: entry.name,
-                type: fileKind(stat),
-                sizeBytes:
-                  stat.isFile()
-                    ? stat.size
-                    : null,
-                modifiedAt:
-                  stat.mtime.toISOString()
-              };
+          try {
+            const stat = await fsp.lstat(absolutePath);
+            visible.push({
+              name: entry.name,
+              type: fileKind(stat),
+              sizeBytes: stat.isFile() ? stat.size : null,
+              modifiedAt: stat.mtime.toISOString()
             });
+          } catch {
+            skippedEntries += 1;
+          }
+
+          if (visible.length > input.maxEntries) break;
+        }
 
         return {
           root: resolved.root,
-          path:
-            resolved.relativePath,
-          entries,
-          truncated:
-            entries.length >=
-            input.maxEntries
+          path: resolved.relativePath,
+          entries: visible.slice(0, input.maxEntries),
+          truncated: visible.length > input.maxEntries,
+          skippedEntries
         };
       }
     },
@@ -361,39 +494,33 @@ export function createWorkspaceToolDefinitions(
       name: "stat_path",
       title: "Inspect path",
       description:
-        "Get safe metadata for a file or directory inside the authorized workspace without reading its content.",
+        "Get stable metadata for one safe file or directory inside an authorized workspace without reading its content.",
       inputSchema: z.object({
-        path: z.string()
-          .min(1)
-          .max(500)
+        path: pathSchema.min(1)
       }),
-      async execute({
-        path: inputPath
-      }) {
-        const resolved =
-          resolve(
-            inputPath
-          );
-        const stat =
-          fs.statSync(
-            resolved.path
-          );
-
+      outputSchema: z.object({
+        root: z.string(),
+        path: z.string(),
+        type: z.enum(["directory", "file", "symlink", "other"]),
+        sizeBytes: z.number().int().nullable(),
+        createdAt: z.string(),
+        modifiedAt: z.string(),
+        readable: z.boolean(),
+        writableByTool: z.boolean()
+      }),
+      timeoutMs: 10_000,
+      ...runtimeReadMetadata,
+      async execute({ path: inputPath }, context = {}) {
+        throwIfAborted(context.abortSignal);
+        const resolved = resolve(inputPath);
+        const stat = await fsp.stat(resolved.path);
         return {
           root: resolved.root,
-          path:
-            resolved.relativePath,
+          path: resolved.relativePath,
           type: fileKind(stat),
-          sizeBytes:
-            stat.isFile()
-              ? stat.size
-              : null,
-          createdAt:
-            stat.birthtime
-              .toISOString(),
-          modifiedAt:
-            stat.mtime
-              .toISOString(),
+          sizeBytes: stat.isFile() ? stat.size : null,
+          createdAt: stat.birthtime.toISOString(),
+          modifiedAt: stat.mtime.toISOString(),
           readable: true,
           writableByTool: false
         };
@@ -403,66 +530,71 @@ export function createWorkspaceToolDefinitions(
       name: "read_text_file",
       title: "Read text file",
       description:
-        "Read a limited line range from a text file inside the authorized workspace. Sensitive and binary files are blocked.",
+        "Read a bounded line range from one safe UTF-8 text file. startLine and endLine are absolute 1-based line numbers; ranges may begin anywhere in the file and the runtime caps the number of returned lines.",
       inputSchema: z.object({
-        path: z.string()
-          .min(1)
-          .max(500),
-        startLine: z.number()
-          .int()
-          .min(1)
-          .default(1),
-        endLine: z.number()
-          .int()
-          .min(1)
-          .max(limits.maxReadLines + 1)
-          .optional()
+        path: pathSchema.min(1),
+        startLine: z.number().int().min(1).default(1),
+        endLine: z.number().int().min(1).max(10_000_000).optional()
       }),
-      async execute(input) {
-        const resolved =
-          resolve(
-            input.path,
-            {
-              allowDirectory: false
-            }
+      outputSchema: z.object({
+        root: z.string(),
+        path: z.string(),
+        startLine: z.number().int(),
+        endLine: z.number().int(),
+        totalLines: z.number().int(),
+        content: z.string(),
+        truncated: z.boolean(),
+        hasMoreBefore: z.boolean(),
+        hasMoreAfter: z.boolean(),
+        nextStartLine: z.number().int().nullable(),
+        sizeBytes: z.number().int()
+      }),
+      timeoutMs: 20_000,
+      ...runtimeReadMetadata,
+      async execute(input, context = {}) {
+        const resolved = resolve(input.path, { allowDirectory: false });
+        const file = await readSafeTextFile(
+          resolved.path,
+          limits.maxTextFileBytes,
+          { signal: context.abortSignal }
+        );
+        const lines = file.text.split(/\r?\n/u);
+        const start = input.startLine;
+
+        if (start > lines.length) {
+          throw workspaceToolError(
+            "LINE_RANGE_OUT_OF_BOUNDS",
+            `起始行 ${start} 超出文件总行数 ${lines.length}。`
           );
-        const text =
-          ensureTextFile(
-            resolved.path,
-            limits.maxTextFileBytes
+        }
+
+        const requestedEnd = input.endLine ?? start + Math.min(199, limits.maxReadLines - 1);
+        if (requestedEnd < start) {
+          throw workspaceToolError(
+            "INVALID_LINE_RANGE",
+            "endLine 不能小于 startLine。"
           );
-        const lines =
-          text.split(/\r?\n/u);
-        const start =
-          input.startLine;
-        const requestedEnd =
-          input.endLine ??
-          start + 199;
-        const end =
-          Math.min(
-            requestedEnd,
-            start +
-            limits.maxReadLines - 1,
-            lines.length
-          );
+        }
+
+        const end = Math.min(
+          requestedEnd,
+          start + limits.maxReadLines - 1,
+          lines.length
+        );
+        const hasMoreAfter = end < lines.length;
 
         return {
           root: resolved.root,
-          path:
-            resolved.relativePath,
+          path: resolved.relativePath,
           startLine: start,
           endLine: end,
-          totalLines:
-            lines.length,
-          content:
-            lines
-              .slice(
-                start - 1,
-                end
-              )
-              .join("\n"),
-          truncated:
-            end < lines.length
+          totalLines: lines.length,
+          content: lines.slice(start - 1, end).join("\n"),
+          truncated: hasMoreAfter || requestedEnd > end,
+          hasMoreBefore: start > 1,
+          hasMoreAfter,
+          nextStartLine: hasMoreAfter ? end + 1 : null,
+          sizeBytes: file.bytes
         };
       }
     },
@@ -470,86 +602,62 @@ export function createWorkspaceToolDefinitions(
       name: "search_files",
       title: "Search files",
       description:
-        "Search file paths in the authorized workspace using a simple glob pattern. Does not follow symlinks or inspect excluded directories.",
+        "Search safe file paths with a bounded simple Glob. Results and traversal are deterministic; **/ may match zero or more directories. Scan limits and truncation are reported.",
       inputSchema: z.object({
-        path: z.string()
-          .max(500)
-          .default("."),
-        pattern: z.string()
-          .min(1)
-          .max(200),
-        maxDepth: z.number()
-          .int()
-          .min(0)
+        path: pathSchema.default("."),
+        pattern: z.string().trim().min(1).max(200),
+        maxDepth: z.number().int().min(0)
           .max(limits.maxSearchDepth)
           .default(limits.maxSearchDepth),
-        maxResults: z.number()
-          .int()
-          .min(1)
+        maxResults: z.number().int().min(1)
           .max(limits.maxSearchResults)
           .default(limits.maxSearchResults)
       }),
-      async execute(
-        input,
-        context
-      ) {
-        const resolved =
-          resolve(
-            input.path,
-            {
-              allowFile: false
-            }
-          );
-        const matcher =
-          globToRegExp(
-            input.pattern
-          );
+      outputSchema: z.object({
+        root: z.string(),
+        pattern: z.string(),
+        matches: z.array(z.string()),
+        truncated: z.boolean(),
+        limitReason: z.string(),
+        scannedFiles: z.number().int(),
+        scannedDirectories: z.number().int(),
+        skippedEntries: z.number().int()
+      }),
+      timeoutMs: 60_000,
+      ...runtimeReadMetadata,
+      async execute(input, context = {}) {
+        const resolved = resolve(input.path, { allowFile: false });
+        const matcher = globToRegExp(input.pattern);
         const matches = [];
-
-        walkFiles({
-          directory:
-            resolved.path,
+        const traversal = await walkFiles({
+          directory: resolved.path,
           root: resolved.root,
-          maxDepth:
-            input.maxDepth,
-          signal:
-            context.abortSignal,
-          onFile({
-            relativePath
-          }) {
-            const normalized =
-              relativePath
-                .split(path.sep)
-                .join("/");
-
-            if (
-              matcher.test(normalized) ||
-              matcher.test(
-                path.basename(
-                  normalized
-                )
-              )
-            ) {
-              matches.push(
-                normalized
-              );
+          maxDepth: input.maxDepth,
+          maxFiles: limits.maxSearchFiles,
+          maxEntries: limits.maxSearchEntries,
+          signal: context.abortSignal,
+          async onFile({ relativePath }) {
+            const normalized = normalizedPath(relativePath);
+            if (matcher.test(normalized) || matcher.test(path.basename(normalized))) {
+              matches.push(normalized);
             }
-
-            return (
-              matches.length <
-              input.maxResults
-            );
+            return matches.length <= input.maxResults;
           }
         });
 
+        const truncated = matches.length > input.maxResults ||
+          ["file_limit", "entry_limit"].includes(traversal.limitReason);
         return {
           root: resolved.root,
-          pattern:
-            input.pattern,
-          matches,
-          truncated:
-            matches.length >=
-            input.maxResults
+          pattern: input.pattern,
+          matches: matches.slice(0, input.maxResults),
+          truncated,
+          limitReason: matches.length > input.maxResults
+            ? "result_limit"
+            : traversal.limitReason,
+          scannedFiles: traversal.filesVisited,
+          scannedDirectories: traversal.directoriesVisited,
+          skippedEntries: traversal.skippedEntries + traversal.skippedDirectories
         };
       }
     },
@@ -557,154 +665,119 @@ export function createWorkspaceToolDefinitions(
       name: "search_text",
       title: "Search text",
       description:
-        "Search for a literal text string in safe text files inside the authorized workspace. The query is not treated as a regular expression.",
+        "Search a literal text string in safe UTF-8 files. The query is never a regular expression. File-count, byte, depth, and result limits prevent unbounded workspace scans.",
       inputSchema: z.object({
-        path: z.string()
-          .max(500)
-          .default("."),
-        query: z.string()
-          .min(1)
-          .max(500),
-        caseSensitive: z.boolean()
-          .default(false),
+        path: pathSchema.default("."),
+        query: z.string().min(1).max(500),
+        caseSensitive: z.boolean().default(false),
         extensions: z.array(
-          z.string()
-            .min(1)
-            .max(20)
-        ).max(30)
-          .optional(),
-        maxDepth: z.number()
-          .int()
-          .min(0)
+          z.string().trim().min(1).max(20).regex(/^\.?[a-z0-9_+.-]+$/iu)
+        ).max(30).optional(),
+        maxDepth: z.number().int().min(0)
           .max(limits.maxSearchDepth)
           .default(limits.maxSearchDepth),
-        maxResults: z.number()
-          .int()
-          .min(1)
+        maxResults: z.number().int().min(1)
           .max(limits.maxSearchResults)
           .default(limits.maxSearchResults)
       }),
-      async execute(
-        input,
-        context
-      ) {
-        const resolved =
-          resolve(
-            input.path,
-            {
-              allowFile: false
-            }
-          );
-        const query =
-          input.caseSensitive
-            ? input.query
-            : input.query
-                .toLowerCase();
-        const extensions =
-          input.extensions
-            ?.map(
-              (extension) =>
-                extension
-                  .toLowerCase()
-                  .replace(/^\./u, "")
-            );
+      outputSchema: z.object({
+        root: z.string(),
+        query: z.string(),
+        matches: z.array(z.object({
+          path: z.string(),
+          line: z.number().int(),
+          text: z.string()
+        })),
+        truncated: z.boolean(),
+        limitReason: z.string(),
+        scannedFiles: z.number().int(),
+        scannedBytes: z.number().int(),
+        skippedFiles: z.number().int()
+      }),
+      timeoutMs: 90_000,
+      ...runtimeReadMetadata,
+      async execute(input, context = {}) {
+        const resolved = resolve(input.path, { allowFile: false });
+        const query = input.caseSensitive ? input.query : input.query.toLowerCase();
+        const extensions = input.extensions?.length
+          ? new Set(input.extensions.map((extension) =>
+              extension.toLowerCase().replace(/^\./u, "")
+            ))
+          : null;
         const matches = [];
+        let scannedBytes = 0;
+        let scannedFiles = 0;
+        let skippedFiles = 0;
+        let byteLimitReached = false;
 
-        walkFiles({
-          directory:
-            resolved.path,
+        const traversal = await walkFiles({
+          directory: resolved.path,
           root: resolved.root,
-          maxDepth:
-            input.maxDepth,
-          signal:
-            context.abortSignal,
-          onFile({
-            absolutePath,
-            relativePath
-          }) {
-            if (
-              extensions?.length
-            ) {
-              const extension =
-                path.extname(
-                  absolutePath
-                )
-                  .toLowerCase()
-                  .replace(/^\./u, "");
-
-              if (
-                !extensions.includes(
-                  extension
-                )
-              ) {
-                return true;
-              }
+          maxDepth: input.maxDepth,
+          maxFiles: limits.maxSearchFiles,
+          maxEntries: limits.maxSearchEntries,
+          signal: context.abortSignal,
+          async onFile({ absolutePath, relativePath }) {
+            if (extensions) {
+              const extension = path.extname(absolutePath)
+                .toLowerCase()
+                .replace(/^\./u, "");
+              if (!extensions.has(extension)) return true;
             }
 
-            let text;
-
+            let file;
             try {
-              text =
-                ensureTextFile(
-                  absolutePath,
-                  limits.maxTextFileBytes
-                );
-            } catch {
+              file = await readSafeTextFile(
+                absolutePath,
+                limits.maxTextFileBytes,
+                { signal: context.abortSignal }
+              );
+            } catch (error) {
+              if (error?.name === "AbortError") throw error;
+              skippedFiles += 1;
               return true;
             }
 
-            const lines =
-              text.split(/\r?\n/u);
+            if (scannedBytes + file.bytes > limits.maxSearchBytes) {
+              byteLimitReached = true;
+              return false;
+            }
+            scannedBytes += file.bytes;
+            scannedFiles += 1;
 
-            for (
-              let index = 0;
-              index < lines.length;
-              index += 1
-            ) {
-              const comparable =
-                input.caseSensitive
-                  ? lines[index]
-                  : lines[index]
-                      .toLowerCase();
-
-              if (
-                comparable.includes(
-                  query
-                )
-              ) {
+            const lines = file.text.split(/\r?\n/u);
+            for (let index = 0; index < lines.length; index += 1) {
+              throwIfAborted(context.abortSignal);
+              const comparable = input.caseSensitive
+                ? lines[index]
+                : lines[index].toLowerCase();
+              if (comparable.includes(query)) {
                 matches.push({
-                  path:
-                    relativePath
-                      .split(path.sep)
-                      .join("/"),
-                  line:
-                    index + 1,
-                  text:
-                    lines[index]
-                      .slice(0, 500)
+                  path: normalizedPath(relativePath),
+                  line: index + 1,
+                  text: lines[index].slice(0, 500)
                 });
               }
-
-              if (
-                matches.length >=
-                input.maxResults
-              ) {
-                return false;
-              }
+              if (matches.length > input.maxResults) return false;
             }
-
             return true;
           }
         });
 
+        const limitReason = byteLimitReached
+          ? "byte_limit"
+          : matches.length > input.maxResults
+            ? "result_limit"
+            : traversal.limitReason;
         return {
           root: resolved.root,
-          query:
-            input.query,
-          matches,
-          truncated:
-            matches.length >=
-            input.maxResults
+          query: input.query,
+          matches: matches.slice(0, input.maxResults),
+          truncated: Boolean(limitReason),
+          limitReason,
+          scannedFiles,
+          scannedBytes,
+          skippedFiles: skippedFiles + traversal.skippedDirectories
         };
       }
     },
@@ -712,21 +785,32 @@ export function createWorkspaceToolDefinitions(
       name: "detect_project",
       title: "Detect project",
       description:
-        "Identify common project manifests and package scripts in an authorized workspace without executing commands.",
+        "Identify common project manifests, lockfiles, package manager, and package scripts without executing code. Symlinked or excluded manifests are ignored.",
       inputSchema: z.object({
-        path: z.string()
-          .max(500)
-          .default(".")
+        path: pathSchema.default(".")
       }),
-      async execute(input) {
-        const resolved =
-          resolve(
-            input.path,
-            {
-              allowFile: false
-            }
-          );
-        const manifests = [
+      outputSchema: z.object({
+        root: z.string(),
+        path: z.string(),
+        manifests: z.array(z.object({ name: z.string(), type: z.string() })),
+        lockfiles: z.array(z.string()),
+        package: z.object({
+          name: z.string().nullable(),
+          version: z.string().nullable(),
+          private: z.boolean(),
+          scripts: z.array(z.string()),
+          packageManager: z.string().nullable()
+        }).or(z.object({
+          error: z.string(),
+          errorCode: z.string()
+        })).nullable()
+      }),
+      timeoutMs: 20_000,
+      ...runtimeReadMetadata,
+      async execute(input, context = {}) {
+        throwIfAborted(context.abortSignal);
+        const resolved = resolve(input.path, { allowFile: false });
+        const manifestNames = [
           "package.json",
           "pyproject.toml",
           "requirements.txt",
@@ -736,70 +820,79 @@ export function createWorkspaceToolDefinitions(
           "pom.xml",
           "build.gradle",
           "build.gradle.kts"
-        ]
-          .filter(
-            (name) =>
-              fs.existsSync(
-                path.join(
-                  resolved.path,
-                  name
-                )
-              )
-          )
-          .map(
-            (name) => ({
-              name,
-              type:
-                projectType(name)
-            })
-          );
+        ];
+        const lockfileNames = [
+          "pnpm-lock.yaml",
+          "yarn.lock",
+          "package-lock.json",
+          "bun.lock",
+          "bun.lockb",
+          "poetry.lock",
+          "uv.lock",
+          "Cargo.lock",
+          "go.sum"
+        ];
+
+        const safeFiles = new Map();
+        for (const name of [...manifestNames, ...lockfileNames]) {
+          throwIfAborted(context.abortSignal);
+          try {
+            const candidate = resolve(path.join(resolved.path, name), {
+              allowDirectory: false
+            });
+            const stat = await fsp.lstat(candidate.path);
+            if (stat.isFile() && !stat.isSymbolicLink()) {
+              safeFiles.set(name, candidate.path);
+            }
+          } catch {
+            // Missing, excluded, sensitive, unreadable, and symlinked manifests are omitted.
+          }
+        }
+
+        const manifests = manifestNames
+          .filter((name) => safeFiles.has(name))
+          .map((name) => ({ name, type: projectType(name) }));
+        const lockfiles = lockfileNames.filter((name) => safeFiles.has(name));
 
         let packageSummary = null;
-        const packagePath =
-          path.join(
-            resolved.path,
-            "package.json"
-          );
-
-        if (fs.existsSync(packagePath)) {
+        const packagePath = safeFiles.get("package.json");
+        if (packagePath) {
           try {
-            const data = JSON.parse(
-              ensureTextFile(
-                packagePath,
-                limits.maxTextFileBytes
-              )
+            const file = await readSafeTextFile(
+              packagePath,
+              limits.maxTextFileBytes,
+              { signal: context.abortSignal }
             );
-
+            const data = JSON.parse(file.text);
+            const inferredPackageManager = data.packageManager ?? (
+              lockfiles.includes("pnpm-lock.yaml") ? "pnpm" :
+              lockfiles.includes("yarn.lock") ? "yarn" :
+              lockfiles.includes("package-lock.json") ? "npm" :
+              lockfiles.some((name) => name.startsWith("bun.lock")) ? "bun" :
+              null
+            );
             packageSummary = {
-              name:
-                data.name ?? null,
-              version:
-                data.version ?? null,
-              private:
-                Boolean(data.private),
-              scripts:
-                Object.keys(
-                  data.scripts ?? {}
-                ).slice(0, 50),
-              packageManager:
-                data.packageManager ??
-                null
+              name: typeof data.name === "string" ? data.name : null,
+              version: typeof data.version === "string" ? data.version : null,
+              private: Boolean(data.private),
+              scripts: Object.keys(data.scripts ?? {}).sort().slice(0, 50),
+              packageManager: inferredPackageManager
             };
-          } catch {
+          } catch (error) {
+            if (error?.name === "AbortError") throw error;
             packageSummary = {
-              error:
-                "package.json 无法解析。"
+              error: "package.json 无法安全读取或解析。",
+              errorCode: String(error?.code ?? "INVALID_PACKAGE_JSON")
             };
           }
         }
 
         return {
           root: resolved.root,
-          path:
-            resolved.relativePath,
+          path: resolved.relativePath,
           manifests,
-          package:
-            packageSummary
+          lockfiles,
+          package: packageSummary
         };
       }
     },
@@ -807,65 +900,38 @@ export function createWorkspaceToolDefinitions(
       name: "compute_file_hash",
       title: "Compute file hash",
       description:
-        "Compute a SHA-256 hash for a safe file inside the authorized workspace without changing it.",
+        "Stream a safe file and compute SHA-256 without loading the whole file into memory. The operation supports cancellation and enforces a byte limit even if the file grows during reading.",
       inputSchema: z.object({
-        path: z.string()
-          .min(1)
-          .max(500)
+        path: pathSchema.min(1)
       }),
-      async execute(input) {
-        const resolved =
-          resolve(
-            input.path,
-            {
-              allowDirectory: false
-            }
-          );
-        const stat =
-          fs.statSync(
-            resolved.path
-          );
-
-        if (
-          stat.size >
-          limits.maxHashFileBytes
-        ) {
-          const error = new Error(
-            `文件超过 ${Math.round(limits.maxHashFileBytes / 100000) / 10} MB 的哈希计算上限。`
-          );
-          error.code =
-            "FILE_TOO_LARGE";
-          throw error;
-        }
-
-        const hash =
-          crypto
-            .createHash("sha256")
-            .update(
-              fs.readFileSync(
-                resolved.path
-              )
-            )
-            .digest("hex");
-
+      outputSchema: z.object({
+        root: z.string(),
+        path: z.string(),
+        algorithm: z.literal("sha256"),
+        hash: z.string().regex(/^[a-f0-9]{64}$/u),
+        sizeBytes: z.number().int(),
+        modifiedAt: z.string()
+      }),
+      timeoutMs: 90_000,
+      ...runtimeReadMetadata,
+      async execute(input, context = {}) {
+        const resolved = resolve(input.path, { allowDirectory: false });
+        const result = await hashFile(
+          resolved.path,
+          limits.maxHashFileBytes,
+          { signal: context.abortSignal }
+        );
         return {
           root: resolved.root,
-          path:
-            resolved.relativePath,
+          path: resolved.relativePath,
           algorithm: "sha256",
-          hash,
-          sizeBytes:
-            stat.size
+          ...result
         };
       }
     }
   ];
 }
 
-export function getDefaultWorkspaceRoot(
-  workspaceSettings = {}
-) {
-  return getWorkspaceRoots(
-    workspaceSettings
-  )[0] ?? null;
+export function getDefaultWorkspaceRoot(workspaceSettings = {}) {
+  return getWorkspaceRoots(workspaceSettings)[0] ?? null;
 }

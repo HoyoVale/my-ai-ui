@@ -40,7 +40,7 @@ export const TOOLSET_OPTIONS = [
         name: "get_agent_status",
         title: "读取 Agent 状态",
         description:
-          "读取当前 Agent Run、模型、计划和工具状态。"
+          "读取当前 Agent Run、模型和精简计划状态，不返回原始工具记录。"
       }
     ]
   },
@@ -128,13 +128,13 @@ export const TOOLSET_OPTIONS = [
         name: "git_inspect",
         title: "检查 Git 仓库",
         description:
-          "通过 Subprocess Supervisor 运行只读 Git 子命令，不启用 Shell 展开。"
+          "通过 Subprocess Supervisor 运行保守的只读 Git 检查；拦截分支修改、外部 diff 和文件输出参数。"
       },
       {
         name: "run_workspace_command",
         title: "运行工作区命令",
         description:
-          "仅运行允许列表中的可执行文件，并提供超时、取消、输出上限和进程树终止。"
+          "仅运行开发者明确加入允许列表的可执行文件，并提供超时、取消、输出上限和进程树终止；它不是操作系统沙箱。"
       }
     ]
   },

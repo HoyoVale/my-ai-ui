@@ -142,6 +142,85 @@ describe(
     );
 
     it(
+      "supports bounded high-line reads and rejects starts past EOF",
+      async () => {
+        const lines = Array.from({ length: 1_500 }, (_, index) => `line-${index + 1}`);
+        fs.writeFileSync(path.join(root, "src", "large.txt"), `${lines.join("\n")}\n`, "utf8");
+
+        const result = await getTool("read_text_file").execute({
+          path: "src/large.txt",
+          startLine: 1_201,
+          endLine: 1_210
+        });
+        assert.equal(result.startLine, 1_201);
+        assert.equal(result.endLine, 1_210);
+        assert.match(result.content, /^line-1201/u);
+        assert.equal(result.hasMoreBefore, true);
+        assert.equal(result.hasMoreAfter, true);
+
+        await assert.rejects(
+          getTool("read_text_file").execute({
+            path: "src/large.txt",
+            startLine: 2_000
+          }),
+          (error) => error?.code === "LINE_RANGE_OUT_OF_BOUNDS"
+        );
+      }
+    );
+
+    it(
+      "blocks direct reads from excluded dependency and build directories",
+      async () => {
+        fs.mkdirSync(path.join(root, "node_modules", "demo"), { recursive: true });
+        fs.writeFileSync(
+          path.join(root, "node_modules", "demo", "index.js"),
+          "module.exports = true;\n",
+          "utf8"
+        );
+        await assert.rejects(
+          getTool("read_text_file").execute({
+            path: "node_modules/demo/index.js",
+            startLine: 1
+          }),
+          (error) => error?.code === "EXCLUDED_PATH_BLOCKED"
+        );
+      }
+    );
+
+    it(
+      "rejects invalid UTF-8 and supports deterministic recursive Glob matching",
+      async () => {
+        fs.writeFileSync(
+          path.join(root, "src", "invalid.txt"),
+          Buffer.from([0xc3, 0x28])
+        );
+        await assert.rejects(
+          getTool("read_text_file").execute({
+            path: "src/invalid.txt",
+            startLine: 1
+          }),
+          (error) => error?.code === "INVALID_TEXT_ENCODING"
+        );
+
+        fs.mkdirSync(path.join(root, "src", "nested"), { recursive: true });
+        fs.writeFileSync(path.join(root, "src", "nested", "alpha.js"), "a\n");
+        fs.writeFileSync(path.join(root, "src", "zeta.js"), "z\n");
+        const search = await getTool("search_files").execute({
+          path: ".",
+          pattern: "**/*.js",
+          maxDepth: 5,
+          maxResults: 20
+        });
+        assert.deepEqual(search.matches, [
+          "src/hello.js",
+          "src/zeta.js",
+          "src/nested/alpha.js"
+        ]);
+        assert.equal(search.truncated, false);
+      }
+    );
+
+    it(
       "searches text and detects the project without executing commands",
       async () => {
         const search =

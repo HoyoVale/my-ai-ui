@@ -24,6 +24,8 @@ const PLAN_STATUSES = new Set([
   "superseded"
 ]);
 
+const MAX_RETAINED_PLAN_ITEMS = 40;
+
 const TERMINAL_PLAN_STATUSES = new Set([
   "completed",
   "blocked",
@@ -90,11 +92,53 @@ function mergePlanRevision(
           "已由新的计划修订替代。"
       };
     });
+  const availableHistory = Math.max(
+    0,
+    MAX_RETAINED_PLAN_ITEMS - nextItems.length
+  );
+  const boundedRetained = availableHistory > 0
+    ? retained.slice(-availableHistory)
+    : [];
 
-  return [
-    ...nextItems,
-    ...retained
-  ];
+  return {
+    items: [
+      ...nextItems,
+      ...boundedRetained
+    ],
+    archivedCount:
+      Math.max(0, retained.length - boundedRetained.length)
+  };
+}
+
+function boundInitialPlan(items) {
+  if (items.length <= MAX_RETAINED_PLAN_ITEMS) {
+    return {
+      items,
+      archivedCount: 0
+    };
+  }
+
+  const essential = items.filter((item) =>
+    !TERMINAL_PLAN_STATUSES.has(item.status)
+  );
+  const essentialIds = new Set(essential.map((item) => item.id));
+  const historySlots = Math.max(
+    0,
+    MAX_RETAINED_PLAN_ITEMS - essential.length
+  );
+  const history = items
+    .filter((item) => !essentialIds.has(item.id))
+    .slice(-historySlots);
+  const selectedIds = new Set([
+    ...essential.map((item) => item.id),
+    ...history.map((item) => item.id)
+  ]);
+  const bounded = items.filter((item) => selectedIds.has(item.id));
+
+  return {
+    items: bounded,
+    archivedCount: Math.max(0, items.length - bounded.length)
+  };
 }
 
 export class RunPlanStore {
@@ -104,9 +148,11 @@ export class RunPlanStore {
       onChange = null
     } = {}
   ) {
-    this.items = normalizePlanItems(
-      initialItems
+    const initial = boundInitialPlan(
+      normalizePlanItems(initialItems)
     );
+    this.items = initial.items;
+    this.archivedCount = initial.archivedCount;
     this.revision = 0;
     this.lastChange = null;
     this.onChange = onChange;
@@ -162,14 +208,15 @@ export class RunPlanStore {
   ) {
     const incoming =
       normalizePlanItems(items);
-    const normalized =
+    const merged =
       mergePlanRevision(
         this.items,
         incoming,
         String(reason ?? "").trim()
       );
-    this.validate(normalized);
-    this.items = clone(normalized);
+    this.validate(merged.items);
+    this.items = clone(merged.items);
+    this.archivedCount += merged.archivedCount;
     this.revision += 1;
 
     const plan = this.get();
@@ -259,6 +306,7 @@ export class RunPlanStore {
       cancelled,
       superseded,
       terminal,
+      archived: this.archivedCount,
       total: items.length,
       hasPlan: items.length > 0,
       hasUnfinished:
@@ -278,7 +326,7 @@ export class RunPlanStore {
   }
 
   canRunTool(toolName) {
-    if (toolName === "update_plan") {
+    if (["update_plan", "read_tool_result"].includes(toolName)) {
       return {
         ok: true,
         step: this.getExecutionState()
@@ -349,7 +397,23 @@ export function createAgentToolDefinitions({
           .max(500)
           .optional()
       }),
+      outputSchema: z.object({
+        items: z.array(z.object({
+          id: z.string(),
+          title: z.string(),
+          status: z.string(),
+          reason: z.string()
+        })),
+        execution: z.object({}).passthrough()
+      }),
       async execute(input) {
+        if (!planStore) {
+          const error = new Error(
+            "当前 Agent Run 没有可用的计划存储。"
+          );
+          error.code = "PLAN_STORE_UNAVAILABLE";
+          throw error;
+        }
         const items =
           planStore
             .update(
@@ -387,6 +451,7 @@ export function createAgentToolDefinitions({
           .max(12000)
           .optional()
       }),
+      outputSchema: z.object({}).passthrough(),
       async execute(input) {
         if (!resultStore) {
           return {

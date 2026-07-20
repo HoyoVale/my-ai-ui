@@ -548,3 +548,30 @@ describe(
     );
   }
 );
+
+describe("workspace command allowlist validation", () => {
+  it("keeps plain executable names and explicit absolute paths only", () => {
+    const absoluteCommand = process.platform === "win32"
+      ? "C:\\Tools\\node.exe"
+      : "/opt/tools/node";
+    const settings = sanitizeSettings({
+      tools: {
+        workspace: {
+          allowedCommands: [
+            "node",
+            absoluteCommand,
+            "../node",
+            "node;rm",
+            "bad\u0000command",
+            "node"
+          ]
+        }
+      }
+    });
+
+    assert.deepEqual(
+      settings.tools.workspace.allowedCommands,
+      ["node", absoluteCommand]
+    );
+  });
+});

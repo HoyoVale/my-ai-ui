@@ -36,3 +36,30 @@ test("SubprocessSupervisor returns bounded output and successful exit metadata",
   assert.equal(result.code, 0);
   assert.equal(result.stdout, "done");
 });
+
+test("SubprocessSupervisor isolates output listener failures and reports truncation", async () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...values) => warnings.push(values);
+
+  try {
+    const supervisor = new SubprocessSupervisor({ maxOutputBytes: 1_024 });
+    const result = await supervisor.run(
+      process.execPath,
+      ["-e", "process.stdout.write('x'.repeat(5000))"],
+      {
+        onStdout() {
+          throw new Error("renderer disconnected");
+        }
+      }
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.stdoutTruncated, true);
+    assert.equal(result.stdoutBytes, 5_000);
+    assert.match(result.stdout, /output truncated/u);
+    assert.equal(warnings.length > 0, true);
+  } finally {
+    console.warn = originalWarn;
+  }
+});

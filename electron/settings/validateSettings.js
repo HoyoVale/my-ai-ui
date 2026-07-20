@@ -233,6 +233,24 @@ function clamp(value, min, max) {
   );
 }
 
+
+function allowedCommandValue(value) {
+  const text = String(value ?? "").trim();
+  const hasControlCharacter = [...text].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 31 || code === 127;
+  });
+  if (!text || text.length > 500 || hasControlCharacter) {
+    return "";
+  }
+  if (path.isAbsolute(text) || path.win32.isAbsolute(text)) {
+    return path.normalize(text);
+  }
+  return /^[a-zA-Z0-9_.-]{1,120}$/u.test(text)
+    ? text
+    : "";
+}
+
 function numberValue(
   value,
   fallback,
@@ -1365,8 +1383,8 @@ function sanitizeToolSettings(
       ),
       allowedCommands: Array.isArray(workspace.allowedCommands)
         ? [...new Set(workspace.allowedCommands
-            .map((value) => String(value ?? "").trim())
-            .filter((value) => /^[a-zA-Z0-9_.-]{1,80}$/u.test(value))
+            .map(allowedCommandValue)
+            .filter(Boolean)
           )].slice(0, 32)
         : [...(defaults.workspace.allowedCommands ?? [])]
     },

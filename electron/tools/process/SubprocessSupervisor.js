@@ -1,6 +1,4 @@
-import {
-  spawn as nodeSpawn
-} from "node:child_process";
+import { spawn as nodeSpawn } from "node:child_process";
 
 function asText(chunk) {
   return Buffer.isBuffer(chunk)
@@ -8,14 +6,45 @@ function asText(chunk) {
     : String(chunk ?? "");
 }
 
-function appendBounded(current, chunk, maxBytes) {
-  const combined = `${current}${asText(chunk)}`;
-  if (Buffer.byteLength(combined, "utf8") <= maxBytes) {
-    return combined;
+function createOutputBuffer(maxBytes) {
+  return {
+    text: "",
+    totalBytes: 0,
+    truncated: false,
+    maxBytes
+  };
+}
+
+function appendBounded(state, chunk) {
+  const text = asText(chunk);
+  const chunkBytes = Buffer.byteLength(text, "utf8");
+  state.totalBytes += chunkBytes;
+
+  const combined = `${state.text}${text}`;
+  if (Buffer.byteLength(combined, "utf8") <= state.maxBytes) {
+    state.text = combined;
+    return;
   }
 
+  state.truncated = true;
+  const marker = "\n…[output truncated by supervisor]…\n";
+  const markerBytes = Buffer.byteLength(marker, "utf8");
+  const available = Math.max(0, state.maxBytes - markerBytes);
+  const headBytes = Math.floor(available * 0.6);
+  const tailBytes = available - headBytes;
   const buffer = Buffer.from(combined, "utf8");
-  return buffer.subarray(buffer.length - maxBytes).toString("utf8");
+  const head = buffer.subarray(0, headBytes).toString("utf8");
+  const tail = buffer.subarray(Math.max(0, buffer.length - tailBytes)).toString("utf8");
+  state.text = `${head}${marker}${tail}`;
+}
+
+function safeNotify(callback, value) {
+  if (typeof callback !== "function") return;
+  try {
+    callback(value);
+  } catch (error) {
+    console.warn("子进程输出监听器执行失败：", error);
+  }
 }
 
 function abortReason(signal) {
@@ -32,7 +61,7 @@ export async function terminateProcessTree(
     spawnProcess = nodeSpawn
   } = {}
 ) {
-  if (!child?.pid || child.exitCode !== null || child.killed) {
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) {
     return false;
   }
 
@@ -46,12 +75,20 @@ export async function terminateProcessTree(
           { windowsHide: true, stdio: "ignore" }
         );
       } catch {
-        child.kill(force ? "SIGKILL" : "SIGTERM");
+        try {
+          child.kill(force ? "SIGKILL" : "SIGTERM");
+        } catch {
+          // The process may have exited between the state check and kill.
+        }
         resolve();
         return;
       }
       killer.once("error", () => {
-        child.kill(force ? "SIGKILL" : "SIGTERM");
+        try {
+          child.kill(force ? "SIGKILL" : "SIGTERM");
+        } catch {
+          // Best-effort fallback.
+        }
         resolve();
       });
       killer.once("exit", resolve);
@@ -90,7 +127,7 @@ export class SubprocessSupervisor {
 
   snapshot() {
     return {
-      version: 1,
+      version: 2,
       running: [...this.children.values()].map((entry) => ({
         pid: entry.child.pid,
         command: entry.command,
@@ -106,6 +143,9 @@ export class SubprocessSupervisor {
     if (!executable) {
       throw new TypeError("Subprocess command is required.");
     }
+    if (!Array.isArray(args)) {
+      throw new TypeError("Subprocess args must be an array.");
+    }
 
     const timeoutMs = Math.max(
       0,
@@ -118,8 +158,11 @@ export class SubprocessSupervisor {
     const abortSignal = options.abortSignal ?? null;
 
     if (abortSignal?.aborted) {
-      const error = new Error(`Subprocess aborted before start: ${abortReason(abortSignal)}`);
+      const error = new Error(
+        `Subprocess aborted before start: ${abortReason(abortSignal)}`
+      );
       error.code = "SUBPROCESS_ABORTED";
+      error.name = "AbortError";
       throw error;
     }
 
@@ -143,21 +186,29 @@ export class SubprocessSupervisor {
       terminating: false,
       reason: ""
     };
-    this.children.set(child.pid, entry);
+    const childKey = child.pid ?? Symbol("pending-subprocess");
+    this.children.set(childKey, entry);
 
-    let stdout = "";
-    let stderr = "";
+    const stdout = createOutputBuffer(this.maxOutputBytes);
+    const stderr = createOutputBuffer(this.maxOutputBytes);
     child.stdout?.on("data", (chunk) => {
-      stdout = appendBounded(stdout, chunk, this.maxOutputBytes);
-      options.onStdout?.(asText(chunk));
+      appendBounded(stdout, chunk);
+      safeNotify(options.onStdout, asText(chunk));
     });
     child.stderr?.on("data", (chunk) => {
-      stderr = appendBounded(stderr, chunk, this.maxOutputBytes);
-      options.onStderr?.(asText(chunk));
+      appendBounded(stderr, chunk);
+      safeNotify(options.onStderr, asText(chunk));
     });
 
     if (options.stdin !== undefined && child.stdin) {
-      child.stdin.end(options.stdin);
+      child.stdin.on("error", () => {
+        // EPIPE is expected when a child exits before consuming all input.
+      });
+      try {
+        child.stdin.end(options.stdin);
+      } catch {
+        // The process may have exited immediately after spawn.
+      }
     }
 
     let timeoutId = null;
@@ -165,7 +216,7 @@ export class SubprocessSupervisor {
     let terminatedBy = "";
 
     const requestTermination = async (reason) => {
-      if (entry.terminating || child.exitCode !== null) {
+      if (entry.terminating || child.exitCode !== null || child.signalCode !== null) {
         return;
       }
       entry.terminating = true;
@@ -176,16 +227,14 @@ export class SubprocessSupervisor {
         force: false,
         spawnProcess: this.spawnProcess
       });
-      if (graceMs >= 0) {
-        forceId = setTimeout(() => {
-          void terminateProcessTree(child, {
-            platform: this.platform,
-            force: true,
-            spawnProcess: this.spawnProcess
-          });
-        }, graceMs);
-        forceId.unref?.();
-      }
+      forceId = setTimeout(() => {
+        void terminateProcessTree(child, {
+          platform: this.platform,
+          force: true,
+          spawnProcess: this.spawnProcess
+        });
+      }, graceMs);
+      forceId.unref?.();
     };
 
     const onAbort = () => {
@@ -202,30 +251,39 @@ export class SubprocessSupervisor {
 
     try {
       const outcome = await new Promise((resolve, reject) => {
-        child.once("error", reject);
-        child.once("exit", (code, signal) => resolve({ code, signal }));
+        let settled = false;
+        child.once("error", (error) => {
+          if (settled) return;
+          settled = true;
+          reject(error);
+        });
+        child.once("close", (code, signal) => {
+          if (settled) return;
+          settled = true;
+          resolve({ code, signal });
+        });
       });
 
       return {
         ok: outcome.code === 0 && !terminatedBy,
         code: outcome.code,
         signal: outcome.signal,
-        stdout,
-        stderr,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        stdoutBytes: stdout.totalBytes,
+        stderrBytes: stderr.totalBytes,
+        stdoutTruncated: stdout.truncated,
+        stderrTruncated: stderr.truncated,
         pid: child.pid,
         durationMs: Math.max(0, Date.now() - entry.startedAt),
         terminated: Boolean(terminatedBy),
         terminationReason: terminatedBy
       };
     } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      if (forceId) {
-        clearTimeout(forceId);
-      }
+      if (timeoutId) clearTimeout(timeoutId);
+      if (forceId) clearTimeout(forceId);
       abortSignal?.removeEventListener("abort", onAbort);
-      this.children.delete(child.pid);
+      this.children.delete(childKey);
     }
   }
 

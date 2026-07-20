@@ -132,6 +132,30 @@ describe("executable task plans", () => {
     );
   });
 
+  it("always allows paged result reads after a terminal plan", async () => {
+    const session = createAgentToolSession({
+      initialPlan: [
+        {
+          id: "one",
+          title: "Done",
+          status: "completed"
+        }
+      ]
+    });
+
+    const result = await session.tools.read_tool_result.execute(
+      {
+        resultId: "missing-result",
+        offset: 0,
+        limit: 500
+      },
+      { toolCallId: "read-result-after-plan" }
+    );
+
+    assert.notEqual(result.error?.code, "PLAN_STEP_REQUIRED");
+    await session.closePersistence();
+  });
+
   it("associates tool activity with the active plan step", async () => {
     const session = createAgentToolSession({
       initialPlan: [

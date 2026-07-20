@@ -90,3 +90,50 @@ describe("ToolRegistry foundation", () => {
     );
   });
 });
+
+it("rejects tool names that cannot be sent through provider tool APIs", () => {
+  const registry = new ToolRegistry();
+  assert.throws(
+    () => registry.register(definition("Bad.Tool-Name")),
+    /must match/u
+  );
+});
+
+it("caps automatic retries for reconciliation and manual-only tools", () => {
+  const registry = new ToolRegistry();
+  const registered = registry.register(
+    definition("remote_write_demo", {
+      sideEffect: "external",
+      riskLevel: "high",
+      retryPolicy: {
+        maxAttempts: 3,
+        retryOn: ["TEMPORARY_FAILURE"]
+      },
+      runtimeContract: {
+        effect: "remote_write",
+        retryMode: "reconcile_before_retry"
+      }
+    })
+  );
+
+  assert.equal(registered.retryPolicy.maxAttempts, 1);
+});
+
+it("bounds lease heartbeats and exposes recovery capabilities in the manifest", () => {
+  const registry = new ToolRegistry();
+  const registered = registry.register(
+    definition("verifiable_write", {
+      sideEffect: "write",
+      runtimeContract: {
+        effect: "local_write",
+        retryMode: "idempotency_key",
+        leaseTtlMs: 5_000,
+        heartbeatMs: 60_000,
+        verify: async () => ({ status: "valid" })
+      }
+    })
+  );
+
+  assert.equal(registered.runtimeContract.heartbeatMs, 2_500);
+  assert.equal(registry.manifest()[0].runtimeContract.canVerify, true);
+});
