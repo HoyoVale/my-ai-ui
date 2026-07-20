@@ -469,8 +469,9 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - [外部资源安全策略](docs/EXTERNAL_RESOURCES.md)
 - 每轮请求的实时运行环境注入
 - [第一版低风险工具系统](docs/SAFE_TOOLS.md)
+- [Tool 与 Skill 开发路线](docs/TOOL_AND_SKILL_DEVELOPMENT_PLAN.md)
 
-工具仅提供时间、计算、运行状态、任务计划和授权工作区只读能力。普通设置通过 `Chat / Coding` 两种工作模式与工作区完成配置；开启 `Setting → General → Developer mode` 后，才显示 Tool Runtime、Toolset、单工具 description、三态覆盖和诊断信息。Conversation 使用轻量工具活动卡片和持久化计划展示工具过程；运行环境注入位于 `Setting → AI → Context`。Shell、写文件、任意网络请求、浏览器自动化和 MCP 尚未开放。
+工具运行时当前提供时间、计算、运行状态、任务计划、Tool Read 2.0 工作区读取、经用户批准的原子文件写入、MCP 与 Custom HTTP Tool。普通设置通过 `Chat / Coding` 两种工作模式与工作区完成配置；开启 `Setting → General → Developer mode` 后，才显示 Tool Runtime、Toolset、单工具 description、三态覆盖、安全诊断和恢复信息。Conversation 使用轻量工具活动卡片、Approval 卡片和持久化计划展示工具过程；运行环境注入位于 `Setting → AI → Context`。任意 Shell 与未授权外部写入仍保持关闭。
 
 ### Tool Runtime 1.2
 

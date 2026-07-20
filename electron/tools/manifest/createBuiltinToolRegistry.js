@@ -20,6 +20,10 @@ import {
 } from "../workspace/workspaceTools.js";
 
 import {
+  createWorkspaceGitReadToolDefinitions
+} from "../workspace/workspaceGitReadTools.js";
+
+import {
   createWorkspaceWriteToolDefinitions
 } from "../workspace/workspaceWriteTools.js";
 
@@ -89,6 +93,17 @@ export function registerBuiltinToolDefinitions(
         : [],
       {
         source: "builtin.workspace",
+        toolset: "workspace.read",
+        sideEffect: "read",
+        riskLevel: "low"
+      }
+    )
+    .registerMany(
+      includeWorkspaceDefinitions
+        ? withPresentation(createWorkspaceGitReadToolDefinitions(workspaceSettings))
+        : [],
+      {
+        source: "builtin.workspace.git",
         toolset: "workspace.read",
         sideEffect: "read",
         riskLevel: "low"

@@ -80,27 +80,47 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
   list_directory: {
     toolset: "workspace.read",
     title: "列出目录",
-    description: "列出授权目录中的安全文件和子目录。"
+    description: "按深度、过滤规则和稳定顺序列出授权目录中的安全文件与子目录。"
+  },
+  list_directory_tree: {
+    toolset: "workspace.read",
+    title: "查看目录树",
+    description: "生成受深度、条目数和固定安全边界限制的项目目录树。"
   },
   stat_path: {
     toolset: "workspace.read",
     title: "查看路径信息",
-    description: "读取路径类型、文件大小和最后修改时间。"
+    description: "兼容性读取路径类型、文件大小和最后修改时间。"
+  },
+  inspect_path: {
+    toolset: "workspace.read",
+    title: "深度检查路径",
+    description: "检查路径存在性、类型、编码、换行、哈希和安全符号链接信息。"
   },
   read_text_file: {
     toolset: "workspace.read",
     title: "读取文本文件",
-    description: "按行读取授权工作区内受限大小的安全 UTF-8 文本文件。"
+    description: "按行读取受限大小的 UTF-8 或 UTF-16LE 文本，并返回编码、换行和哈希证据。"
+  },
+  read_multiple_files: {
+    toolset: "workspace.read",
+    title: "批量读取文件",
+    description: "在单次有界调用中读取多个小型文本文件，并隔离单文件错误。"
   },
   search_files: {
     toolset: "workspace.read",
     title: "搜索文件",
-    description: "使用有界 Glob 在授权工作区中搜索文件名。"
+    description: "使用有界 Glob、排除规则、类型、大小和修改时间筛选工作区路径。"
   },
   search_text: {
     toolset: "workspace.read",
     title: "搜索文本",
-    description: "在安全文本文件中搜索字面文本和代码片段。"
+    description: "使用字面文本或受限正则搜索，并返回行列、上下文和扫描限制。"
+  },
+  git_diff: {
+    toolset: "workspace.read",
+    title: "读取 Git 差异",
+    description: "通过受监管 Git 子进程读取未暂存、已暂存或 revision 范围差异。"
   },
   detect_project: {
     toolset: "workspace.read",

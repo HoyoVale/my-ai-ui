@@ -60,11 +60,11 @@ describe("Tool Manifest API", () => {
     });
 
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.tools.length, 19);
-    assert.equal(new Set(manifest.tools.map((tool) => tool.id)).size, 19);
-    assert.equal(new Set(manifest.tools.map((tool) => tool.name)).size, 19);
+    assert.equal(manifest.tools.length, 23);
+    assert.equal(new Set(manifest.tools.map((tool) => tool.id)).size, 23);
+    assert.equal(new Set(manifest.tools.map((tool) => tool.name)).size, 23);
     assert.match(manifest.revision, /^[a-f0-9]{20}$/u);
-    assert.equal(manifest.sourceSummary.builtin, 19);
+    assert.equal(manifest.sourceSummary.builtin, 23);
     assert.equal(manifest.sourceSummary.mcp, 0);
     assert.equal(manifest.sourceSummary.custom, 0);
 
@@ -91,9 +91,13 @@ describe("Tool Manifest API", () => {
       })
     });
     const read = manifest.tools.find((tool) => tool.name === "read_text_file");
+    const batchRead = manifest.tools.find((tool) => tool.name === "read_multiple_files");
+    const gitDiff = manifest.tools.find((tool) => tool.name === "git_diff");
     const write = manifest.tools.find((tool) => tool.name === "write_text_file");
 
     assert.equal(read.effectiveEnabled, true);
+    assert.equal(batchRead.effectiveEnabled, true);
+    assert.equal(gitDiff.effectiveEnabled, true);
     assert.equal(read.available, false);
     assert.equal(read.ready, false);
     assert.match(read.availabilityReason, /没有绑定工作区/u);

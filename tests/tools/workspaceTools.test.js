@@ -259,5 +259,152 @@ describe(
         );
       }
     );
+
+    it(
+      "returns encoding, newline, hash, and optional line numbers",
+      async () => {
+        fs.writeFileSync(
+          path.join(root, "src", "utf16.txt"),
+          Buffer.concat([
+            Buffer.from([0xff, 0xfe]),
+            Buffer.from("alpha\r\nbeta\r\n", "utf16le")
+          ])
+        );
+
+        const tool = getTool("read_text_file");
+        const input = tool.inputSchema.parse({
+          path: "src/utf16.txt",
+          startLine: 2,
+          endLine: 2,
+          includeLineNumbers: true
+        });
+        const result = await tool.execute(input);
+
+        assert.equal(result.encoding, "utf16le");
+        assert.equal(result.bom, true);
+        assert.equal(result.newline, "crlf");
+        assert.equal(result.content, "2: beta");
+        assert.match(result.sha256, /^[a-f0-9]{64}$/u);
+      }
+    );
+
+    it(
+      "reads multiple files while isolating per-file failures",
+      async () => {
+        fs.writeFileSync(path.join(root, "src", "second.txt"), "second\n", "utf8");
+        const tool = getTool("read_multiple_files");
+        const input = tool.inputSchema.parse({
+          paths: ["src/hello.js", ".env", "src/second.txt"],
+          maxBytesPerFile: 20_000,
+          maxTotalBytes: 100_000
+        });
+        const result = await tool.execute(input);
+
+        assert.equal(result.requestedFiles, 3);
+        assert.equal(result.successfulFiles, 2);
+        assert.equal(result.failedFiles, 1);
+        assert.equal(result.results[1].ok, false);
+        assert.equal(result.results[1].error.code, "SENSITIVE_PATH_BLOCKED");
+      }
+    );
+
+    it(
+      "builds bounded directory listings and project trees",
+      async () => {
+        fs.mkdirSync(path.join(root, "src", "nested"), { recursive: true });
+        fs.writeFileSync(path.join(root, "src", "nested", "keep.js"), "keep\n");
+        fs.writeFileSync(path.join(root, "src", "nested", "skip.test.js"), "skip\n");
+        fs.mkdirSync(path.join(root, "node_modules", "pkg"), { recursive: true });
+        fs.writeFileSync(path.join(root, "node_modules", "pkg", "index.js"), "hidden\n");
+
+        const listTool = getTool("list_directory");
+        const listing = await listTool.execute(listTool.inputSchema.parse({
+          path: ".",
+          depth: 3,
+          ignorePatterns: ["**/*.test.js"],
+          maxEntries: 100
+        }));
+        assert.equal(listing.entries.some((entry) => entry.path === "src/nested/keep.js"), true);
+        assert.equal(listing.entries.some((entry) => entry.path.includes("node_modules")), false);
+        assert.equal(listing.entries.some((entry) => entry.path.endsWith("skip.test.js")), false);
+
+        const treeTool = getTool("list_directory_tree");
+        const tree = await treeTool.execute(treeTool.inputSchema.parse({
+          path: "src",
+          depth: 2,
+          maxEntries: 100
+        }));
+        assert.match(tree.tree, /\[D\] nested/u);
+        assert.match(tree.tree, /\[F\] keep\.js/u);
+      }
+    );
+
+    it(
+      "supports metadata file filters and contextual regex text search",
+      async () => {
+        fs.writeFileSync(
+          path.join(root, "src", "search.js"),
+          "before\nconst alphaValue = 42;\nafter\n",
+          "utf8"
+        );
+        const fileTool = getTool("search_files");
+        const files = await fileTool.execute(fileTool.inputSchema.parse({
+          path: ".",
+          glob: "**/*.js",
+          exclude: ["**/hello.js"],
+          fileType: "file",
+          minSize: 1,
+          maxDepth: 5,
+          maxResults: 20
+        }));
+        assert.equal(files.matches.includes("src/search.js"), true);
+        assert.equal(files.matches.includes("src/hello.js"), false);
+        assert.equal(files.details[0].type, "file");
+
+        const textTool = getTool("search_text");
+        const search = await textTool.execute(textTool.inputSchema.parse({
+          path: ".",
+          query: "alpha[A-Za-z]+\\s*=\\s*42",
+          regex: true,
+          include: ["src/**/*.js"],
+          contextBefore: 1,
+          contextAfter: 1,
+          maxMatches: 20
+        }));
+        assert.equal(search.matches[0].path, "src/search.js");
+        assert.equal(search.matches[0].line, 2);
+        assert.deepEqual(search.matches[0].before, ["before"]);
+        assert.deepEqual(search.matches[0].after, ["after"]);
+
+        await assert.rejects(
+          textTool.execute(textTool.inputSchema.parse({
+            path: ".",
+            query: "(a+)+",
+            regex: true
+          })),
+          (error) => error?.code === "REGEX_TOO_COMPLEX"
+        );
+      }
+    );
+
+    it(
+      "inspects existing and missing paths without escaping the workspace",
+      async () => {
+        const tool = getTool("inspect_path");
+        const existing = await tool.execute(tool.inputSchema.parse({
+          path: "src/hello.js"
+        }));
+        assert.equal(existing.exists, true);
+        assert.equal(existing.type, "file");
+        assert.equal(existing.encoding, "utf8");
+        assert.match(existing.sha256, /^[a-f0-9]{64}$/u);
+
+        const missing = await tool.execute(tool.inputSchema.parse({
+          path: "src/missing.js"
+        }));
+        assert.equal(missing.exists, false);
+        assert.equal(missing.type, "missing");
+      }
+    );
   }
 );
