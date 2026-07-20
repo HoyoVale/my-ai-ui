@@ -162,6 +162,7 @@ describe(
         assert.equal(channels.mcp.PING, "mcp-ping");
         assert.equal(channels.mcp.SET_SECRET, "mcp-set-secret");
         assert.equal(channels.mcp.CLEAR_SECRET, "mcp-clear-secret");
+        assert.equal(channels.mcp.CLEAR_AUTH, "mcp-clear-auth");
         assert.equal(channels.mcp.CHANGED, "mcp-changed");
       }
     );

@@ -113,3 +113,105 @@ describe("MCP stdio Client Manager", () => {
     assert.equal(changes, 0);
   });
 });
+
+describe("MCP Streamable HTTP Client Manager", () => {
+  it("connects a remote server through the shared Runtime adapter", async () => {
+    const transports = [];
+    const manager = new McpClientManager({
+      credentialProvider: async () => ({
+        MCP_REMOTE_TOKEN: "remote-secret"
+      }),
+      transportFactory: (params) => {
+        const transport = {
+          params,
+          close: async () => {},
+          terminateSession: async () => {}
+        };
+        transports.push(transport);
+        return transport;
+      },
+      clientFactory: () => ({
+        connect: async () => {},
+        close: async () => {},
+        listTools: async () => ({
+          tools: [{
+            name: "search_remote",
+            description: "Search remote data",
+            inputSchema: { type: "object", properties: {} }
+          }]
+        }),
+        ping: async () => {},
+        callTool: async () => ({
+          content: [{ type: "text", text: "remote-ok" }]
+        }),
+        getServerVersion: () => ({ name: "remote-fixture", version: "1.0.0" }),
+        getServerCapabilities: () => ({ tools: {} }),
+        getInstructions: () => "Use search_remote."
+      })
+    });
+    managers.add(manager);
+    manager.syncSettings({
+      enabled: true,
+      autoConnect: false,
+      connectTimeoutMs: 10000,
+      callTimeoutMs: 10000,
+      maxToolsPerServer: 16,
+      servers: [{
+        id: "remote",
+        name: "Remote MCP",
+        enabled: true,
+        autoConnect: false,
+        transport: "streamable-http",
+        url: "https://mcp.example.com/mcp",
+        authMode: "bearer",
+        apiKeyHeader: "X-API-Key",
+        headers: {},
+        oauthScopes: [],
+        command: "",
+        args: [],
+        cwd: "",
+        env: {},
+        secretEnvKeys: ["MCP_REMOTE_TOKEN"],
+        readOnly: true,
+        preset: "remote",
+        connectTimeoutMs: 10000,
+        callTimeoutMs: 10000
+      }]
+    });
+
+    const connected = await manager.connectServer("remote");
+    assert.equal(connected.state, "connected");
+    assert.equal(connected.transport, "streamable-http");
+    assert.equal(connected.endpoint, "https://mcp.example.com/mcp");
+    assert.equal(connected.toolCount, 1);
+    assert.equal(transports[0].params.server.authMode, "bearer");
+    assert.equal(transports[0].params.env.MCP_REMOTE_TOKEN, "remote-secret");
+
+    const result = await manager.callTool("remote", "search_remote", {});
+    assert.equal(result.ok, true);
+    assert.equal(result.content[0].text, "remote-ok");
+  });
+
+  it("rejects insecure non-local HTTP endpoints before connecting", async () => {
+    const manager = new McpClientManager();
+    managers.add(manager);
+    manager.syncSettings({
+      enabled: true,
+      servers: [{
+        id: "insecure",
+        name: "Insecure",
+        enabled: true,
+        transport: "streamable-http",
+        url: "http://example.com/mcp",
+        authMode: "none",
+        headers: {},
+        secretEnvKeys: []
+      }]
+    });
+
+    await assert.rejects(
+      () => manager.connectServer("insecure"),
+      /必须使用 HTTPS/u
+    );
+  });
+});

@@ -215,6 +215,10 @@ export function SettingsContent({
     mcp: (
       <McpPanel
         settings={settings}
+        developerMode={
+          settings.general
+            .developerMode
+        }
         onUpdate={(patch) => {
           onUpdateSection(
             "mcp",

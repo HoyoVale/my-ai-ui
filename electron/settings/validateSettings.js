@@ -227,7 +227,15 @@ const TOOL_OVERRIDE_VALUES = [
 ];
 
 const MCP_TRANSPORTS = [
-  "stdio"
+  "stdio",
+  "streamable-http"
+];
+
+const MCP_AUTH_MODES = [
+  "none",
+  "bearer",
+  "api-key",
+  "oauth"
 ];
 
 const MCP_SERVER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,47}$/u;
@@ -1070,6 +1078,65 @@ function safeProcessArgument(value) {
   return hasControlCharacter ? "" : text;
 }
 
+
+function sanitizeMcpHeaders(source = {}) {
+  const output = {};
+  const entries = source && typeof source === "object" && !Array.isArray(source)
+    ? Object.entries(source)
+    : [];
+  for (const [rawName, rawValue] of entries.slice(0, 24)) {
+    const name = String(rawName ?? "").trim();
+    const value = String(rawValue ?? "").trim();
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,80}$/u.test(name)) {
+      continue;
+    }
+    if (!value || value.length > 2000 || /[\r\n]/u.test(value)) {
+      continue;
+    }
+    const lower = name.toLowerCase();
+    if (["authorization", "cookie", "proxy-authorization"].includes(lower)) {
+      continue;
+    }
+    output[name] = value;
+  }
+  return output;
+}
+
+function sanitizeMcpUrl(value) {
+  const text = String(value ?? "").trim().slice(0, 2000);
+  const hasControlCharacter = [...text].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 31 || code === 127;
+  });
+  if (!text || hasControlCharacter) {
+    return "";
+  }
+  try {
+    const parsed = new URL(text);
+    if (!["https:", "http:"].includes(parsed.protocol)) {
+      return text;
+    }
+    if (parsed.username || parsed.password || parsed.hash) {
+      return "";
+    }
+    return parsed.toString();
+  } catch {
+    // Preserve an unfinished address while the user is typing. The Runtime
+    // performs strict validation before opening a network connection.
+    return text;
+  }
+}
+
+function sanitizeOAuthScopes(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[\s,]+/u);
+  return [...new Set(values
+    .map((item) => String(item ?? "").trim())
+    .filter((item) => /^[A-Za-z0-9._:/-]{1,120}$/u.test(item))
+  )].slice(0, 24);
+}
+
 function sanitizeMcpEnvironment(source = {}) {
   const output = {};
   const entries = source && typeof source === "object" && !Array.isArray(source)
@@ -1115,19 +1182,41 @@ function sanitizeMcpServer(source, index) {
     cwd = cwd.slice(0, 500);
   }
 
+  const transport = enumValue(source?.transport, MCP_TRANSPORTS, "stdio");
+  const authMode = enumValue(source?.authMode, MCP_AUTH_MODES, "none");
+  const url = sanitizeMcpUrl(source?.url);
+  const apiKeyHeader = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,80}$/u.test(
+    String(source?.apiKeyHeader ?? "").trim()
+  )
+    ? String(source.apiKeyHeader).trim()
+    : "X-API-Key";
+  const normalizedSecretKeys = [...secretEnvKeys];
+  if (
+    transport === "streamable-http" &&
+    ["bearer", "api-key"].includes(authMode) &&
+    !normalizedSecretKeys.includes("MCP_REMOTE_TOKEN")
+  ) {
+    normalizedSecretKeys.push("MCP_REMOTE_TOKEN");
+  }
+
   return {
     id,
     name: nonEmptyStringValue(source?.name, id, 80),
     enabled: booleanValue(source?.enabled, false),
     autoConnect: booleanValue(source?.autoConnect, true),
-    transport: enumValue(source?.transport, MCP_TRANSPORTS, "stdio"),
-    command,
-    args,
-    cwd,
-    env: sanitizeMcpEnvironment(source?.env),
-    secretEnvKeys,
+    transport,
+    url: transport === "streamable-http" ? url : "",
+    authMode: transport === "streamable-http" ? authMode : "none",
+    apiKeyHeader,
+    oauthScopes: sanitizeOAuthScopes(source?.oauthScopes),
+    headers: sanitizeMcpHeaders(source?.headers),
+    command: transport === "stdio" ? command : "",
+    args: transport === "stdio" ? args : [],
+    cwd: transport === "stdio" ? cwd : "",
+    env: transport === "stdio" ? sanitizeMcpEnvironment(source?.env) : {},
+    secretEnvKeys: normalizedSecretKeys.slice(0, 16),
     readOnly: booleanValue(source?.readOnly, false),
-    preset: enumValue(source?.preset, ["custom", "github-readonly"], "custom"),
+    preset: enumValue(source?.preset, ["custom", "github-readonly", "remote"], "custom"),
     connectTimeoutMs: integerValue(source?.connectTimeoutMs, 15000, 2000, 120000),
     callTimeoutMs: integerValue(source?.callTimeoutMs, 60000, 2000, 600000)
   };

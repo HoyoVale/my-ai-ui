@@ -188,6 +188,9 @@ const CHANNELS = Object.freeze({
   MCP_CLEAR_SECRET:
     "mcp-clear-secret",
 
+  MCP_CLEAR_AUTH:
+    "mcp-clear-auth",
+
   MCP_CHANGED:
     "mcp-changed",
 
@@ -913,6 +916,13 @@ const api = Object.freeze({
         serverId: String(serverId ?? ""),
         envName: String(envName ?? "")
       }
+    );
+  },
+
+  clearMcpAuthentication: (serverId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_CLEAR_AUTH,
+      { serverId: String(serverId ?? "") }
     );
   },
 

@@ -224,6 +224,9 @@ const IPC_CHANNELS =
       CLEAR_SECRET:
         "mcp-clear-secret",
 
+      CLEAR_AUTH:
+        "mcp-clear-auth",
+
       CHANGED:
         "mcp-changed"
     }),

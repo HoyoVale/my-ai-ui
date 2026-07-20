@@ -242,6 +242,7 @@ app.whenReady().then(
               "getMcpSecretStatus",
               "setMcpSecret",
               "clearMcpSecret",
+              "clearMcpAuthentication",
               "onMcpChanged",
               "inspectEffectivePrompt",
               "selectWorkspaceDirectory",

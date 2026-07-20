@@ -15,10 +15,15 @@ import {
 
 import {
   clearMcpSecret,
+  getMcpAuthenticationStatus,
   getMcpSecretStatus,
   listMcpSecretStatuses,
   setMcpSecret
 } from "../../mcp/mcpCredentialStore.js";
+
+import {
+  clearMcpOAuthCredentials
+} from "../../mcp/McpOAuthFlow.js";
 
 import {
   isSettingSender
@@ -49,7 +54,10 @@ function stateWithCredentials() {
         ...item,
         credentialStatuses: server
           ? listMcpSecretStatuses(server)
-          : []
+          : [],
+        authentication: server
+          ? getMcpAuthenticationStatus(server)
+          : { mode: "none", configured: true, signedIn: true }
       };
     })
   };
@@ -172,6 +180,27 @@ export function registerMcpIpc() {
     }
   );
 
+
+  ipcMain.handle(
+    IPC_CHANNELS.mcp.CLEAR_AUTH,
+    async (event, request = {}) => {
+      assertSettingSender(event);
+      const server = currentServer(request.serverId);
+      if (!server) {
+        throw new Error("MCP Server 不存在。");
+      }
+      clearMcpOAuthCredentials(server.id);
+      if ((server.secretEnvKeys ?? []).includes("MCP_REMOTE_TOKEN")) {
+        clearMcpSecret(server.id, "MCP_REMOTE_TOKEN");
+      }
+      await mcpClientManager.disconnectServer(server.id, { forgetTools: false });
+      broadcastState();
+      return {
+        ok: true,
+        state: stateWithCredentials()
+      };
+    }
+  );
   ipcMain.handle(
     IPC_CHANNELS.mcp.CLEAR_SECRET,
     async (event, request = {}) => {

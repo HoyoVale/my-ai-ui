@@ -1099,6 +1099,10 @@ async function main() {
       .waitFor();
 
     await setting
+      .locator('[data-testid="mcp-add-connection"]')
+      .click();
+
+    await setting
       .locator('[data-testid="mcp-add-github"]')
       .click();
 

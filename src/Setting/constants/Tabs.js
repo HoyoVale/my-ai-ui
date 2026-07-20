@@ -74,6 +74,13 @@ export const SETTING_GROUPS = [
           "配置模型服务、API 凭据与生成参数。"
       },
       {
+        id: "mcp",
+        label: "MCP",
+        title: "MCP 与连接",
+        description:
+          "连接本地或远程 MCP 服务，为 AI 添加外部工具和数据能力。"
+      },
+      {
         id: "conversation",
         label: "Context",
         title: "会话与上下文",
@@ -102,13 +109,6 @@ export const SETTING_GROUPS = [
     label: "开发者",
     developerOnly: true,
     tabs: [
-      {
-        id: "mcp",
-        label: "MCP",
-        title: "MCP",
-        description:
-          "连接、发现和管理外部 MCP Server 与工具。"
-      },
       {
         id: "developer",
         label: "Developer",

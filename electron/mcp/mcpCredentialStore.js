@@ -169,3 +169,101 @@ export function listMcpSecretStatuses(server = {}) {
     getMcpSecretStatus(server.id, name)
   );
 }
+
+const PRIVATE_KEY_PATTERN = /^[A-Z_][A-Z0-9_]{0,95}$/u;
+
+function normalizePrivateKey(value) {
+  const key = String(value ?? "").trim().toUpperCase();
+  return PRIVATE_KEY_PATTERN.test(key) ? key : "";
+}
+
+export function setMcpPrivateValue(serverId, key, value) {
+  const id = normalizeServerId(serverId);
+  const name = normalizePrivateKey(key);
+  const secret = String(value ?? "");
+  if (!id || !name || !secret) {
+    throw new Error("MCP 私有数据的 Server、键和值均不能为空。");
+  }
+  const record = readRecord();
+  record.servers[id] = record.servers[id] ?? {};
+  record.servers[id][name] = encryptedEntry(secret);
+  writeRecord(record);
+}
+
+export function getMcpPrivateValue(serverId, key) {
+  const id = normalizeServerId(serverId);
+  const name = normalizePrivateKey(key);
+  if (!id || !name) {
+    return "";
+  }
+  return decrypt(readRecord().servers[id]?.[name]);
+}
+
+export function clearMcpPrivateValue(serverId, key) {
+  const id = normalizeServerId(serverId);
+  const name = normalizePrivateKey(key);
+  if (!id || !name) {
+    return;
+  }
+  const record = readRecord();
+  if (record.servers[id]) {
+    delete record.servers[id][name];
+    if (Object.keys(record.servers[id]).length === 0) {
+      delete record.servers[id];
+    }
+  }
+  if (Object.keys(record.servers).length === 0) {
+    fs.rmSync(filePath(), { force: true });
+  } else {
+    writeRecord(record);
+  }
+}
+
+export function clearMcpServerCredentials(serverId) {
+  const id = normalizeServerId(serverId);
+  if (!id) {
+    return;
+  }
+  const record = readRecord();
+  delete record.servers[id];
+  if (Object.keys(record.servers).length === 0) {
+    fs.rmSync(filePath(), { force: true });
+  } else {
+    writeRecord(record);
+  }
+}
+
+export function getMcpAuthenticationStatus(server = {}) {
+  const authMode = String(server.authMode ?? "none");
+  if (server.transport !== "streamable-http" || authMode === "none") {
+    return {
+      mode: authMode,
+      configured: true,
+      signedIn: authMode === "none"
+    };
+  }
+  if (["bearer", "api-key"].includes(authMode)) {
+    const status = getMcpSecretStatus(server.id, "MCP_REMOTE_TOKEN");
+    return {
+      mode: authMode,
+      configured: status.configured,
+      signedIn: status.configured,
+      protected: status.protected,
+      source: status.source
+    };
+  }
+  if (authMode === "oauth") {
+    const tokens = getMcpPrivateValue(server.id, "MCP_OAUTH_TOKENS");
+    return {
+      mode: authMode,
+      configured: true,
+      signedIn: Boolean(tokens),
+      protected: Boolean(tokens)
+    };
+  }
+  return {
+    mode: authMode,
+    configured: false,
+    signedIn: false
+  };
+}

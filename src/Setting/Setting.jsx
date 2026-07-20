@@ -64,7 +64,7 @@ export default function Setting() {
   useEffect(() => {
     if (
       !settings.general.developerMode &&
-      ["developer", "mcp"].includes(activeTab)
+      activeTab === "developer"
     ) {
       setActiveTab("general");
     }

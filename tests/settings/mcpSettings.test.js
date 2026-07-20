@@ -91,3 +91,55 @@ describe("MCP settings validation", () => {
     );
   });
 });
+
+it("sanitizes Streamable HTTP connections and remote authentication", () => {
+  const settings = sanitizeSettings({
+    mcp: {
+      servers: [{
+        id: "remote-main",
+        name: "Remote",
+        enabled: true,
+        transport: "streamable-http",
+        url: "https://mcp.example.com/mcp",
+        authMode: "api-key",
+        apiKeyHeader: "X-Service-Key",
+        oauthScopes: ["repo:read", "repo:read", "bad scope"],
+        headers: {
+          "X-Client": "my-ai-ui",
+          Authorization: "must-not-survive",
+          "Bad Header": "x"
+        },
+        command: "must-not-survive",
+        args: ["must-not-survive"],
+        env: { SHOULD_NOT: "survive" },
+        secretEnvKeys: []
+      }]
+    }
+  });
+
+  const server = settings.mcp.servers[0];
+  assert.equal(server.transport, "streamable-http");
+  assert.equal(server.url, "https://mcp.example.com/mcp");
+  assert.equal(server.authMode, "api-key");
+  assert.equal(server.apiKeyHeader, "X-Service-Key");
+  assert.deepEqual(server.oauthScopes, ["repo:read"]);
+  assert.deepEqual(server.headers, { "X-Client": "my-ai-ui" });
+  assert.deepEqual(server.secretEnvKeys, ["MCP_REMOTE_TOKEN"]);
+  assert.equal(server.command, "");
+  assert.deepEqual(server.args, []);
+  assert.deepEqual(server.env, {});
+});
+
+it("preserves an unfinished remote URL while editing", () => {
+  const settings = sanitizeSettings({
+    mcp: {
+      servers: [{
+        id: "draft",
+        transport: "streamable-http",
+        url: "https://mcp.examp"
+      }]
+    }
+  });
+
+  assert.equal(settings.mcp.servers[0].url, "https://mcp.examp/");
+});

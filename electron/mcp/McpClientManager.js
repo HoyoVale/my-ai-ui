@@ -3,6 +3,8 @@ import { EventEmitter } from "node:events";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 
 import {
   createMcpToolDefinition,
@@ -24,6 +26,11 @@ function configHash(config) {
       args: config.args,
       cwd: config.cwd,
       env: config.env,
+      url: config.url,
+      authMode: config.authMode,
+      apiKeyHeader: config.apiKeyHeader,
+      oauthScopes: config.oauthScopes,
+      headers: config.headers,
       secretEnvKeys: config.secretEnvKeys,
       readOnly: config.readOnly,
       connectTimeoutMs: config.connectTimeoutMs,
@@ -134,6 +141,83 @@ async function withTimeout(promise, timeoutMs, onTimeout) {
   }
 }
 
+
+
+function parseRemoteMcpUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value ?? ""));
+  } catch {
+    const error = new Error("远程 MCP Server 地址无效。");
+    error.code = "MCP_INVALID_URL";
+    throw error;
+  }
+  if (!["https:", "http:"].includes(parsed.protocol)) {
+    const error = new Error("远程 MCP 仅支持 HTTPS；本机服务可使用 HTTP。");
+    error.code = "MCP_INVALID_URL";
+    throw error;
+  }
+  if (parsed.username || parsed.password || parsed.hash) {
+    const error = new Error("MCP Server 地址不能包含账号、密码或片段。");
+    error.code = "MCP_INVALID_URL";
+    throw error;
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  const local = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  if (parsed.protocol === "http:" && !local) {
+    const error = new Error("远程 MCP 必须使用 HTTPS；HTTP 仅允许本机地址。");
+    error.code = "MCP_INSECURE_URL";
+    throw error;
+  }
+  return parsed;
+}
+
+function remoteRequestInit(server, secrets = {}) {
+  const headers = new Headers(server.headers ?? {});
+  const token = String(secrets.MCP_REMOTE_TOKEN ?? "").trim();
+  if (server.authMode === "bearer") {
+    if (!token) {
+      const error = new Error("该远程 MCP 连接尚未配置访问令牌。");
+      error.code = "MCP_AUTH_REQUIRED";
+      throw error;
+    }
+    headers.set("Authorization", `Bearer ${token}`);
+  } else if (server.authMode === "api-key") {
+    if (!token) {
+      const error = new Error("该远程 MCP 连接尚未配置 API Key。");
+      error.code = "MCP_AUTH_REQUIRED";
+      throw error;
+    }
+    headers.set(server.apiKeyHeader || "X-API-Key", token);
+  }
+  return { headers };
+}
+
+function createDefaultTransport({ server, env, authProvider }) {
+  if (server.transport === "stdio") {
+    return new StdioClientTransport({
+      command: server.command,
+      args: server.args ?? [],
+      cwd: server.cwd || undefined,
+      env,
+      stderr: "pipe"
+    });
+  }
+  if (server.transport === "streamable-http") {
+    return new StreamableHTTPClientTransport(parseRemoteMcpUrl(server.url), {
+      authProvider,
+      requestInit: remoteRequestInit(server, env),
+      reconnectionOptions: {
+        initialReconnectionDelay: 800,
+        maxReconnectionDelay: 15000,
+        reconnectionDelayGrowFactor: 1.8,
+        maxRetries: 3
+      }
+    });
+  }
+  throw new Error(`不支持的 MCP Transport：${server.transport}`);
+}
+
 function normalizeMcpSettings(settings = {}) {
   return settings.mcp && typeof settings.mcp === "object"
     ? settings.mcp
@@ -160,12 +244,19 @@ export class McpClientManager extends EventEmitter {
   constructor({
     credentialProvider = async () => ({}),
     clientFactory = (info, options) => new Client(info, options),
-    transportFactory = (params) => new StdioClientTransport(params)
+    transportFactory = createDefaultTransport,
+    oauthFlowFactory = null,
+    openExternal = async (url) => {
+      const { shell } = await import("electron");
+      await shell.openExternal(String(url));
+    }
   } = {}) {
     super();
     this.credentialProvider = credentialProvider;
     this.clientFactory = clientFactory;
     this.transportFactory = transportFactory;
+    this.oauthFlowFactory = oauthFlowFactory;
+    this.openExternal = openExternal;
     this.settings = {
       enabled: true,
       autoConnect: true,
@@ -181,6 +272,12 @@ export class McpClientManager extends EventEmitter {
   setCredentialProvider(provider) {
     if (typeof provider === "function") {
       this.credentialProvider = provider;
+    }
+  }
+
+  setOAuthFlowFactory(factory) {
+    if (typeof factory === "function") {
+      this.oauthFlowFactory = factory;
     }
   }
 
@@ -277,11 +374,24 @@ export class McpClientManager extends EventEmitter {
     if (!this.settings.enabled || !server.enabled) {
       throw new Error("MCP Server 当前未启用。");
     }
-    if (server.transport !== "stdio") {
-      throw new Error("当前版本仅支持 MCP stdio Transport。");
+    if (!["stdio", "streamable-http"].includes(server.transport)) {
+      throw new Error("MCP Server 使用了不受支持的 Transport。");
     }
-    if (!server.command) {
-      throw new Error("MCP Server 尚未配置启动命令。");
+    if (server.transport === "stdio" && !server.command) {
+      throw new Error("本地 MCP Server 尚未配置启动命令。");
+    }
+    if (server.transport === "streamable-http") {
+      if (!server.url) {
+        throw new Error("远程 MCP Server 尚未配置有效地址。");
+      }
+      parseRemoteMcpUrl(server.url);
+    }
+    if (
+      server.transport === "streamable-http" &&
+      server.authMode === "oauth" &&
+      typeof this.oauthFlowFactory !== "function"
+    ) {
+      throw new Error("当前运行环境未启用 MCP OAuth 登录支持。");
     }
 
     const entry = this.ensureEntry(server);
@@ -310,90 +420,144 @@ export class McpClientManager extends EventEmitter {
 
     let transport = null;
     let client = null;
+    let oauthFlow = null;
     try {
       const secretEnvironment = await this.credentialProvider(server);
       const env = {
-        ...(server.env ?? {}),
+        ...(server.transport === "stdio" ? (server.env ?? {}) : {}),
         ...(secretEnvironment ?? {})
       };
       const secretValues = Object.values(secretEnvironment ?? {})
         .map((value) => String(value ?? ""))
         .filter(Boolean);
-      client = this.clientFactory(
-        {
-          name: "xixi-desktop-mcp-client",
-          version: "1.0.0"
-        },
-        {
-          capabilities: {},
-          listChanged: {
-            tools: {
-              onChanged: (error, tools) => {
-                if (entry.client !== client) {
-                  return;
+
+      if (server.transport === "streamable-http" && server.authMode === "oauth") {
+        oauthFlow = await this.oauthFlowFactory({
+          server,
+          openExternal: this.openExternal,
+          timeoutMs: Math.max(120000, server.connectTimeoutMs * 6)
+        });
+      }
+
+      const createClient = () => {
+        const nextClient = this.clientFactory(
+          {
+            name: "xixi-desktop-mcp-client",
+            version: "1.0.0"
+          },
+          {
+            capabilities: {},
+            listChanged: {
+              tools: {
+                onChanged: (error, tools) => {
+                  if (entry.client !== nextClient) {
+                    return;
+                  }
+                  if (error) {
+                    entry.error = errorMessage(error);
+                    boundedLogLines(entry.logs, `tool list refresh: ${entry.error}`);
+                  } else {
+                    const maxTools = Math.max(
+                      1,
+                      this.settings.maxToolsPerServer ?? 128
+                    );
+                    entry.tools = normalizeDiscoveredTools(tools, maxTools);
+                    entry.lastDiscoveryAt = Date.now();
+                    entry.error = "";
+                  }
+                  this.emitChanged();
                 }
-                if (error) {
-                  entry.error = errorMessage(error);
-                  boundedLogLines(entry.logs, `tool list refresh: ${entry.error}`);
-                } else {
-                  const maxTools = Math.max(
-                    1,
-                    this.settings.maxToolsPerServer ?? 128
-                  );
-                  entry.tools = normalizeDiscoveredTools(tools, maxTools);
-                  entry.lastDiscoveryAt = Date.now();
-                  entry.error = "";
-                }
-                this.emitChanged();
               }
             }
           }
-        }
-      );
-      client.onclose = () => {
-        if (entry.client !== client) {
-          return;
-        }
-        entry.client = null;
-        entry.transport = null;
-        entry.pid = null;
-        entry.state = "disconnected";
-        if (!entry.error) {
-          entry.error = "MCP Server 进程已退出。";
-        }
-        this.emitChanged();
-      };
-      client.onerror = (error) => {
-        if (entry.client !== client) {
-          return;
-        }
-        entry.error = errorMessage(error);
-        boundedLogLines(entry.logs, `protocol: ${entry.error}`);
-        this.emitChanged();
-      };
-      transport = this.transportFactory({
-        command: server.command,
-        args: server.args ?? [],
-        cwd: server.cwd || undefined,
-        env,
-        stderr: "pipe"
-      });
-
-      transport.stderr?.on?.("data", (chunk) => {
-        boundedLogLines(entry.logs, redactLogChunk(chunk, secretValues));
-        this.emitChanged();
-      });
-
-      const timeoutMs = server.connectTimeoutMs ?? this.settings.connectTimeoutMs ?? 15000;
-      await withTimeout(
-        client.connect(transport),
-        timeoutMs,
-        () => {
-          if (transport?.close) {
-            void Promise.resolve(transport.close()).catch(() => {});
+        );
+        nextClient.onclose = () => {
+          if (entry.client !== nextClient) {
+            return;
           }
+          entry.client = null;
+          entry.transport = null;
+          entry.pid = null;
+          entry.state = "disconnected";
+          if (!entry.error) {
+            entry.error = server.transport === "stdio"
+              ? "MCP Server 进程已退出。"
+              : "远程 MCP 连接已关闭。";
+          }
+          this.emitChanged();
+        };
+        nextClient.onerror = (error) => {
+          if (entry.client !== nextClient) {
+            return;
+          }
+          entry.error = errorMessage(error);
+          boundedLogLines(entry.logs, `protocol: ${entry.error}`);
+          this.emitChanged();
+        };
+        return nextClient;
+      };
+
+      const createTransport = () => {
+        const nextTransport = this.transportFactory({
+          server,
+          command: server.command,
+          args: server.args ?? [],
+          cwd: server.cwd || undefined,
+          env,
+          stderr: "pipe",
+          authProvider: oauthFlow?.provider
+        });
+        nextTransport.stderr?.on?.("data", (chunk) => {
+          boundedLogLines(entry.logs, redactLogChunk(chunk, secretValues));
+          this.emitChanged();
+        });
+        return nextTransport;
+      };
+
+      const connectOnce = async () => {
+        client = createClient();
+        transport = createTransport();
+        const timeoutMs = server.connectTimeoutMs ?? this.settings.connectTimeoutMs ?? 15000;
+        await withTimeout(
+          client.connect(transport),
+          timeoutMs,
+          () => {
+            if (transport?.close) {
+              void Promise.resolve(transport.close()).catch(() => {});
+            }
+          }
+        );
+      };
+
+      try {
+        await connectOnce();
+      } catch (error) {
+        if (!(error instanceof UnauthorizedError) || !oauthFlow) {
+          throw error;
         }
-      );
+        entry.state = "authorizing";
+        entry.error = "请在浏览器中完成 MCP 授权。";
+        this.emitChanged();
+        const authorizationCode = await oauthFlow.waitForCode();
+        if (typeof transport?.finishAuth !== "function") {
+          throw new Error("当前远程 MCP Transport 无法完成 OAuth 授权。" );
+        }
+        await transport.finishAuth(authorizationCode);
+        try {
+          await client?.close?.();
+        } catch {
+          // Best effort before reconnecting with the saved token.
+        }
+        try {
+          await transport?.close?.();
+        } catch {
+          // Best effort before reconnecting with the saved token.
+        }
+        entry.state = "connecting";
+        entry.error = "";
+        this.emitChanged();
+        await connectOnce();
+      }
 
       const currentConfig = this.getServerConfig(entry.serverId);
       if (
@@ -440,6 +604,12 @@ export class McpClientManager extends EventEmitter {
       }
       this.emitChanged();
       throw error;
+    } finally {
+      try {
+        await oauthFlow?.close?.();
+      } catch {
+        // OAuth callback cleanup is best effort.
+      }
     }
   }
 
@@ -570,6 +740,11 @@ export class McpClientManager extends EventEmitter {
     entry.pid = null;
 
     try {
+      await transport?.terminateSession?.();
+    } catch (error) {
+      boundedLogLines(entry.logs, `session terminate: ${errorMessage(error)}`);
+    }
+    try {
       await client?.close?.();
     } catch (error) {
       boundedLogLines(entry.logs, `client close: ${errorMessage(error)}`);
@@ -619,6 +794,11 @@ export class McpClientManager extends EventEmitter {
       connectedAt: entry.connectedAt,
       lastDiscoveryAt: entry.lastDiscoveryAt,
       pid: entry.pid,
+      transport: entry.config?.transport ?? "stdio",
+      authMode: entry.config?.authMode ?? "none",
+      endpoint: entry.config?.transport === "streamable-http"
+        ? entry.config?.url ?? ""
+        : "",
       serverInfo: structuredClone(entry.serverInfo),
       capabilities: structuredClone(entry.capabilities),
       instructions: entry.instructions,
@@ -639,12 +819,17 @@ export class McpClientManager extends EventEmitter {
         transport: server.transport,
         preset: server.preset,
         readOnly: server.readOnly,
+        authMode: server.authMode ?? "none",
+        endpoint: server.transport === "streamable-http" ? server.url : "",
         commandConfigured: Boolean(server.command),
         secretEnvKeys: [...(server.secretEnvKeys ?? [])],
         ...(entry ? this.publicEntry(entry) : {
           serverId: server.id,
           state: "disconnected",
           error: "",
+          transport: server.transport,
+          authMode: server.authMode ?? "none",
+          endpoint: server.transport === "streamable-http" ? server.url : "",
           connectedAt: null,
           lastDiscoveryAt: null,
           pid: null,
