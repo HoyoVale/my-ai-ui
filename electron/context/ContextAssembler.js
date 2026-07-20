@@ -9,7 +9,9 @@ import {
 } from "../memory/memoryContextBuilder.js";
 
 import {
-  BASE_SYSTEM_CONTEXT
+  PRODUCT_BASE_SYSTEM_CONTEXT,
+  RUNTIME_KERNEL_CONTEXT,
+  resolveModeContext
 } from "./baseSystemContext.js";
 import {
   buildCapabilityContext
@@ -41,6 +43,7 @@ import {
 } from "../runtime/runtimeContextProvider.js";
 
 import {
+  resolveToolMode,
   resolveToolProfileId
 } from "../tools/toolCatalog.js";
 
@@ -152,13 +155,44 @@ export function assembleAgentContext({
       toolManifest
     });
 
+  const toolMode = resolveToolMode(
+    normalizedSettings.tools
+  );
+  const promptSettings = normalizedSettings.prompts ?? {};
+  const modeContext = resolveModeContext(
+    promptSettings,
+    toolMode
+  );
+  const developerInstructions = String(
+    promptSettings.developerInstructions ?? ""
+  ).trim();
+
   const promptSections = [
     createPromptSection({
-      id: "policy",
+      id: "runtime-kernel",
       authority: "policy",
       source: "app",
-      title: "core",
-      content: BASE_SYSTEM_CONTEXT
+      title: "runtime kernel",
+      content: RUNTIME_KERNEL_CONTEXT,
+      locked: true
+    }),
+    createPromptSection({
+      id: "product-base",
+      authority: "policy",
+      source: "app",
+      title: "product behavior",
+      content: PRODUCT_BASE_SYSTEM_CONTEXT,
+      locked: true
+    }),
+    createPromptSection({
+      id: `mode-${toolMode}`,
+      authority: "policy",
+      source: promptSettings.modeOverrides?.[toolMode]
+        ? "developer-settings"
+        : "app",
+      title: `${toolMode} mode`,
+      content: modeContext,
+      editable: true
     }),
     createPromptSection({
       id: "capabilities",
@@ -173,6 +207,14 @@ export function assembleAgentContext({
       source: "app",
       title: "environment",
       content: runtimeContext
+    }),
+    createPromptSection({
+      id: "developer-instructions",
+      authority: "developer",
+      source: "developer-settings",
+      title: "custom behavior",
+      content: developerInstructions,
+      editable: true
     }),
     createPromptSection({
       id: "personality",
@@ -214,12 +256,19 @@ export function assembleAgentContext({
           .maxOutputTokens,
       sections: [
         {
-          id: "base",
+          id: "runtime-kernel",
+          label: "Runtime Kernel",
+          tokens: estimateTextTokens(RUNTIME_KERNEL_CONTEXT)
+        },
+        {
+          id: "product-base",
           label: "基础提示词",
-          tokens:
-            estimateTextTokens(
-              BASE_SYSTEM_CONTEXT
-            )
+          tokens: estimateTextTokens(PRODUCT_BASE_SYSTEM_CONTEXT)
+        },
+        {
+          id: "mode",
+          label: `${toolMode} 模式`,
+          tokens: estimateTextTokens(modeContext)
         },
         {
           id: "capability",
@@ -236,6 +285,11 @@ export function assembleAgentContext({
             estimateTextTokens(
               runtimeContext
             )
+        },
+        {
+          id: "developer",
+          label: "开发者附加指令",
+          tokens: estimateTextTokens(developerInstructions)
         },
         {
           id: "personality",
@@ -306,7 +360,16 @@ export function assembleAgentContext({
         toolProfile:
           resolveToolProfileId(
             normalizedSettings.tools
-          )
+          ),
+        toolMode
+      },
+      prompt: {
+        mode: toolMode,
+        modeCustomized: Boolean(
+          promptSettings.modeOverrides?.[toolMode]
+        ),
+        developerInstructionsEnabled: Boolean(developerInstructions),
+        sectionCount: promptSections.length
       },
 
       personality:

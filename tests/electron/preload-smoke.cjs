@@ -121,6 +121,29 @@ app.whenReady().then(
 
     ipcMain.handle(
       CHANNELS
+        .tools
+        .GET_MANIFEST,
+      () => ({
+        schemaVersion: 1,
+        revision: "smoke-manifest",
+        tools: [],
+        toolsets: []
+      })
+    );
+
+    ipcMain.handle(
+      CHANNELS
+        .developer
+        .INSPECT_PROMPT,
+      () => ({
+        schemaVersion: 1,
+        effectivePrompt: "smoke prompt",
+        sections: []
+      })
+    );
+
+    ipcMain.handle(
+      CHANNELS
         .conversation
         .GET,
       () => ({
@@ -197,6 +220,8 @@ app.whenReady().then(
               "sendAgentMessage",
               "getAgentStatus",
               "getSettings",
+              "getToolManifest",
+              "inspectEffectivePrompt",
               "selectWorkspaceDirectory",
               "openExternalLink",
               "getConversationState",
@@ -249,6 +274,14 @@ app.whenReady().then(
               settings:
                 await window.api
                   .getSettings(),
+
+              toolManifest:
+                await window.api
+                  .getToolManifest(),
+
+              promptInspection:
+                await window.api
+                  .inspectEffectivePrompt(),
 
               conversationState:
                 await window.api
@@ -312,6 +345,16 @@ app.whenReady().then(
       {
         general: {}
       }
+    );
+
+    assert.equal(
+      result.toolManifest.revision,
+      "smoke-manifest"
+    );
+
+    assert.equal(
+      result.promptInspection.effectivePrompt,
+      "smoke prompt"
     );
 
     assert.equal(

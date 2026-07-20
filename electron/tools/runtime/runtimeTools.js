@@ -119,7 +119,8 @@ export function createRuntimeToolDefinitions({
     state: "unknown"
   }),
   getPlan = () => [],
-  settings = {}
+  settings = {},
+  includeWorkspaceInfo = null
 } = {}) {
   const toolSettings = settings.tools ?? {};
   const workspaceSettings = toolSettings.workspace ?? {};
@@ -164,7 +165,12 @@ export function createRuntimeToolDefinitions({
     }
   ];
 
-  if (workspaceSummary) {
+  const shouldIncludeWorkspaceInfo =
+    includeWorkspaceInfo === null
+      ? Boolean(workspaceSummary)
+      : includeWorkspaceInfo === true;
+
+  if (shouldIncludeWorkspaceInfo) {
     definitions.push({
       name: "get_workspace_info",
       title: "Get workspace info",
@@ -182,7 +188,14 @@ export function createRuntimeToolDefinitions({
         supportsResume: true
       },
       async execute() {
-        return workspaceSummary;
+        return workspaceSummary ?? {
+          enabled: false,
+          roots: [],
+          mode: "unbound",
+          excludes: [],
+          sensitiveFilesBlocked: true,
+          symlinkEscapeBlocked: true
+        };
       }
     });
   }

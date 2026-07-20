@@ -211,6 +211,12 @@ export function SettingsContent({
     developer: (
       <DeveloperPanel
         settings={settings}
+        onUpdatePrompts={(patch) => {
+          onUpdateSection(
+            "prompts",
+            patch
+          );
+        }}
       />
     ),
 

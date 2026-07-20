@@ -194,6 +194,16 @@ const IPC_CHANNELS =
         "security-open-external-url"
     }),
 
+    tools: Object.freeze({
+      GET_MANIFEST:
+        "tools-get-manifest"
+    }),
+
+    developer: Object.freeze({
+      INSPECT_PROMPT:
+        "developer-inspect-prompt"
+    }),
+
     workspace: Object.freeze({
       LIST:
         "workspace-list",

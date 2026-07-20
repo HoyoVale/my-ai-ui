@@ -9,10 +9,6 @@ import {
 } from "./core/ToolResultStore.js";
 
 import {
-  ToolRegistry
-} from "./core/ToolRegistry.js";
-
-import {
   ToolPolicyEngine
 } from "./core/ToolPolicyEngine.js";
 
@@ -42,33 +38,16 @@ import {
 } from "../runtime/runtimeCircuitBreakers.js";
 
 import {
-  RunPlanStore,
-  createAgentToolDefinitions
+  RunPlanStore
 } from "../agent/orchestration/agentTools.js";
-
-import {
-  createDateTimeToolDefinitions
-} from "./runtime/dateTimeTools.js";
-
-import {
-  createRuntimeToolDefinitions
-} from "./runtime/runtimeTools.js";
 
 import {
   resolveEnabledToolCatalog
 } from "./toolCatalog.js";
 
 import {
-  createWorkspaceToolDefinitions
-} from "./workspace/workspaceTools.js";
-
-import {
-  createWorkspaceWriteToolDefinitions
-} from "./workspace/workspaceWriteTools.js";
-
-import {
-  createWorkspaceProcessToolDefinitions
-} from "./workspace/workspaceProcessTools.js";
+  createBuiltinToolRegistry
+} from "./manifest/createBuiltinToolRegistry.js";
 
 import {
   getWorkspaceRoots
@@ -138,81 +117,17 @@ export function createAgentToolSession({
       workspaceSettings
     ).length > 0;
 
-  const registry = new ToolRegistry()
-    .registerMany(
-      createDateTimeToolDefinitions(),
-      {
-        source: "builtin.datetime",
-        toolset: "core.runtime",
-        sideEffect: "none",
-        riskLevel: "none"
-      }
-    )
-    .registerMany(
-      createRuntimeToolDefinitions({
-        activeModel,
-        getAgentStatus,
-        getPlan: () => planStore.get(),
-        settings
-      }),
-      {
-        source: "builtin.runtime",
-        toolset: "core.runtime",
-        sideEffect: "none",
-        riskLevel: "none"
-      }
-    )
-    .registerMany(
-      hasWorkspace
-        ? createWorkspaceToolDefinitions(
-            workspaceSettings
-          )
-        : [],
-      {
-        source: "builtin.workspace",
-        toolset: "workspace.read",
-        sideEffect: "read",
-        riskLevel: "low"
-      }
-    )
-    .registerMany(
-      hasWorkspace
-        ? createWorkspaceWriteToolDefinitions(
-            workspaceSettings
-          )
-        : [],
-      {
-        source: "builtin.workspace",
-        toolset: "workspace.write",
-        sideEffect: "write",
-        riskLevel: "medium"
-      }
-    )
-    .registerMany(
-      hasWorkspace
-        ? createWorkspaceProcessToolDefinitions(
-            workspaceSettings
-          )
-        : [],
-      {
-        source: "builtin.workspace",
-        toolset: "workspace.exec",
-        sideEffect: "external",
-        riskLevel: "high"
-      }
-    )
-    .registerMany(
-      createAgentToolDefinitions({
-        resultStore,
-        planStore
-      }),
-      {
-        source: "builtin.agent",
-        toolset: "agent.internal",
-        sideEffect: "none",
-        riskLevel: "none"
-      }
-    );
+  const registry = createBuiltinToolRegistry({
+    activeModel,
+    getAgentStatus,
+    getPlan: () => planStore.get(),
+    settings,
+    workspaceSettings,
+    includeWorkspaceDefinitions: hasWorkspace,
+    includeWorkspaceInfo: hasWorkspace,
+    resultStore,
+    planStore
+  });
 
   const definitions = registry.list();
 

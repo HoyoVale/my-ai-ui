@@ -1,7 +1,3 @@
-import {
-  TOOL_METADATA
-} from "../../Setting/tools/toolPanelOptions.js";
-
 export function formatTaskDuration(
   milliseconds
 ) {
@@ -51,7 +47,7 @@ export function stringifyTaskValue(value) {
 
 export function getToolTitle(toolCall) {
   return (
-    TOOL_METADATA[toolCall?.name]?.title ??
+    toolCall?.displayTitle ??
     toolCall?.title ??
     toolCall?.name ??
     "工具调用"
@@ -60,8 +56,8 @@ export function getToolTitle(toolCall) {
 
 export function getToolDescription(toolCall) {
   return (
-    TOOL_METADATA[toolCall?.name]
-      ?.description ??
+    toolCall?.displayDescription ??
+    toolCall?.description ??
     ""
   );
 }

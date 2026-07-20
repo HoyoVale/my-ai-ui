@@ -206,6 +206,13 @@ export const FALLBACK_SETTINGS = {
     responseLength: "balanced",
     customInstructions: ""
   },
+  prompts: {
+    modeOverrides: {
+      chat: "",
+      coding: ""
+    },
+    developerInstructions: ""
+  },
   conversation: {
     contextTurns: 8,
     maxConversations: 100,

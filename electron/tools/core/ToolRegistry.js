@@ -3,6 +3,10 @@ import {
   publicToolRuntimeContract
 } from "./ToolRuntimeContract.js";
 
+import {
+  serializeToolSchema
+} from "../manifest/toolSchema.js";
+
 const TOOL_RISK_LEVELS = new Set([
   "none",
   "low",
@@ -46,6 +50,9 @@ function copyDefinition(definition) {
     },
     runtimeContract: {
       ...definition.runtimeContract
+    },
+    presentation: {
+      ...(definition.presentation ?? {})
     }
   };
 }
@@ -262,6 +269,16 @@ function normalizeDefinition(
     countsTowardLimit,
     countsTowardRepeatLimit,
     activityVisibility,
+    presentation: {
+      title: String(
+        definition.presentation?.title ?? definition.title ?? name
+      ).trim() || name,
+      description: String(
+        definition.presentation?.description ?? definition.description ?? ""
+      ).trim(),
+      icon: String(definition.presentation?.icon ?? "").trim(),
+      hidden: definition.presentation?.hidden === true
+    },
     runtimeContract,
     timeoutMs:
       Number.isFinite(
@@ -277,6 +294,34 @@ function normalizeDefinition(
           )
         : undefined,
     retryPolicy
+  };
+}
+
+
+function manifestEntry(definition) {
+  return {
+    schemaVersion: 1,
+    id: definition.id,
+    name: definition.name,
+    version: definition.version,
+    title: definition.title,
+    description: definition.description,
+    presentation: cloneMetadata(definition.presentation ?? {}),
+    source: definition.source,
+    toolsets: [...definition.toolsets],
+    riskLevel: definition.riskLevel,
+    sideEffect: definition.sideEffect,
+    idempotency: definition.idempotency,
+    countsTowardLimit: definition.countsTowardLimit,
+    countsTowardRepeatLimit: definition.countsTowardRepeatLimit,
+    activityVisibility: definition.activityVisibility,
+    timeoutMs: definition.timeoutMs ?? null,
+    retryPolicy: cloneMetadata(definition.retryPolicy),
+    runtimeContract: publicToolRuntimeContract(
+      definition.runtimeContract
+    ),
+    inputSchema: serializeToolSchema(definition.inputSchema),
+    outputSchema: serializeToolSchema(definition.outputSchema)
   };
 }
 
@@ -359,38 +404,7 @@ export class ToolRegistry {
   }
 
   manifest() {
-    return this.list().map(
-      (definition) => ({
-        id: definition.id,
-        name: definition.name,
-        version: definition.version,
-        title: definition.title,
-        description:
-          definition.description,
-        source: definition.source,
-        toolsets: [...definition.toolsets],
-        riskLevel:
-          definition.riskLevel,
-        sideEffect:
-          definition.sideEffect,
-        idempotency:
-          definition.idempotency,
-        countsTowardLimit:
-          definition.countsTowardLimit,
-        countsTowardRepeatLimit:
-          definition.countsTowardRepeatLimit,
-        activityVisibility:
-          definition.activityVisibility,
-        retryPolicy:
-          cloneMetadata(
-            definition.retryPolicy
-          ),
-        runtimeContract:
-          publicToolRuntimeContract(
-            definition.runtimeContract
-          )
-      })
-    );
+    return this.list().map(manifestEntry);
   }
 
   snapshot() {
@@ -426,26 +440,9 @@ export class ToolRegistrySnapshot {
   }
 
   manifest() {
-    return this.list().map((definition) => ({
-      id: definition.id,
-      name: definition.name,
-      version: definition.version,
-      title: definition.title,
-      description: definition.description,
-      source: definition.source,
-      toolsets: [...definition.toolsets],
-      riskLevel: definition.riskLevel,
-      sideEffect: definition.sideEffect,
-      idempotency: definition.idempotency,
-      countsTowardLimit: definition.countsTowardLimit,
-      countsTowardRepeatLimit: definition.countsTowardRepeatLimit,
-      activityVisibility: definition.activityVisibility,
-      retryPolicy: cloneMetadata(definition.retryPolicy),
-      runtimeContract: publicToolRuntimeContract(
-        definition.runtimeContract
-      )
-    }));
+    return this.list().map(manifestEntry);
   }
+
 }
 
 export {

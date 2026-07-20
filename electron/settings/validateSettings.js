@@ -1413,6 +1413,8 @@ export function sanitizeSettings(
     source.appearance ?? {};
   const personality =
     source.personality ?? {};
+  const prompts =
+    source.prompts ?? {};
   const conversation =
     source.conversation ?? {};
   const context =
@@ -1679,6 +1681,26 @@ export function sanitizeSettings(
             .customInstructions,
           4000
         ).trim()
+    },
+
+    prompts: {
+      modeOverrides: {
+        chat: stringValue(
+          prompts.modeOverrides?.chat,
+          defaults.prompts.modeOverrides.chat,
+          12000
+        ).trim(),
+        coding: stringValue(
+          prompts.modeOverrides?.coding,
+          defaults.prompts.modeOverrides.coding,
+          12000
+        ).trim()
+      },
+      developerInstructions: stringValue(
+        prompts.developerInstructions,
+        defaults.prompts.developerInstructions,
+        20000
+      ).trim()
     },
 
     conversation: {

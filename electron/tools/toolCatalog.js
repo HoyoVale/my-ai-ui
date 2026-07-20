@@ -1,32 +1,19 @@
-export const SAFE_TOOL_CATALOG = Object.freeze([
-  { name: "get_current_time", title: "Get current time", toolset: "core.runtime" },
-  { name: "convert_time_zone", title: "Convert time zone", toolset: "core.runtime" },
-  { name: "calculate_date", title: "Calculate date", toolset: "core.runtime" },
-  { name: "calculator", title: "Calculator", toolset: "core.runtime" },
-  { name: "get_runtime_info", title: "Get runtime info", toolset: "core.runtime" },
-  { name: "get_agent_status", title: "Get agent status", toolset: "core.runtime" },
-  { name: "get_workspace_info", title: "Get workspace info", toolset: "workspace.read" },
-  { name: "list_directory", title: "List directory", toolset: "workspace.read" },
-  { name: "stat_path", title: "Inspect path", toolset: "workspace.read" },
-  { name: "read_text_file", title: "Read text file", toolset: "workspace.read" },
-  { name: "search_files", title: "Search files", toolset: "workspace.read" },
-  { name: "search_text", title: "Search text", toolset: "workspace.read" },
-  { name: "detect_project", title: "Detect project", toolset: "workspace.read" },
-  { name: "compute_file_hash", title: "Compute file hash", toolset: "workspace.read" },
-  { name: "write_text_file", title: "Write text file", toolset: "workspace.write" },
-  { name: "git_inspect", title: "Inspect Git repository", toolset: "workspace.exec" },
-  { name: "run_workspace_command", title: "Run workspace command", toolset: "workspace.exec" },
-  { name: "update_plan", title: "Update task plan", toolset: "agent.internal" },
-  { name: "read_tool_result", title: "Read tool result", toolset: "agent.internal" }
-]);
+import {
+  BUILTIN_TOOLSET_MANIFEST,
+  BUILTIN_TOOL_PRESENTATION
+} from "./manifest/builtinToolPresentation.js";
 
-export const TOOLSET_IDS = Object.freeze([
-  "core.runtime",
-  "workspace.read",
-  "workspace.write",
-  "workspace.exec",
-  "agent.internal"
-]);
+export const SAFE_TOOL_CATALOG = Object.freeze(
+  Object.entries(BUILTIN_TOOL_PRESENTATION).map(([name, item]) => ({
+    name,
+    title: item.title,
+    toolset: item.toolset
+  }))
+);
+
+export const TOOLSET_IDS = Object.freeze(
+  BUILTIN_TOOLSET_MANIFEST.map((toolset) => toolset.id)
+);
 
 export const SAFE_TOOL_NAMES = Object.freeze(
   SAFE_TOOL_CATALOG.map((tool) => tool.name)
@@ -58,7 +45,7 @@ function overrideValue(value) {
     : "inherit";
 }
 
-function baseToolsetEnabled(mode, toolset) {
+export function baseToolsetEnabled(mode, toolset) {
   if (toolset === "workspace.read") {
     return true;
   }
@@ -84,11 +71,14 @@ export function resolveEnabledToolCatalog(
   }
 
   const mode = normalizeMode(settings);
+  const hasModernOverrides =
+    settings.developer &&
+    typeof settings.developer === "object";
   const developer = settings.developer ?? {};
   const toolsetOverrides = developer.toolsetOverrides ?? {};
   const toolOverrides = developer.toolOverrides ?? {};
-  const legacyToolsets = settings.toolsets ?? {};
-  const legacyOverrides = settings.overrides ?? {};
+  const legacyToolsets = hasModernOverrides ? {} : (settings.toolsets ?? {});
+  const legacyOverrides = hasModernOverrides ? {} : (settings.overrides ?? {});
 
   return catalog.filter((item) => {
     const toolset = item.toolset ?? item.toolsets?.[0] ?? "core.runtime";
@@ -98,9 +88,7 @@ export function resolveEnabledToolCatalog(
       toolsetEnabled = legacyToolsets[toolset];
     }
 
-    const toolsetOverride = overrideValue(
-      toolsetOverrides[toolset]
-    );
+    const toolsetOverride = overrideValue(toolsetOverrides[toolset]);
 
     if (toolsetOverride === "enabled") {
       toolsetEnabled = true;
@@ -120,9 +108,7 @@ export function resolveEnabledToolCatalog(
       return false;
     }
 
-    const toolOverride = overrideValue(
-      toolOverrides[item.name]
-    );
+    const toolOverride = overrideValue(toolOverrides[item.name]);
 
     if (toolOverride === "enabled") {
       return true;

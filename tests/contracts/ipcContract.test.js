@@ -139,6 +139,20 @@ describe(
     );
 
     it(
+      "exposes Manifest and Effective Prompt inspection channels",
+      () => {
+        assert.equal(
+          channels.tools.GET_MANIFEST,
+          "tools-get-manifest"
+        );
+        assert.equal(
+          channels.developer.INSPECT_PROMPT,
+          "developer-inspect-prompt"
+        );
+      }
+    );
+
+    it(
       "exposes memory channels",
       () => {
         assert.equal(

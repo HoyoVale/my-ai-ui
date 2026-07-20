@@ -13,16 +13,182 @@ import {
 } from "../components/Controls.jsx";
 
 import {
-  TOOL_OVERRIDE_OPTIONS,
-  TOOLSET_OPTIONS
+  TOOL_OVERRIDE_OPTIONS
 } from "../tools/toolPanelOptions.js";
 
-function formatBytes(value) {
-  if (value >= 1000000) {
-    return `${Math.round(value / 100000) / 10} MB`;
-  }
+import {
+  useToolManifest
+} from "../hooks/useToolManifest.js";
 
-  return `${Math.round(value / 1000)} KB`;
+function formatBytes(value) {
+  if (value >= 1_000_000) {
+    return `${Math.round(value / 100_000) / 10} MB`;
+  }
+  return `${Math.round(value / 1_000)} KB`;
+}
+
+function formatJson(value) {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return "{}";
+  }
+}
+
+function riskLabel(tool) {
+  const labels = {
+    none: "无风险",
+    low: "低风险",
+    medium: "中风险",
+    high: "高风险"
+  };
+  return labels[tool.riskLevel] ?? tool.riskLevel ?? "未知";
+}
+
+function effectLabel(tool) {
+  const labels = {
+    none: "无副作用",
+    read: "读取",
+    write: "本地写入",
+    external: "外部操作",
+    local_write: "本地写入",
+    remote_write: "远程写入",
+    destructive: "破坏性操作"
+  };
+  return labels[tool.runtimeContract?.effect] ??
+    labels[tool.sideEffect] ??
+    tool.sideEffect ??
+    "未知";
+}
+
+function effectiveLabel(item) {
+  if (item.ready) return "已启用";
+  if (item.effectiveEnabled && !item.available) return "暂不可用";
+  return "已禁用";
+}
+
+function ToolSchema({ title, schema }) {
+  return (
+    <details className="tool-manifest-schema">
+      <summary>{title}</summary>
+      <pre>{formatJson(schema)}</pre>
+    </details>
+  );
+}
+
+function ManifestToolCard({
+  tool,
+  developerMode,
+  onOverride
+}) {
+  return (
+    <details
+      className={`tool-manifest-card${tool.ready ? " is-enabled" : ""}`}
+      data-testid={`tool-manifest-${tool.name}`}
+    >
+      <summary>
+        <span className="tool-manifest-card__summary-copy">
+          <strong>{tool.displayTitle}</strong>
+          <small>{tool.name}</small>
+        </span>
+        <span className={`tool-manifest-state is-${tool.ready ? "enabled" : "disabled"}`}>
+          {effectiveLabel(tool)}
+        </span>
+      </summary>
+
+      <div className="tool-manifest-card__body">
+        <p>{tool.displayDescription}</p>
+
+        <div className="tool-manifest-badges">
+          <span>{tool.source}</span>
+          <span>v{tool.version}</span>
+          <span>{riskLabel(tool)}</span>
+          <span>{effectLabel(tool)}</span>
+          <span>{tool.runtimeContract?.retryMode ?? "safe"}</span>
+        </div>
+
+        {!tool.available && tool.availabilityReason && (
+          <div className="tool-manifest-notice">
+            {tool.availabilityReason}
+          </div>
+        )}
+
+        {developerMode && (
+          <SettingRow title="工具开关">
+            <Select
+              testId={`tool-override-${tool.name}`}
+              value={tool.override ?? "inherit"}
+              options={TOOL_OVERRIDE_OPTIONS}
+              onChange={onOverride}
+            />
+          </SettingRow>
+        )}
+
+        <div className="tool-manifest-facts">
+          <div><span>Tool ID</span><code>{tool.id}</code></div>
+          <div><span>Toolset</span><code>{tool.toolsetId}</code></div>
+          <div><span>超时</span><strong>{tool.timeoutMs ? `${Math.round(tool.timeoutMs / 1000)} 秒` : "Runtime 默认"}</strong></div>
+          <div><span>重试</span><strong>{tool.retryPolicy?.maxAttempts ?? 1} 次尝试</strong></div>
+          <div><span>支持取消</span><strong>{tool.runtimeContract?.supportsAbort ? "是" : "否"}</strong></div>
+          <div><span>支持恢复</span><strong>{tool.runtimeContract?.supportsResume ? "是" : "否"}</strong></div>
+        </div>
+
+        <div className="tool-manifest-readonly">
+          内置工具的实现、原始描述和 Schema 由应用版本管理，只读不可编辑。
+        </div>
+
+        <ToolSchema title="Input Schema" schema={tool.inputSchema} />
+        <ToolSchema title="Output Schema" schema={tool.outputSchema} />
+      </div>
+    </details>
+  );
+}
+
+function ManifestToolset({
+  toolset,
+  developerMode,
+  onToolsetOverride,
+  onToolOverride
+}) {
+  return (
+    <details
+      className="tool-manifest-toolset"
+      open={toolset.userVisible !== false}
+      data-testid={`toolset-manifest-${toolset.id}`}
+    >
+      <summary>
+        <span>
+          <strong>{toolset.title}</strong>
+          <small>{toolset.description}</small>
+        </span>
+        <span className="tool-manifest-toolset__count">
+          {toolset.enabledToolCount}/{toolset.toolCount}
+        </span>
+      </summary>
+
+      <div className="tool-manifest-toolset__body">
+        {developerMode && (
+          <SettingRow title="Toolset 开关">
+            <Select
+              testId={`toolset-override-${toolset.id}`}
+              value={toolset.override ?? "inherit"}
+              options={TOOL_OVERRIDE_OPTIONS}
+              onChange={onToolsetOverride}
+            />
+          </SettingRow>
+        )}
+
+        {toolset.tools.map((tool) => (
+          <ManifestToolCard
+            key={tool.id}
+            tool={tool}
+            developerMode={developerMode}
+            onOverride={(value) => onToolOverride(tool.name, value)}
+          />
+        ))}
+      </div>
+    </details>
+  );
 }
 
 export function ToolPanel({
@@ -30,6 +196,12 @@ export function ToolPanel({
   developerMode = false,
   onUpdate
 }) {
+  const {
+    manifest,
+    status: manifestStatus,
+    error: manifestError
+  } = useToolManifest(settings);
+
   const updateRuntime = (patch) => {
     onUpdate({
       runtime: {
@@ -69,105 +241,71 @@ export function ToolPanel({
     });
   };
 
-  const updateToolset = (toolsetId, enabled) => {
-    onUpdate({
-      toolsets: {
-        ...settings.toolsets,
-        [toolsetId]: enabled
+  const updateToolsetOverride = (toolsetId, value) => {
+    updateDeveloper({
+      toolsetOverrides: {
+        ...settings.developer?.toolsetOverrides,
+        [toolsetId]: value
       }
     });
   };
 
-  const updateTool = (toolName, enabled) => {
-    onUpdate({
-      overrides: {
-        ...settings.overrides,
-        [toolName]: enabled
+  const updateToolOverride = (toolName, value) => {
+    updateDeveloper({
+      toolOverrides: {
+        ...settings.developer?.toolOverrides,
+        [toolName]: value
       }
     });
   };
 
-  const userToolsets = TOOLSET_OPTIONS.filter(
-    (toolset) => toolset.userVisible !== false
+  const visibleToolsets = (manifest?.toolsets ?? []).filter(
+    (toolset) => developerMode || toolset.userVisible !== false
   );
 
   return (
     <>
-      <SettingsSection
-        title="工具"
-        description="控制 Agent 是否可以使用工具，以及允许使用的工具组。"
-      >
-        <SettingRow
-          title="启用工具"
-          description="关闭后模型只进行普通对话，不调用任何 Tool。"
-        >
+      <SettingsSection title="工具">
+        <SettingRow title="启用工具">
           <Toggle
             checked={settings.enabled !== false}
             label="启用工具"
             onChange={(enabled) => onUpdate({ enabled })}
           />
         </SettingRow>
+
+        <div className="tool-manifest-overview">
+          <span>当前模式</span>
+          <strong>{settings.mode === "coding" ? "Coding" : "Chat"}</strong>
+          <span>Manifest</span>
+          <code>{manifest?.revision ?? "加载中"}</code>
+          <span>模型可见</span>
+          <strong>{manifest?.tools?.filter((tool) => tool.ready).length ?? 0} 个工具</strong>
+        </div>
       </SettingsSection>
 
-      <SettingsSection
-        title="工具组"
-        description="Chat 绑定工作区后只提供只读能力；Coding 会话始终固定在创建时选择的工作区。"
-      >
-        {userToolsets.map((toolset) => (
-          <SettingRow
+      <SettingsSection title="工具清单">
+        {manifestStatus === "loading" && (
+          <div className="tool-manifest-empty">正在读取 Tool Manifest…</div>
+        )}
+        {manifestStatus === "error" && (
+          <div className="tool-manifest-empty is-error">{manifestError || "读取 Tool Manifest 失败。"}</div>
+        )}
+        {manifestStatus === "ready" && visibleToolsets.map((toolset) => (
+          <ManifestToolset
             key={toolset.id}
-            title={toolset.title}
-            description={toolset.description}
-          >
-            <Toggle
-              checked={settings.toolsets?.[toolset.id] !== false}
-              label={`启用${toolset.title}`}
-              onChange={(enabled) => {
-                updateToolset(toolset.id, enabled);
-              }}
-            />
-          </SettingRow>
-        ))}
-      </SettingsSection>
-
-      <SettingsSection
-        title="单个工具"
-        description="关闭不需要或不信任的工具。任务计划和大型结果读取属于内部基础工具。"
-      >
-        {userToolsets.map((toolset) => (
-          <details
-            className="developer-tool-list"
-            key={toolset.id}
-          >
-            <summary>{toolset.title}</summary>
-            <div className="developer-tool-list__body">
-              {toolset.tools.map((tool) => (
-                <SettingRow
-                  key={tool.name}
-                  title={tool.title}
-                  description={tool.description}
-                >
-                  <Toggle
-                    checked={settings.overrides?.[tool.name] !== false}
-                    label={`启用${tool.title}`}
-                    onChange={(enabled) => {
-                      updateTool(tool.name, enabled);
-                    }}
-                  />
-                </SettingRow>
-              ))}
-            </div>
-          </details>
+            toolset={toolset}
+            developerMode={developerMode}
+            onToolsetOverride={(value) => updateToolsetOverride(toolset.id, value)}
+            onToolOverride={updateToolOverride}
+          />
         ))}
       </SettingsSection>
 
       <details className="settings-disclosure" data-testid="tool-advanced-settings">
         <summary>高级设置</summary>
         <div className="settings-disclosure__body">
-          <SettingRow
-            title="工具并发"
-            description="同时执行的工具数量；较低数值更稳，较高数值更快。"
-          >
+          <SettingRow title="工具并发">
             <Slider
               value={settings.runtime.maxConcurrent ?? 4}
               min={1}
@@ -177,27 +315,19 @@ export function ToolPanel({
             />
           </SettingRow>
 
-          <SettingRow
-            title="单工具超时"
-            description="单次工具执行超过时限后返回超时结果。"
-          >
+          <SettingRow title="单工具超时">
             <Slider
-              value={settings.runtime.defaultTimeoutMs / 1000}
+              value={(settings.runtime.defaultTimeoutMs ?? 15000) / 1000}
               min={2}
               max={120}
               unit=" 秒"
-              onChange={(seconds) => updateRuntime({
-                defaultTimeoutMs: seconds * 1000
-              })}
+              onChange={(seconds) => updateRuntime({ defaultTimeoutMs: seconds * 1000 })}
             />
           </SettingRow>
 
-          <SettingRow
-            title="自动重试"
-            description="只重试无副作用且可安全恢复的临时故障。"
-          >
+          <SettingRow title="自动重试">
             <Slider
-              value={settings.runtime.maxToolRetries}
+              value={settings.runtime.maxToolRetries ?? 1}
               min={0}
               max={2}
               unit=" 次"
@@ -207,7 +337,7 @@ export function ToolPanel({
 
           <SettingRow title="保存工具历史">
             <Toggle
-              checked={settings.runtime.saveToolHistory}
+              checked={settings.runtime.saveToolHistory !== false}
               label="保存工具输入、结果和耗时"
               onChange={(saveToolHistory) => updateRuntime({ saveToolHistory })}
             />
@@ -246,10 +376,7 @@ export function ToolPanel({
             />
           </SettingRow>
 
-          <SettingRow
-            title="单文件写入上限"
-            description="Coding 模式的原子文本写入工具不会超过该大小。"
-          >
+          <SettingRow title="单文件写入上限">
             <Slider
               value={settings.workspace.maxWriteFileBytes ?? 5000000}
               min={65536}
@@ -271,123 +398,42 @@ export function ToolPanel({
             <summary>Runtime 诊断与保险丝</summary>
             <div className="settings-disclosure__body">
               <SettingRow title="单段最大步骤">
-                <Slider
-                  value={settings.runtime.maxSteps}
-                  min={1}
-                  max={32}
-                  unit=" 步"
-                  onChange={(maxSteps) => updateRuntime({ maxSteps })}
-                />
+                <Slider value={settings.runtime.maxSteps} min={1} max={32} unit=" 步" onChange={(maxSteps) => updateRuntime({ maxSteps })} />
               </SettingRow>
-
               <SettingRow title="最大任务分段">
-                <Slider
-                  value={settings.runtime.maxSegments}
-                  min={1}
-                  max={100}
-                  unit=" 段"
-                  onChange={(maxSegments) => updateRuntime({ maxSegments })}
-                />
+                <Slider value={settings.runtime.maxSegments} min={1} max={100} unit=" 段" onChange={(maxSegments) => updateRuntime({ maxSegments })} />
               </SettingRow>
-
               <SettingRow title="无进展分段限制">
-                <Slider
-                  value={settings.runtime.maxNoProgressSegments}
-                  min={1}
-                  max={10}
-                  unit=" 段"
-                  onChange={(maxNoProgressSegments) => updateRuntime({ maxNoProgressSegments })}
-                />
+                <Slider value={settings.runtime.maxNoProgressSegments} min={1} max={10} unit=" 段" onChange={(maxNoProgressSegments) => updateRuntime({ maxNoProgressSegments })} />
               </SettingRow>
-
               <SettingRow title="最终总结尝试">
-                <Slider
-                  value={settings.runtime.maxFinalizationAttempts}
-                  min={1}
-                  max={3}
-                  unit=" 次"
-                  onChange={(maxFinalizationAttempts) => updateRuntime({ maxFinalizationAttempts })}
-                />
+                <Slider value={settings.runtime.maxFinalizationAttempts} min={1} max={3} unit=" 次" onChange={(maxFinalizationAttempts) => updateRuntime({ maxFinalizationAttempts })} />
               </SettingRow>
-
               <SettingRow title="最终总结超时">
-                <Slider
-                  value={settings.runtime.finalizationTimeoutMs / 1000}
-                  min={5}
-                  max={120}
-                  unit=" 秒"
-                  onChange={(seconds) => updateRuntime({
-                    finalizationTimeoutMs: seconds * 1000
-                  })}
-                />
+                <Slider value={(settings.runtime.finalizationTimeoutMs ?? 30000) / 1000} min={5} max={120} unit=" 秒" onChange={(seconds) => updateRuntime({ finalizationTimeoutMs: seconds * 1000 })} />
               </SettingRow>
-
               <SettingRow title="受限工具调用">
-                <Slider
-                  value={settings.runtime.maxToolCalls}
-                  min={1}
-                  max={500}
-                  unit=" 次"
-                  onChange={(maxToolCalls) => updateRuntime({ maxToolCalls })}
-                />
+                <Slider value={settings.runtime.maxToolCalls} min={1} max={500} unit=" 次" onChange={(maxToolCalls) => updateRuntime({ maxToolCalls })} />
               </SettingRow>
-
               <SettingRow title="单 Step 工具数量">
-                <Slider
-                  value={settings.runtime.maxToolCallsPerStep}
-                  min={1}
-                  max={64}
-                  unit=" 次"
-                  onChange={(maxToolCallsPerStep) => updateRuntime({ maxToolCallsPerStep })}
-                />
+                <Slider value={settings.runtime.maxToolCallsPerStep} min={1} max={64} unit=" 次" onChange={(maxToolCallsPerStep) => updateRuntime({ maxToolCallsPerStep })} />
               </SettingRow>
-
               <SettingRow title="单批工具数量">
-                <Slider
-                  value={settings.runtime.maxToolCallsPerBatch}
-                  min={1}
-                  max={128}
-                  unit=" 次"
-                  onChange={(maxToolCallsPerBatch) => updateRuntime({ maxToolCallsPerBatch })}
-                />
+                <Slider value={settings.runtime.maxToolCallsPerBatch} min={1} max={128} unit=" 次" onChange={(maxToolCallsPerBatch) => updateRuntime({ maxToolCallsPerBatch })} />
               </SettingRow>
-
               <SettingRow title="总请求熔断">
-                <Slider
-                  value={settings.runtime.maxTotalToolCalls}
-                  min={100}
-                  max={10000}
-                  step={100}
-                  unit=" 次"
-                  onChange={(maxTotalToolCalls) => updateRuntime({ maxTotalToolCalls })}
-                />
+                <Slider value={settings.runtime.maxTotalToolCalls} min={100} max={10000} step={100} unit=" 次" onChange={(maxTotalToolCalls) => updateRuntime({ maxTotalToolCalls })} />
               </SettingRow>
-
               <SettingRow title="任务运行时间">
-                <Slider
-                  value={settings.runtime.runTimeoutMs / 60000}
-                  min={1}
-                  max={240}
-                  unit=" 分钟"
-                  onChange={(minutes) => updateRuntime({
-                    runTimeoutMs: minutes * 60000
-                  })}
-                />
+                <Slider value={(settings.runtime.runTimeoutMs ?? 1800000) / 60000} min={1} max={240} unit=" 分钟" onChange={(minutes) => updateRuntime({ runTimeoutMs: minutes * 60000 })} />
               </SettingRow>
-
               <SettingRow title="重复调用限制">
-                <Slider
-                  value={settings.runtime.maxIdenticalCalls}
-                  min={1}
-                  max={10}
-                  unit=" 次"
-                  onChange={(maxIdenticalCalls) => updateRuntime({ maxIdenticalCalls })}
-                />
+                <Slider value={settings.runtime.maxIdenticalCalls} min={1} max={10} unit=" 次" onChange={(maxIdenticalCalls) => updateRuntime({ maxIdenticalCalls })} />
               </SettingRow>
 
               <div className="developer-subsection" data-testid="journal-storage-settings">
                 <h3>Runtime Journal 存储</h3>
-                <SettingRow title="单文件滚动阈值" description="Journal 达到该大小后滚动到归档文件。">
+                <SettingRow title="单文件滚动阈值">
                   <Slider
                     value={settings.runtime.journalMaxFileBytes ?? 8000000}
                     min={256000}
@@ -396,29 +442,17 @@ export function ToolPanel({
                     formatValue={formatBytes}
                     onChange={(journalMaxFileBytes) => updateRuntime({
                       journalMaxFileBytes,
-                      journalMaxTotalBytes: Math.max(
-                        settings.runtime.journalMaxTotalBytes ?? 48000000,
-                        journalMaxFileBytes
-                      )
+                      journalMaxTotalBytes: Math.max(settings.runtime.journalMaxTotalBytes ?? 48000000, journalMaxFileBytes)
                     })}
                   />
                 </SettingRow>
                 <SettingRow title="归档文件上限">
-                  <Slider
-                    value={settings.runtime.journalMaxArchives ?? 6}
-                    min={1}
-                    max={32}
-                    unit=" 个"
-                    onChange={(journalMaxArchives) => updateRuntime({ journalMaxArchives })}
-                  />
+                  <Slider value={settings.runtime.journalMaxArchives ?? 6} min={1} max={32} unit=" 个" onChange={(journalMaxArchives) => updateRuntime({ journalMaxArchives })} />
                 </SettingRow>
                 <SettingRow title="Journal 总配额">
                   <Slider
                     value={settings.runtime.journalMaxTotalBytes ?? 48000000}
-                    min={Math.max(
-                      1000000,
-                      settings.runtime.journalMaxFileBytes ?? 8000000
-                    )}
+                    min={Math.max(1000000, settings.runtime.journalMaxFileBytes ?? 8000000)}
                     max={1000000000}
                     step={1000000}
                     formatValue={formatBytes}
@@ -427,153 +461,37 @@ export function ToolPanel({
                 </SettingRow>
               </div>
 
-              <div className="developer-subsection" data-testid="circuit-breaker-settings">
+              <div className="developer-subsection">
                 <h3>Provider 熔断器</h3>
-                <SettingRow title="触发阈值" description="在统计窗口内达到该失败次数后暂停请求。">
-                  <Slider
-                    value={settings.runtime.circuitBreakers?.provider?.failureThreshold ?? 3}
-                    min={1}
-                    max={20}
-                    unit=" 次"
-                    onChange={(failureThreshold) =>
-                      updateCircuitBreaker("provider", { failureThreshold })
-                    }
-                  />
+                <SettingRow title="触发阈值">
+                  <Slider value={settings.runtime.circuitBreakers?.provider?.failureThreshold ?? 3} min={1} max={20} unit=" 次" onChange={(failureThreshold) => updateCircuitBreaker("provider", { failureThreshold })} />
                 </SettingRow>
-                <SettingRow title="统计窗口" description="只统计该时间范围内的临时故障。">
-                  <Slider
-                    value={(settings.runtime.circuitBreakers?.provider?.failureWindowMs ?? 90000) / 1000}
-                    min={5}
-                    max={600}
-                    unit=" 秒"
-                    onChange={(seconds) =>
-                      updateCircuitBreaker("provider", { failureWindowMs: seconds * 1000 })
-                    }
-                  />
+                <SettingRow title="统计窗口">
+                  <Slider value={(settings.runtime.circuitBreakers?.provider?.failureWindowMs ?? 90000) / 1000} min={5} max={600} unit=" 秒" onChange={(seconds) => updateCircuitBreaker("provider", { failureWindowMs: seconds * 1000 })} />
                 </SettingRow>
                 <SettingRow title="冷却时间">
-                  <Slider
-                    value={(settings.runtime.circuitBreakers?.provider?.cooldownMs ?? 45000) / 1000}
-                    min={1}
-                    max={600}
-                    unit=" 秒"
-                    onChange={(seconds) =>
-                      updateCircuitBreaker("provider", { cooldownMs: seconds * 1000 })
-                    }
-                  />
+                  <Slider value={(settings.runtime.circuitBreakers?.provider?.cooldownMs ?? 45000) / 1000} min={1} max={600} unit=" 秒" onChange={(seconds) => updateCircuitBreaker("provider", { cooldownMs: seconds * 1000 })} />
                 </SettingRow>
-                <SettingRow title="试探请求数" description="冷却结束后 Half-open 阶段允许同时放行的探测请求。">
-                  <Slider
-                    value={settings.runtime.circuitBreakers?.provider?.halfOpenMaxCalls ?? 1}
-                    min={1}
-                    max={10}
-                    unit=" 次"
-                    onChange={(halfOpenMaxCalls) =>
-                      updateCircuitBreaker("provider", { halfOpenMaxCalls })
-                    }
-                  />
+                <SettingRow title="试探请求数">
+                  <Slider value={settings.runtime.circuitBreakers?.provider?.halfOpenMaxCalls ?? 1} min={1} max={10} unit=" 次" onChange={(halfOpenMaxCalls) => updateCircuitBreaker("provider", { halfOpenMaxCalls })} />
                 </SettingRow>
 
                 <h3>Tool 熔断器</h3>
-                <SettingRow title="触发阈值" description="单个工具连续临时故障达到阈值后暂停调用。">
-                  <Slider
-                    value={settings.runtime.circuitBreakers?.tool?.failureThreshold ?? 3}
-                    min={1}
-                    max={20}
-                    unit=" 次"
-                    onChange={(failureThreshold) =>
-                      updateCircuitBreaker("tool", { failureThreshold })
-                    }
-                  />
+                <SettingRow title="触发阈值">
+                  <Slider value={settings.runtime.circuitBreakers?.tool?.failureThreshold ?? 3} min={1} max={20} unit=" 次" onChange={(failureThreshold) => updateCircuitBreaker("tool", { failureThreshold })} />
                 </SettingRow>
                 <SettingRow title="统计窗口">
-                  <Slider
-                    value={(settings.runtime.circuitBreakers?.tool?.failureWindowMs ?? 60000) / 1000}
-                    min={5}
-                    max={600}
-                    unit=" 秒"
-                    onChange={(seconds) =>
-                      updateCircuitBreaker("tool", { failureWindowMs: seconds * 1000 })
-                    }
-                  />
+                  <Slider value={(settings.runtime.circuitBreakers?.tool?.failureWindowMs ?? 60000) / 1000} min={5} max={600} unit=" 秒" onChange={(seconds) => updateCircuitBreaker("tool", { failureWindowMs: seconds * 1000 })} />
                 </SettingRow>
                 <SettingRow title="冷却时间">
-                  <Slider
-                    value={(settings.runtime.circuitBreakers?.tool?.cooldownMs ?? 30000) / 1000}
-                    min={1}
-                    max={600}
-                    unit=" 秒"
-                    onChange={(seconds) =>
-                      updateCircuitBreaker("tool", { cooldownMs: seconds * 1000 })
-                    }
-                  />
+                  <Slider value={(settings.runtime.circuitBreakers?.tool?.cooldownMs ?? 30000) / 1000} min={1} max={600} unit=" 秒" onChange={(seconds) => updateCircuitBreaker("tool", { cooldownMs: seconds * 1000 })} />
                 </SettingRow>
-                <SettingRow title="试探请求数" description="冷却结束后允许并行试探的工具调用数。">
-                  <Slider
-                    value={settings.runtime.circuitBreakers?.tool?.halfOpenMaxCalls ?? 1}
-                    min={1}
-                    max={10}
-                    unit=" 次"
-                    onChange={(halfOpenMaxCalls) =>
-                      updateCircuitBreaker("tool", { halfOpenMaxCalls })
-                    }
-                  />
+                <SettingRow title="试探请求数">
+                  <Slider value={settings.runtime.circuitBreakers?.tool?.halfOpenMaxCalls ?? 1} min={1} max={10} unit=" 次" onChange={(halfOpenMaxCalls) => updateCircuitBreaker("tool", { halfOpenMaxCalls })} />
                 </SettingRow>
               </div>
 
               <CircuitBreakerDiagnostics />
-
-              <div className="developer-subsection">
-                <h3>Toolset 强制覆盖</h3>
-                {TOOLSET_OPTIONS.map((toolset) => (
-                  <SettingRow
-                    key={toolset.id}
-                    title={toolset.title}
-                    description="仅用于调试，优先级高于普通用户开关。"
-                  >
-                    <Select
-                      value={settings.developer.toolsetOverrides?.[toolset.id] ?? "inherit"}
-                      options={TOOL_OVERRIDE_OPTIONS}
-                      onChange={(value) => updateDeveloper({
-                        toolsetOverrides: {
-                          ...settings.developer.toolsetOverrides,
-                          [toolset.id]: value
-                        }
-                      })}
-                    />
-                  </SettingRow>
-                ))}
-              </div>
-
-              <details
-                className="developer-tool-list"
-                data-testid="tool-developer-overrides"
-              >
-                <summary>单工具强制覆盖</summary>
-                <div className="developer-tool-list__body">
-                  {TOOLSET_OPTIONS.flatMap((toolset) =>
-                    toolset.tools.map((tool) => (
-                      <SettingRow
-                        key={tool.name}
-                        title={tool.title}
-                        description={tool.name}
-                      >
-                        <Select
-                          testId={`tool-override-${tool.name}`}
-                          value={settings.developer.toolOverrides?.[tool.name] ?? "inherit"}
-                          options={TOOL_OVERRIDE_OPTIONS}
-                          onChange={(value) => updateDeveloper({
-                            toolOverrides: {
-                              ...settings.developer.toolOverrides,
-                              [tool.name]: value
-                            }
-                          })}
-                        />
-                      </SettingRow>
-                    ))
-                  )}
-                </div>
-              </details>
             </div>
           </details>
         </div>
@@ -583,12 +501,8 @@ export function ToolPanel({
 }
 
 function formatCircuitState(state) {
-  if (state === "open") {
-    return "已熔断";
-  }
-  if (state === "half_open") {
-    return "试探恢复";
-  }
+  if (state === "open") return "已熔断";
+  if (state === "half_open") return "试探恢复";
   return "正常";
 }
 
@@ -601,9 +515,7 @@ function CircuitBreakerDiagnostics() {
     setError("");
     try {
       const result = await window.api?.getCircuitBreakerState?.();
-      if (!result?.ok) {
-        throw new Error(result?.message ?? "读取熔断器状态失败。");
-      }
+      if (!result?.ok) throw new Error(result?.message ?? "读取熔断器状态失败。");
       setSnapshot(result.snapshot ?? null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -620,9 +532,7 @@ function CircuitBreakerDiagnostics() {
     setError("");
     try {
       const result = await window.api?.resetCircuitBreaker?.({ scope, key });
-      if (!result?.ok) {
-        throw new Error(result?.message ?? "重置熔断器失败。");
-      }
+      if (!result?.ok) throw new Error(result?.message ?? "重置熔断器失败。");
       setSnapshot(result.snapshot ?? null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -631,30 +541,15 @@ function CircuitBreakerDiagnostics() {
     }
   };
 
-  const scopes = [
-    ["provider", "Provider"],
-    ["tool", "Tool"]
-  ];
+  const scopes = [["provider", "Provider"], ["tool", "Tool"]];
 
   return (
-    <div
-      className="developer-subsection circuit-breaker-diagnostics"
-      data-testid="circuit-breaker-diagnostics"
-    >
+    <div className="developer-subsection circuit-breaker-diagnostics" data-testid="circuit-breaker-diagnostics">
       <div className="circuit-breaker-diagnostics__header">
         <h3>当前熔断状态</h3>
         <div>
-          <button type="button" onClick={() => void refresh()}>
-            刷新
-          </button>
-          <button
-            type="button"
-            disabled={Boolean(busy)}
-            data-testid="circuit-breaker-reset-all"
-            onClick={() => void reset("all")}
-          >
-            {busy === "all:all" ? "重置中…" : "全部重置"}
-          </button>
+          <button type="button" onClick={() => void refresh()}>刷新</button>
+          <button type="button" disabled={Boolean(busy)} data-testid="circuit-breaker-reset-all" onClick={() => void reset("all")}>全部重置</button>
         </div>
       </div>
 
@@ -665,18 +560,9 @@ function CircuitBreakerDiagnostics() {
           <section key={scope} className="circuit-breaker-diagnostics__scope">
             <header>
               <strong>{label}</strong>
-              <span>
-                阈值 {state?.failureThreshold ?? "-"} · 窗口 {Math.round((state?.failureWindowMs ?? 0) / 1000)} 秒 · 冷却 {Math.round((state?.cooldownMs ?? 0) / 1000)} 秒 · 试探 {state?.halfOpenMaxCalls ?? "-"}
-              </span>
-              <button
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() => void reset(scope)}
-              >
-                重置该组
-              </button>
+              <span>阈值 {state?.failureThreshold ?? "-"} · 窗口 {Math.round((state?.failureWindowMs ?? 0) / 1000)} 秒 · 冷却 {Math.round((state?.cooldownMs ?? 0) / 1000)} 秒</span>
+              <button type="button" disabled={Boolean(busy)} onClick={() => void reset(scope)}>重置该组</button>
             </header>
-
             {entries.length === 0 ? (
               <p>暂无运行记录。</p>
             ) : (
@@ -685,21 +571,9 @@ function CircuitBreakerDiagnostics() {
                   <article key={entry.key} className={`is-${entry.state}`}>
                     <div>
                       <strong>{entry.label || entry.key}</strong>
-                      <small>
-                        {formatCircuitState(entry.state)} · 失败 {entry.failureCount}
-                        {entry.retryAfterMs > 0
-                          ? ` · ${Math.ceil(entry.retryAfterMs / 1000)} 秒后可试探`
-                          : ""}
-                      </small>
+                      <small>{formatCircuitState(entry.state)} · 失败 {entry.failureCount}</small>
                     </div>
-                    <button
-                      type="button"
-                      disabled={Boolean(busy)}
-                      data-testid={`circuit-breaker-reset-${scope}`}
-                      onClick={() => void reset(scope, entry.key)}
-                    >
-                      {busy === `${scope}:${entry.key}` ? "重置中…" : "重置"}
-                    </button>
+                    <button type="button" disabled={Boolean(busy)} data-testid={`circuit-breaker-reset-${scope}`} onClick={() => void reset(scope, entry.key)}>重置</button>
                   </article>
                 ))}
               </div>

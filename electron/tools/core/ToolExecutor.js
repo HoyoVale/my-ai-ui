@@ -471,6 +471,14 @@ export class ToolExecutor {
       toolId: definition.id ?? definition.name,
       name: definition.name,
       title: definition.title,
+      displayTitle:
+        definition.presentation?.title ??
+        definition.title,
+      displayDescription:
+        definition.presentation?.description ??
+        definition.description ??
+        "",
+      toolsets: [...(definition.toolsets ?? [])],
       source: definition.source,
       riskLevel: definition.riskLevel,
       sideEffect: definition.sideEffect,

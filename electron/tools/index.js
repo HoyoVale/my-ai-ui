@@ -49,3 +49,17 @@ export {
   SubprocessSupervisor,
   terminateProcessTree
 } from "./process/SubprocessSupervisor.js";
+
+export {
+  getToolManifestSnapshot
+} from "./manifest/ToolManifestService.js";
+
+export {
+  createBuiltinToolRegistry,
+  registerBuiltinToolDefinitions
+} from "./manifest/createBuiltinToolRegistry.js";
+
+export {
+  BUILTIN_TOOLSET_MANIFEST,
+  BUILTIN_TOOL_PRESENTATION
+} from "./manifest/builtinToolPresentation.js";

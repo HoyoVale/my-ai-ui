@@ -35,8 +35,9 @@ describe(
         assert.match(workspacePanel, /Coding/u);
         assert.match(workspacePanel, /添加工作区/u);
         assert.match(panel, /启用工具/u);
-        assert.match(panel, /工具组/u);
-        assert.match(panel, /单个工具/u);
+        assert.match(panel, /工具清单/u);
+        assert.match(panel, /useToolManifest/u);
+        assert.match(panel, /tool-manifest/u);
         assert.match(panel, /高级设置/u);
         assert.match(panel, /developerMode &&/u);
         assert.doesNotMatch(panel, /展示层级|活动显示/u);
@@ -55,7 +56,12 @@ describe(
         assert.match(panel, /TOOL_OVERRIDE_OPTIONS/u);
         assert.match(panel, /tool-developer-settings/u);
         assert.match(panel, /Runtime 诊断与保险丝/u);
-        assert.match(panel, /单工具强制覆盖/u);
+        assert.match(panel, /Toolset 开关/u);
+        assert.match(panel, /工具开关/u);
+        assert.match(panel, /Input Schema/u);
+        assert.match(panel, /Output Schema/u);
+        assert.doesNotMatch(panel, /TOOLSET_OPTIONS/u);
+        assert.doesNotMatch(panel, /TOOL_METADATA/u);
       }
     );
 
@@ -71,11 +77,17 @@ describe(
         const context = read(
           "../../src/Setting/panels/ConversationPanel.jsx"
         );
+        const developer = read(
+          "../../src/Setting/panels/DeveloperPanel.jsx"
+        );
 
         assert.match(general, /developer-mode/u);
         assert.match(sidebar, /developerOnly/u);
         assert.match(context, /context-developer-settings/u);
         assert.match(context, /共享完整工作区路径/u);
+        assert.match(developer, /Prompt Stack/u);
+        assert.match(developer, /Effective Prompt/u);
+        assert.match(developer, /developer-instructions/u);
       }
     );
 

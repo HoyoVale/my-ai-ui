@@ -575,3 +575,32 @@ describe("workspace command allowlist validation", () => {
     );
   });
 });
+
+
+describe(
+  "prompt settings validation",
+  () => {
+    it(
+      "sanitizes editable mode prompts and developer instructions without exposing the Runtime Kernel",
+      () => {
+        const settings = sanitizeSettings({
+          prompts: {
+            modeOverrides: {
+              chat: `  ${"c".repeat(13000)}  `,
+              coding: "  先读取，再修改。  "
+            },
+            developerInstructions: `  ${"d".repeat(21000)}  `
+          }
+        });
+
+        assert.equal(settings.prompts.modeOverrides.chat.length <= 12000, true);
+        assert.match(settings.prompts.modeOverrides.chat, /^c+$/u);
+        assert.equal(settings.prompts.modeOverrides.coding, "先读取，再修改。");
+        assert.equal(settings.prompts.developerInstructions.length <= 20000, true);
+        assert.match(settings.prompts.developerInstructions, /^d+$/u);
+        assert.equal("runtimeKernel" in settings.prompts, false);
+        assert.equal("productBase" in settings.prompts, false);
+      }
+    );
+  }
+);

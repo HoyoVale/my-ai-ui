@@ -161,6 +161,12 @@ const CHANNELS = Object.freeze({
   CONVERSATION_CHANGED:
     "conversation-changed",
 
+  TOOLS_GET_MANIFEST:
+    "tools-get-manifest",
+
+  DEVELOPER_INSPECT_PROMPT:
+    "developer-inspect-prompt",
+
   WORKSPACE_LIST:
     "workspace-list",
 
@@ -805,6 +811,20 @@ const api = Object.freeze({
 
       callback,
       (state) => state
+    );
+  },
+
+  getToolManifest: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.TOOLS_GET_MANIFEST,
+      request
+    );
+  },
+
+  inspectEffectivePrompt: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.DEVELOPER_INSPECT_PROMPT,
+      request
     );
   },
 

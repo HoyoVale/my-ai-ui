@@ -3151,3 +3151,341 @@
   color: #d92d3d;
   font-size: 11px;
 }
+
+/* ============================================================
+   Tool Manifest and Prompt Stack
+   ============================================================ */
+
+.tool-manifest-overview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--setting-border);
+  border-radius: 12px;
+  background: var(--setting-surface-soft);
+}
+
+.tool-manifest-overview span,
+.tool-manifest-facts span {
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}
+
+.tool-manifest-overview code {
+  overflow: hidden;
+  color: var(--setting-text-soft);
+  text-overflow: ellipsis;
+}
+
+.tool-manifest-empty {
+  padding: 18px;
+  border: 1px dashed var(--setting-border-strong);
+  border-radius: 12px;
+  color: var(--setting-text-soft);
+  text-align: center;
+}
+
+.tool-manifest-empty.is-error,
+.prompt-inspector__empty.is-error {
+  color: var(--setting-danger);
+}
+
+.tool-manifest-toolset {
+  overflow: hidden;
+  border: 1px solid var(--setting-border);
+  border-radius: 14px;
+  background: var(--setting-surface);
+}
+
+.tool-manifest-toolset + .tool-manifest-toolset {
+  margin-top: 10px;
+}
+
+.tool-manifest-toolset > summary,
+.tool-manifest-card > summary,
+.prompt-stack-section > summary,
+.effective-prompt-block > summary,
+.tool-manifest-schema > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.tool-manifest-toolset > summary::-webkit-details-marker,
+.tool-manifest-card > summary::-webkit-details-marker,
+.prompt-stack-section > summary::-webkit-details-marker,
+.effective-prompt-block > summary::-webkit-details-marker,
+.tool-manifest-schema > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-manifest-toolset > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  background: var(--setting-surface-soft);
+}
+
+.tool-manifest-toolset > summary > span:first-child,
+.tool-manifest-card__summary-copy,
+.prompt-stack-section > summary > span:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tool-manifest-toolset > summary small,
+.tool-manifest-card > summary small,
+.prompt-stack-section > summary small,
+.prompt-inspector__toolbar span,
+.developer-prompt-editor__header span,
+.developer-prompt-editor__footer {
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}
+
+.tool-manifest-toolset__count {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--setting-active);
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}
+
+.tool-manifest-toolset__body {
+  padding: 10px;
+}
+
+.tool-manifest-card {
+  border: 1px solid var(--setting-border);
+  border-radius: 11px;
+  background: var(--setting-surface);
+}
+
+.tool-manifest-card + .tool-manifest-card {
+  margin-top: 8px;
+}
+
+.tool-manifest-card > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  transition: background 120ms ease;
+}
+
+.tool-manifest-card > summary:hover {
+  background: var(--setting-hover);
+}
+
+.tool-manifest-card__summary-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.tool-manifest-state {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--setting-text-soft);
+  background: var(--setting-surface-soft);
+}
+
+.tool-manifest-state.is-enabled {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.tool-manifest-card__body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--setting-border);
+}
+
+.tool-manifest-card__body > p {
+  margin: 13px 0;
+  color: var(--setting-text-soft);
+}
+
+.tool-manifest-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tool-manifest-badges span {
+  padding: 3px 7px;
+  border: 1px solid var(--setting-border);
+  border-radius: 999px;
+  color: var(--setting-text-soft);
+  background: var(--setting-surface-soft);
+  font-size: 11px;
+}
+
+.tool-manifest-notice,
+.tool-manifest-readonly {
+  margin: 10px 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--setting-surface-soft);
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}
+
+.tool-manifest-notice {
+  border-left: 3px solid var(--setting-danger);
+}
+
+.tool-manifest-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.tool-manifest-facts > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--setting-surface-soft);
+}
+
+.tool-manifest-facts code,
+.tool-manifest-facts strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.tool-manifest-schema {
+  margin-top: 8px;
+  border: 1px solid var(--setting-border);
+  border-radius: 9px;
+}
+
+.tool-manifest-schema > summary,
+.effective-prompt-block > summary {
+  padding: 9px 11px;
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}
+
+.tool-manifest-schema pre,
+.prompt-stack-section pre,
+.effective-prompt-block pre {
+  max-height: 360px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-top: 1px solid var(--setting-border);
+  color: var(--setting-text);
+  background: var(--setting-surface-soft);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.developer-prompt-editor,
+.prompt-inspector {
+  padding: 14px;
+  border: 1px solid var(--setting-border);
+  border-radius: 14px;
+  background: var(--setting-surface);
+}
+
+.developer-prompt-editor + .developer-prompt-editor,
+.developer-prompt-editor + .prompt-inspector {
+  margin-top: 12px;
+}
+
+.developer-prompt-editor__header,
+.developer-prompt-editor__footer,
+.prompt-inspector__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.developer-prompt-editor__header > div,
+.prompt-inspector__toolbar > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.developer-prompt-editor .settings-textarea {
+  width: 100%;
+  margin-top: 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.developer-prompt-editor__footer {
+  margin-top: 8px;
+}
+
+.prompt-inspector__toolbar > div:last-child {
+  display: flex;
+  gap: 8px;
+}
+
+.prompt-inspector__empty {
+  margin: 14px 0 0;
+  color: var(--setting-text-soft);
+}
+
+.prompt-stack-list {
+  margin-top: 14px;
+}
+
+.prompt-stack-section,
+.effective-prompt-block {
+  overflow: hidden;
+  border: 1px solid var(--setting-border);
+  border-radius: 10px;
+}
+
+.prompt-stack-section + .prompt-stack-section,
+.prompt-stack-list + .effective-prompt-block {
+  margin-top: 8px;
+}
+
+.prompt-stack-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.prompt-stack-section > summary > span:last-child {
+  flex: 0 0 auto;
+  color: var(--setting-text-soft);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .tool-manifest-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .developer-prompt-editor__header,
+  .prompt-inspector__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

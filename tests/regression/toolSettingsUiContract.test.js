@@ -36,8 +36,9 @@ describe(
 
         assert.match(tabs, /id: "tools"/u);
         assert.match(panel, /title="工具"/u);
-        assert.match(panel, /title="工具组"/u);
-        assert.match(panel, /title="单个工具"/u);
+        assert.match(panel, /title="工具清单"/u);
+        assert.match(panel, /useToolManifest/u);
+        assert.match(panel, /tool-manifest-card/u);
         assert.match(panel, /tool-advanced-settings/u);
         assert.match(panel, /developerMode &&/u);
         assert.match(panel, /tool-developer-settings/u);
