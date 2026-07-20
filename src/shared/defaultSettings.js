@@ -309,6 +309,18 @@ export const FALLBACK_SETTINGS = {
         }
       }
     },
+    security: {
+      approval: {
+        localWrite: true,
+        remoteWrite: true,
+        allowRunGrant: true,
+        timeoutMs: 300000
+      },
+      untrustedContent: {
+        requirePerCallApproval: true,
+        blockDestructive: true
+      }
+    },
     workspace: {
       enabled: true,
       maxTextFileBytes: 2000000,

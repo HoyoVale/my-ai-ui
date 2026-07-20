@@ -7,12 +7,49 @@ import assert
   from "node:assert/strict";
 
 import {
-  buildE2EResponse
+  buildE2EResponse,
+  getE2EToolWriteRequest
 } from "../../electron/agent/e2eAgentDriver.js";
 
 describe(
   "E2E agent driver",
   () => {
+
+    it(
+      "recognizes the deterministic approved write request",
+      () => {
+        const result =
+          getE2EToolWriteRequest([
+            {
+              role: "assistant",
+              content: "ready"
+            },
+            {
+              role: "user",
+              content: "tool-write-key"
+            }
+          ]);
+
+        assert.deepEqual(
+          result,
+          {
+            path: "e2e-approved.txt",
+            content: "E2E approved write\n"
+          }
+        );
+
+        assert.equal(
+          getE2EToolWriteRequest([
+            {
+              role: "user",
+              content: "ordinary request"
+            }
+          ]),
+          null
+        );
+      }
+    );
+
     it(
       "encodes the number of user turns in its deterministic reply",
       () => {

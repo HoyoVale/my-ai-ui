@@ -9,6 +9,7 @@ import {
 } from "../workspace/workspacePolicy.js";
 
 import {
+  resolveEnabledToolCatalog,
   resolveToolProfileId
 } from "../toolCatalog.js";
 
@@ -125,7 +126,18 @@ export function createRuntimeToolDefinitions({
   const toolSettings = settings.tools ?? {};
   const workspaceSettings = toolSettings.workspace ?? {};
 
-  const workspaceSummary = getWorkspacePolicySummary(workspaceSettings);
+  const enabledCatalog = resolveEnabledToolCatalog(toolSettings);
+  const workspaceSummary = getWorkspacePolicySummary(
+    workspaceSettings,
+    {
+      writeEnabled: enabledCatalog.some(
+        (item) => item.toolset === "workspace.write"
+      ),
+      processEnabled: enabledCatalog.some(
+        (item) => item.name === "run_workspace_command"
+      )
+    }
+  );
 
   const definitions = [
     {

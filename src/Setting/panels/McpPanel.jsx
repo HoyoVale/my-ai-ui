@@ -166,6 +166,28 @@ function statusCopy(serverState) {
   return "未连接";
 }
 
+function diagnosticTime(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "";
+  try {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  } catch {
+    return "";
+  }
+}
+
+function formatDiagnosticLogs(logs = []) {
+  return logs.map((item) => {
+    const time = diagnosticTime(item.at);
+    const event = item.event ? ` ${item.event}` : "";
+    return `${time ? `[${time}] ` : ""}[${item.level}]${event} ${item.text}`;
+  }).join("\n");
+}
+
 function healthCopy(serverState) {
   const health = serverState?.health;
   if (health?.state === "healthy") {
@@ -284,7 +306,7 @@ function mergeImportedServers(current, imported) {
 export function McpPanel({ settings, developerMode = false, onUpdate }) {
   const mcp = settings.mcp;
   const servers = mcp.servers ?? [];
-  const { state, status, action, error, run, clearError } = useMcpState();
+  const { state, status, action, error, run, clearError } = useMcpState(developerMode);
   const [expanded, setExpanded] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [notice, setNotice] = useState("");
@@ -466,8 +488,23 @@ export function McpPanel({ settings, developerMode = false, onUpdate }) {
                       <SettingRow title="Manifest Hash"><code className="mcp-readonly-value">{serverState?.manifestHash?.slice(0, 16) || "尚未发现"}</code></SettingRow>
                       <SettingRow title="连接超时"><Slider value={(server.connectTimeoutMs ?? 15000) / 1000} min={2} max={120} unit=" 秒" onChange={(seconds) => updateServer(server.id, { connectTimeoutMs: seconds * 1000 })} /></SettingRow>
                       <SettingRow title="调用超时"><Slider value={(server.callTimeoutMs ?? 60000) / 1000} min={2} max={600} unit=" 秒" onChange={(seconds) => updateServer(server.id, { callTimeoutMs: seconds * 1000 })} /></SettingRow>
+                      <div className="mcp-diagnostic-grid">
+                        <div><strong>{serverState?.security?.calls ?? 0}</strong><span>工具调用</span></div>
+                        <div><strong>{serverState?.security?.failures ?? 0}</strong><span>调用失败</span></div>
+                        <div><strong>{serverState?.security?.suspiciousResults ?? 0}</strong><span>可疑结果</span></div>
+                        <div><strong>{serverState?.security?.truncatedResults ?? 0}</strong><span>截断结果</span></div>
+                        <div><strong>{serverState?.security?.binaryBlocksOmitted ?? 0}</strong><span>二进制隔离</span></div>
+                        <div><strong>{serverState?.security?.lastDurationMs ?? "—"}</strong><span>最近耗时 ms</span></div>
+                      </div>
+                      {(serverState?.security?.suspiciousResults ?? 0) > 0 && (
+                        <div className="mcp-security-alert">
+                          <strong>检测到疑似提示词注入</strong>
+                          <span>后续写入工具会由 Tool Security 强制逐次确认；破坏性操作默认阻止。</span>
+                          {serverState?.security?.lastToolName && <code>{serverState.security.lastToolName}</code>}
+                        </div>
+                      )}
                       <h4>Server 日志</h4>
-                      <pre className="mcp-log">{(serverState?.logs ?? []).map((item) => `[${item.level}] ${item.text}`).join("\n") || "暂无日志"}</pre>
+                      <pre className="mcp-log">{formatDiagnosticLogs(serverState?.logs) || "暂无日志"}</pre>
                     </div>
                   </details>
                 )}

@@ -11,7 +11,10 @@ const PROMPT_INJECTION_PATTERNS = [
   /reveal\s+(?:the\s+)?system\s+prompt/iu,
   /send\s+(?:the\s+)?(?:token|api\s*key|password|secret)/iu,
   /developer\s+message/iu,
-  /system\s+message/iu
+  /system\s+message/iu,
+  /忽略.{0,16}(?:之前|以上|先前|所有).{0,12}(?:指令|提示|规则)/u,
+  /(?:泄露|显示|输出).{0,16}(?:系统提示词|系统指令|开发者消息)/u,
+  /(?:发送|上传|泄露).{0,16}(?:令牌|密钥|密码|凭据)/u
 ];
 
 function stripHtml(text) {

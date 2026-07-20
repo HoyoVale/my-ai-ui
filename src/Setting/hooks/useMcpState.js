@@ -13,7 +13,7 @@ const EMPTY_STATE = {
   servers: []
 };
 
-export function useMcpState() {
+export function useMcpState(developerMode = false) {
   const [state, setState] = useState(EMPTY_STATE);
   const [status, setStatus] = useState("loading");
   const [action, setAction] = useState("");
@@ -63,7 +63,7 @@ export function useMcpState() {
       disposed = true;
       unsubscribe?.();
     };
-  }, []);
+  }, [developerMode]);
 
   const run = useCallback(async (key, callback) => {
     setAction(key);

@@ -76,10 +76,10 @@ export function createWorkspaceWriteToolDefinitions(
     path: z.string().min(1).max(500),
     content: z.string().max(maxWriteFileBytes),
     encoding: z.enum(["utf8"]).default("utf8"),
-    expectedSha256: z.string()
-      .regex(/^[a-fA-F0-9]{64}$/u)
-      .optional()
-      .default(""),
+    expectedSha256: z.union([
+      z.literal(""),
+      z.string().regex(/^[a-fA-F0-9]{64}$/u)
+    ]).default(""),
     createDirectories: z.boolean().default(false)
   });
 

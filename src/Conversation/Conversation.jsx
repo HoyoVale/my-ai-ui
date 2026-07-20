@@ -26,6 +26,10 @@ import {
 } from "./components/TaskPanel.jsx";
 
 import {
+  ToolApprovalPanel
+} from "./components/ToolApprovalPanel.jsx";
+
+import {
   ConversationSidebar
 } from "./components/Sidebar.jsx";
 
@@ -488,6 +492,14 @@ export default function Conversation() {
 
           <ConversationPlanDock
             activity={currentLiveActivity}
+          />
+
+          <ToolApprovalPanel
+            approval={
+              agentStatus.conversationId === history.current?.id
+                ? agentStatus.pendingApproval
+                : null
+            }
           />
         </main>
 

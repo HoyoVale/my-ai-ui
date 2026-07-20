@@ -85,7 +85,7 @@ export function WorkContextPanel({
         <div className="tool-mode-card">
           <div className="tool-mode-card__copy">
             <strong>Coding</strong>
-            <span>创建会话前必须选择工作区；会话创建后不能换绑。未来写入能力也只会作用于该固定目录。</span>
+            <span>创建会话前必须选择工作区；会话创建后不能换绑。读取与经用户批准的写入都只作用于该固定目录。</span>
           </div>
         </div>
       </SettingsSection>

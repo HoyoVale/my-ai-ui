@@ -106,6 +106,9 @@ const CHANNELS = Object.freeze({
   AGENT_GET_RUNTIME_RECOVERY_HISTORY:
     "agent-get-runtime-recovery-history",
 
+  AGENT_RESOLVE_TOOL_APPROVAL:
+    "agent-resolve-tool-approval",
+
   AGENT_GET_CIRCUIT_BREAKERS:
     "agent-get-circuit-breakers",
 
@@ -578,6 +581,16 @@ const api = Object.freeze({
   getToolRuntimeRecoveryHistory: () => {
     return ipcRenderer.invoke(
       CHANNELS.AGENT_GET_RUNTIME_RECOVERY_HISTORY
+    );
+  },
+
+  resolveToolApproval: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.AGENT_RESOLVE_TOOL_APPROVAL,
+      {
+        approvalId: String(request.approvalId ?? ""),
+        decision: String(request.decision ?? "")
+      }
     );
   },
 

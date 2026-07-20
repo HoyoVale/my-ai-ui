@@ -1,5 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   generateText,
   stepCountIs
@@ -14,6 +17,9 @@ import {
 import {
   LongTaskOrchestrator
 } from "../../electron/agent/orchestration/LongTaskOrchestrator.js";
+import {
+  ToolApprovalController
+} from "../../electron/tools/security/ToolApprovalController.js";
 import {
   inferRunStopReason,
   RUN_STOP_REASONS
@@ -187,6 +193,142 @@ describe("AI SDK Tool loop convergence", () => {
       finalRecords.find((record) => record.id === "plan-2")?.segmentId,
       secondSegment.id
     );
+  });
+
+
+  it("completes a Coding file write after a real approval round trip", async () => {
+    const root = fs.mkdtempSync(
+      path.join(os.tmpdir(), "xixi-approved-write-")
+    );
+    const abortController = new AbortController();
+    let pendingApproval = null;
+    const approvalController = new ToolApprovalController({
+      runId: "run-write",
+      taskId: "task-write",
+      settings: {
+        tools: {
+          security: {
+            approval: {
+              localWrite: true,
+              remoteWrite: true,
+              allowRunGrant: true,
+              timeoutMs: 300_000
+            },
+            untrustedContent: {
+              requirePerCallApproval: true,
+              blockDestructive: true
+            }
+          }
+        }
+      },
+      abortSignal: abortController.signal,
+      onChange: ({ pendingApproval: next }) => {
+        pendingApproval = next;
+      }
+    });
+    const session = createAgentToolSession({
+      activeModel: { provider: "deepseek" },
+      taskId: "task-write",
+      runId: "run-write",
+      workspaceId: "workspace-write",
+      mode: "coding",
+      settings: {
+        tools: {
+          mode: "coding",
+          runtime: {},
+          workspace: { roots: [root] },
+          security: {
+            approval: {
+              localWrite: true,
+              remoteWrite: true,
+              allowRunGrant: true,
+              timeoutMs: 300_000
+            },
+            untrustedContent: {
+              requirePerCallApproval: true,
+              blockDestructive: true
+            }
+          },
+          developer: {
+            toolsetOverrides: {},
+            toolOverrides: {}
+          }
+        }
+      },
+      authorizeTool: (request) =>
+        approvalController.authorize(request)
+    });
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        toolCall("plan-write", "update_plan", {
+          items: [
+            {
+              id: "write",
+              title: "Write approved file",
+              status: "in_progress"
+            }
+          ]
+        }),
+        toolCall("write-file", "write_text_file", {
+          path: "approved.txt",
+          content: "approved write\n"
+        }),
+        toolCall("plan-complete", "update_plan", {
+          items: [
+            {
+              id: "write",
+              title: "Write approved file",
+              status: "completed"
+            }
+          ]
+        }),
+        finalText("The approved file was written.")
+      ]
+    });
+
+    try {
+      const execution = generateText({
+        model,
+        tools: session.tools,
+        prompt: "Write approved.txt after user approval.",
+        stopWhen: stepCountIs(8)
+      });
+
+      for (let index = 0; index < 50 && !pendingApproval; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+
+      assert.ok(pendingApproval, "the file write should wait for approval");
+      assert.equal(pendingApproval.toolName, "write_text_file");
+      assert.equal(
+        fs.existsSync(path.join(root, "approved.txt")),
+        false,
+        "the side effect must not happen before approval"
+      );
+
+      const resolved = approvalController.resolveApproval({
+        approvalId: pendingApproval.id,
+        decision: "allow_once"
+      });
+      assert.equal(resolved.ok, true);
+
+      const result = await execution;
+      assert.equal(result.text, "The approved file was written.");
+      assert.equal(
+        fs.readFileSync(path.join(root, "approved.txt"), "utf8"),
+        "approved write\n"
+      );
+      const writeRecord = session.getRecords().find(
+        (record) => record.name === "write_text_file"
+      );
+      assert.equal(writeRecord.status, "completed");
+      assert.equal(writeRecord.input.expectedSha256, "");
+      assert.equal(approvalController.approvalSnapshot(), null);
+    } finally {
+      approvalController.close();
+      await session.closePersistence();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
 });

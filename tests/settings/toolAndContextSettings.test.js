@@ -347,3 +347,35 @@ it("Journal total quota never falls below the rolling file limit", () => {
   assert.equal(sanitized.tools.runtime.journalMaxFileBytes, 12_000_000);
   assert.equal(sanitized.tools.runtime.journalMaxTotalBytes, 12_000_000);
 });
+
+it("sanitizes Tool Security approval and untrusted-content policy", () => {
+  const sanitized = sanitizeSettings({
+    tools: {
+      security: {
+        approval: {
+          localWrite: false,
+          remoteWrite: true,
+          allowRunGrant: false,
+          timeoutMs: 1
+        },
+        untrustedContent: {
+          requirePerCallApproval: false,
+          blockDestructive: true
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(sanitized.tools.security, {
+    approval: {
+      localWrite: false,
+      remoteWrite: true,
+      allowRunGrant: false,
+      timeoutMs: 30000
+    },
+    untrustedContent: {
+      requirePerCallApproval: false,
+      blockDestructive: true
+    }
+  });
+});

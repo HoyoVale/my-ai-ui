@@ -72,6 +72,40 @@ describe("Tool Runtime Kernel v2", () => {
     assert.equal(executions, 0);
   });
 
+  it("preserves MCP safety metadata when a large result is paged", async () => {
+    const records = [];
+    const executor = new ToolExecutor({
+      resultStore: new ToolResultStore({
+        maxInlineBytes: 2000,
+        maxStoredBytes: 10000
+      }),
+      onRecord: (record) => records.push(record)
+    });
+    const output = await executor.execute(
+      definition({
+        source: "mcp.fixture",
+        async execute() {
+          return {
+            ok: true,
+            content: [{ type: "text", text: "x".repeat(5000) }],
+            safety: {
+              untrusted: true,
+              classification: "prompt-injection-suspected",
+              promptInjectionSignals: ["ignore previous instructions"]
+            }
+          };
+        }
+      }),
+      {}
+    );
+
+    assert.equal(output.meta.truncated, true);
+    assert.equal(output.safety.untrusted, true);
+    assert.equal(output.safety.classification, "prompt-injection-suspected");
+    const completed = records.find((record) => record.status === "completed");
+    assert.equal(completed.output.safety.untrusted, true);
+  });
+
   it("validates outputs and rejects non-JSON values", async () => {
     const schemaExecutor = new ToolExecutor();
     const invalidSchema = await schemaExecutor.execute(

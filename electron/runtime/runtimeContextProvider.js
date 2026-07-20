@@ -111,19 +111,29 @@ export function createRuntimeSnapshot({
       )
       ?.value ?? "GMT";
 
+  const configuredTools =
+    resolveEnabledToolCatalog(
+      toolSettings
+    );
   const workspace =
     workspaceSummary ??
     getWorkspacePolicySummary(
-      workspaceSettings
+      workspaceSettings,
+      {
+        writeEnabled: configuredTools.some(
+          (item) => item.toolset === "workspace.write"
+        ),
+        processEnabled: configuredTools.some(
+          (item) =>
+            item.name === "run_workspace_command"
+        )
+      }
     );
-  const enabledTools =
-    resolveEnabledToolCatalog(
-      toolSettings
-    ).filter(
-      (item) =>
-        item.toolset !== "workspace.read" ||
-        workspace !== null
-    );
+  const enabledTools = configuredTools.filter(
+    (item) =>
+      !String(item.toolset ?? "").startsWith("workspace.") ||
+      workspace !== null
+  );
 
   return {
     currentDate:
@@ -189,6 +199,16 @@ export function createRuntimeSnapshot({
   };
 }
 
+function workspaceModeLabel(mode) {
+  if (mode === "read-write-exec") {
+    return "读写与受限命令";
+  }
+  if (mode === "read-write") {
+    return "读写（写入前受权限策略约束）";
+  }
+  return "只读";
+}
+
 function workspaceLine(
   snapshot,
   detail
@@ -199,14 +219,17 @@ function workspaceLine(
 
   const roots =
     snapshot.workspace?.roots ?? [];
+  const access = workspaceModeLabel(
+    snapshot.workspace?.mode
+  );
 
   if (detail === "full") {
-    return `只读工作区：${roots.join("; ") || "未配置"}`;
+    return `工作区（${access}）：${roots.join("; ") || "未配置"}`;
   }
 
   return roots.length > 0
-    ? `只读工作区：已授权 ${roots.length} 个目录，具体路径可通过 get_workspace_info 查询`
-    : "只读工作区：未配置";
+    ? `工作区：已授权 ${roots.length} 个目录；访问模式：${access}；具体路径可通过 get_workspace_info 查询`
+    : "工作区：未配置";
 }
 
 function toolLine(
@@ -221,7 +244,7 @@ function toolLine(
     return `工具配置：${snapshot.toolProfile.id}；可用工具：${snapshot.toolProfile.tools.join(", ") || "无"}`;
   }
 
-  return `工具配置：${snapshot.toolProfile.id}；可用 ${snapshot.toolProfile.count} 个低风险工具`;
+  return `工具配置：${snapshot.toolProfile.id}；可用 ${snapshot.toolProfile.count} 个工具`;
 }
 
 export function buildRuntimeContextSection({

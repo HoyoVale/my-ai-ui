@@ -5,6 +5,23 @@ export function isE2EMode() {
   );
 }
 
+
+export function getE2EToolWriteRequest(messages = []) {
+  const latest = [...messages]
+    .reverse()
+    .find((message) => message?.role === "user")
+    ?.content;
+
+  if (latest !== "tool-write-key") {
+    return null;
+  }
+
+  return {
+    path: "e2e-approved.txt",
+    content: "E2E approved write\n"
+  };
+}
+
 function wait(
   milliseconds,
   signal

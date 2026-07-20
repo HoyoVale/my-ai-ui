@@ -1480,6 +1480,9 @@ function sanitizeToolSettings(
   const runtime = tools?.runtime ?? {};
   const circuitBreakers = runtime.circuitBreakers ?? {};
   const defaultCircuitBreakers = defaults.runtime.circuitBreakers ?? {};
+  const security = tools?.security ?? {};
+  const approval = security.approval ?? {};
+  const untrustedContent = security.untrustedContent ?? {};
   const workspace = tools?.workspace ?? {};
   const developer = tools?.developer ?? {};
   const sourceToolsetOverrides =
@@ -1781,6 +1784,38 @@ function sanitizeToolSettings(
             10
           )
         }
+      }
+    },
+    security: {
+      approval: {
+        localWrite: booleanValue(
+          approval.localWrite,
+          defaults.security.approval.localWrite
+        ),
+        remoteWrite: booleanValue(
+          approval.remoteWrite,
+          defaults.security.approval.remoteWrite
+        ),
+        allowRunGrant: booleanValue(
+          approval.allowRunGrant,
+          defaults.security.approval.allowRunGrant
+        ),
+        timeoutMs: integerValue(
+          approval.timeoutMs,
+          defaults.security.approval.timeoutMs,
+          30000,
+          1800000
+        )
+      },
+      untrustedContent: {
+        requirePerCallApproval: booleanValue(
+          untrustedContent.requirePerCallApproval,
+          defaults.security.untrustedContent.requirePerCallApproval
+        ),
+        blockDestructive: booleanValue(
+          untrustedContent.blockDestructive,
+          defaults.security.untrustedContent.blockDestructive
+        )
       }
     },
     workspace: {

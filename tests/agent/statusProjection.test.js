@@ -183,3 +183,38 @@ test("public recovery projection exposes only fields required by recovery UI", (
     actions: ["confirm_applied"]
   });
 });
+
+test("Conversation receives the bounded Tool Approval and security state", () => {
+  const projected = projectConversationStatus({
+    state: "running",
+    pendingApproval: {
+      id: "approval-1",
+      runId: "run-1",
+      callId: "call-1",
+      toolName: "write_file",
+      title: "写入文件",
+      source: "builtin",
+      effect: "local_write",
+      reason: "需要确认",
+      input: { path: "README.md", token: "[REDACTED]" },
+      allowRunGrant: true,
+      untrustedContent: false,
+      queuedCount: 1
+    },
+    toolSecurity: {
+      untrustedResults: 2,
+      suspiciousResults: 1,
+      promptInjectionSuspected: true,
+      lastToolName: "mcp_search",
+      lastSignals: ["private diagnostic signal"],
+      lastDetectedAt: 123
+    },
+    activity: { events: [] }
+  });
+
+  assert.equal(projected.pendingApproval.id, "approval-1");
+  assert.equal(projected.pendingApproval.input.path, "README.md");
+  assert.equal(projected.pendingApproval.input.token, "[REDACTED]");
+  assert.equal(projected.toolSecurity.suspiciousResults, 1);
+  assert.equal(projected.toolSecurity.lastSignals, undefined);
+});

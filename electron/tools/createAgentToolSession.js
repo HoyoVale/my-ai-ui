@@ -70,7 +70,8 @@ export function createAgentToolSession({
   mode = "chat",
   segmentId = "",
   faultInjector = null,
-  externalDefinitions = []
+  externalDefinitions = [],
+  authorizeTool = null
 } = {}) {
   const planStore =
     new RunPlanStore(
@@ -161,18 +162,21 @@ export function createAgentToolSession({
         subprocessSupervisor
       },
       policyEngine: new ToolPolicyEngine({
-        authorize: ({ definition, input }) => {
+        authorize: async (request) => {
           const permission = planStore.canRunTool(
-            definition.name,
-            input
+            request.definition.name,
+            request.input
           );
-          return permission?.ok === false
-            ? {
-                decision: "deny",
-                code: permission.code,
-                message: permission.message,
-                details: permission.details
-              }
+          if (permission?.ok === false) {
+            return {
+              decision: "deny",
+              code: permission.code,
+              message: permission.message,
+              details: permission.details
+            };
+          }
+          return typeof authorizeTool === "function"
+            ? await authorizeTool(request)
             : { decision: "allow" };
         }
       }),

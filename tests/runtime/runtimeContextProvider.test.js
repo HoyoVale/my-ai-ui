@@ -82,7 +82,7 @@ describe(
         );
         assert.match(
           text,
-          /只读工作区/u
+          /访问模式：只读/u
         );
         assert.match(
           text,
@@ -163,5 +163,31 @@ describe(
         );
       }
     );
+
+    it(
+      "describes Coding workspaces as approval-gated read-write",
+      () => {
+        const text = buildRuntimeContextSection({
+          toolSettings: {
+            mode: "coding",
+            workspace: {
+              roots: ["/workspace"]
+            },
+            developer: {
+              toolsetOverrides: {},
+              toolOverrides: {}
+            }
+          },
+          workspaceSettings: {
+            roots: ["/workspace"]
+          }
+        });
+
+        assert.match(text, /访问模式：读写/u);
+        assert.match(text, /写入前受权限策略约束/u);
+        assert.doesNotMatch(text, /只读工作区/u);
+      }
+    );
+
   }
 );

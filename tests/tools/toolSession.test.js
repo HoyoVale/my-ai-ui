@@ -10,6 +10,7 @@ import assert
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { z } from "zod";
 
 import {
   createAgentToolSession
@@ -239,6 +240,69 @@ describe(
           ),
           true
         );
+      }
+    );
+
+    it(
+      "pauses an external write until the approval policy resolves",
+      async () => {
+        let executed = false;
+        let approvalRequest = null;
+        let resolveApproval = null;
+        const externalTool = {
+          id: "mcp.fixture.write@1",
+          name: "mcp_fixture_write",
+          version: 1,
+          title: "Remote write",
+          description: "Test write",
+          source: "mcp.fixture",
+          toolsets: ["mcp.fixture"],
+          inputSchema: z.object({ value: z.string() }),
+          sideEffect: "external",
+          riskLevel: "medium",
+          runtimeContract: {
+            effect: "remote_write",
+            retryMode: "manual_only",
+            supportsAbort: true,
+            supportsResume: false
+          },
+          retryPolicy: { maxAttempts: 1, retryOn: [], backoffMs: 0 },
+          async execute(input) {
+            executed = true;
+            return { ok: true, data: input };
+          }
+        };
+        const session = createAgentToolSession({
+          externalDefinitions: [externalTool],
+          getAgentStatus: () => ({ state: "running" }),
+          authorizeTool: (request) => {
+            if (request.definition.runtimeContract.effect !== "remote_write") {
+              return { decision: "allow" };
+            }
+            approvalRequest = request;
+            return new Promise((resolve) => {
+              resolveApproval = resolve;
+            });
+          }
+        });
+
+        await session.tools.update_plan.execute({
+          items: [{ id: "step-1", title: "Write remote value", status: "in_progress" }]
+        }, { toolCallId: "plan-call" });
+
+        const execution = session.tools.mcp_fixture_write.execute(
+          { value: "approved" },
+          { toolCallId: "write-call" }
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        assert.equal(executed, false);
+        assert.equal(approvalRequest.definition.runtimeContract.effect, "remote_write");
+        resolveApproval({ decision: "allow" });
+        const result = await execution;
+        assert.equal(result.ok, true);
+        assert.equal(executed, true);
+        await session.closePersistence();
       }
     );
 

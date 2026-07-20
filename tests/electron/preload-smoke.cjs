@@ -242,6 +242,7 @@ app.whenReady().then(
               "startPetDrag",
               "sendAgentMessage",
               "getAgentStatus",
+              "resolveToolApproval",
               "getSettings",
               "getToolManifest",
               "getMcpState",

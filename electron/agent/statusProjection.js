@@ -308,6 +308,54 @@ export function projectRuntimeRecovery(
   };
 }
 
+function publicApproval(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return {
+    id: String(value.id ?? ""),
+    runId: String(value.runId ?? ""),
+    taskId: String(value.taskId ?? ""),
+    callId: String(value.callId ?? ""),
+    toolId: String(value.toolId ?? ""),
+    toolName: String(value.toolName ?? ""),
+    title: String(value.title ?? value.toolName ?? "工具调用").slice(0, 160),
+    source: String(value.source ?? "builtin").slice(0, 160),
+    riskLevel: String(value.riskLevel ?? "medium"),
+    effect: String(value.effect ?? "remote_write"),
+    reason: String(value.reason ?? "该工具调用需要批准。").slice(0, 600),
+    input: clone(value.input ?? {}),
+    inputTruncated: value.inputTruncated === true,
+    allowRunGrant: value.allowRunGrant === true,
+    untrustedContent: value.untrustedContent === true,
+    security: value.untrustedContent
+      ? {
+          suspiciousResults: Number(value.security?.suspiciousResults ?? 0),
+          lastToolName: String(value.security?.lastToolName ?? "").slice(0, 160),
+          lastSignals: (value.security?.lastSignals ?? [])
+            .map((item) => String(item).slice(0, 120))
+            .slice(0, 8)
+        }
+      : null,
+    requestedAt: Number(value.requestedAt ?? 0),
+    expiresAt: Number(value.expiresAt ?? 0),
+    queuedCount: Math.max(1, Number(value.queuedCount ?? 1))
+  };
+}
+
+function publicToolSecurity(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return {
+    untrustedResults: Number(value.untrustedResults ?? 0),
+    suspiciousResults: Number(value.suspiciousResults ?? 0),
+    promptInjectionSuspected: value.promptInjectionSuspected === true,
+    lastToolName: String(value.lastToolName ?? "").slice(0, 160),
+    lastDetectedAt: Number(value.lastDetectedAt ?? 0) || null
+  };
+}
+
 function basePublicStatus(source) {
   return {
     ...pick(source, PUBLIC_STATUS_FIELDS),
@@ -320,7 +368,10 @@ export function projectInputStatus(status) {
     ? status
     : {};
 
-  return basePublicStatus(source);
+  return {
+    ...basePublicStatus(source),
+    pendingApproval: publicApproval(source.pendingApproval)
+  };
 }
 
 export function projectResponseStatus(status) {
@@ -330,6 +381,8 @@ export function projectResponseStatus(status) {
 
   return {
     ...basePublicStatus(source),
+    pendingApproval: publicApproval(source.pendingApproval),
+    toolSecurity: publicToolSecurity(source.toolSecurity),
     plan: compactPlan(source.plan),
     activity: projectActivitySnapshot(source.activity, {
       maxEvents: 30
@@ -353,6 +406,8 @@ export function projectConversationStatus(status) {
 
   return {
     ...basePublicStatus(source),
+    pendingApproval: publicApproval(source.pendingApproval),
+    toolSecurity: publicToolSecurity(source.toolSecurity),
     plan: compactPlan(source.plan),
     activeToolCalls: (source.activeToolCalls ?? [])
       .slice(-80)

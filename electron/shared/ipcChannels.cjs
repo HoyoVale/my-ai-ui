@@ -105,6 +105,9 @@ const IPC_CHANNELS =
       GET_RUNTIME_RECOVERY_HISTORY:
         "agent-get-runtime-recovery-history",
 
+      RESOLVE_TOOL_APPROVAL:
+        "agent-resolve-tool-approval",
+
       GET_CIRCUIT_BREAKERS:
         "agent-get-circuit-breakers",
 

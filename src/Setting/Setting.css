@@ -4438,3 +4438,72 @@
     grid-template-columns: 1fr;
   }
 }
+
+.tool-security-note {
+  margin-top: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--setting-border, rgb(127 127 127 / 0.18));
+  border-radius: 10px;
+  color: var(--setting-secondary, #777);
+  background: var(--setting-soft-surface, rgb(127 127 127 / 0.06));
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Tool security phase */
+.mcp-diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 18px;
+}
+
+.mcp-diagnostic-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--setting-border);
+  border-radius: 9px;
+  background: var(--setting-panel-soft);
+}
+
+.mcp-diagnostic-grid strong {
+  color: var(--setting-text);
+  font-size: 16px;
+}
+
+.mcp-diagnostic-grid span {
+  color: var(--setting-text-soft);
+  font-size: 11px;
+}
+
+.mcp-security-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 18px 14px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, #d66 42%, var(--setting-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, #d66 8%, var(--setting-panel));
+}
+
+.mcp-security-alert strong {
+  color: var(--setting-text);
+  font-size: 12px;
+}
+
+.mcp-security-alert span,
+.mcp-security-alert code {
+  color: var(--setting-text-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .mcp-diagnostic-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -119,7 +119,11 @@ export function getWorkspaceRoots(
 }
 
 export function getWorkspacePolicySummary(
-  workspaceSettings = {}
+  workspaceSettings = {},
+  {
+    writeEnabled = false,
+    processEnabled = false
+  } = {}
 ) {
   const roots = getWorkspaceRoots(
     workspaceSettings
@@ -129,10 +133,22 @@ export function getWorkspacePolicySummary(
     return null;
   }
 
+  const canWrite = writeEnabled === true;
+  const canExecute = processEnabled === true;
+
   return {
     enabled: true,
     roots,
-    mode: "read-only",
+    mode: canExecute
+      ? "read-write-exec"
+      : canWrite
+        ? "read-write"
+        : "read-only",
+    capabilities: {
+      read: true,
+      write: canWrite,
+      process: canExecute
+    },
     excludes: [
       ...EXCLUDED_DIRECTORIES
     ].sort(),

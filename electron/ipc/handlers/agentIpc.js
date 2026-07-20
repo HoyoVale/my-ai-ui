@@ -152,6 +152,14 @@ export function registerAgentIpc() {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.agent.RESOLVE_TOOL_APPROVAL,
+    (event, request = {}) => {
+      requireConversationSender(event);
+      return agentRuntime.resolveToolApproval(request);
+    }
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.agent.GET_CIRCUIT_BREAKERS,
     (event) => {
       requireSettingSender(event);

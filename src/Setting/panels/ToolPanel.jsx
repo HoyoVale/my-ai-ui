@@ -297,6 +297,30 @@ export function ToolPanel({
     });
   };
 
+  const updateApprovalSecurity = (patch) => {
+    onUpdate({
+      security: {
+        ...(settings.security ?? {}),
+        approval: {
+          ...(settings.security?.approval ?? {}),
+          ...patch
+        }
+      }
+    });
+  };
+
+  const updateUntrustedSecurity = (patch) => {
+    onUpdate({
+      security: {
+        ...(settings.security ?? {}),
+        untrustedContent: {
+          ...(settings.security?.untrustedContent ?? {}),
+          ...patch
+        }
+      }
+    });
+  };
+
   const updateDeveloper = (patch) => {
     onUpdate({
       developer: {
@@ -372,6 +396,33 @@ export function ToolPanel({
           <code>{manifest?.revision ?? "加载中"}</code>
           <span>模型可见</span>
           <strong>{manifest?.tools?.filter((tool) => tool.ready).length ?? 0} 个工具</strong>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="操作确认">
+        <SettingRow title="本地文件写入">
+          <Toggle
+            checked={settings.security?.approval?.localWrite !== false}
+            label="写入前询问"
+            onChange={(localWrite) => updateApprovalSecurity({ localWrite })}
+          />
+        </SettingRow>
+        <SettingRow title="外部系统写入">
+          <Toggle
+            checked={settings.security?.approval?.remoteWrite !== false}
+            label="外部操作前询问"
+            onChange={(remoteWrite) => updateApprovalSecurity({ remoteWrite })}
+          />
+        </SettingRow>
+        <SettingRow title="任务内授权">
+          <Toggle
+            checked={settings.security?.approval?.allowRunGrant !== false}
+            label="允许本任务内记住批准"
+            onChange={(allowRunGrant) => updateApprovalSecurity({ allowRunGrant })}
+          />
+        </SettingRow>
+        <div className="tool-security-note">
+          破坏性操作始终需要逐次确认；检测到疑似提示词注入后，已有任务授权会立即失效。
         </div>
       </SettingsSection>
 
@@ -542,6 +593,34 @@ export function ToolPanel({
               <SettingRow title="重复调用限制">
                 <Slider value={settings.runtime.maxIdenticalCalls} min={1} max={10} unit=" 次" onChange={(maxIdenticalCalls) => updateRuntime({ maxIdenticalCalls })} />
               </SettingRow>
+
+              <div className="developer-subsection" data-testid="tool-security-settings">
+                <h3>Tool Security</h3>
+                <SettingRow title="批准等待时间">
+                  <Slider
+                    value={(settings.security?.approval?.timeoutMs ?? 300000) / 1000}
+                    min={30}
+                    max={1800}
+                    step={30}
+                    unit=" 秒"
+                    onChange={(seconds) => updateApprovalSecurity({ timeoutMs: seconds * 1000 })}
+                  />
+                </SettingRow>
+                <SettingRow title="不可信内容写入隔离">
+                  <Toggle
+                    checked={settings.security?.untrustedContent?.requirePerCallApproval !== false}
+                    label="疑似注入后逐次确认写操作"
+                    onChange={(requirePerCallApproval) => updateUntrustedSecurity({ requirePerCallApproval })}
+                  />
+                </SettingRow>
+                <SettingRow title="注入后破坏性阻断">
+                  <Toggle
+                    checked={settings.security?.untrustedContent?.blockDestructive !== false}
+                    label="阻止破坏性工具"
+                    onChange={(blockDestructive) => updateUntrustedSecurity({ blockDestructive })}
+                  />
+                </SettingRow>
+              </div>
 
               <div className="developer-subsection" data-testid="journal-storage-settings">
                 <h3>Runtime Journal 存储</h3>

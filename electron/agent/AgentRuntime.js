@@ -60,7 +60,8 @@ import {
 } from "../windows/response/index.js";
 
 import {
-  isConversationSender
+  isConversationSender,
+  openConversationWindow
 } from "../windows/conversation/conversationWindow.js";
 
 import {
@@ -82,6 +83,7 @@ import {
 } from "./messageTarget.js";
 
 import {
+  getE2EToolWriteRequest,
   isE2EMode,
   streamE2EResponse
 } from "./e2eAgentDriver.js";
@@ -89,6 +91,10 @@ import {
 import {
   createAgentToolSession
 } from "../tools/index.js";
+
+import {
+  ToolApprovalController
+} from "../tools/security/ToolApprovalController.js";
 
 import {
   mcpClientManager
@@ -159,6 +165,10 @@ import {
 import {
   resolveActiveRunText
 } from "./activeRunText.js";
+
+import {
+  createAgentStreamTimeout
+} from "./agentStreamTimeout.js";
 
 import {
   CoalescedStatusBroadcaster
@@ -406,6 +416,60 @@ export class AgentRuntime {
     }
   }
 
+  createToolApprovalController(runId, settings, abortSignal) {
+    return new ToolApprovalController({
+      runId,
+      taskId: this.activeRun?.taskId ?? "",
+      settings,
+      abortSignal,
+      onChange: ({ pendingApproval, security }) => {
+        if (!this.isCurrentRun(runId)) {
+          return;
+        }
+
+        this.activeRun.pendingApproval = pendingApproval;
+        this.activeRun.toolSecurity = security;
+
+        if (pendingApproval) {
+          this.activeRun.activityStore?.upsertEvent({
+            id: `approval:${pendingApproval.id}`,
+            type: "status",
+            status: "attention",
+            title: `等待批准：${pendingApproval.title}`,
+            category: "tool-approval",
+            activityVisibility: "normal",
+            createdAt: pendingApproval.requestedAt,
+            updatedAt: Date.now()
+          });
+          openConversationWindow();
+        }
+
+        this.persistActiveRunCheckpoint({ status: "running" });
+        this.setStatus({ ...this.status }, { immediate: true });
+      },
+      onResolved: ({ request, decision }) => {
+        if (!this.isCurrentRun(runId)) {
+          return;
+        }
+        const allowed = ["allow_once", "allow_run"].includes(decision);
+        this.activeRun.activityStore?.upsertEvent({
+          id: `approval:${request.id}`,
+          type: "status",
+          status: allowed ? "completed" : "cancelled",
+          title: allowed
+            ? `已批准：${request.title}`
+            : `已拒绝：${request.title}`,
+          category: "tool-approval",
+          activityVisibility: "normal",
+          createdAt: request.requestedAt,
+          updatedAt: Date.now()
+        });
+        this.persistActiveRunCheckpoint({ status: "running" });
+        this.setStatus({ ...this.status }, { immediate: true });
+      }
+    });
+  }
+
   applyRunState(state) {
     if (!this.activeRun || !state) {
       return state;
@@ -542,6 +606,12 @@ export class AgentRuntime {
         this.activeRun
           ?.toolSession
           ?.getRuntimeRecovery?.() ?? null,
+      pendingApproval:
+        this.activeRun
+          ?.pendingApproval ?? null,
+      toolSecurity:
+        this.activeRun
+          ?.toolSecurity ?? null,
       toolRuntimeDiagnostics:
         developerMode
           ? this.activeRun
@@ -772,6 +842,7 @@ export class AgentRuntime {
       content: run.finalText,
       status: state.messageStatus
     });
+    run.approvalController?.close?.();
     const closePersistence =
       run.toolSession
         ?.closePersistence?.();
@@ -1142,6 +1213,9 @@ export class AgentRuntime {
       startedAt,
       replaceMessageId: null,
       toolCalls: [],
+      pendingApproval: null,
+      toolSecurity: null,
+      approvalController: null,
       activityStore,
       initialPlan:
         continuationState?.initialPlan ?? [],
@@ -1348,6 +1422,9 @@ export class AgentRuntime {
       replaceMessageId:
         plan.targetMessage.id,
       toolCalls: [],
+      pendingApproval: null,
+      toolSecurity: null,
+      approvalController: null,
       activityStore,
       initialPlan: [],
       resumedFromMessageId: "",
@@ -1918,6 +1995,21 @@ export class AgentRuntime {
     });
   }
 
+  resolveToolApproval({ approvalId, decision } = {}) {
+    if (!this.activeRun?.approvalController) {
+      return {
+        ok: false,
+        code: "approval-not-active",
+        message: "当前没有等待处理的工具批准请求。"
+      };
+    }
+
+    return this.activeRun.approvalController.resolveApproval({
+      approvalId,
+      decision
+    });
+  }
+
   stop() {
     if (!this.activeRun) {
       return {
@@ -2049,10 +2141,109 @@ export class AgentRuntime {
     conversationId,
     context,
     memories,
+    settings,
     abortController
   }) {
     try {
       startResponseStream();
+
+      const writeRequest = getE2EToolWriteRequest(
+        context.messages
+      );
+
+      if (writeRequest) {
+        const runSettings = settings ?? getSettings();
+        const approvalController = this.createToolApprovalController(
+          runId,
+          runSettings,
+          abortController.signal
+        );
+        this.activeRun.approvalController = approvalController;
+        this.activeRun.toolSecurity = approvalController.securitySnapshot();
+
+        const toolSession = createAgentToolSession({
+          activeModel: { provider: "e2e" },
+          getAgentStatus: () => this.getStatus(),
+          abortSignal: abortController.signal,
+          onRecord: (record) => {
+            approvalController.markToolRecord(record);
+            this.upsertToolRecord(runId, record);
+          },
+          authorizeTool: (request) =>
+            approvalController.authorize(request),
+          activityStore: this.activeRun.activityStore,
+          settings: runSettings,
+          initialPlan: this.activeRun.initialPlan,
+          resultStoreDirectory: getTaskResultDirectory(
+            this.activeRun.taskId
+          ),
+          taskId: this.activeRun.taskId,
+          runId,
+          workspaceId: this.activeRun.workspaceId ?? "",
+          mode: this.activeRun.mode ?? "chat",
+          segmentId: "e2e-approved-write"
+        });
+        this.activeRun.toolSession = toolSession;
+
+        if (!toolSession.tools.write_text_file) {
+          const error = new Error(
+            "E2E Coding write tool is unavailable."
+          );
+          error.code = "E2E_WRITE_TOOL_UNAVAILABLE";
+          throw error;
+        }
+
+        await toolSession.tools.update_plan.execute(
+          {
+            items: [
+              {
+                id: "write",
+                title: "Write an approved file",
+                status: "in_progress"
+              }
+            ]
+          },
+          { toolCallId: "e2e-plan-write" }
+        );
+
+        const writeResult = await toolSession.tools.write_text_file.execute(
+          writeRequest,
+          { toolCallId: "e2e-write-file" }
+        );
+
+        if (!writeResult?.ok) {
+          const error = new Error(
+            writeResult?.error?.message ?? "E2E file write failed."
+          );
+          error.code = writeResult?.error?.code ?? "E2E_WRITE_FAILED";
+          throw error;
+        }
+
+        await toolSession.tools.update_plan.execute(
+          {
+            items: [
+              {
+                id: "write",
+                title: "Write an approved file",
+                status: "completed"
+              }
+            ]
+          },
+          { toolCallId: "e2e-plan-complete" }
+        );
+
+        const assistantText = `E2E_TOOL_WRITE_OK:${writeResult.data.path}`;
+        this.activeRun.finalText = assistantText;
+        appendResponseChunk(assistantText);
+        this.finalizeRun({
+          runId,
+          conversationId,
+          executionStopReason: RUN_STOP_REASONS.COMPLETED,
+          outcome: RUN_OUTCOMES.COMPLETED,
+          content: assistantText
+        });
+        return;
+      }
 
       await streamE2EResponse({
         messages:
@@ -2374,7 +2565,9 @@ export class AgentRuntime {
     toolSession,
     maxSteps,
     abortController,
-    remainingRunMs
+    remainingRunMs,
+    approvalTimeoutMs,
+    defaultToolTimeoutMs
   }) {
     this.assertProviderAvailable(runtime);
     const result = streamText({
@@ -2385,13 +2578,19 @@ export class AgentRuntime {
       stopWhen: stepCountIs(maxSteps),
       ...runtime.requestOptions,
       abortSignal: abortController.signal,
-      timeout: {
-        totalMs: Math.max(
-          1,
-          Math.min(modelSettings.timeoutMs, remainingRunMs)
-        ),
-        chunkMs: Math.min(45000, modelSettings.timeoutMs)
-      },
+      timeout: createAgentStreamTimeout({
+        modelTimeoutMs: modelSettings.timeoutMs,
+        remainingRunMs,
+        approvalTimeoutMs,
+        defaultToolTimeoutMs,
+        hasApprovalGatedTools: toolSession.definitions.some(
+          (definition) => [
+            "local_write",
+            "remote_write",
+            "destructive"
+          ].includes(definition.runtimeContract?.effect)
+        )
+      }),
       prepareStep: ({
         stepNumber,
         initialMessages,
@@ -2556,14 +2755,25 @@ export class AgentRuntime {
         ...declarativeHttpToolManager.getToolDefinitions(runSettings)
       ];
 
+      const approvalController = this.createToolApprovalController(
+        runId,
+        runSettings,
+        abortController.signal
+      );
+      this.activeRun.approvalController = approvalController;
+      this.activeRun.toolSecurity = approvalController.securitySnapshot();
+
       const toolSession = createAgentToolSession({
         activeModel: modelSettings,
         externalDefinitions,
         getAgentStatus: () => this.getStatus(),
         abortSignal: abortController.signal,
         onRecord: (record) => {
+          approvalController.markToolRecord(record);
           this.upsertToolRecord(runId, record);
         },
+        authorizeTool: (request) =>
+          approvalController.authorize(request),
         onPlanChange: (plan, change) => {
           if (!this.isCurrentRun(runId)) {
             return;
@@ -2698,7 +2908,11 @@ export class AgentRuntime {
               toolSession,
               maxSteps,
               abortController,
-              remainingRunMs
+              remainingRunMs,
+              approvalTimeoutMs:
+                runSettings.tools?.security?.approval?.timeoutMs,
+              defaultToolTimeoutMs:
+                runtimeSettings.defaultTimeoutMs
             }),
           onSegmentComplete: async ({
             segment,

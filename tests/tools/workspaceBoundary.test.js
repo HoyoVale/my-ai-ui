@@ -115,6 +115,21 @@ describe(
           summary.mode,
           "read-only"
         );
+
+        const writableSummary =
+          getWorkspacePolicySummary(
+            { roots: [root] },
+            { writeEnabled: true }
+          );
+
+        assert.equal(
+          writableSummary.mode,
+          "read-write"
+        );
+        assert.equal(
+          writableSummary.capabilities.write,
+          true
+        );
       }
     );
 
@@ -165,7 +180,8 @@ describe(
               [
                 "get_workspace_info",
                 "read_text_file",
-                "search_text"
+                "search_text",
+                "write_text_file"
               ].includes(name)
           ),
           false

@@ -634,6 +634,7 @@ export class ToolExecutor {
         definition: {
           id: definition.id ?? definition.name,
           name: definition.name,
+          title: definition.title ?? definition.name,
           version: definition.version ?? 1,
           source: definition.source ?? "builtin",
           riskLevel: definition.riskLevel ?? "none",
@@ -1141,6 +1142,15 @@ export class ToolExecutor {
                 clipped: false
               }
             };
+        if (
+          normalizedOutput?.safety &&
+          captured.value &&
+          typeof captured.value === "object" &&
+          !captured.value.safety
+        ) {
+          captured.value.safety = structuredClone(normalizedOutput.safety);
+        }
+
         const endedAt = Date.now();
         this.budget.noteOutput(captured.value);
 

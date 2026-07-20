@@ -24,6 +24,20 @@ const MAX_TOOL_DESCRIPTION_LENGTH = 4000;
 const MAX_TOOL_SCHEMA_BYTES = 512_000;
 const MAX_SERVER_INSTRUCTIONS_LENGTH = 8000;
 
+function createSecurityDiagnostics() {
+  return {
+    calls: 0,
+    failures: 0,
+    suspiciousResults: 0,
+    truncatedResults: 0,
+    binaryBlocksOmitted: 0,
+    lastDurationMs: null,
+    lastToolName: "",
+    lastSuspiciousAt: null,
+    lastSignals: []
+  };
+}
+
 function boundedJsonClone(value, maxBytes = MAX_TOOL_SCHEMA_BYTES) {
   if (value === undefined || value === null) {
     return null;
@@ -295,6 +309,7 @@ export class McpConnectionManager extends EventEmitter {
           nextRetryAt: null,
           reason: ""
         },
+        security: createSecurityDiagnostics(),
         suppressRecovery: false
       };
       this.entries.set(server.id, entry);
@@ -709,6 +724,77 @@ export class McpConnectionManager extends EventEmitter {
     }
   }
 
+  recordToolResult(entry, toolName, normalized, durationMs) {
+    const safety = normalized?.safety ?? {};
+    const suspicious =
+      safety.classification === "prompt-injection-suspected" ||
+      (Array.isArray(safety.promptInjectionSignals) && safety.promptInjectionSignals.length > 0);
+    const truncated =
+      safety.contentTruncated === true ||
+      safety.structuredTruncated === true;
+    const binaryBlocksOmitted = Math.max(
+      0,
+      Number(safety.binaryBlocksOmitted) || 0
+    );
+
+    entry.security ??= createSecurityDiagnostics();
+    entry.security.calls += 1;
+    entry.security.lastDurationMs = Math.max(0, Number(durationMs) || 0);
+    entry.security.lastToolName = String(toolName ?? "").slice(0, 256);
+    entry.security.binaryBlocksOmitted += binaryBlocksOmitted;
+    if (truncated) {
+      entry.security.truncatedResults += 1;
+    }
+    if (suspicious) {
+      entry.security.suspiciousResults += 1;
+      entry.security.lastSuspiciousAt = Date.now();
+      entry.security.lastSignals = (safety.promptInjectionSignals ?? [])
+        .map((item) => String(item ?? "").slice(0, 120))
+        .slice(0, 8);
+      this.journal.append(
+        entry.serverId,
+        `MCP 工具 ${toolName} 返回内容包含疑似提示词注入信号。`,
+        {
+          level: "user",
+          event: "MCP_PROMPT_INJECTION_SUSPECTED",
+          data: {
+            toolName: entry.security.lastToolName,
+            signals: entry.security.lastSignals
+          }
+        }
+      );
+    }
+
+    this.journal.append(entry.serverId, `tool ${toolName} completed in ${entry.security.lastDurationMs}ms`, {
+      level: "developer",
+      event: "MCP_TOOL_CALL_COMPLETED",
+      data: {
+        toolName: entry.security.lastToolName,
+        durationMs: entry.security.lastDurationMs,
+        suspicious,
+        truncated,
+        binaryBlocksOmitted
+      }
+    });
+  }
+
+  recordToolFailure(entry, toolName, durationMs, error) {
+    entry.security ??= createSecurityDiagnostics();
+    entry.security.calls += 1;
+    entry.security.failures += 1;
+    entry.security.lastDurationMs = Math.max(0, Number(durationMs) || 0);
+    entry.security.lastToolName = String(toolName ?? "").slice(0, 256);
+    entry.error = errorMessage(error);
+    this.journal.append(entry.serverId, `tool call: ${entry.error}`, {
+      level: "developer",
+      event: "MCP_TOOL_CALL_FAILED",
+      data: {
+        toolName: entry.security.lastToolName,
+        durationMs: entry.security.lastDurationMs
+      }
+    });
+  }
+
   async invokeTool(entry, toolName, input, { signal, timeoutMs } = {}) {
     const result = await entry.client.callTool(
       {
@@ -747,8 +833,10 @@ export class McpConnectionManager extends EventEmitter {
     }
     this.permissionPolicy.assertToolAllowed(entry.config, tool);
 
+    const startedAt = Date.now();
     try {
       const normalized = await this.invokeTool(entry, toolName, input, { signal, timeoutMs });
+      this.recordToolResult(entry, toolName, normalized, Date.now() - startedAt);
       entry.error = "";
       this.emitChanged();
       return normalized;
@@ -756,11 +844,7 @@ export class McpConnectionManager extends EventEmitter {
       if (signal?.aborted) {
         throw error;
       }
-      entry.error = errorMessage(error);
-      this.journal.append(entry.serverId, `tool call: ${entry.error}`, {
-        level: "developer",
-        event: "MCP_TOOL_CALL_FAILED"
-      });
+      this.recordToolFailure(entry, toolName, Date.now() - startedAt, error);
       this.emitChanged();
 
       const decision = this.permissionPolicy.toolDecision(entry.config, tool);
@@ -770,7 +854,17 @@ export class McpConnectionManager extends EventEmitter {
           await this.connectServer(entry.serverId, { force: true, recovery: true });
           const recovered = this.entries.get(entry.serverId);
           if (recovered?.client) {
-            return await this.invokeTool(recovered, toolName, input, { signal, timeoutMs });
+            const recoveryStartedAt = Date.now();
+            const normalized = await this.invokeTool(recovered, toolName, input, { signal, timeoutMs });
+            this.recordToolResult(
+              recovered,
+              toolName,
+              normalized,
+              Date.now() - recoveryStartedAt
+            );
+            recovered.error = "";
+            this.emitChanged();
+            return normalized;
           }
         } catch (recoveryError) {
           this.journal.append(entry.serverId, `tool recovery: ${errorMessage(recoveryError)}`, {
@@ -972,6 +1066,7 @@ export class McpConnectionManager extends EventEmitter {
       manifestHash: entry.manifestHash,
       health: structuredClone(entry.health),
       recovery: structuredClone(entry.recovery),
+      security: structuredClone(entry.security ?? createSecurityDiagnostics()),
       permissions: structuredClone(entry.config?.permissions ?? {}),
       toolCount: entry.tools.length,
       allowedToolCount: entry.tools.filter((tool) =>
@@ -1017,6 +1112,7 @@ export class McpConnectionManager extends EventEmitter {
           manifestHash: "",
           health: { state: "unknown", latencyMs: null, checkedAt: null, consecutiveFailures: 0 },
           recovery: { attempt: 0, nextRetryAt: null, reason: "" },
+          security: createSecurityDiagnostics(),
           permissions: structuredClone(server.permissions ?? {}),
           toolCount: 0,
           allowedToolCount: 0,

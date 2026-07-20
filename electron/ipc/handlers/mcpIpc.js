@@ -53,6 +53,7 @@ function currentServer(serverId) {
 
 function stateWithCredentials() {
   const settings = getSettings();
+  const developerMode = settings.general?.developerMode === true;
   const state = mcpClientManager.snapshot();
   return {
     ...state,
@@ -62,6 +63,12 @@ function stateWithCredentials() {
       );
       return {
         ...item,
+        pid: developerMode ? item.pid : null,
+        serverInfo: developerMode ? item.serverInfo : null,
+        capabilities: developerMode ? item.capabilities : null,
+        instructions: developerMode ? item.instructions : "",
+        logs: developerMode ? item.logs : [],
+        security: developerMode ? item.security : null,
         credentialStatuses: server
           ? listMcpSecretStatuses(server)
           : [],

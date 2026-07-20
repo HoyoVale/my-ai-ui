@@ -179,7 +179,7 @@ export function registerSettingsIpc() {
         );
 
       const options = {
-        title: "选择只读工作区",
+        title: "选择工作区",
         properties: [
           "openDirectory",
           "createDirectory"
