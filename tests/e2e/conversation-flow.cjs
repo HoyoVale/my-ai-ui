@@ -1153,14 +1153,24 @@ async function main() {
       .locator('[data-testid="circuit-breaker-reset-all"]')
       .waitFor();
 
-    await developerSettings
-      .locator(
-        '[data-testid="tool-developer-overrides"] > summary'
-      )
-      .click();
+    const calculatorToolCard =
+      setting.locator(
+        '[data-testid="tool-manifest-calculator"]'
+      );
+
+    await calculatorToolCard.waitFor();
+
+    if (
+      await calculatorToolCard.getAttribute("open") === null
+    ) {
+      await calculatorToolCard
+        .locator("summary")
+        .first()
+        .click();
+    }
 
     const calculatorOverride =
-      developerSettings.locator(
+      calculatorToolCard.locator(
         '[data-testid="tool-override-calculator"]'
       );
 

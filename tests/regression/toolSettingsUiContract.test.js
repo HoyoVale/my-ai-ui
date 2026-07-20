@@ -48,6 +48,19 @@ describe(
     );
 
     it(
+      "keeps Electron E2E selectors aligned with the manifest-driven Tool UI",
+      () => {
+        const flow = read(
+          "../e2e/conversation-flow.cjs"
+        );
+
+        assert.match(flow, /tool-manifest-calculator/u);
+        assert.match(flow, /tool-override-calculator/u);
+        assert.doesNotMatch(flow, /tool-developer-overrides/u);
+      }
+    );
+
+    it(
       "places environment injection controls inside Context",
       () => {
         const panel = read(
