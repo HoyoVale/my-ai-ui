@@ -68,7 +68,8 @@ export function createAgentToolSession({
   runId = "",
   workspaceId = "",
   segmentId = "",
-  faultInjector = null
+  faultInjector = null,
+  externalDefinitions = []
 } = {}) {
   const planStore =
     new RunPlanStore(
@@ -128,6 +129,8 @@ export function createAgentToolSession({
     resultStore,
     planStore
   });
+
+  registry.registerMany(externalDefinitions);
 
   const definitions = registry.list();
 

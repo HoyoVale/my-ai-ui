@@ -108,6 +108,13 @@ export function Icon({
       </>
     ),
 
+    mcp: (
+      <>
+        <path d="M8 7.5h8a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-3a3 3 0 0 1 3-3Z" />
+        <path d="M9 4v3.5M15 4v3.5M9 16.5V20M15 16.5V20" />
+      </>
+    ),
+
     developer: (
       <>
         <path d="m8 8-4 4 4 4" />

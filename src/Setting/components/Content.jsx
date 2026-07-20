@@ -36,6 +36,10 @@ import {
 } from "../panels/MemoryPanel.jsx";
 
 import {
+  McpPanel
+} from "../panels/McpPanel.jsx";
+
+import {
   PetPanel
 } from "../panels/PetPanel.jsx";
 
@@ -202,6 +206,18 @@ export function SettingsContent({
         onUpdate={(patch) => {
           onUpdateSection(
             "tools",
+            patch
+          );
+        }}
+      />
+    ),
+
+    mcp: (
+      <McpPanel
+        settings={settings}
+        onUpdate={(patch) => {
+          onUpdateSection(
+            "mcp",
             patch
           );
         }}

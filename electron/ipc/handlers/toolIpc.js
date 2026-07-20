@@ -40,6 +40,7 @@ function previewSettings(request = {}) {
   const allowed = {};
   for (const key of [
     "tools",
+    "mcp",
     "prompts",
     "personality",
     "context",

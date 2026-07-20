@@ -90,6 +90,10 @@ import {
 } from "../tools/index.js";
 
 import {
+  mcpClientManager
+} from "../mcp/index.js";
+
+import {
   configureRuntimeCircuitBreakers,
   getRuntimeCircuitBreakerSnapshot,
   providerCircuitBreakers,
@@ -1650,9 +1654,14 @@ export class AgentRuntime {
       activeModel = null;
     }
 
+    const externalDefinitions = await mcpClientManager
+      .prepareForAgent(settings)
+      .catch(() => []);
+
     const session = createAgentToolSession({
       activeModel,
       settings,
+      externalDefinitions,
       resultStoreDirectory: getTaskResultDirectory(normalizedTaskId),
       taskId: normalizedTaskId,
       runId: `recovery-${crypto.randomUUID()}`,
@@ -2514,8 +2523,16 @@ export class AgentRuntime {
       });
       this.activeRun.orchestrator = orchestrator;
 
+      const externalDefinitions = await mcpClientManager
+        .prepareForAgent(runSettings)
+        .catch((error) => {
+          console.warn("MCP 工具准备失败，将继续使用内置工具：", error);
+          return [];
+        });
+
       const toolSession = createAgentToolSession({
         activeModel: modelSettings,
+        externalDefinitions,
         getAgentStatus: () => this.getStatus(),
         abortSignal: abortController.signal,
         onRecord: (record) => {

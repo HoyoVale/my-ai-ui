@@ -1057,6 +1057,34 @@ async function main() {
 
     await setting
       .locator(
+        '[data-testid="setting-tab-mcp"]'
+      )
+      .click();
+
+    await waitForText(
+      setting.locator(
+        ".setting-page__header"
+      ),
+      "MCP"
+    );
+
+    await setting
+      .locator('[data-testid="mcp-overview"]')
+      .waitFor();
+
+    await setting
+      .locator('[data-testid="mcp-add-github"]')
+      .click();
+
+    const githubMcpCard = setting.locator(
+      '[data-testid="mcp-server-github"]'
+    );
+    await githubMcpCard.waitFor();
+    await waitForText(githubMcpCard, "GitHub");
+    await waitForText(githubMcpCard, "只读");
+
+    await setting
+      .locator(
         '[data-testid="setting-tab-tools"]'
       )
       .click();

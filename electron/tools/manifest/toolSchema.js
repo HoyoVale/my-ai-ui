@@ -12,6 +12,9 @@ export function serializeToolSchema(schema) {
   }
 
   try {
+    if (schema.jsonSchema && typeof schema.jsonSchema === "object") {
+      return jsonClone(schema.jsonSchema);
+    }
     if (typeof z.toJSONSchema === "function") {
       return jsonClone(z.toJSONSchema(schema));
     }

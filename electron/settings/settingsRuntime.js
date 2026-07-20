@@ -34,6 +34,10 @@ import {
   configureRuntimeCircuitBreakers
 } from "../runtime/runtimeCircuitBreakers.js";
 
+import {
+  mcpClientManager
+} from "../mcp/index.js";
+
 
 export function applyGeneralSettings(
   settings
@@ -63,6 +67,7 @@ export function applySettingsToOpenWindows(
   settings
 ) {
   configureRuntimeCircuitBreakers(settings);
+  void mcpClientManager.applySettings(settings);
 
   applyGeneralSettings(
     settings

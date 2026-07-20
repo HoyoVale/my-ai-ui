@@ -23,6 +23,10 @@ import {
   createBuiltinToolRegistry
 } from "./createBuiltinToolRegistry.js";
 
+import {
+  mcpClientManager
+} from "../../mcp/McpClientManager.js";
+
 const OVERRIDE_VALUES = new Set([
   "inherit",
   "enabled",
@@ -55,6 +59,26 @@ function toolAvailability(tool, settings) {
   const mode = resolveToolMode(toolSettings);
   const toolset = tool.toolsets?.[0] ?? "core.runtime";
   const roots = getWorkspaceRoots(workspaceSettings);
+
+  if (String(tool.source ?? "").startsWith("mcp.")) {
+    const serverId = String(tool.source).slice(4);
+    const serverState = mcpClientManager
+      .snapshot()
+      .servers
+      .find((server) => server.id === serverId);
+    if (!serverState || serverState.enabled === false) {
+      return {
+        available: false,
+        reason: "对应的 MCP Server 未启用。"
+      };
+    }
+    if (serverState.state === "error") {
+      return {
+        available: false,
+        reason: serverState.error || "MCP Server 连接失败。"
+      };
+    }
+  }
 
   if (toolset.startsWith("workspace.") && roots.length === 0) {
     return {
@@ -137,6 +161,9 @@ export function getToolManifestSnapshot({ settings = {} } = {}) {
     includeWorkspaceDefinitions: true,
     includeWorkspaceInfo: true
   });
+  registry.registerMany(
+    mcpClientManager.getToolDefinitions()
+  );
   const rawTools = registry.manifest();
   const enabledNames = new Set(
     resolveEnabledToolCatalog(toolSettings, rawTools).map((tool) => tool.name)

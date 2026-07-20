@@ -153,6 +153,20 @@ describe(
     );
 
     it(
+      "exposes MCP management channels",
+      () => {
+        assert.equal(channels.mcp.GET_STATE, "mcp-get-state");
+        assert.equal(channels.mcp.CONNECT, "mcp-connect");
+        assert.equal(channels.mcp.DISCONNECT, "mcp-disconnect");
+        assert.equal(channels.mcp.REFRESH, "mcp-refresh");
+        assert.equal(channels.mcp.PING, "mcp-ping");
+        assert.equal(channels.mcp.SET_SECRET, "mcp-set-secret");
+        assert.equal(channels.mcp.CLEAR_SECRET, "mcp-clear-secret");
+        assert.equal(channels.mcp.CHANGED, "mcp-changed");
+      }
+    );
+
+    it(
       "exposes memory channels",
       () => {
         assert.equal(

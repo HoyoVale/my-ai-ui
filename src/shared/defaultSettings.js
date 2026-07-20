@@ -238,6 +238,14 @@ export const FALLBACK_SETTINGS = {
   workspaces: {
     items: []
   },
+  mcp: {
+    enabled: true,
+    autoConnect: true,
+    connectTimeoutMs: 15000,
+    callTimeoutMs: 60000,
+    maxToolsPerServer: 128,
+    servers: []
+  },
   tools: {
     enabled: true,
     mode: "coding",

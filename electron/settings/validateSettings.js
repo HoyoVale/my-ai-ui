@@ -226,6 +226,15 @@ const TOOL_OVERRIDE_VALUES = [
   "disabled"
 ];
 
+const MCP_TRANSPORTS = [
+  "stdio"
+];
+
+const MCP_SERVER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,47}$/u;
+const MCP_ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]{0,63}$/u;
+const EXTERNAL_TOOLSET_PATTERN = /^(?:mcp|custom)\.[a-z0-9][a-z0-9._-]{0,79}$/u;
+const EXTERNAL_TOOL_NAME_PATTERN = /^(?=.{1,64}$)(?:mcp|custom)_[a-zA-Z0-9_-]+$/u;
+
 function clamp(value, min, max) {
   return Math.min(
     Math.max(value, min),
@@ -1049,6 +1058,107 @@ function sanitizeWorkspaceRegistry(
   return { items };
 }
 
+function safeProcessArgument(value) {
+  const text = String(value ?? "").trim();
+  if (!text || text.length > 1000) {
+    return "";
+  }
+  const hasControlCharacter = [...text].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31) || code === 127;
+  });
+  return hasControlCharacter ? "" : text;
+}
+
+function sanitizeMcpEnvironment(source = {}) {
+  const output = {};
+  const entries = source && typeof source === "object" && !Array.isArray(source)
+    ? Object.entries(source)
+    : [];
+  for (const [rawName, rawValue] of entries.slice(0, 32)) {
+    const name = String(rawName ?? "").trim().toUpperCase();
+    const value = String(rawValue ?? "");
+    if (!MCP_ENV_NAME_PATTERN.test(name) || value.length > 4000) {
+      continue;
+    }
+    output[name] = value;
+  }
+  return output;
+}
+
+function sanitizeMcpServer(source, index) {
+  const fallbackId = `mcp-${index + 1}`;
+  const requestedId = String(source?.id ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 48);
+  const id = MCP_SERVER_ID_PATTERN.test(requestedId)
+    ? requestedId
+    : fallbackId;
+  const command = safeProcessArgument(source?.command);
+  const args = Array.isArray(source?.args)
+    ? source.args.map(safeProcessArgument).filter(Boolean).slice(0, 64)
+    : [];
+  const secretEnvKeys = Array.isArray(source?.secretEnvKeys)
+    ? [...new Set(source.secretEnvKeys
+        .map((value) => String(value ?? "").trim().toUpperCase())
+        .filter((name) => MCP_ENV_NAME_PATTERN.test(name))
+      )].slice(0, 16)
+    : [];
+  let cwd = String(source?.cwd ?? "").trim();
+  if (cwd && !(path.isAbsolute(cwd) || path.win32.isAbsolute(cwd))) {
+    cwd = "";
+  }
+  if (cwd.length > 500) {
+    cwd = cwd.slice(0, 500);
+  }
+
+  return {
+    id,
+    name: nonEmptyStringValue(source?.name, id, 80),
+    enabled: booleanValue(source?.enabled, false),
+    autoConnect: booleanValue(source?.autoConnect, true),
+    transport: enumValue(source?.transport, MCP_TRANSPORTS, "stdio"),
+    command,
+    args,
+    cwd,
+    env: sanitizeMcpEnvironment(source?.env),
+    secretEnvKeys,
+    readOnly: booleanValue(source?.readOnly, false),
+    preset: enumValue(source?.preset, ["custom", "github-readonly"], "custom"),
+    connectTimeoutMs: integerValue(source?.connectTimeoutMs, 15000, 2000, 120000),
+    callTimeoutMs: integerValue(source?.callTimeoutMs, 60000, 2000, 600000)
+  };
+}
+
+function sanitizeMcpSettings(source, defaults) {
+  const servers = Array.isArray(source?.servers)
+    ? source.servers.slice(0, 32).map(sanitizeMcpServer)
+    : [];
+  const deduplicated = [];
+  const usedIds = new Set();
+  for (const server of servers) {
+    let id = server.id;
+    let suffix = 2;
+    while (usedIds.has(id)) {
+      id = `${server.id.slice(0, 42)}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(id);
+    deduplicated.push({ ...server, id });
+  }
+  return {
+    enabled: booleanValue(source?.enabled, defaults.enabled),
+    autoConnect: booleanValue(source?.autoConnect, defaults.autoConnect),
+    connectTimeoutMs: integerValue(source?.connectTimeoutMs, defaults.connectTimeoutMs, 2000, 120000),
+    callTimeoutMs: integerValue(source?.callTimeoutMs, defaults.callTimeoutMs, 2000, 600000),
+    maxToolsPerServer: integerValue(source?.maxToolsPerServer, defaults.maxToolsPerServer, 1, 512),
+    servers: deduplicated
+  };
+}
+
 function sanitizeToolSettings(
   tools,
   defaults
@@ -1135,6 +1245,17 @@ function sanitizeToolSettings(
         : "inherit";
   }
 
+
+  for (const [id, value] of Object.entries(sourceToolsetOverrides)) {
+    if (EXTERNAL_TOOLSET_PATTERN.test(id)) {
+      toolsetOverrides[id] = enumValue(
+        value,
+        TOOL_OVERRIDE_VALUES,
+        "inherit"
+      );
+    }
+  }
+
   const toolOverrides = {};
   for (const name of SAFE_TOOL_NAMES) {
     const explicit =
@@ -1156,6 +1277,17 @@ function sanitizeToolSettings(
       tools.overrides[name] === false
     ) {
       toolOverrides[name] = "disabled";
+    }
+  }
+
+
+  for (const [name, value] of Object.entries(sourceToolOverrides)) {
+    if (EXTERNAL_TOOL_NAME_PATTERN.test(name)) {
+      toolOverrides[name] = enumValue(
+        value,
+        TOOL_OVERRIDE_VALUES,
+        "inherit"
+      );
     }
   }
 
@@ -1421,6 +1553,8 @@ export function sanitizeSettings(
     source.context ?? {};
   const tools =
     source.tools ?? {};
+  const mcp =
+    source.mcp ?? {};
   const workspaces =
     source.workspaces ?? {};
   const memory =
@@ -1734,6 +1868,11 @@ export function sanitizeSettings(
     context: sanitizeContextSettings(
       context,
       defaults.context
+    ),
+
+    mcp: sanitizeMcpSettings(
+      mcp,
+      defaults.mcp
     ),
 
     workspaces: sanitizeWorkspaceRegistry(

@@ -320,6 +320,9 @@ function manifestEntry(definition) {
     runtimeContract: publicToolRuntimeContract(
       definition.runtimeContract
     ),
+    mcp: definition.mcp
+      ? cloneMetadata(definition.mcp)
+      : null,
     inputSchema: serializeToolSchema(definition.inputSchema),
     outputSchema: serializeToolSchema(definition.outputSchema)
   };

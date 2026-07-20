@@ -103,6 +103,13 @@ export const SETTING_GROUPS = [
     developerOnly: true,
     tabs: [
       {
+        id: "mcp",
+        label: "MCP",
+        title: "MCP",
+        description:
+          "连接、发现和管理外部 MCP Server 与工具。"
+      },
+      {
         id: "developer",
         label: "Developer",
         title: "开发者",

@@ -30,6 +30,10 @@ import {
 } from "./persistence/AsyncPersistenceQueue.js";
 
 import {
+  mcpClientManager
+} from "./mcp/index.js";
+
+import {
   RuntimeRecoveryManager
 } from "./tools/runtime-state/RuntimeRecoveryManager.js";
 
@@ -145,8 +149,11 @@ app.on(
     event.preventDefault();
     persistenceFlushInProgress = true;
 
-    void flushAllPersistenceQueues()
-      .then((result) => {
+    void Promise.all([
+      flushAllPersistenceQueues(),
+      mcpClientManager.closeAll()
+    ])
+      .then(([result]) => {
         if (!result.ok) {
           console.warn(
             `应用退出前仍有 ${result.pendingCount} 个持久化队列未写入。`

@@ -164,6 +164,33 @@ const CHANNELS = Object.freeze({
   TOOLS_GET_MANIFEST:
     "tools-get-manifest",
 
+  MCP_GET_STATE:
+    "mcp-get-state",
+
+  MCP_CONNECT:
+    "mcp-connect",
+
+  MCP_DISCONNECT:
+    "mcp-disconnect",
+
+  MCP_REFRESH:
+    "mcp-refresh",
+
+  MCP_PING:
+    "mcp-ping",
+
+  MCP_GET_SECRET_STATUS:
+    "mcp-get-secret-status",
+
+  MCP_SET_SECRET:
+    "mcp-set-secret",
+
+  MCP_CLEAR_SECRET:
+    "mcp-clear-secret",
+
+  MCP_CHANGED:
+    "mcp-changed",
+
   DEVELOPER_INSPECT_PROMPT:
     "developer-inspect-prompt",
 
@@ -818,6 +845,82 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS.TOOLS_GET_MANIFEST,
       request
+    );
+  },
+
+  getMcpState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_GET_STATE
+    );
+  },
+
+  connectMcpServer: (serverId, options = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_CONNECT,
+      {
+        serverId: String(serverId ?? ""),
+        force: options.force === true
+      }
+    );
+  },
+
+  disconnectMcpServer: (serverId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_DISCONNECT,
+      { serverId: String(serverId ?? "") }
+    );
+  },
+
+  refreshMcpServer: (serverId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_REFRESH,
+      { serverId: String(serverId ?? "") }
+    );
+  },
+
+  pingMcpServer: (serverId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_PING,
+      { serverId: String(serverId ?? "") }
+    );
+  },
+
+  getMcpSecretStatus: (serverId, envName) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_GET_SECRET_STATUS,
+      {
+        serverId: String(serverId ?? ""),
+        envName: String(envName ?? "")
+      }
+    );
+  },
+
+  setMcpSecret: (serverId, envName, value) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_SET_SECRET,
+      {
+        serverId: String(serverId ?? ""),
+        envName: String(envName ?? ""),
+        value: String(value ?? "")
+      }
+    );
+  },
+
+  clearMcpSecret: (serverId, envName) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_CLEAR_SECRET,
+      {
+        serverId: String(serverId ?? ""),
+        envName: String(envName ?? "")
+      }
+    );
+  },
+
+  onMcpChanged: (callback) => {
+    return subscribe(
+      CHANNELS.MCP_CHANGED,
+      callback,
+      (state) => state
     );
   },
 

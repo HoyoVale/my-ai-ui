@@ -133,6 +133,19 @@ app.whenReady().then(
 
     ipcMain.handle(
       CHANNELS
+        .mcp
+        .GET_STATE,
+      () => ({
+        enabled: true,
+        serverCount: 0,
+        connectedCount: 0,
+        toolCount: 0,
+        servers: []
+      })
+    );
+
+    ipcMain.handle(
+      CHANNELS
         .developer
         .INSPECT_PROMPT,
       () => ({
@@ -221,6 +234,15 @@ app.whenReady().then(
               "getAgentStatus",
               "getSettings",
               "getToolManifest",
+              "getMcpState",
+              "connectMcpServer",
+              "disconnectMcpServer",
+              "refreshMcpServer",
+              "pingMcpServer",
+              "getMcpSecretStatus",
+              "setMcpSecret",
+              "clearMcpSecret",
+              "onMcpChanged",
               "inspectEffectivePrompt",
               "selectWorkspaceDirectory",
               "openExternalLink",
@@ -278,6 +300,10 @@ app.whenReady().then(
               toolManifest:
                 await window.api
                   .getToolManifest(),
+
+              mcpState:
+                await window.api
+                  .getMcpState(),
 
               promptInspection:
                 await window.api
@@ -350,6 +376,11 @@ app.whenReady().then(
     assert.equal(
       result.toolManifest.revision,
       "smoke-manifest"
+    );
+
+    assert.equal(
+      result.mcpState.serverCount,
+      0
     );
 
     assert.equal(

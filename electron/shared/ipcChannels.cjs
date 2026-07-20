@@ -199,6 +199,35 @@ const IPC_CHANNELS =
         "tools-get-manifest"
     }),
 
+    mcp: Object.freeze({
+      GET_STATE:
+        "mcp-get-state",
+
+      CONNECT:
+        "mcp-connect",
+
+      DISCONNECT:
+        "mcp-disconnect",
+
+      REFRESH:
+        "mcp-refresh",
+
+      PING:
+        "mcp-ping",
+
+      GET_SECRET_STATUS:
+        "mcp-get-secret-status",
+
+      SET_SECRET:
+        "mcp-set-secret",
+
+      CLEAR_SECRET:
+        "mcp-clear-secret",
+
+      CHANGED:
+        "mcp-changed"
+    }),
+
     developer: Object.freeze({
       INSPECT_PROMPT:
         "developer-inspect-prompt"
