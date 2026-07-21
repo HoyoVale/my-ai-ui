@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -14,16 +15,23 @@ export function useAppSettings() {
   ] = useState(
     FALLBACK_SETTINGS
   );
+  const remoteSequence =
+    useRef(0);
 
   useEffect(() => {
     let disposed = false;
+
+    const initialSequence =
+      remoteSequence.current;
 
     window.api
       ?.getSettings?.()
       .then((value) => {
         if (
           !disposed &&
-          value
+          value &&
+          initialSequence ===
+            remoteSequence.current
         ) {
           setSettings(value);
         }
@@ -43,6 +51,7 @@ export function useAppSettings() {
               !disposed &&
               value
             ) {
+              remoteSequence.current += 1;
               setSettings(value);
             }
           }
@@ -50,6 +59,7 @@ export function useAppSettings() {
 
     return () => {
       disposed = true;
+      remoteSequence.current += 1;
       unsubscribe?.();
     };
   }, []);

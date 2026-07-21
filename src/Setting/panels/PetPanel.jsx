@@ -1,4 +1,8 @@
 import {
+  resolveAssistantDisplayName
+} from "../../shared/appIdentity.js";
+
+import {
   SettingRow,
   SettingsSection,
   Slider,
@@ -11,6 +15,8 @@ export function PetPanel({
 }) {
   const pet =
     settings.pet;
+  const assistantName =
+    resolveAssistantDisplayName(settings);
 
   return (
     <>
@@ -118,7 +124,7 @@ export function PetPanel({
         >
           <Toggle
             checked={pet.showInTray !== false}
-            label="在系统托盘显示 Xixi"
+            label={`在系统托盘显示 ${assistantName}`}
             onChange={(value) => {
               onUpdate({ showInTray: value });
             }}

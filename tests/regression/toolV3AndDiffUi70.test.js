@@ -26,10 +26,11 @@ describe("Tool V3 and Diff UI contract", () => {
     const source = fs.readFileSync("src/Conversation/components/Topbar.jsx", "utf8");
     const leftStart = source.indexOf('className="conversation-topbar__left"');
     const skill = source.indexOf('className="conversation-topbar__skill"');
-    const leftClose = source.indexOf('</div>\n\n      <div className="conversation-topbar__right">');
+    const rightStart = source.indexOf('className="conversation-topbar__right"');
     assert.equal(leftStart >= 0, true);
+    assert.equal(rightStart > leftStart, true);
     assert.equal(skill > leftStart, true);
-    assert.equal(skill < leftClose, true);
+    assert.equal(skill < rightStart, true);
   });
 
   it("renders structured Diff rows with two line-number columns", () => {

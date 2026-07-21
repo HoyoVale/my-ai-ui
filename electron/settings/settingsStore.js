@@ -6,6 +6,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  recoverAtomicSettingsFile,
+  writeSettingsJsonAtomic
+} from "./settingsFileWriter.js";
+
+import {
   cloneDefaultSettings
 } from "./defaultSettings.js";
 
@@ -70,29 +75,9 @@ export function getSettingsPath() {
 function writeSettingsFile(
   settings
 ) {
-  const settingsPath =
-    getSettingsPath();
-
-  const directory =
-    path.dirname(
-      settingsPath
-    );
-
-  fs.mkdirSync(
-    directory,
-    {
-      recursive: true
-    }
-  );
-
-  fs.writeFileSync(
-    settingsPath,
-    JSON.stringify(
-      settings,
-      null,
-      2
-    ),
-    "utf8"
+  writeSettingsJsonAtomic(
+    getSettingsPath(),
+    settings
   );
 }
 
@@ -105,6 +90,10 @@ function loadSettings() {
     getSettingsPath();
 
   try {
+    recoverAtomicSettingsFile(
+      settingsPath
+    );
+
     const text =
       fs.readFileSync(
         settingsPath,
@@ -156,7 +145,7 @@ export function updateSettings(
   const current =
     loadSettings();
 
-  cachedSettings =
+  const nextSettings =
     sanitizeSettings(
       deepMerge(
         current,
@@ -165,19 +154,25 @@ export function updateSettings(
     );
 
   writeSettingsFile(
-    cachedSettings
+    nextSettings
   );
+
+  cachedSettings =
+    nextSettings;
 
   return getSettings();
 }
 
 export function resetSettings() {
-  cachedSettings =
+  const nextSettings =
     cloneDefaultSettings();
 
   writeSettingsFile(
-    cachedSettings
+    nextSettings
   );
+
+  cachedSettings =
+    nextSettings;
 
   return getSettings();
 }

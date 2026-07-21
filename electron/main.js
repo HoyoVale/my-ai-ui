@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  nativeTheme,
   session
 } from "electron";
 
@@ -16,8 +15,7 @@ import {
 } from "./settings/settingsStore.js";
 
 import {
-  applySettingsToOpenWindows,
-  broadcastSettings
+  applySettingsToOpenWindows
 } from "./settings/settingsRuntime.js";
 
 import {
@@ -42,6 +40,7 @@ import {
 } from "./windows/pet/petWindow.js";
 
 import {
+  applyTraySettings,
   destroyTray,
   hasActiveTray
 } from "./windows/tray/trayManager.js";
@@ -104,22 +103,6 @@ app.whenReady().then(async () => {
     settings
   );
 
-  nativeTheme.on(
-    "updated",
-    () => {
-      const current =
-        getSettings();
-
-      applySettingsToOpenWindows(
-        current
-      );
-
-      broadcastSettings(
-        current
-      );
-    }
-  );
-
   app.on("activate", () => {
     if (
       BrowserWindow
@@ -127,6 +110,9 @@ app.whenReady().then(async () => {
         .length === 0
     ) {
       createPetWindow();
+      applyTraySettings(
+        getSettings()
+      );
     }
   });
 });

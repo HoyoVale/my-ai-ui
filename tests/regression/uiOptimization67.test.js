@@ -45,7 +45,8 @@ test("Response anchor accepts negative vertical offsets and Pet exposes tray beh
   const tray = read("../../electron/windows/tray/trayManager.js");
   assert.match(tray, /new Tray/u);
   assert.match(tray, /输入消息/u);
-  assert.match(tray, /退出 Xixi/u);
+  assert.match(tray, /resolveAssistantDisplayName/u);
+  assert.match(tray, /退出 \$\{assistantName\}/u);
 });
 
 test("Input overlays choose the side with usable screen space", () => {

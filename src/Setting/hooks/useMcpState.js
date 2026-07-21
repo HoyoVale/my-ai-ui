@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -18,11 +19,15 @@ export function useMcpState(developerMode = false) {
   const [status, setStatus] = useState("loading");
   const [action, setAction] = useState("");
   const [error, setError] = useState("");
+  const requestSequence = useRef(0);
+  const actionSequence = useRef(0);
 
   const refresh = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setStatus("loading");
     try {
       const next = await window.api?.getMcpState?.();
+      if (sequence !== requestSequence.current) return null;
       if (next) {
         setState(next);
       }
@@ -30,6 +35,7 @@ export function useMcpState(developerMode = false) {
       setError("");
       return next;
     } catch (cause) {
+      if (sequence !== requestSequence.current) return null;
       setStatus("error");
       setError(String(cause?.message ?? cause ?? "读取 MCP 状态失败"));
       return null;
@@ -38,15 +44,16 @@ export function useMcpState(developerMode = false) {
 
   useEffect(() => {
     let disposed = false;
+    const sequence = ++requestSequence.current;
     void window.api?.getMcpState?.()
       .then((next) => {
-        if (!disposed && next) {
+        if (!disposed && sequence === requestSequence.current && next) {
           setState(next);
           setStatus("ready");
         }
       })
       .catch((cause) => {
-        if (!disposed) {
+        if (!disposed && sequence === requestSequence.current) {
           setStatus("error");
           setError(String(cause?.message ?? cause ?? "读取 MCP 状态失败"));
         }
@@ -54,6 +61,7 @@ export function useMcpState(developerMode = false) {
 
     const unsubscribe = window.api?.onMcpChanged?.((next) => {
       if (!disposed && next) {
+        requestSequence.current += 1;
         setState(next);
         setStatus("ready");
       }
@@ -61,24 +69,34 @@ export function useMcpState(developerMode = false) {
 
     return () => {
       disposed = true;
+      requestSequence.current += 1;
       unsubscribe?.();
     };
   }, [developerMode]);
 
   const run = useCallback(async (key, callback) => {
+    const sequence = ++actionSequence.current;
+    const stateSequence = requestSequence.current;
     setAction(key);
     setError("");
     try {
       const result = await callback();
-      if (result?.state) {
+      if (
+        sequence === actionSequence.current &&
+        stateSequence === requestSequence.current &&
+        result?.state
+      ) {
         setState(result.state);
       }
       return result;
     } catch (cause) {
+      if (sequence !== actionSequence.current) return null;
       setError(String(cause?.message ?? cause ?? "MCP 操作失败"));
       return null;
     } finally {
-      setAction("");
+      if (sequence === actionSequence.current) {
+        setAction("");
+      }
     }
   }, []);
 

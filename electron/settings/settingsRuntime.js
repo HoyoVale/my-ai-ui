@@ -71,7 +71,14 @@ export function applySettingsToOpenWindows(
   settings
 ) {
   configureRuntimeCircuitBreakers(settings);
-  void mcpClientManager.applySettings(settings);
+  void mcpClientManager
+    .applySettings(settings)
+    .catch((error) => {
+      console.warn(
+        "应用 MCP 设置失败：",
+        error
+      );
+    });
 
   applyGeneralSettings(
     settings

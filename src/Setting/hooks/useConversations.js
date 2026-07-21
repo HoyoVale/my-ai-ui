@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -24,10 +25,15 @@ export function useConversations() {
 
   const [error, setError] =
     useState("");
+  const refreshSequence =
+    useRef(0);
 
   const refresh =
     useCallback(
       async () => {
+        const sequence =
+          ++refreshSequence.current;
+
         try {
           const [
             nextState,
@@ -40,6 +46,13 @@ export function useConversations() {
               window.api
                 ?.listConversations?.()
             ]);
+
+          if (
+            sequence !==
+            refreshSequence.current
+          ) {
+            return;
+          }
 
           setState(
             nextState ??
@@ -57,6 +70,13 @@ export function useConversations() {
           setError("");
           setStatus("ready");
         } catch (refreshError) {
+          if (
+            sequence !==
+            refreshSequence.current
+          ) {
+            return;
+          }
+
           console.error(
             "读取会话失败：",
             refreshError
@@ -89,6 +109,7 @@ export function useConversations() {
 
     return () => {
       disposed = true;
+      refreshSequence.current += 1;
       unsubscribe?.();
     };
   }, [refresh]);

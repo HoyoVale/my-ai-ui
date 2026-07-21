@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -30,9 +31,14 @@ export function useConversationHistory() {
     useState(false);
   const [error, setError] =
     useState("");
+  const refreshSequence =
+    useRef(0);
 
   const refresh =
     useCallback(async () => {
+      const sequence =
+        ++refreshSequence.current;
+
       try {
         const [
           nextState,
@@ -70,6 +76,13 @@ export function useConversationHistory() {
               ])
             : [null, null];
 
+        if (
+          sequence !==
+          refreshSequence.current
+        ) {
+          return;
+        }
+
         setState(normalizedState);
         setConversations(
           normalizedList
@@ -80,6 +93,13 @@ export function useConversationHistory() {
         );
         setError("");
       } catch (refreshError) {
+        if (
+          sequence !==
+          refreshSequence.current
+        ) {
+          return;
+        }
+
         console.error(
           "读取会话窗口数据失败：",
           refreshError
@@ -88,7 +108,12 @@ export function useConversationHistory() {
           "无法读取会话记录。"
         );
       } finally {
-        setLoading(false);
+        if (
+          sequence ===
+          refreshSequence.current
+        ) {
+          setLoading(false);
+        }
       }
     }, []);
 
@@ -109,6 +134,7 @@ export function useConversationHistory() {
 
     return () => {
       disposed = true;
+      refreshSequence.current += 1;
       unsubscribe?.();
     };
   }, [refresh]);

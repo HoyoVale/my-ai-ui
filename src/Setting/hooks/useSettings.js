@@ -51,6 +51,7 @@ export function useSettings() {
   const pendingPatchRef = useRef({});
   const saveTimerRef = useRef(null);
   const latestRequestRef = useRef(0);
+  const remoteSnapshotRef = useRef(0);
   const activeRequestsRef = useRef(new Set());
 
   const hasLocalChanges = useCallback(() => (
@@ -74,10 +75,17 @@ export function useSettings() {
   useEffect(() => {
     let disposed = false;
 
+    const initialSnapshot =
+      remoteSnapshotRef.current;
+
     window.api
       ?.getSettings?.()
       .then((value) => {
-        if (!disposed) {
+        if (
+          !disposed &&
+          initialSnapshot ===
+            remoteSnapshotRef.current
+        ) {
           applySnapshot(value);
         }
       })
@@ -87,7 +95,11 @@ export function useSettings() {
           error
         );
 
-        if (!disposed) {
+        if (
+          !disposed &&
+          initialSnapshot ===
+            remoteSnapshotRef.current
+        ) {
           setStatus("error");
         }
       });
@@ -97,6 +109,7 @@ export function useSettings() {
         ?.onSettingsChanged?.(
           (value) => {
             if (!disposed) {
+              remoteSnapshotRef.current += 1;
               applySnapshot(value);
             }
           }
@@ -104,6 +117,7 @@ export function useSettings() {
 
     return () => {
       disposed = true;
+      remoteSnapshotRef.current += 1;
       unsubscribe?.();
     };
   }, [applySnapshot]);

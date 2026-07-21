@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -17,13 +18,25 @@ export function useMemories() {
     useState(false);
   const [error, setError] =
     useState("");
+  const refreshSequence =
+    useRef(0);
 
   const refresh =
     useCallback(async () => {
+      const sequence =
+        ++refreshSequence.current;
+
       try {
         const nextState =
           await window.api
             ?.getMemoryState?.();
+
+        if (
+          sequence !==
+          refreshSequence.current
+        ) {
+          return;
+        }
 
         setState(
           nextState ??
@@ -31,6 +44,13 @@ export function useMemories() {
         );
         setError("");
       } catch (refreshError) {
+        if (
+          sequence !==
+          refreshSequence.current
+        ) {
+          return;
+        }
+
         console.error(
           "读取记忆状态失败：",
           refreshError
@@ -58,6 +78,7 @@ export function useMemories() {
 
     return () => {
       disposed = true;
+      refreshSequence.current += 1;
       unsubscribe?.();
     };
   }, [refresh]);

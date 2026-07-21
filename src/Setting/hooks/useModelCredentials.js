@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 
@@ -34,9 +35,14 @@ export function useModelCredentials(
 
   const [loading, setLoading] =
     useState(true);
+  const requestSequence =
+    useRef(0);
 
   const refresh = useCallback(
     async () => {
+      const sequence =
+        ++requestSequence.current;
+
       if (!descriptor.providerId) {
         setStatus(EMPTY_STATUS);
         setLoading(false);
@@ -52,16 +58,29 @@ export function useModelCredentials(
               descriptor
             );
 
-        if (value) {
+        if (
+          value &&
+          sequence === requestSequence.current
+        ) {
           setStatus(value);
         }
       } catch (error) {
+        if (
+          sequence !== requestSequence.current
+        ) {
+          return;
+        }
+
         console.error(
           "读取模型凭据状态失败：",
           error
         );
       } finally {
-        setLoading(false);
+        if (
+          sequence === requestSequence.current
+        ) {
+          setLoading(false);
+        }
       }
     },
     [descriptor]
@@ -70,10 +89,16 @@ export function useModelCredentials(
   useEffect(() => {
     setStatus(EMPTY_STATUS);
     void refresh();
+
+    return () => {
+      requestSequence.current += 1;
+    };
   }, [refresh]);
 
   const saveApiKey = useCallback(
     async (apiKey) => {
+      const sequence =
+        ++requestSequence.current;
       const value =
         await window.api
           ?.setModelApiKey?.({
@@ -81,7 +106,10 @@ export function useModelCredentials(
             apiKey
           });
 
-      if (value) {
+      if (
+        value &&
+        sequence === requestSequence.current
+      ) {
         setStatus(value);
       }
 
@@ -92,13 +120,18 @@ export function useModelCredentials(
 
   const clearApiKey = useCallback(
     async () => {
+      const sequence =
+        ++requestSequence.current;
       const value =
         await window.api
           ?.clearModelApiKey?.(
             descriptor
           );
 
-      if (value) {
+      if (
+        value &&
+        sequence === requestSequence.current
+      ) {
         setStatus(value);
       }
 
