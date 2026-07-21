@@ -167,6 +167,27 @@ const CHANNELS = Object.freeze({
   TOOLS_GET_MANIFEST:
     "tools-get-manifest",
 
+  SKILLS_GET_STATE:
+    "skills-get-state",
+
+  SKILLS_GET:
+    "skills-get",
+
+  SKILLS_IMPORT_DIRECTORY:
+    "skills-import-directory",
+
+  SKILLS_IMPORT_ZIP:
+    "skills-import-zip",
+
+  SKILLS_SET_ENABLED:
+    "skills-set-enabled",
+
+  SKILLS_UNINSTALL:
+    "skills-uninstall",
+
+  SKILLS_CHANGED:
+    "skills-changed",
+
   MCP_GET_STATE:
     "mcp-get-state",
 
@@ -882,6 +903,56 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS.TOOLS_GET_MANIFEST,
       request
+    );
+  },
+
+  getSkillState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_GET_STATE
+    );
+  },
+
+  getSkill: (skillId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_GET,
+      String(skillId ?? "")
+    );
+  },
+
+  importSkillDirectory: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_IMPORT_DIRECTORY
+    );
+  },
+
+  importSkillZip: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_IMPORT_ZIP
+    );
+  },
+
+  setSkillEnabled: (skillId, enabled) => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_SET_ENABLED,
+      {
+        skillId: String(skillId ?? ""),
+        enabled: enabled === true
+      }
+    );
+  },
+
+  uninstallSkill: (skillId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_UNINSTALL,
+      String(skillId ?? "")
+    );
+  },
+
+  onSkillsChanged: (callback) => {
+    return subscribe(
+      CHANNELS.SKILLS_CHANGED,
+      callback,
+      (state) => state
     );
   },
 

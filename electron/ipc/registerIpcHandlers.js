@@ -43,6 +43,10 @@ import {
 } from "./handlers/securityIpc.js";
 
 import {
+  registerSkillIpc
+} from "./handlers/skillIpc.js";
+
+import {
   registerWindowIpc
 } from "./handlers/windowIpc.js";
 
@@ -73,6 +77,7 @@ export function registerIpcHandlers() {
   registerResponseIpc();
   registerSettingIpc();
   registerSettingsIpc();
+  registerSkillIpc();
   registerToolIpc();
   registerWorkspaceIpc();
   registerSecurityIpc();

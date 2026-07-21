@@ -31,6 +31,7 @@
     "@ai-sdk/openai": "^4.0.16",
     "@ai-sdk/openai-compatible": "^3.0.12",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "adm-zip": "^0.6.0",
     "ai": "^7.0.30",
     "ajv": "^8.20.0",
     "dotenv": "^17.4.2",

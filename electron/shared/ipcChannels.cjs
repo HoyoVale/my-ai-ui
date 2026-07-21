@@ -202,6 +202,29 @@ const IPC_CHANNELS =
         "tools-get-manifest"
     }),
 
+    skills: Object.freeze({
+      GET_STATE:
+        "skills-get-state",
+
+      GET:
+        "skills-get",
+
+      IMPORT_DIRECTORY:
+        "skills-import-directory",
+
+      IMPORT_ZIP:
+        "skills-import-zip",
+
+      SET_ENABLED:
+        "skills-set-enabled",
+
+      UNINSTALL:
+        "skills-uninstall",
+
+      CHANGED:
+        "skills-changed"
+    }),
+
     mcp: Object.freeze({
       GET_STATE:
         "mcp-get-state",

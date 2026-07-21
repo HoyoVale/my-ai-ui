@@ -4701,3 +4701,268 @@
     flex-direction: column;
   }
 }
+
+/* Skill Foundation */
+.skills-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.skills-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--setting-border);
+  border-radius: 16px;
+  background: var(--setting-panel);
+}
+
+.skills-hero strong {
+  display: block;
+  font-size: 17px;
+  margin-bottom: 5px;
+}
+
+.skills-hero p,
+.skills-empty p,
+.skill-card p {
+  margin: 0;
+  color: var(--setting-text-muted);
+}
+
+.skills-hero__actions,
+.skill-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skills-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skills-overview > div {
+  padding: 13px 15px;
+  border-radius: 12px;
+  background: var(--setting-panel-soft);
+  border: 1px solid var(--setting-border);
+}
+
+.skills-overview span,
+.skills-overview strong {
+  display: block;
+}
+
+.skills-overview span {
+  color: var(--setting-text-muted);
+  font-size: 12px;
+}
+
+.skills-overview strong {
+  margin-top: 4px;
+  font-size: 20px;
+}
+
+.skills-message {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--setting-panel-soft);
+}
+
+.skills-message.is-error,
+.skill-card__error {
+  color: var(--setting-danger);
+}
+
+.skills-message.is-success {
+  color: var(--accent);
+}
+
+.skills-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 34px 20px;
+  text-align: center;
+  border: 1px dashed var(--setting-border);
+  border-radius: 14px;
+}
+
+.skill-list {
+  display: grid;
+  gap: 12px;
+}
+
+.skill-card {
+  border: 1px solid var(--setting-border);
+  border-radius: 14px;
+  background: var(--setting-panel);
+  overflow: hidden;
+}
+
+.skill-card.is-warning {
+  border-color: color-mix(in srgb, var(--setting-danger) 45%, var(--setting-border));
+}
+
+.skill-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+}
+
+.skill-card__identity {
+  display: flex;
+  min-width: 0;
+  gap: 12px;
+}
+
+.skill-card__mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  font-weight: 650;
+}
+
+.skill-card__title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.skill-card__title-line code,
+.skill-card__title-line span,
+.skill-card__meta,
+.skill-card__details summary {
+  color: var(--setting-text-muted);
+  font-size: 12px;
+}
+
+.skill-card__meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 16px 14px 62px;
+}
+
+.skill-integrity.is-verified {
+  color: var(--accent);
+}
+
+.skill-integrity.is-changed,
+.skill-integrity.is-missing,
+.skill-integrity.is-invalid {
+  color: var(--setting-danger);
+}
+
+.skill-card__details {
+  border-top: 1px solid var(--setting-border);
+  padding: 0 16px;
+}
+
+.skill-card__details summary {
+  cursor: pointer;
+  padding: 12px 0;
+  user-select: none;
+}
+
+.skill-capability-list,
+.skill-permission-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-bottom: 12px;
+}
+
+.skill-capability-list span,
+.skill-permission-list span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--setting-panel-soft);
+  font-size: 12px;
+}
+
+.skill-capability-list .is-required,
+.skill-permission-list .is-allow {
+  color: var(--accent);
+}
+
+.skill-permission-list .is-deny {
+  color: var(--setting-danger);
+}
+
+.skill-card__developer dl {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 12px;
+}
+
+.skill-card__developer dl > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.skill-card__developer dt {
+  color: var(--setting-text-muted);
+}
+
+.skill-card__developer dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.skill-card__actions {
+  justify-content: flex-end;
+  min-height: 34px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--setting-border);
+}
+
+.skill-card__actions > span {
+  margin-right: auto;
+  color: var(--setting-text-muted);
+  font-size: 12px;
+}
+
+.skill-package-layout {
+  margin: 0;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--setting-panel-soft);
+  overflow: auto;
+  font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+@media (max-width: 820px) {
+  .skills-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skills-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .skill-card__meta {
+    padding-left: 16px;
+  }
+}

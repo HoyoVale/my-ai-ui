@@ -53,6 +53,10 @@ import {
 } from "../panels/ResponsePanel.jsx";
 
 import {
+  SkillsPanel
+} from "../panels/SkillsPanel.jsx";
+
+import {
   ToolPanel
 } from "../panels/ToolPanel.jsx";
 
@@ -240,6 +244,15 @@ export function SettingsContent({
             patch
           );
         }}
+      />
+    ),
+
+    skills: (
+      <SkillsPanel
+        developerMode={
+          settings.general
+            .developerMode
+        }
       />
     ),
 

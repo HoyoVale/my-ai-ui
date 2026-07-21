@@ -81,6 +81,13 @@ export const SETTING_GROUPS = [
           "连接本地或远程 MCP 服务，为 AI 添加外部工具和数据能力。"
       },
       {
+        id: "skills",
+        label: "Skills",
+        title: "Skills",
+        description:
+          "安装、启用和管理本地 Skill 能力包。"
+      },
+      {
         id: "conversation",
         label: "Context",
         title: "会话与上下文",

@@ -1,7 +1,7 @@
 # Tool 与 Skill 开发路线
 
-> 基线：`my-ai-ui(62)`  
-> 当前阶段：Capability Foundation 已实施，下一阶段为 Skill Foundation  
+> 基线：`my-ai-ui(63)`  
+> 当前阶段：Skill Foundation 已实施，下一阶段为 Skill Runtime  
 > 原则：先稳定系统工具与能力协议，再建设 Skill；Skill 不能绕过 Tool Runtime、工作区边界或用户批准。
 
 ## 一、总体路线
@@ -25,7 +25,7 @@ Skill Advanced
 | Tool Read 2.0 | 增强项目浏览、批量读取、搜索与 Git 差异读取 | Agent 能够可靠理解中小型代码仓库 |
 | Tool Write 2.0 | 增强精确改写、补丁、目录与路径操作 | Agent 能够安全、可核验地修改工作区 |
 | Capability Foundation | 建立工具能力、风险和来源协议 | Skill 不依赖具体工具名称 |
-| Skill Foundation | 安装、校验、启停和卸载 Skill | Skill 可以安全进入本地 Registry |
+| Skill Foundation | 安装、校验、启停和卸载 Skill | **已实施：Skill 可以安全进入本地 Registry** |
 | Skill Runtime | 显式选择 Skill，并解析能力和权限 | Skill 能参与真实 Agent Run |
 | Skill Advanced | 自动路由、组合、更新、签名和市场 | 形成可扩展 Skill 生态 |
 
@@ -614,11 +614,15 @@ Developer 页面新增 Capability Inspector，显示：
 
 ## 五、补丁 4：Skill Foundation
 
-### 5.1 本地目录结构
+状态：**已实施**。
+
+### 5.1 Skill 包结构
+
+第一版采用本地、不可执行的 Skill 包：
 
 ```text
 skills/
-└─ code-review/
+└─ example-skill/
    ├─ skill.json
    ├─ SKILL.md
    ├─ resources/
@@ -626,9 +630,11 @@ skills/
    └─ tests/
 ```
 
+根目录必须包含 `skill.json` 和 `SKILL.md`。第一版不会执行 Skill 包中的脚本，`resources`、`templates` 与 `tests` 只作为静态文件保存。
+
 ### 5.2 `skill.json`
 
-机器可读：
+Manifest 使用严格 Schema，主要字段：
 
 ```json
 {
@@ -636,11 +642,10 @@ skills/
   "id": "code-review",
   "name": "Code Review",
   "version": "1.0.0",
-  "description": "检查代码改动并生成审查报告",
-  "modes": ["Coding"],
+  "description": "检查当前工作区的代码改动。",
+  "modes": ["coding"],
   "requiredCapabilities": [
     "workspace.file.read",
-    "workspace.file.search",
     "git.read.diff"
   ],
   "optionalCapabilities": [
@@ -654,27 +659,103 @@ skills/
 }
 ```
 
+校验包括：
+
+- Schema 版本；
+- Skill ID；
+- 语义化版本；
+- Chat / Coding 模式；
+- Capability 是否存在；
+- 必需与可选能力不能重复；
+- 权限只能是 `allow / ask / deny`；
+- 未声明的权限默认 `deny`。
+
 ### 5.3 `SKILL.md`
 
-模型可读工作流程，但不能声明或提升真实权限。
+要求：
 
-### 5.4 安装
+- 非空；
+- 至少包含一个 Markdown 标题；
+- 最大 256 KB；
+- 安装时生成稳定 Prompt Hash；
+- Foundation 阶段只保存和校验，不注入 Agent Prompt。
 
-第一版仅支持：
+### 5.4 安全导入
+
+支持：
 
 - 导入本地文件夹；
-- 导入本地 ZIP；
-- 从本地路径加载。
+- 导入 ZIP；
+- ZIP 外包一层目录；
+- 临时目录预检后再安装。
 
-安装前检查：
+固定安全边界：
 
-- Manifest Schema；
-- ZIP 路径穿越；
-- 绝对路径；
-- 符号链接逃逸；
-- 单文件、总大小、文件数；
-- 压缩炸弹；
-- Capability 与权限摘要。
+- ZIP 最大 20 MB；
+- 解压后最大 25 MB；
+- 最多 512 个文件；
+- 单文件最大 5 MB；
+- 最大目录深度与路径长度；
+- 禁止绝对路径和 `..` 路径穿越；
+- 禁止符号链接和特殊文件；
+- 限制根目录允许的文件与目录；
+- 安装前完整校验 Manifest、Markdown 和包 Hash；
+- 安装和卸载采用临时目录、备份或隔离目录，失败时恢复。
+
+### 5.5 Skill Registry
+
+Registry 保存：
+
+- Manifest；
+- 启用状态；
+- 安装来源；
+- 安装和更新时间；
+- Manifest、Prompt 与 Package Hash；
+- 文件数量和总大小。
+
+读取 Registry 时会重新校验持久化数据，阻止被篡改的 ID 或路径进入文件系统操作。列表会报告：
+
+```text
+verified
+changed
+missing
+invalid
+```
+
+文件完整性异常时不能重新启用，但仍允许禁用或卸载。
+
+### 5.6 Setting → Skills
+
+普通模式提供：
+
+- 导入文件夹；
+- 导入 ZIP；
+- 启用 / 禁用；
+- 卸载；
+- 模式、能力与权限概览；
+- 完整性状态。
+
+开发者模式额外显示：
+
+- 安装路径；
+- 来源；
+- Manifest Hash；
+- Prompt Hash；
+- Package Hash；
+- 文件数量、大小和校验错误。
+
+### 5.7 Skill Foundation 阶段边界
+
+本阶段**不会**：
+
+- 自动选择 Skill；
+- 将 `SKILL.md` 注入 Prompt；
+- 为 Skill 解析实际 Tool；
+- 执行 Skill 包脚本；
+- 从网络或 Marketplace 安装；
+- 自动更新。
+
+这些能力属于下一阶段 **Skill Runtime** 或后续 Skill Advanced。
 
 ---
 
