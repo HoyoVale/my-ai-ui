@@ -405,6 +405,47 @@ export function getPlanStats(plan = []) {
   };
 }
 
+function normalizePlanStateForView(source, fallbackPlan = []) {
+  const candidate =
+    source?.planState && typeof source.planState === "object"
+      ? source.planState
+      : source?.activity?.checkpoint?.planState &&
+          typeof source.activity.checkpoint.planState === "object"
+        ? source.activity.checkpoint.planState
+        : null;
+
+  const rootItems = Array.isArray(candidate?.rootItems)
+    ? getPlanStats(candidate.rootItems).plan
+    : getPlanStats(fallbackPlan).plan;
+  const rootIds = new Set(rootItems.map((item) => String(item.id ?? "")));
+  const subplans = Array.isArray(candidate?.subplans)
+    ? candidate.subplans
+        .map((entry) => {
+          const rootStepId = String(entry?.rootStepId ?? "").trim();
+          if (!rootStepId || !rootIds.has(rootStepId)) {
+            return null;
+          }
+          return {
+            rootStepId,
+            revision: Math.max(0, Number(entry?.revision ?? 0) || 0),
+            archivedCount: Math.max(0, Number(entry?.archivedCount ?? 0) || 0),
+            updatedAt: Math.max(0, Number(entry?.updatedAt ?? 0) || 0),
+            items: getPlanStats(entry?.items ?? []).plan
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  return {
+    schemaVersion: Math.max(1, Number(candidate?.schemaVersion ?? 1) || 1),
+    revision: Math.max(0, Number(candidate?.revision ?? 0) || 0),
+    rootRevision: Math.max(0, Number(candidate?.rootRevision ?? 0) || 0),
+    rootArchivedCount: Math.max(0, Number(candidate?.rootArchivedCount ?? 0) || 0),
+    rootItems,
+    subplans
+  };
+}
+
 const STOP_REASON_LABELS = Object.freeze({
   completed: "已完成",
   cancelled_by_user: "已取消",
@@ -442,16 +483,20 @@ function legacyEvents(source) {
   );
   let sequence = 0;
 
-  if (Array.isArray(source?.plan) && source.plan.length > 0) {
+  const legacyPlan = Array.isArray(source?.planState?.rootItems)
+    ? source.planState.rootItems
+    : source?.plan;
+
+  if (Array.isArray(legacyPlan) && legacyPlan.length > 0) {
     events.push({
       id: `legacy-plan:${source.id ?? "source"}`,
       type: "plan",
       sequence: sequence++,
       status: "completed",
-      title: `任务计划 · ${source.plan.length} 步`,
+      title: `任务计划 · ${legacyPlan.length} 步`,
       createdAt: startedAt,
       updatedAt: Number(source.createdAt || 0),
-      plan: source.plan
+      plan: legacyPlan
     });
   }
 
@@ -525,6 +570,7 @@ export function findTaskMessage(
     [...messages].reverse().find((message) => {
       return Boolean(
         message.activity ||
+        (Array.isArray(message.planState?.rootItems) && message.planState.rootItems.length > 0) ||
         (Array.isArray(message.plan) && message.plan.length > 0) ||
         (Array.isArray(message.toolCalls) && message.toolCalls.length > 0)
       );
@@ -652,11 +698,34 @@ export function createActivitySnapshot(
       ),
     0
   );
-  const planStats = getPlanStats(
+  const rootPlanEvents = events.filter(
+    (event) => event.type === "plan"
+  );
+  const fallbackPlan =
     latestPlanEvent?.plan ??
     lastSource?.plan ??
-    []
+    [];
+  const planState = normalizePlanStateForView(
+    lastSource,
+    fallbackPlan
   );
+  const planStats = getPlanStats(planState.rootItems);
+  const latestRootPlanEvent = rootPlanEvents.at(-1) ?? null;
+  const previousRootPlanEvent = rootPlanEvents.at(-2) ?? null;
+  const planRevision = Math.max(
+    Number(planState.rootRevision ?? 0) || 0,
+    Number(latestRootPlanEvent?.rootRevision ?? 0) || 0,
+    rootPlanEvents.length
+  );
+  const planAdjusted =
+    planRevision > 1 ||
+    rootPlanEvents.length > 1 ||
+    Boolean(previousRootPlanEvent);
+  const activeRootId = planStats.active?.id ?? "";
+  const activeSubplan =
+    planState.subplans.find(
+      (entry) => entry.rootStepId === activeRootId
+    ) ?? null;
   const running = Boolean(live) && [
     "running",
     "stopping",
@@ -707,7 +776,19 @@ export function createActivitySnapshot(
     interrupted,
     events,
     plan: planStats.plan,
+    planState,
     planStats,
+    planRevision,
+    planAdjusted,
+    planAdjustedAt:
+      planAdjusted
+        ? Number(latestRootPlanEvent?.updatedAt ?? latestRootPlanEvent?.createdAt ?? 0) || 0
+        : 0,
+    planAdjustmentReason:
+      planAdjusted
+        ? String(latestRootPlanEvent?.reason ?? "").trim()
+        : "",
+    activeSubplan,
     toolCalls,
     commentary,
     batches,

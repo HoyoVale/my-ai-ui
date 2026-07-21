@@ -152,4 +152,52 @@ describe("conversation activity migration", () => {
       false
     );
   });
+  it("preserves root plan revision metadata for Plan UI history", () => {
+    const message = sanitizeMessage({
+      id: "assistant-plan-revision",
+      role: "assistant",
+      content: "Done",
+      createdAt: 300,
+      activity: {
+        version: 3,
+        taskId: "task-plan-revision",
+        runId: "run-plan-revision",
+        status: "completed",
+        startedAt: 100,
+        endedAt: 300,
+        stopReason: "completed",
+        events: [
+          {
+            id: "plan:run-plan-revision:2",
+            type: "plan",
+            sequence: 0,
+            status: "running",
+            title: "更新了任务计划",
+            reason: "发现新的必要步骤。",
+            revision: 4,
+            rootRevision: 2,
+            scope: "root",
+            createdAt: 180,
+            updatedAt: 180,
+            plan: [
+              {
+                id: "implement",
+                title: "实现修复",
+                status: "in_progress"
+              }
+            ]
+          }
+        ]
+      }
+    });
+
+    const planEvent = message.activity.events.find(
+      (event) => event.type === "plan"
+    );
+
+    assert.equal(planEvent.rootRevision, 2);
+    assert.equal(planEvent.scope, "root");
+    assert.equal(planEvent.reason, "发现新的必要步骤。");
+  });
+
 });

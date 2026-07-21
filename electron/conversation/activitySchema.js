@@ -499,6 +499,14 @@ function sanitizeActivityEvent(source, index) {
       source.revision,
       0
     );
+    event.rootRevision = timestampValue(
+      source.rootRevision,
+      event.revision
+    );
+    event.scope =
+      source.scope === "step_work"
+        ? "step_work"
+        : "root";
   }
 
   if (type === "commentary") {

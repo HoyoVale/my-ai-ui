@@ -113,3 +113,81 @@ describe("task activity snapshots", () => {
     assert.equal(grouped[3].id, "five");
   });
 });
+
+it("restores the versioned root plan and developer subplans from history", () => {
+  const message = {
+    id: "message-plan-2",
+    role: "assistant",
+    taskId: "task-plan-2",
+    plan: [
+      { id: "stale", title: "旧投影", status: "pending" }
+    ],
+    planState: {
+      schemaVersion: 2,
+      revision: 5,
+      rootRevision: 2,
+      rootItems: [
+        { id: "inspect", title: "检查项目", status: "completed" },
+        { id: "implement", title: "实现修复", status: "in_progress" }
+      ],
+      subplans: [
+        {
+          rootStepId: "implement",
+          revision: 3,
+          items: [
+            { id: "renderer", title: "修改 Renderer", status: "in_progress" }
+          ]
+        }
+      ]
+    },
+    activity: {
+      runId: "run-plan-2",
+      status: "completed",
+      events: [
+        {
+          id: "plan:one",
+          type: "plan",
+          revision: 1,
+          rootRevision: 1,
+          title: "制定了一个 2 步计划",
+          createdAt: 10,
+          updatedAt: 10,
+          plan: [
+            { id: "inspect", title: "检查项目", status: "in_progress" },
+            { id: "implement", title: "实现修复", status: "pending" }
+          ]
+        },
+        {
+          id: "plan:two",
+          type: "plan",
+          revision: 4,
+          rootRevision: 2,
+          title: "更新了任务计划",
+          reason: "发现需要先完成 Renderer 修复。",
+          createdAt: 20,
+          updatedAt: 20,
+          plan: [
+            { id: "inspect", title: "检查项目", status: "completed" },
+            { id: "implement", title: "实现修复", status: "in_progress" }
+          ]
+        }
+      ]
+    }
+  };
+
+  const snapshot = createActivitySnapshot(message);
+
+  assert.deepEqual(
+    snapshot.plan.map((item) => item.id),
+    ["inspect", "implement"]
+  );
+  assert.equal(snapshot.planState.schemaVersion, 2);
+  assert.equal(snapshot.planState.subplans.length, 1);
+  assert.equal(snapshot.activeSubplan.rootStepId, "implement");
+  assert.equal(snapshot.planAdjusted, true);
+  assert.equal(snapshot.planRevision, 2);
+  assert.equal(
+    snapshot.planAdjustmentReason,
+    "发现需要先完成 Renderer 修复。"
+  );
+});

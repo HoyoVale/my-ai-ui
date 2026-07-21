@@ -22,6 +22,7 @@ import {
   describeToolBatch,
   describeToolTarget,
   formatTaskDuration,
+  getPlanStats,
   getToolTitle,
   groupToolActivityEvents,
   isActivityEventVisible,
@@ -229,7 +230,12 @@ export function ConversationTaskPanel({
         {snapshot.plan.length > 0 && (
           <section className="conversation-activity-section">
             <header className="conversation-activity-section__header">
-              <h2>计划</h2>
+              <div className="conversation-activity-section__title-row">
+                <h2>计划</h2>
+                {snapshot.planAdjusted && (
+                  <em className="conversation-plan-adjusted-badge">计划已调整</em>
+                )}
+              </div>
               <span>
                 {snapshot.planStats.completed}/{snapshot.planStats.total}
               </span>
@@ -400,6 +406,77 @@ function ActivityTimelineEvent({ event }) {
   );
 }
 
+function DeveloperPlanInspector({ snapshot }) {
+  const subplans = Array.isArray(snapshot?.planState?.subplans)
+    ? snapshot.planState.subplans
+    : [];
+
+  if (!subplans.length) {
+    return null;
+  }
+
+  const roots = new Map(
+    (snapshot.plan ?? []).map((item) => [String(item.id ?? ""), item])
+  );
+
+  return (
+    <section
+      className="conversation-developer-subplans"
+      data-testid="conversation-developer-subplans"
+    >
+      <header>
+        <div>
+          <strong>内部子计划</strong>
+          <small>仅开发者可见，不计入用户总计划进度。</small>
+        </div>
+        <span>{subplans.length}</span>
+      </header>
+
+      <div className="conversation-developer-subplans__list">
+        {subplans.map((entry) => {
+          const root = roots.get(entry.rootStepId);
+          const stats = getPlanStats(entry.items);
+          const open = root?.status === "in_progress";
+
+          return (
+            <details
+              className="conversation-developer-subplan"
+              key={entry.rootStepId}
+              open={open}
+            >
+              <summary>
+                <span className={`conversation-developer-subplan__mark is-${root?.status ?? "pending"}`} />
+                <div>
+                  <strong>{root?.title || entry.rootStepId}</strong>
+                  <small>
+                    {stats.completed}/{stats.total} · revision {entry.revision}
+                  </small>
+                </div>
+                <ConversationIcon name="chevron" size={13} />
+              </summary>
+
+              <div className="conversation-developer-subplan__items">
+                {stats.plan.map((item, index) => (
+                  <div
+                    className={`conversation-developer-subplan__item is-${item.status}`}
+                    key={item.id ?? `${item.title}-${index}`}
+                  >
+                    <span>{planStatusMark(item.status)}</span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      {item.reason && <small>{item.reason}</small>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function DeveloperActivity({
   snapshot,
   detailsLoaded,
@@ -416,6 +493,8 @@ function DeveloperActivity({
         <h2>开发者</h2>
         <span>{detailsLoaded ? `${snapshot.toolCalls.length} 个工具` : "按需加载"}</span>
       </header>
+
+      <DeveloperPlanInspector snapshot={snapshot} />
 
       {!detailsLoaded && (
         <div className="conversation-activity-developer__loader">

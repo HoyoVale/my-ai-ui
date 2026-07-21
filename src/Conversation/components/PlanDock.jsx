@@ -12,6 +12,15 @@ import {
   createActivitySnapshot
 } from "../utils/taskActivity.js";
 
+const TERMINAL_STATUSES = new Set([
+  "completed",
+  "skipped",
+  "cancelled",
+  "superseded",
+  "needs_input",
+  "blocked"
+]);
+
 function planStateIcon(status) {
   if (status === "completed") {
     return <ConversationIcon name="check" size={11} />;
@@ -26,6 +35,21 @@ function planStateIcon(status) {
   }
 
   return null;
+}
+
+function planStatusLabel(status) {
+  const labels = {
+    completed: "已完成",
+    in_progress: "进行中",
+    blocked: "已阻塞",
+    needs_input: "待确认",
+    skipped: "已跳过",
+    cancelled: "已取消",
+    superseded: "已调整",
+    pending: "待执行"
+  };
+
+  return labels[status] ?? "待执行";
 }
 
 export function ConversationPlanDock({
@@ -45,11 +69,17 @@ export function ConversationPlanDock({
   );
 
   const [collapsed, setCollapsed] =
-    useState(true);
+    useState(false);
 
   useEffect(() => {
-    setCollapsed(true);
+    setCollapsed(false);
   }, [snapshot?.runId]);
+
+  useEffect(() => {
+    if (snapshot?.planAdjusted) {
+      setCollapsed(false);
+    }
+  }, [snapshot?.planAdjusted, snapshot?.planRevision]);
 
   if (!snapshot?.planStats.total) {
     return null;
@@ -58,12 +88,7 @@ export function ConversationPlanDock({
   const activeItem =
     snapshot.planStats.active ??
     snapshot.plan.find((item) =>
-      ![
-        "completed",
-        "skipped",
-        "cancelled",
-        "superseded"
-      ].includes(item.status)
+      !TERMINAL_STATUSES.has(item.status)
     ) ??
     snapshot.plan.at(-1);
 
@@ -74,16 +99,17 @@ export function ConversationPlanDock({
 
   return (
     <section
-      className={`conversation-plan-dock${collapsed ? " is-collapsed" : ""}`}
+      className={`conversation-plan-dock${collapsed ? " is-collapsed" : ""}${snapshot.planAdjusted ? " is-adjusted" : ""}`}
       data-testid="conversation-plan-dock"
       data-run-id={snapshot.runId}
+      data-plan-revision={snapshot.planRevision}
     >
       <button
         type="button"
         className="conversation-plan-dock__bar"
         aria-expanded={!collapsed}
         aria-controls="conversation-plan-dock-content"
-        title={collapsed ? "展开计划" : "收起计划"}
+        title={collapsed ? "展开执行计划" : "收起执行计划"}
         onClick={() => {
           setCollapsed((current) => !current);
         }}
@@ -93,8 +119,15 @@ export function ConversationPlanDock({
         </span>
 
         <span className="conversation-plan-dock__summary">
-          <strong>计划</strong>
-          <span>{activeItem?.title || "正在执行任务"}</span>
+          <span className="conversation-plan-dock__title-line">
+            <strong>执行计划</strong>
+            {snapshot.planAdjusted && (
+              <em data-testid="conversation-plan-adjusted">计划已调整</em>
+            )}
+          </span>
+          <span aria-live="polite">
+            {activeItem?.title || "正在执行任务"}
+          </span>
         </span>
 
         <span className="conversation-plan-dock__count">
@@ -122,12 +155,29 @@ export function ConversationPlanDock({
         className="conversation-plan-dock__content"
         aria-hidden={collapsed}
       >
-        <div className="conversation-plan-dock__items">
+        {snapshot.planAdjusted && (
+          <div className="conversation-plan-dock__adjustment">
+            <span>
+              <ConversationIcon name="activity" size={13} />
+            </span>
+            <div>
+              <strong>计划已调整</strong>
+              <small>
+                {snapshot.planAdjustmentReason ||
+                  "执行过程中根据新信息更新了总计划。"}
+              </small>
+            </div>
+          </div>
+        )}
+
+        <ol className="conversation-plan-dock__items">
           {snapshot.plan.map((item, index) => (
-            <div
+            <li
               className={`conversation-plan-dock__item is-${item.status}`}
               key={item.id ?? `${item.title}-${index}`}
+              data-plan-step-id={item.id || undefined}
             >
+              <span className="conversation-plan-dock__rail" aria-hidden="true" />
               <span className="conversation-plan-dock__mark">
                 {planStateIcon(item.status)}
                 {item.status === "in_progress" && <span />}
@@ -138,9 +188,12 @@ export function ConversationPlanDock({
                   <small>{item.reason}</small>
                 )}
               </div>
-            </div>
+              <span className="conversation-plan-dock__status">
+                {planStatusLabel(item.status)}
+              </span>
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
     </section>
   );

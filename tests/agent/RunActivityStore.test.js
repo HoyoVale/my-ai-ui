@@ -98,7 +98,10 @@ describe("RunActivityStore", () => {
 
     assert.equal(snapshot.status, "needs_input");
     assert.equal(snapshot.stopReason, "needs_input");
-    assert.equal(snapshot.events.some((event) => event.type === "plan"), true);
+    const planEvent = snapshot.events.find((event) => event.type === "plan");
+    assert.equal(Boolean(planEvent), true);
+    assert.equal(planEvent.rootRevision, 1);
+    assert.equal(planEvent.scope, "root");
     assert.equal(snapshot.events.some((event) => event.type === "question"), false);
   });
 

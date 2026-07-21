@@ -461,6 +461,11 @@ export class RunActivityStore {
       revision:
         Number(change?.revision) ||
         this.planRevision,
+      rootRevision:
+        Number(change?.rootRevision) ||
+        this.planRevision,
+      scope:
+        String(change?.scope ?? "root").trim() || "root",
       plan
     });
   }
