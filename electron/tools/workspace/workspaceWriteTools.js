@@ -238,6 +238,119 @@ function singleFileRuntimeContract({ workspaceSettings, retryMode = "idempotency
   };
 }
 
+async function inspectDeleteTarget(resolved, {
+  maxEntries,
+  maxBytes,
+  signal
+} = {}) {
+  throwIfAborted(signal);
+  const rootStat = await fs.promises.lstat(resolved.path);
+  if (rootStat.isSymbolicLink()) {
+    throw writeError("SYMLINK_DELETE_BLOCKED", "拒绝删除符号链接。 ".trim());
+  }
+  if (!rootStat.isFile() && !rootStat.isDirectory()) {
+    throw writeError("UNSUPPORTED_PATH_TYPE", "不支持删除该路径类型。 ".trim());
+  }
+
+  const summary = {
+    type: rootStat.isDirectory() ? "directory" : "file",
+    entries: 1,
+    files: rootStat.isFile() ? 1 : 0,
+    directories: rootStat.isDirectory() ? 1 : 0,
+    bytes: rootStat.isFile() ? rootStat.size : 0,
+    paths: [resolved.relativePath]
+  };
+
+  if (rootStat.isDirectory()) {
+    const queue = [resolved.path];
+    while (queue.length > 0) {
+      throwIfAborted(signal);
+      const current = queue.shift();
+      const entries = await fs.promises.readdir(current, { withFileTypes: true });
+      for (const entry of entries) {
+        throwIfAborted(signal);
+        const absolute = path.join(current, entry.name);
+        const relative = path.relative(resolved.root, absolute);
+        const mutation = resolveWorkspaceMutationPath(relative, {
+          workspaceSettings: { roots: [resolved.root] },
+          mustExist: true,
+          allowFile: true,
+          allowDirectory: true
+        });
+        const stat = await fs.promises.lstat(mutation.path);
+        if (stat.isSymbolicLink()) {
+          throw writeError("SYMLINK_DELETE_BLOCKED", `目录中包含符号链接，拒绝递归删除：${relative}`);
+        }
+        if (!stat.isFile() && !stat.isDirectory()) {
+          throw writeError("UNSUPPORTED_PATH_TYPE", `目录中包含不支持的路径类型：${relative}`);
+        }
+        summary.entries += 1;
+        if (summary.entries > maxEntries) {
+          throw writeError("DELETE_ENTRY_LIMIT", `删除目标超过 ${maxEntries} 个条目的安全上限。`);
+        }
+        if (stat.isDirectory()) {
+          summary.directories += 1;
+          queue.push(mutation.path);
+        } else {
+          summary.files += 1;
+          summary.bytes += stat.size;
+          if (summary.bytes > maxBytes) {
+            throw writeError("DELETE_SIZE_LIMIT", "删除目标总大小超过安全上限。 ".trim());
+          }
+        }
+        if (summary.paths.length < 100) summary.paths.push(relative);
+      }
+    }
+  }
+
+  return summary;
+}
+
+function deleteRuntimeContract(workspaceSettings) {
+  return {
+    effect: "destructive",
+    retryMode: "manual_only",
+    supportsAbort: true,
+    supportsResume: false,
+    leaseTtlMs: 180_000,
+    heartbeatMs: 5_000,
+    async verify({ input }) {
+      try {
+        resolveWorkspaceMutationPath(input.path, {
+          workspaceSettings,
+          mustExist: true,
+          allowFile: true,
+          allowDirectory: true
+        });
+        return { status: "not_applied", evidence: { path: input.path, exists: true } };
+      } catch (error) {
+        if (error?.code === "PATH_NOT_FOUND") {
+          return { status: "valid", evidence: { path: input.path, exists: false } };
+        }
+        return {
+          status: "unknown",
+          evidence: { path: input.path, error: error instanceof Error ? error.message : String(error) }
+        };
+      }
+    },
+    async reconcile({ input }) {
+      try {
+        resolveWorkspaceMutationPath(input.path, {
+          workspaceSettings,
+          mustExist: true,
+          allowFile: true,
+          allowDirectory: true
+        });
+        return { status: "not_applied", evidence: { path: input.path, exists: true } };
+      } catch (error) {
+        return error?.code === "PATH_NOT_FOUND"
+          ? { status: "applied", evidence: { path: input.path, exists: false } }
+          : { status: "unknown", evidence: { error: error instanceof Error ? error.message : String(error) } };
+      }
+    }
+  };
+}
+
 function createDirectoryRuntimeContract(workspaceSettings) {
   return {
     effect: "local_write",
@@ -352,6 +465,8 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
   const maxWriteFileBytes = Math.min(20_000_000, Math.max(1_024, Number(workspaceSettings.maxWriteFileBytes) || 5_000_000));
   const maxPatchBytes = Math.min(2_000_000, Math.max(16_384, Number(workspaceSettings.maxPatchBytes) || 500_000));
   const maxPatchFiles = Math.min(50, Math.max(1, Number(workspaceSettings.maxPatchFiles) || 20));
+  const maxDeleteEntries = Math.min(10_000, Math.max(1, Number(workspaceSettings.maxDeleteEntries) || 2_000));
+  const maxDeleteBytes = Math.min(500_000_000, Math.max(1_024, Number(workspaceSettings.maxDeleteBytes) || 100_000_000));
 
   const writeTextInput = z.object({
     path: pathSchema,
@@ -783,6 +898,190 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             source: source.relativePath, destination: destination.relativePath, type: source.type, changed: true, dryRun: input.dryRun,
             beforeSha256: hash, afterSha256: hash, bytes, atomic: true,
             ...receiptFields(effectEvidence)
+          }
+        };
+      }
+    },
+    {
+      name: "delete_path",
+      version: 1,
+      title: "Delete file or directory",
+      description: "Permanently delete one safe file or directory inside the authorized workspace. The workspace root, sensitive paths, excluded directories, symbolic links, oversized trees, and implicit recursive deletion are blocked. Always requires per-call destructive approval and supports dry-run.",
+      inputSchema: z.object({
+        path: pathSchema,
+        recursive: z.boolean().default(false),
+        expectedSha256: hashSchema,
+        dryRun: z.boolean().default(false)
+      }),
+      outputSchema: z.object({
+        ok: z.literal(true),
+        data: z.object({
+          path: z.string(),
+          type: z.enum(["file", "directory"]),
+          changed: z.boolean(),
+          dryRun: z.boolean(),
+          recursive: z.boolean(),
+          entries: z.number().int().positive(),
+          files: z.number().int().nonnegative(),
+          directories: z.number().int().nonnegative(),
+          bytes: z.number().int().nonnegative(),
+          beforeSha256: z.string(),
+          afterSha256: z.literal(""),
+          atomicDetach: z.boolean(),
+          ...receiptSchemaFields
+        })
+      }),
+      sideEffect: "write",
+      riskLevel: "high",
+      idempotency: "none",
+      supportsDryRun: true,
+      concurrencyKey: (input) => writeConcurrencyKey(input, workspaceSettings),
+      runtimeContract: deleteRuntimeContract(workspaceSettings),
+      async execute(input, context = {}) {
+        throwIfAborted(context.abortSignal);
+        const resolved = resolveWorkspaceMutationPath(input.path, {
+          workspaceSettings,
+          mustExist: true,
+          allowFile: true,
+          allowDirectory: true
+        });
+        const target = await inspectDeleteTarget(resolved, {
+          maxEntries: maxDeleteEntries,
+          maxBytes: maxDeleteBytes,
+          signal: context.abortSignal
+        });
+        if (target.type === "directory" && !input.recursive) {
+          const children = await fs.promises.readdir(resolved.path);
+          if (children.length > 0) {
+            throw writeError("DIRECTORY_NOT_EMPTY", "目录非空；递归删除必须显式设置 recursive=true。 ".trim());
+          }
+        }
+        let beforeSha256 = "";
+        let changePreview;
+        if (target.type === "file") {
+          const current = await sha256File(resolved.path, { maxBytes: maxDeleteBytes });
+          beforeSha256 = current.sha256;
+          assertExpectedHash(input.expectedSha256, beforeSha256);
+          if (current.bytes <= maxWriteFileBytes) {
+            try {
+              const existing = await inspectFile(resolved, maxWriteFileBytes, { required: true });
+              changePreview = createTextDiffPreview({
+                path: resolved.relativePath,
+                before: existing.text,
+                after: ""
+              });
+            } catch (error) {
+              if (!["BINARY_FILE_BLOCKED", "INVALID_TEXT_ENCODING", "UNSUPPORTED_TEXT_ENCODING"].includes(error?.code)) {
+                throw error;
+              }
+            }
+          }
+        } else if (input.expectedSha256) {
+          throw writeError("HASH_NOT_SUPPORTED_FOR_DIRECTORY", "目录删除不支持 expectedSha256。 ".trim());
+        }
+
+        const effectEvidence = {
+          kind: "workspace_delete_v1",
+          operation: "delete_path",
+          affectedPaths: [resolved.relativePath],
+          path: resolved.relativePath,
+          beforeSha256,
+          afterSha256: "",
+          beforeBytes: target.bytes,
+          afterBytes: 0,
+          bytesChanged: target.bytes,
+          entries: target.entries,
+          files: target.files,
+          directories: target.directories,
+          recursive: input.recursive === true,
+          atomic: true,
+          dryRun: input.dryRun === true
+        };
+        if (input.dryRun) {
+          return {
+            ok: true,
+            data: {
+              path: resolved.relativePath,
+              type: target.type,
+              changed: true,
+              dryRun: true,
+              recursive: input.recursive,
+              entries: target.entries,
+              files: target.files,
+              directories: target.directories,
+              bytes: target.bytes,
+              beforeSha256,
+              afterSha256: "",
+              atomicDetach: true,
+              ...receiptFields(effectEvidence, {
+                rollbackAvailable: false,
+                removedLines: changePreview ? lineSummary("", "").removedLines : 0
+              }),
+              changePreview
+            }
+          };
+        }
+
+        const parent = path.dirname(resolved.path);
+        const basename = path.basename(resolved.path);
+        const recoveryPrefix = `.${basename}.xixi-delete-`;
+        const orphan = (await fs.promises.readdir(parent)).find((name) => name.startsWith(recoveryPrefix));
+        if (orphan) {
+          throw writeError("DELETE_RECOVERY_REQUIRED", `发现未完成删除的隔离路径 ${orphan}，请先人工核验。`);
+        }
+        const token = String(context.callId || context.idempotencyKey || crypto.randomUUID())
+          .replace(/[^a-zA-Z0-9_-]/gu, "-")
+          .slice(0, 80);
+        const staging = path.join(parent, `${recoveryPrefix}${token}`);
+        await context.onWriteBoundary?.("before_delete_detach", {
+          targetPath: resolved.path,
+          stagingPath: staging
+        });
+        await fs.promises.rename(resolved.path, staging);
+        let rollbackPerformed = false;
+        try {
+          await context.onWriteBoundary?.("after_delete_detach", {
+            targetPath: resolved.path,
+            stagingPath: staging
+          });
+          await fs.promises.rm(staging, {
+            recursive: target.type === "directory",
+            force: false,
+            maxRetries: 0
+          });
+          if (fs.existsSync(resolved.path) || fs.existsSync(staging)) {
+            throw writeError("DELETE_VERIFY_FAILED", "删除后的路径核验失败。 ".trim());
+          }
+          await context.onWriteBoundary?.("after_delete", { targetPath: resolved.path });
+        } catch (error) {
+          if (fs.existsSync(staging) && !fs.existsSync(resolved.path)) {
+            await fs.promises.rename(staging, resolved.path).catch(() => {});
+            rollbackPerformed = fs.existsSync(resolved.path);
+          }
+          error.details = { ...(error.details ?? {}), rollbackPerformed };
+          throw error;
+        }
+
+        return {
+          ok: true,
+          data: {
+            path: resolved.relativePath,
+            type: target.type,
+            changed: true,
+            dryRun: false,
+            recursive: input.recursive,
+            entries: target.entries,
+            files: target.files,
+            directories: target.directories,
+            bytes: target.bytes,
+            beforeSha256,
+            afterSha256: "",
+            atomicDetach: true,
+            ...receiptFields(effectEvidence, {
+              rollbackAvailable: false,
+              rollbackPerformed
+            }),
+            changePreview
           }
         };
       }

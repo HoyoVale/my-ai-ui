@@ -107,6 +107,11 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
     title: "批量读取文件",
     description: "在单次有界调用中读取多个小型文本文件，并隔离单文件错误。"
   },
+  compare_files: {
+    toolset: "workspace.read",
+    title: "比较两个文件",
+    description: "比较同一授权工作区中的两个文本文件，返回有界 Diff、哈希与行数统计。"
+  },
   search_files: {
     toolset: "workspace.read",
     title: "搜索文件",
@@ -156,6 +161,11 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
     toolset: "workspace.write",
     title: "移动文件或目录",
     description: "在同一授权工作区内原子移动路径，默认且当前始终禁止覆盖已有目标。"
+  },
+  delete_path: {
+    toolset: "workspace.write",
+    title: "删除文件或目录",
+    description: "永久删除授权工作区内的安全路径；递归删除必须显式开启，并始终逐次请求批准。"
   },
   apply_patch: {
     toolset: "workspace.write",

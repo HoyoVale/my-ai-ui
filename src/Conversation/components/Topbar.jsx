@@ -43,25 +43,25 @@ export function ConversationTopbar({
             size={17}
           />
         </button>
-      </div>
 
-      {(skill?.id || skills.length > 0 || skillRoutingMode === "auto") && (
-        <div
-          className="conversation-topbar__skill"
-          title={skillRoutingMode === "auto" && !skills.length
-            ? "Skill Router 自动选择"
-            : (skills.length ? skills : skill ? [skill] : []).map((item) => `${item.name} · ${item.id}`).join("\n")}
-        >
-          <span>{skillRoutingMode === "auto" && !skills.length ? "Auto Skill" : "Skill"}</span>
-          <strong>
-            {skillRoutingMode === "auto" && !skills.length
-              ? "自动选择"
-              : (skills.length ? skills : [skill]).length > 1
-                ? `${(skills.length ? skills : [skill]).length} 个组合`
-                : (skills[0] ?? skill)?.name}
-          </strong>
-        </div>
-      )}
+        {(skill?.id || skills.length > 0 || skillRoutingMode === "auto") && (
+          <div
+            className="conversation-topbar__skill"
+            title={skillRoutingMode === "auto" && !skills.length
+              ? "Skill Router 自动选择"
+              : (skills.length ? skills : skill ? [skill] : []).map((item) => `${item.name} · ${item.id}`).join("\n")}
+          >
+            <span>{skillRoutingMode === "auto" && !skills.length ? "Auto Skill" : "Skill"}</span>
+            <strong>
+              {skillRoutingMode === "auto" && !skills.length
+                ? "自动选择"
+                : (skills.length ? skills : [skill]).length > 1
+                  ? `${(skills.length ? skills : [skill]).length} 个组合`
+                  : (skills[0] ?? skill)?.name}
+            </strong>
+          </div>
+        )}
+      </div>
 
       <div className="conversation-topbar__right">
         <button

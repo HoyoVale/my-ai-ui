@@ -388,6 +388,25 @@ describe(
     );
 
     it(
+      "compares two safe text files without reporting a write operation",
+      async () => {
+        fs.writeFileSync(path.join(root, "src", "left.txt"), "one\ntwo\n", "utf8");
+        fs.writeFileSync(path.join(root, "src", "right.txt"), "one\nTWO\nthree\n", "utf8");
+        const tool = getTool("compare_files");
+        const result = await tool.execute(tool.inputSchema.parse({
+          leftPath: "src/left.txt",
+          rightPath: "src/right.txt"
+        }));
+        assert.equal(result.identical, false);
+        assert.equal(result.addedLines, 2);
+        assert.equal(result.removedLines, 1);
+        assert.match(result.comparison.diff, /-two/u);
+        assert.match(result.comparison.diff, /\+TWO/u);
+        assert.equal("changePreview" in result, false);
+      }
+    );
+
+    it(
       "inspects existing and missing paths without escaping the workspace",
       async () => {
         const tool = getTool("inspect_path");

@@ -473,6 +473,72 @@ describe("atomic workspace write tool", () => {
     );
   });
 
+  it("dry-runs and permanently deletes one file through destructive approval semantics", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-delete-file-"));
+    roots.push(root);
+    const target = path.join(root, "remove.txt");
+    fs.writeFileSync(target, "remove me\n", "utf8");
+    const definition = createWorkspaceWriteToolDefinitions({
+      roots: [root],
+      maxWriteFileBytes: 1_000_000
+    }).find((item) => item.name === "delete_path");
+
+    assert.equal(definition.runtimeContract.effect, "destructive");
+    const preview = await definition.execute({
+      path: "remove.txt",
+      recursive: false,
+      expectedSha256: "",
+      dryRun: true
+    }, { callId: "delete-preview" });
+    assert.equal(preview.ok, true);
+    assert.equal(preview.data.dryRun, true);
+    assert.equal(fs.existsSync(target), true);
+    assert.match(preview.data.changePreview.diff, /-remove me/u);
+
+    const removed = await definition.execute({
+      path: "remove.txt",
+      recursive: false,
+      expectedSha256: preview.data.beforeSha256,
+      dryRun: false
+    }, { callId: "delete-apply" });
+    assert.equal(removed.ok, true);
+    assert.equal(removed.data.type, "file");
+    assert.equal(fs.existsSync(target), false);
+    assert.equal(fs.readdirSync(root).some((name) => name.includes(".xixi-delete-")), false);
+  });
+
+  it("requires explicit recursive deletion and blocks unsafe descendants", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-delete-dir-"));
+    roots.push(root);
+    fs.mkdirSync(path.join(root, "cleanup", "nested"), { recursive: true });
+    fs.writeFileSync(path.join(root, "cleanup", "nested", "item.txt"), "item", "utf8");
+    const definition = createWorkspaceWriteToolDefinitions({ roots: [root] })
+      .find((item) => item.name === "delete_path");
+
+    await assert.rejects(
+      () => definition.execute({ path: "cleanup", recursive: false, expectedSha256: "", dryRun: false }, { callId: "delete-no-recursive" }),
+      (error) => error?.code === "DIRECTORY_NOT_EMPTY"
+    );
+    assert.equal(fs.existsSync(path.join(root, "cleanup")), true);
+
+    const removed = await definition.execute({
+      path: "cleanup",
+      recursive: true,
+      expectedSha256: "",
+      dryRun: false
+    }, { callId: "delete-recursive" });
+    assert.equal(removed.ok, true);
+    assert.equal(removed.data.entries, 3);
+    assert.equal(fs.existsSync(path.join(root, "cleanup")), false);
+
+    fs.mkdirSync(path.join(root, "unsafe", "node_modules"), { recursive: true });
+    fs.writeFileSync(path.join(root, "unsafe", "node_modules", "x.js"), "x", "utf8");
+    await assert.rejects(
+      () => definition.execute({ path: "unsafe", recursive: true, expectedSha256: "", dryRun: true }, { callId: "delete-unsafe" }),
+      (error) => error?.code === "EXCLUDED_PATH_BLOCKED"
+    );
+  });
+
   it("preserves stale transaction backups and requires explicit recovery", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-patch-stale-backup-"));
     roots.push(root);

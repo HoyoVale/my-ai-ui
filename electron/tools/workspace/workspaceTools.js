@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { createTextDiffPreview } from "./textDiffPreview.js";
+
 import {
   getWorkspaceRoots,
   isExcludedDirectory,
@@ -639,6 +641,28 @@ const textReadOutputSchema = z.object({
   includeLineNumbers: z.boolean()
 });
 
+function compareLineSummary(before, after) {
+  const left = splitLines(String(before ?? ""));
+  const right = splitLines(String(after ?? ""));
+  let prefix = 0;
+  while (prefix < left.length && prefix < right.length && left[prefix] === right[prefix]) {
+    prefix += 1;
+  }
+  let suffix = 0;
+  while (
+    suffix < left.length - prefix &&
+    suffix < right.length - prefix &&
+    left[left.length - 1 - suffix] === right[right.length - 1 - suffix]
+  ) {
+    suffix += 1;
+  }
+  return {
+    identical: left.length === right.length && prefix === left.length,
+    addedLines: Math.max(0, right.length - prefix - suffix),
+    removedLines: Math.max(0, left.length - prefix - suffix)
+  };
+}
+
 export function createWorkspaceToolDefinitions(workspaceSettings = {}) {
   const limits = {
     maxTextFileBytes: Math.min(
@@ -1156,6 +1180,95 @@ export function createWorkspaceToolDefinitions(workspaceSettings = {}) {
             : lineLimitReached
               ? "line_limit"
               : ""
+        };
+      }
+    },
+    {
+      name: "compare_files",
+      title: "Compare text files",
+      description:
+        "Compare two safe UTF-8 or UTF-16LE text files inside the same authorized workspace. Returns bounded unified Diff, hashes, encoding metadata, and added/removed line counts without modifying either file.",
+      inputSchema: z.object({
+        leftPath: pathSchema.min(1),
+        rightPath: pathSchema.min(1),
+        maxBytesPerFile: z.number().int().min(1_024)
+          .max(limits.maxTextFileBytes)
+          .default(Math.min(1_000_000, limits.maxTextFileBytes)),
+        contextLines: z.number().int().min(0).max(12).default(3),
+        maxDiffChars: z.number().int().min(1_000).max(100_000).default(24_000)
+      }),
+      outputSchema: z.object({
+        root: z.string(),
+        leftPath: z.string(),
+        rightPath: z.string(),
+        identical: z.boolean(),
+        addedLines: z.number().int().nonnegative(),
+        removedLines: z.number().int().nonnegative(),
+        left: z.object({
+          sizeBytes: z.number().int().nonnegative(),
+          encoding: z.enum(["utf8", "utf16le"]),
+          newline: z.enum(NEWLINE_VALUES),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/u)
+        }),
+        right: z.object({
+          sizeBytes: z.number().int().nonnegative(),
+          encoding: z.enum(["utf8", "utf16le"]),
+          newline: z.enum(NEWLINE_VALUES),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/u)
+        }),
+        comparison: z.object({
+          kind: z.literal("unified_diff"),
+          path: z.string(),
+          diff: z.string(),
+          truncated: z.boolean()
+        })
+      }),
+      timeoutMs: 35_000,
+      ...runtimeReadMetadata,
+      async execute(input, context = {}) {
+        const maxBytes = input.maxBytesPerFile ?? Math.min(1_000_000, limits.maxTextFileBytes);
+        const leftResolved = resolve(input.leftPath, { allowDirectory: false });
+        const rightResolved = resolve(input.rightPath, { allowDirectory: false });
+        if (leftResolved.root !== rightResolved.root) {
+          throw workspaceToolError("CROSS_WORKSPACE_COMPARE_BLOCKED", "只能比较同一授权工作区中的文件。");
+        }
+        const [left, right] = await Promise.all([
+          readSafeTextFile(leftResolved.path, maxBytes, {
+            signal: context.abortSignal,
+            encoding: "auto"
+          }),
+          readSafeTextFile(rightResolved.path, maxBytes, {
+            signal: context.abortSignal,
+            encoding: "auto"
+          })
+        ]);
+        const summary = compareLineSummary(left.text, right.text);
+        const label = `${leftResolved.relativePath} ↔ ${rightResolved.relativePath}`;
+        const changePreview = createTextDiffPreview({
+          path: label,
+          before: left.text,
+          after: right.text,
+          contextLines: input.contextLines,
+          maxChars: input.maxDiffChars
+        });
+        return {
+          root: leftResolved.root,
+          leftPath: leftResolved.relativePath,
+          rightPath: rightResolved.relativePath,
+          ...summary,
+          left: {
+            sizeBytes: left.bytes,
+            encoding: left.encoding,
+            newline: left.newline,
+            sha256: left.sha256
+          },
+          right: {
+            sizeBytes: right.bytes,
+            encoding: right.encoding,
+            newline: right.newline,
+            sha256: right.sha256
+          },
+          comparison: changePreview
         };
       }
     },
