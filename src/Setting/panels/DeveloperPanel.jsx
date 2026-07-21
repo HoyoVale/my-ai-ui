@@ -144,6 +144,108 @@ function PromptInspector({ settings }) {
   );
 }
 
+
+function permissionLevelLabel(level) {
+  return {
+    allow: "允许",
+    ask: "需批准",
+    deny: "拒绝"
+  }[level] ?? String(level ?? "未知");
+}
+
+function CapabilityInspector({ manifest }) {
+  const resolution = manifest?.capabilityResolution;
+  if (!resolution) {
+    return (
+      <p className="capability-inspector__empty">
+        正在解析 Capability Manifest…
+      </p>
+    );
+  }
+
+  const capabilities = (resolution.capabilities ?? []).filter(
+    (capability) => capability.registered || capability.requested
+  );
+  const effectivePermissions = resolution.permissions?.effective ?? {};
+
+  return (
+    <div className="capability-inspector" data-testid="developer-capability-inspector">
+      <div className="capability-inspector__summary">
+        <div>
+          <span>Taxonomy</span>
+          <strong>v{resolution.taxonomyVersion}</strong>
+          <code>{resolution.taxonomyHash}</code>
+        </div>
+        <div>
+          <span>已注册能力</span>
+          <strong>{resolution.summary?.registered ?? 0}</strong>
+          <small>总计 {resolution.summary?.total ?? 0}</small>
+        </div>
+        <div>
+          <span>当前可用</span>
+          <strong>{resolution.summary?.available ?? 0}</strong>
+          <small>{resolution.satisfied ? "需求已满足" : "存在缺失能力"}</small>
+        </div>
+      </div>
+
+      <div className="capability-permission-list" aria-label="Effective permissions">
+        {Object.entries(effectivePermissions).map(([key, level]) => (
+          <span key={key} className={`is-${level}`}>
+            <code>{key}</code>
+            {permissionLevelLabel(level)}
+          </span>
+        ))}
+      </div>
+
+      <div className="capability-list">
+        {capabilities.map((capability) => (
+          <details
+            key={capability.id}
+            className={`capability-item ${capability.available ? "is-available" : "is-unavailable"}`}
+          >
+            <summary>
+              <span>
+                <strong>{capability.title}</strong>
+                <code>{capability.id}</code>
+              </span>
+              <span>
+                {capability.available
+                  ? `${capability.providers.filter((provider) => provider.ready).length} 个可用工具`
+                  : "不可用"}
+              </span>
+            </summary>
+            <div className="capability-item__body">
+              <p>{capability.description}</p>
+              <div>
+                <span>模式：{capability.modes.join(" / ")}</span>
+                <span>风险：{capability.risk}</span>
+                <span>权限：{capability.permissions.join(", ") || "无"}</span>
+              </div>
+              <ul>
+                {capability.providers.map((provider) => (
+                  <li key={`${capability.id}:${provider.name}`}>
+                    <span>
+                      <strong>{provider.title || provider.name}</strong>
+                      <code>{provider.name}</code>
+                    </span>
+                    <span>{provider.sourceKind} · {provider.ready ? "可用" : "不可用"}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
+        ))}
+      </div>
+
+      {resolution.missingRequired?.length > 0 && (
+        <p className="capability-inspector__warning">
+          缺少必需能力：{resolution.missingRequired.join(", ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function DeveloperPanel({
   settings,
   onUpdatePrompts
@@ -194,11 +296,15 @@ export function DeveloperPanel({
           <div><span>工作模式</span><strong>{manifest?.mode === "coding" ? "Coding" : "Chat"}</strong></div>
           <div><span>已注册工具</span><strong>{totalTools}</strong></div>
           <div><span>模型可见工具</span><strong>{visibleTools}</strong></div>
-          <div><span>Manifest</span><strong>{manifest?.revision ?? "加载中"}</strong></div>
+          <div><span>Manifest</span><strong>r{manifest?.manifestRevision ?? "-"}</strong><code>{manifest?.manifestHash ?? manifest?.revision ?? "加载中"}</code></div>
           <div><span>当前会话</span><strong>{manifest?.executionContext?.conversationTitle ?? "加载中"}</strong></div>
           <div><span>授权工作区</span><strong>{manifest?.executionContext?.workspaceAvailable ? 1 : 0}</strong></div>
           <div><span>最大工具调用</span><strong>{settings.tools.runtime.maxToolCalls}</strong></div>
         </div>
+      </SettingsSection>
+
+      <SettingsSection title="Capability Inspector">
+        <CapabilityInspector manifest={manifest} />
       </SettingsSection>
 
       <SettingsSection title="Prompt Stack">

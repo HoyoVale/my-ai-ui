@@ -31,6 +31,14 @@ import {
   declarativeHttpToolManager
 } from "../../custom-tools/DeclarativeHttpToolManager.js";
 
+import {
+  resolveCapabilitySet
+} from "../capabilities/CapabilityResolver.js";
+
+import {
+  toolManifestRevisionTracker
+} from "../capabilities/ToolManifestRevisionTracker.js";
+
 const OVERRIDE_VALUES = new Set([
   "inherit",
   "enabled",
@@ -195,7 +203,8 @@ function toolsetEffectiveState(toolsetId, settings) {
 
 export function getToolManifestSnapshot({
   settings = {},
-  executionContext = null
+  executionContext = null,
+  capabilityRequest = null
 } = {}) {
   const toolSettings = settings.tools ?? {};
   const activeModel = resolveActiveModel(settings);
@@ -219,7 +228,7 @@ export function getToolManifestSnapshot({
     resolveEnabledToolCatalog(toolSettings, rawTools).map((tool) => tool.name)
   );
 
-  const tools = rawTools.map((tool) => {
+  const baseTools = rawTools.map((tool) => {
     const toolsetId = tool.toolsets?.[0] ?? "core.runtime";
     const presentation = tool.presentation ?? {};
     const availability = toolAvailability(tool, settings);
@@ -250,6 +259,33 @@ export function getToolManifestSnapshot({
         description: false,
         override: true
       }
+    };
+  });
+
+  const capabilityResolution = resolveCapabilitySet({
+    tools: baseTools,
+    mode: resolveToolMode(toolSettings),
+    workspaceAvailable: getWorkspaceRoots(toolSettings.workspace ?? {}).length > 0,
+    settings,
+    request:
+      capabilityRequest && typeof capabilityRequest === "object"
+        ? capabilityRequest
+        : executionContext?.capabilityRequest ?? {}
+  });
+
+  const tools = baseTools.map((tool) => {
+    const permissionResolution = capabilityResolution.toolDecisions[tool.name] ?? {
+      allowed: false,
+      requiresApproval: false,
+      ready: false,
+      permissions: [],
+      deniedPermissions: [],
+      approvalPermissions: []
+    };
+    return {
+      ...tool,
+      permissionResolution,
+      ready: tool.ready && permissionResolution.allowed
     };
   });
 
@@ -302,6 +338,12 @@ export function getToolManifestSnapshot({
         }
       : null,
     globalEnabled: toolSettings.enabled !== false,
+    capabilityResolution: {
+      ...capabilityResolution,
+      toolDecisions: structuredClone(capabilityResolution.toolDecisions)
+    },
+    capabilitySummary: structuredClone(capabilityResolution.summary),
+    permissionEnvelope: structuredClone(capabilityResolution.permissions),
     sourceSummary: {
       builtin: tools.filter((tool) => tool.sourceKind === "builtin").length,
       mcp: tools.filter((tool) => tool.sourceKind === "mcp").length,
@@ -312,14 +354,25 @@ export function getToolManifestSnapshot({
     tools
   };
 
+  const manifestHash = stableHash({
+    schemaVersion: result.schemaVersion,
+    mode: result.mode,
+    globalEnabled: result.globalEnabled,
+    toolsets: result.toolsets,
+    tools: result.tools,
+    capabilityResolution: result.capabilityResolution,
+    permissionEnvelope: result.permissionEnvelope
+  });
+  const revisionState = toolManifestRevisionTracker.observe(
+    executionContext?.conversationId || `preview:${result.mode}`,
+    manifestHash
+  );
+
   return {
     ...result,
-    revision: stableHash({
-      schemaVersion: result.schemaVersion,
-      mode: result.mode,
-      globalEnabled: result.globalEnabled,
-      toolsets: result.toolsets,
-      tools: result.tools
-    })
+    revision: manifestHash,
+    manifestHash,
+    manifestRevision: revisionState.revision,
+    manifestChanged: revisionState.changed
   };
 }

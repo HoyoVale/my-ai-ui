@@ -42,7 +42,8 @@ import {
 } from "../agent/orchestration/agentTools.js";
 
 import {
-  resolveEnabledToolCatalog
+  resolveEnabledToolCatalog,
+  resolveToolMode
 } from "./toolCatalog.js";
 
 import {
@@ -52,6 +53,10 @@ import {
 import {
   getWorkspaceRoots
 } from "./workspace/workspacePolicy.js";
+
+import {
+  resolveCapabilitySet
+} from "./capabilities/CapabilityResolver.js";
 
 export function createAgentToolSession({
   activeModel = null,
@@ -67,11 +72,12 @@ export function createAgentToolSession({
   taskId = "",
   runId = "",
   workspaceId = "",
-  mode = "chat",
+  mode = null,
   segmentId = "",
   faultInjector = null,
   externalDefinitions = [],
-  authorizeTool = null
+  authorizeTool = null,
+  capabilityRequest = null
 } = {}) {
   const planStore =
     new RunPlanStore(
@@ -115,6 +121,9 @@ export function createAgentToolSession({
     settings.tools ?? {};
   const workspaceSettings =
     toolSettings.workspace ?? {};
+  const sessionMode = ["chat", "coding"].includes(mode)
+    ? mode
+    : resolveToolMode(toolSettings);
   const hasWorkspace =
     getWorkspaceRoots(
       workspaceSettings
@@ -151,6 +160,21 @@ export function createAgentToolSession({
         )
     );
 
+  const capabilityResolution = resolveCapabilitySet({
+    tools: enabledDefinitions,
+    mode: sessionMode,
+    workspaceAvailable: hasWorkspace,
+    settings,
+    request: capabilityRequest ?? {}
+  });
+  const capabilitySelectedNames = new Set(
+    capabilityResolution.selectedToolNames
+  );
+  const capabilityDefinitions = enabledDefinitions.filter((definition) =>
+    capabilitySelectedNames.has(definition.name) &&
+    capabilityResolution.toolDecisions[definition.name]?.allowed !== false
+  );
+
   const executor =
     new ToolExecutor({
       context: {
@@ -158,7 +182,7 @@ export function createAgentToolSession({
         taskId,
         workspaceId,
         segmentId,
-        mode: mode === "coding" ? "coding" : "chat",
+        mode: sessionMode,
         subprocessSupervisor
       },
       policyEngine: new ToolPolicyEngine({
@@ -254,7 +278,7 @@ export function createAgentToolSession({
       faultInjector
     });
   const runtime = new ToolRuntime({
-    definitions: enabledDefinitions,
+    definitions: capabilityDefinitions,
     executor
   });
 
@@ -263,6 +287,8 @@ export function createAgentToolSession({
       runtime.list(),
     registryManifest:
       registry.manifest(),
+    capabilityResolution:
+      structuredClone(capabilityResolution),
     tools:
       createAiSdkToolSet(
         runtime.list(),
@@ -302,11 +328,11 @@ export function createAgentToolSession({
       subprocesses: subprocessSupervisor.snapshot()
     }),
     reconcileRuntime: (options = {}) =>
-      executionLedger.reconcile(enabledDefinitions, options),
+      executionLedger.reconcile(capabilityDefinitions, options),
     resolveRuntimeRecovery: (request = {}) =>
       executionLedger.resolveRecovery({
         ...request,
-        definitions: enabledDefinitions
+        definitions: capabilityDefinitions
       }),
     recordRuntimeEvent: (type, payload, options) =>
       executionLedger.recordRuntimeEvent(type, payload, options),

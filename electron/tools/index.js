@@ -63,3 +63,30 @@ export {
   BUILTIN_TOOLSET_MANIFEST,
   BUILTIN_TOOL_PRESENTATION
 } from "./manifest/builtinToolPresentation.js";
+
+export {
+  CAPABILITY_PERMISSION_KEYS,
+  CAPABILITY_SCHEMA_VERSION,
+  CAPABILITY_SOURCE_KINDS,
+  CAPABILITY_TAXONOMY_HASH,
+  CAPABILITY_TAXONOMY_VERSION,
+  capabilityPermissionRequirements,
+  createEnvironmentPermissionEnvelope,
+  getCapabilityDefinition,
+  intersectPermissionEnvelopes,
+  listCapabilityDefinitions,
+  normalizeCapabilityIds,
+  normalizePermissionEnvelope,
+  permissionDecisionForCapabilities
+} from "./capabilities/CapabilityTaxonomy.js";
+
+export {
+  capabilityDefinition,
+  resolveCapabilityRequirements,
+  resolveCapabilitySet
+} from "./capabilities/CapabilityResolver.js";
+
+export {
+  builtinCapabilityMap,
+  inferToolCapabilities
+} from "./capabilities/CapabilityMapping.js";

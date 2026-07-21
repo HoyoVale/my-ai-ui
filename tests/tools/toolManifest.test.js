@@ -64,6 +64,11 @@ describe("Tool Manifest API", () => {
     assert.equal(new Set(manifest.tools.map((tool) => tool.id)).size, 28);
     assert.equal(new Set(manifest.tools.map((tool) => tool.name)).size, 28);
     assert.match(manifest.revision, /^[a-f0-9]{20}$/u);
+    assert.equal(manifest.manifestHash, manifest.revision);
+    assert.equal(Number.isInteger(manifest.manifestRevision), true);
+    assert.equal(manifest.manifestRevision >= 1, true);
+    assert.equal(manifest.capabilityResolution.taxonomyVersion, 1);
+    assert.equal(manifest.capabilitySummary.registered > 0, true);
     assert.equal(manifest.sourceSummary.builtin, 28);
     assert.equal(manifest.sourceSummary.mcp, 0);
     assert.equal(manifest.sourceSummary.custom, 0);
@@ -75,6 +80,10 @@ describe("Tool Manifest API", () => {
       assert.equal(tool.displayDescription.length > 0, true);
       assert.equal(typeof tool.inputSchema, "object");
       assert.equal(typeof tool.outputSchema, "object");
+      assert.equal(Array.isArray(tool.capabilities), true);
+      assert.equal(tool.capabilities.length > 0, true);
+      assert.equal(Array.isArray(tool.permissionRequirements), true);
+      assert.equal(typeof tool.permissionResolution, "object");
       assert.equal(tool.editable.implementation, false);
       assert.equal(tool.editable.schema, false);
       assert.equal(tool.editable.override, true);
@@ -141,6 +150,38 @@ describe("Tool Manifest API", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("increments the conversation manifest revision only after a semantic change", () => {
+    const base = settingsWith({
+      tools: {
+        mode: "chat",
+        workspace: { roots: [] }
+      }
+    });
+    const context = {
+      conversationId: "manifest-revision-conversation",
+      mode: "chat"
+    };
+    const first = getToolManifestSnapshot({ settings: base, executionContext: context });
+    const second = getToolManifestSnapshot({ settings: base, executionContext: context });
+    const changed = getToolManifestSnapshot({
+      settings: settingsWith({
+        tools: {
+          mode: "chat",
+          workspace: { roots: [] },
+          developer: {
+            toolOverrides: { calculator: "disabled" }
+          }
+        }
+      }),
+      executionContext: context
+    });
+
+    assert.equal(second.manifestRevision, first.manifestRevision);
+    assert.equal(second.manifestHash, first.manifestHash);
+    assert.equal(changed.manifestRevision, first.manifestRevision + 1);
+    assert.notEqual(changed.manifestHash, first.manifestHash);
   });
 
   it("publishes the conversation-bound execution context used by the settings UI", () => {

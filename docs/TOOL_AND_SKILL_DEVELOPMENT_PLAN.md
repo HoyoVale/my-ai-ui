@@ -1,7 +1,7 @@
 # Tool 与 Skill 开发路线
 
-> 基线：`my-ai-ui(61)`  
-> 当前阶段：Tool Write 2.0 已实施，下一阶段为 Capability Foundation  
+> 基线：`my-ai-ui(62)`  
+> 当前阶段：Capability Foundation 已实施，下一阶段为 Skill Foundation  
 > 原则：先稳定系统工具与能力协议，再建设 Skill；Skill 不能绕过 Tool Runtime、工作区边界或用户批准。
 
 ## 一、总体路线
@@ -396,11 +396,20 @@ range
 
 ## 四、补丁 3：Capability Foundation
 
-目标：让 Skill 依赖能力，而不是写死工具名称。
+状态：**已实施**。
+
+目标：让 Skill、MCP 和 Custom HTTP 依赖统一能力，而不是写死具体工具名称。
 
 ### 4.1 Capability Taxonomy
 
-第一版建议：
+第一版 Schema 与 Taxonomy 已冻结为：
+
+```text
+schemaVersion: 1
+taxonomyVersion: 1
+```
+
+当前能力：
 
 ```text
 runtime.info
@@ -422,45 +431,184 @@ git.read.diff
 network.read
 external.read
 external.write
+process.execute
 
 agent.plan
 agent.result.page
 ```
 
-### 4.2 Risk Taxonomy
+每个 Capability 都包含：
+
+- 稳定 ID；
+- 中文标题与说明；
+- 分类；
+- 适用 Chat / Coding 模式；
+- 风险类型；
+- 权限要求。
+
+Taxonomy 同时生成稳定 SHA-256 Hash，供 Skill 安装校验、缓存和兼容性检查。
+
+### 4.2 Tool → Capability 映射
+
+所有 Tool Definition 统一新增：
+
+```js
+{
+  capabilities,
+  capabilityEvidence,
+  permissionRequirements
+}
+```
+
+映射来源：
+
+- 内置工具：使用固定名称映射；
+- MCP：使用 Runtime effect、MCP annotations 和声明能力推断；
+- Custom HTTP：使用 HTTP 读写语义与网络权限推断；
+- 未来 Plugin：可显式声明 Capability；
+- 未声明工具：使用保守 Runtime fallback，不提升权限。
+
+一个 Capability 可以由多个工具提供；一个工具也可以提供多个 Capability。
+
+### 4.3 Permission Envelope
+
+权限不再只是布尔值，而是三级：
 
 ```text
-read
-local_write
-external_write
-destructive
-credential
+allow
+ask
+deny
+```
+
+当前权限维度：
+
+```text
+runtime
+workspaceRead
+workspaceWrite
 process
 network
+externalRead
+externalWrite
+destructive
+credential
+account
+agentInternal
 ```
 
-### 4.3 来源
+权限结果按最严格规则求交集：
 
 ```text
-built_in
-mcp
-custom_http
-plugin
+当前模式与工作区权限
+∩ 用户 Tool / MCP 配置
+∩ Skill 声明权限
+∩ Tool 自身额外权限要求
+= Effective Permission Envelope
 ```
 
-### 4.4 Resolver
+排序为：
 
 ```text
-requiredCapabilities
-    ↓
-当前可用 Tool Manifest
-    ↓
-模式、工作区、用户权限、Tool/MCP 权限求交集
-    ↓
-实际工具集合
+deny < ask < allow
 ```
 
-Capability 只能缩小权限，不能扩大权限。
+因此 Skill 或外部配置只能缩小权限，不能把 `deny` 提升为 `ask` 或 `allow`。
+
+### 4.4 Capability Resolver
+
+Resolver 输入：
+
+```js
+{
+  requiredCapabilities,
+  optionalCapabilities,
+  permissions
+}
+```
+
+解析流程：
+
+```text
+Capability Request
+    ↓
+统一 Tool Manifest
+    ↓
+模式、工作区、Tool 开关与 MCP 权限
+    ↓
+Permission Intersection
+    ↓
+按 Built-in → MCP → Custom 的稳定顺序选择 Provider
+    ↓
+实际工具集合与缺失能力
+```
+
+Resolver 返回：
+
+- 必需能力是否全部满足；
+- 缺失的必需能力；
+- 不可用的可选能力；
+- 每项能力的所有 Provider；
+- 实际选中的 Tool；
+- 每个 Tool 的权限判断；
+- Effective Permission Envelope；
+- Taxonomy Version 与 Hash。
+
+当前 Agent Session 已接入 Resolver：
+
+- 没有 Capability Request 时保持原有工具集合；
+- 传入 Capability Request 时只暴露满足请求且未被权限拒绝的工具；
+- Chat 不能通过 Capability 请求获得工作区写入或进程执行；
+- Coding 写入仍保持 Approval；
+- 未知必需能力会明确列入 `missingRequired`。
+
+### 4.5 Manifest Revision
+
+Tool Manifest 现在同时提供：
+
+```js
+{
+  revision,          // 兼容字段，等于稳定 Manifest Hash
+  manifestHash,      // 跨重启稳定的语义 Hash
+  manifestRevision,  // 当前会话内单调递增 Revision
+  manifestChanged
+}
+```
+
+Revision 只在语义 Manifest 变化时递增，时间戳刷新不会制造新 Revision。
+
+Skill Runtime 可以使用：
+
+- `manifestHash` 判断缓存是否仍有效；
+- `manifestRevision` 判断当前会话是否需要重新解析能力；
+- `taxonomyHash` 判断 Skill 是否依赖未知或不兼容的 Taxonomy。
+
+### 4.6 Developer Capability Inspector
+
+Developer 页面新增 Capability Inspector，显示：
+
+- Taxonomy Version 与 Hash；
+- 已注册和当前可用 Capability 数量；
+- Effective Permission Envelope；
+- 每项 Capability 的模式、风险和权限；
+- Built-in、MCP、Custom Provider；
+- 实际可用状态；
+- 缺失的必需能力；
+- Manifest Revision 与 Hash。
+
+普通用户页面不展示内部 Capability、Provider 或权限交集细节。
+
+### 4.7 Capability Foundation 验收标准
+
+- 所有已注册 Tool 都有至少一个 Capability；
+- 内置、MCP 和 Custom HTTP 使用同一 Manifest 字段；
+- Chat / Coding 与工作区边界不能被 Capability Request 绕过；
+- Permission Envelope 只能收紧权限；
+- 必需和可选 Capability 可独立解析；
+- 多 Provider 选择顺序稳定；
+- 未知必需 Capability 明确失败；
+- Manifest Hash 稳定，Revision 只在语义变化时递增；
+- Developer Inspector 使用同一 Manifest 数据源；
+- 单元测试、Lint 和生产构建通过。
 
 ---
 

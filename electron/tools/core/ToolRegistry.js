@@ -7,6 +7,10 @@ import {
   serializeToolSchema
 } from "../manifest/toolSchema.js";
 
+import {
+  inferToolCapabilities
+} from "../capabilities/CapabilityMapping.js";
+
 const TOOL_RISK_LEVELS = new Set([
   "none",
   "low",
@@ -53,7 +57,9 @@ function copyDefinition(definition) {
     },
     presentation: {
       ...(definition.presentation ?? {})
-    }
+    },
+    capabilities: [...(definition.capabilities ?? [])],
+    permissionRequirements: [...(definition.permissionRequirements ?? [])]
   };
 }
 
@@ -235,6 +241,12 @@ function normalizeDefinition(
     definition.retryPolicy,
     { sideEffect }
   );
+  const capabilityMetadata = inferToolCapabilities({
+    ...definition,
+    source,
+    sideEffect,
+    runtimeContract
+  });
   if ([
     "manual_only",
     "reconcile_before_retry"
@@ -269,6 +281,9 @@ function normalizeDefinition(
     countsTowardLimit,
     countsTowardRepeatLimit,
     activityVisibility,
+    capabilities: capabilityMetadata.capabilities,
+    capabilityEvidence: capabilityMetadata.evidence,
+    permissionRequirements: capabilityMetadata.permissionRequirements,
     presentation: {
       title: String(
         definition.presentation?.title ?? definition.title ?? name
@@ -309,6 +324,9 @@ function manifestEntry(definition) {
     presentation: cloneMetadata(definition.presentation ?? {}),
     source: definition.source,
     toolsets: [...definition.toolsets],
+    capabilities: [...definition.capabilities],
+    capabilityEvidence: definition.capabilityEvidence,
+    permissionRequirements: [...definition.permissionRequirements],
     riskLevel: definition.riskLevel,
     sideEffect: definition.sideEffect,
     idempotency: definition.idempotency,
