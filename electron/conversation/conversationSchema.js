@@ -10,10 +10,11 @@ import {
 } from "../agent/runStopReasons.js";
 
 import {
-  createSkillSnapshot
+  createSkillSnapshot,
+  createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
-const STORE_VERSION = 14;
+const STORE_VERSION = 15;
 
 const MESSAGE_ROLES =
   new Set([
@@ -150,31 +151,64 @@ function sanitizeSkillRun(source) {
   }
 
   const id = nullableStringValue(source.id ?? source.skillId, 120);
-  if (!id) {
+  const skills = createSkillSnapshots(
+    Array.isArray(source.skills) ? source.skills : source.skill ? [source.skill] : [],
+    12
+  );
+  if (!id && !skills.length) {
     return null;
   }
 
+  const primary = skills[0] ?? null;
+  const normalizedId = id ?? primary?.id;
   const status = ["running", "completed", "failed", "cancelled", "interrupted"]
     .includes(source.status)
     ? source.status
     : "completed";
 
   return {
-    id,
-    name: stringValue(source.name, id, 120).trim() || id,
-    version: stringValue(source.version, "", 80).trim(),
+    id: normalizedId,
+    name: stringValue(source.name, primary?.name ?? normalizedId, 120).trim() || normalizedId,
+    version: stringValue(source.version, primary?.version ?? "", 80).trim(),
     status,
+    source: ["manual", "command", "router", "dependency", "none"].includes(source.source)
+      ? source.source
+      : "manual",
+    routingMode: source.routingMode === "auto" ? "auto" : "manual",
+    skills,
+    rootSkillIds: Array.isArray(source.rootSkillIds)
+      ? [...new Set(source.rootSkillIds.map((item) => stringValue(item, "", 120).trim()).filter(Boolean))].slice(0, 4)
+      : normalizedId ? [normalizedId] : [],
+    dependencySkillIds: Array.isArray(source.dependencySkillIds)
+      ? [...new Set(source.dependencySkillIds.map((item) => stringValue(item, "", 120).trim()).filter(Boolean))].slice(0, 12)
+      : [],
+    router: source.router && typeof source.router === "object"
+      ? {
+          matched: source.router.matched === true,
+          selected: source.router.selected && typeof source.router.selected === "object"
+            ? {
+                id: stringValue(source.router.selected.id, "", 120).trim(),
+                name: stringValue(source.router.selected.name, "", 120).trim(),
+                score: Math.max(0, Number(source.router.selected.score) || 0),
+                reasons: Array.isArray(source.router.selected.reasons)
+                  ? source.router.selected.reasons.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 6)
+                  : []
+              }
+            : null,
+          reason: stringValue(source.router.reason, "", 400).trim()
+        }
+      : null,
     requiredCapabilities: Array.isArray(source.requiredCapabilities)
-      ? source.requiredCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+      ? source.requiredCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 64)
       : [],
     optionalCapabilities: Array.isArray(source.optionalCapabilities)
-      ? source.optionalCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+      ? source.optionalCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 64)
       : [],
     selectedToolNames: Array.isArray(source.selectedToolNames)
       ? source.selectedToolNames.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 100)
       : [],
     missingRequired: Array.isArray(source.missingRequired)
-      ? source.missingRequired.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+      ? source.missingRequired.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 64)
       : [],
     startedAt: timestampValue(source.startedAt, 0),
     endedAt: source.endedAt === null ? null : timestampValue(source.endedAt, 0)
@@ -620,13 +654,34 @@ export function sanitizeConversation(
     : workspaceId
       ? "coding"
       : "chat";
-  const skillId = nullableStringValue(
+  const legacySkillId = nullableStringValue(
     source.skillId ?? source.activeSkillId,
     120
   );
-  const skillSnapshot = sanitizeSkillSnapshot(
+  const legacySkillSnapshot = sanitizeSkillSnapshot(
     source.skillSnapshot ?? source.activeSkill
   );
+  const skillIds = [
+    ...new Set(
+      (Array.isArray(source.skillIds)
+        ? source.skillIds
+        : legacySkillId
+          ? [legacySkillId]
+          : [])
+        .map((item) => nullableStringValue(item, 120))
+        .filter(Boolean)
+    )
+  ].slice(0, 4);
+  const skillSnapshots = createSkillSnapshots(
+    Array.isArray(source.skillSnapshots)
+      ? source.skillSnapshots
+      : legacySkillSnapshot
+        ? [legacySkillSnapshot]
+        : [],
+    12
+  );
+  const skillId = skillIds[0] ?? null;
+  const skillSnapshot = skillSnapshots.find((snapshot) => snapshot.id === skillId) ?? null;
   const modelSelection = sanitizeModelSelection(
     source.modelSelection
   );
@@ -645,10 +700,10 @@ export function sanitizeConversation(
         : null,
 
     skillId,
-    skillSnapshot:
-      skillId && skillSnapshot?.id === skillId
-        ? skillSnapshot
-        : null,
+    skillSnapshot,
+    skillIds,
+    skillSnapshots,
+    skillRoutingMode: source.skillRoutingMode === "auto" ? "auto" : "manual",
 
     modelSelection,
     modelSnapshot:

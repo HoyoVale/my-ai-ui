@@ -37,7 +37,8 @@ function sanitizeRegistryEntry(value) {
     author: value.author,
     homepage: value.homepage,
     license: value.license,
-    keywords: value.keywords
+    keywords: value.keywords,
+    dependencies: value.dependencies
   });
 
   if (!manifestResult.ok) {

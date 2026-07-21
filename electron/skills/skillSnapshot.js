@@ -30,6 +30,23 @@ function stringList(values, maxItems = 32, maxLength = 160) {
   ].slice(0, maxItems);
 }
 
+
+function dependencyList(values) {
+  const result = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const id = text(value?.id, 120);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push({
+      id,
+      version: text(value?.version, 80) || "*",
+      optional: value?.optional === true
+    });
+  }
+  return result.slice(0, 16);
+}
+
 function permissions(value) {
   const source = value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -60,6 +77,7 @@ export function createSkillSnapshot(source) {
     modes: stringList(source.modes, 2, 16).filter((mode) => MODES.has(mode)),
     requiredCapabilities: stringList(source.requiredCapabilities),
     optionalCapabilities: stringList(source.optionalCapabilities),
+    dependencies: dependencyList(source.dependencies),
     permissions: permissions(source.permissions),
     manifestHash: hash(source.manifestHash),
     promptHash: hash(source.promptHash),
@@ -104,4 +122,31 @@ export function skillSnapshotHashFields(snapshot) {
         promptHash: "",
         packageHash: ""
       };
+}
+
+export function createSkillSnapshots(values, maxItems = 12) {
+  const snapshots = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const snapshot = createSkillSnapshot(value);
+    if (!snapshot || seen.has(snapshot.id)) continue;
+    seen.add(snapshot.id);
+    snapshots.push(snapshot);
+    if (snapshots.length >= maxItems) break;
+  }
+  return snapshots;
+}
+
+export function compareSkillSnapshotSets(expectedValues, actualValues) {
+  const expected = new Map(createSkillSnapshots(expectedValues).map((item) => [item.id, item]));
+  const actual = new Map(createSkillSnapshots(actualValues).map((item) => [item.id, item]));
+  const mismatches = [];
+  for (const [id, snapshot] of expected) {
+    const comparison = compareSkillSnapshots(snapshot, actual.get(id));
+    if (!comparison.matches) mismatches.push({ id, fields: comparison.mismatches });
+  }
+  for (const id of actual.keys()) {
+    if (!expected.has(id)) mismatches.push({ id, fields: ["unexpected"] });
+  }
+  return { matches: mismatches.length === 0, mismatches };
 }

@@ -53,7 +53,31 @@ export function createExecutionConversation(
     skillSnapshot:
       overrides.skillSnapshot === undefined
         ? source.skillSnapshot ?? null
-        : overrides.skillSnapshot
+        : overrides.skillSnapshot,
+    skillIds:
+      overrides.skillIds === undefined
+        ? source.skillIds ?? (source.skillId ? [source.skillId] : [])
+        : overrides.skillIds,
+    skillSnapshots:
+      overrides.skillSnapshots === undefined
+        ? source.skillSnapshots ?? (source.skillSnapshot ? [source.skillSnapshot] : [])
+        : overrides.skillSnapshots,
+    skillRoutingMode:
+      overrides.skillRoutingMode === undefined
+        ? source.skillRoutingMode === "auto" ? "auto" : "manual"
+        : overrides.skillRoutingMode === "auto" ? "auto" : "manual",
+    skillSource:
+      overrides.skillSource === undefined
+        ? ["manual", "command", "router", "none"].includes(source.skillSource)
+          ? source.skillSource
+          : "manual"
+        : ["manual", "command", "router", "none"].includes(overrides.skillSource)
+          ? overrides.skillSource
+          : "manual",
+    skillRouter:
+      overrides.skillRouter === undefined
+        ? source.skillRouter ?? null
+        : overrides.skillRouter ?? null
   };
 }
 
@@ -120,6 +144,11 @@ export function getRecoveryExecutionOverrides(message = {}) {
     modelSelection: checkpoint.modelSelection,
     modelSnapshot: checkpoint.modelSnapshot,
     skillId: checkpoint.skillId,
-    skillSnapshot: checkpoint.skillSnapshot
+    skillSnapshot: checkpoint.skillSnapshot,
+    skillIds: checkpoint.skillIds,
+    skillSnapshots: checkpoint.skillSnapshots,
+    skillRoutingMode: checkpoint.skillRoutingMode,
+    skillSource: checkpoint.skillSource,
+    skillRouter: checkpoint.skillRouter
   };
 }

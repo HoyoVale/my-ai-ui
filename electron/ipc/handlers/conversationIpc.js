@@ -113,16 +113,25 @@ export function registerConversationIpc() {
 
       try {
         const mode = input.mode === "coding" ? "coding" : "chat";
-        const requestedSkillId = input.skillId === null
-          ? ""
-          : String(input.skillId ?? "").trim();
-        const runtimeSkill = requestedSkillId
+        const requestedSkillIds = [
+          ...new Set(
+            (Array.isArray(input.skillIds)
+              ? input.skillIds
+              : input.skillId == null
+                ? []
+                : [input.skillId])
+              .map((value) => String(value ?? "").trim())
+              .filter(Boolean)
+          )
+        ].slice(0, 4);
+        const runtimeSkill = requestedSkillIds.length
           ? resolveSkillRuntime({
               registry: skillRegistry,
-              skillId: requestedSkillId,
-              mode
+              skillIds: requestedSkillIds,
+              mode,
+              source: "manual"
             })
-          : { ok: true, active: false, skill: null };
+          : { ok: true, active: false, skill: null, skills: [], rootSkillIds: [] };
         if (!runtimeSkill.ok) {
           return runtimeSkill;
         }
@@ -138,7 +147,10 @@ export function registerConversationIpc() {
               ? input.modelSelection
               : undefined,
           skillId: runtimeSkill.skill?.id ?? null,
-          skillSnapshot: runtimeSkill.skill ?? null
+          skillSnapshot: runtimeSkill.skill ?? null,
+          skillIds: runtimeSkill.rootSkillIds ?? [],
+          skillSnapshots: runtimeSkill.skills ?? [],
+          skillRoutingMode: input.skillRoutingMode === "auto" ? "auto" : "manual"
         });
       } catch (error) {
         return {
@@ -250,26 +262,40 @@ export function registerConversationIpc() {
         return { ok: false, code: "conversation-not-found", message: "会话不存在。" };
       }
 
-      const skillId = input.skillId === null
-        ? ""
-        : String(input.skillId ?? "").trim();
-      if (!skillId) {
+      const skillIds = [
+        ...new Set(
+          (Array.isArray(input.skillIds)
+            ? input.skillIds
+            : input.skillId == null
+              ? []
+              : [input.skillId])
+            .map((value) => String(value ?? "").trim())
+            .filter(Boolean)
+        )
+      ].slice(0, 4);
+      const routingMode = input.skillRoutingMode === "auto" ? "auto" : "manual";
+      if (!skillIds.length) {
         return conversationManager.setSkillSelection({
           conversationId: conversation.id,
-          skill: null
+          skills: [],
+          skillIds: [],
+          skillRoutingMode: routingMode
         });
       }
 
       const runtimeSkill = resolveSkillRuntime({
         registry: skillRegistry,
-        skillId,
-        mode: conversation.mode
+        skillIds,
+        mode: conversation.mode,
+        source: "manual"
       });
       if (!runtimeSkill.ok) return runtimeSkill;
 
       return conversationManager.setSkillSelection({
         conversationId: conversation.id,
-        skill: runtimeSkill.skill
+        skills: runtimeSkill.skills,
+        skillIds: runtimeSkill.rootSkillIds,
+        skillRoutingMode: routingMode
       });
     }
   );

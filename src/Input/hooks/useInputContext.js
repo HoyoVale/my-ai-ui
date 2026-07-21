@@ -16,6 +16,9 @@ const EMPTY_STATE = {
   currentModel: null,
   currentSkillId: null,
   currentSkill: null,
+  currentSkillIds: [],
+  currentSkills: [],
+  currentSkillRoutingMode: "manual",
   totalConversations: 0
 };
 
@@ -221,13 +224,17 @@ export function useInputContext(settings) {
       mode,
       workspaceId,
       modelSelection,
-      skillId
+      skillId,
+      skillIds,
+      skillRoutingMode
     }) => runAction(() =>
       window.api?.createConversation?.({
         mode,
         workspaceId,
         modelSelection,
-        skillId
+        skillId,
+        skillIds,
+        skillRoutingMode
       })
     ),
     addWorkspace,
@@ -238,11 +245,17 @@ export function useInputContext(settings) {
         modelConfigId
       })
     ),
-    setSkill: (skillId) => runAction(() =>
-      window.api?.setConversationSkill?.({
+    setSkill: (selection) => runAction(() => {
+      const skillIds = Array.isArray(selection?.skillIds)
+        ? selection.skillIds
+        : selection == null
+          ? []
+          : [selection];
+      return window.api?.setConversationSkill?.({
         conversationId: state.currentConversationId,
-        skillId
-      })
-    )
+        skillIds,
+        skillRoutingMode: selection?.skillRoutingMode ?? state.currentSkillRoutingMode
+      });
+    })
   };
 }

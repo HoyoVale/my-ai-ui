@@ -467,14 +467,24 @@ export class RunActivityStore {
 
   recordSkill({
     skill,
+    skills = [],
+    source = "manual",
+    router = null,
     status = "running",
     selectedToolNames = [],
     missingRequired = []
   } = {}, timestamp = Date.now()) {
-    if (!skill?.id) {
+    const skillSet = (Array.isArray(skills) && skills.length ? skills : skill ? [skill] : [])
+      .filter((item) => item?.id)
+      .slice(0, 12);
+    if (!skillSet.length) {
       return null;
     }
 
+    const primary = skillSet[0];
+    const displayName = skillSet.length > 1
+      ? skillSet.map((item) => item.name ?? item.id).join(" + ")
+      : primary.name ?? primary.id;
     const normalizedStatus = [
       "running",
       "completed",
@@ -489,19 +499,28 @@ export class RunActivityStore {
       status: normalizedStatus,
       title:
         normalizedStatus === "running"
-          ? `已加载 Skill · ${skill.name ?? skill.id}`
+          ? `已加载 Skill · ${displayName}`
           : normalizedStatus === "completed"
-            ? `Skill 已完成 · ${skill.name ?? skill.id}`
-            : `Skill 执行${normalizedStatus === "cancelled" ? "已取消" : "未完成"} · ${skill.name ?? skill.id}`,
+            ? `Skill 已完成 · ${displayName}`
+            : `Skill 执行${normalizedStatus === "cancelled" ? "已取消" : "未完成"} · ${displayName}`,
       activityVisibility: "normal",
       createdAt: timestamp,
       updatedAt: timestamp,
       skill: {
-        id: String(skill.id),
-        name: String(skill.name ?? skill.id),
-        version: String(skill.version ?? ""),
-        requiredCapabilities: [...(skill.requiredCapabilities ?? [])],
-        optionalCapabilities: [...(skill.optionalCapabilities ?? [])],
+        id: String(primary.id),
+        name: String(displayName),
+        version: String(primary.version ?? ""),
+        source: ["manual", "command", "router", "dependency", "none"].includes(source) ? source : "manual",
+        skills: skillSet.map((item) => ({
+          id: String(item.id),
+          name: String(item.name ?? item.id),
+          version: String(item.version ?? ""),
+          requiredCapabilities: [...(item.requiredCapabilities ?? [])],
+          optionalCapabilities: [...(item.optionalCapabilities ?? [])]
+        })),
+        router: router && typeof router === "object" ? structuredClone(router) : null,
+        requiredCapabilities: [...new Set(skillSet.flatMap((item) => item.requiredCapabilities ?? []))],
+        optionalCapabilities: [...new Set(skillSet.flatMap((item) => item.optionalCapabilities ?? []))],
         selectedToolNames: [...selectedToolNames],
         missingRequired: [...missingRequired]
       }

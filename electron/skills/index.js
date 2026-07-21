@@ -50,3 +50,7 @@ export {
 export {
   runSkillRuntimeTests
 } from "./SkillTestRunner.js";
+
+export { parseSkillCommand, MAX_SKILL_COMMANDS } from "./SkillCommand.js";
+export { routeSkillForMessage } from "./SkillRouter.js";
+export { resolveSkillDependencyGraph, normalizeSkillIds } from "./SkillDependencies.js";

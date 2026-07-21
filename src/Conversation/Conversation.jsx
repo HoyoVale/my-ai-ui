@@ -327,6 +327,8 @@ export default function Conversation() {
         showRecovery={developerMode}
         recoveryCount={recoveryHistory?.unresolvedCount ?? 0}
         skill={history.current?.skillSnapshot ?? null}
+        skills={history.current?.skillSnapshots ?? []}
+        skillRoutingMode={history.current?.skillRoutingMode ?? "manual"}
         isMaximized={isMaximized}
         onToggleSidebar={() => {
           setSidebarCollapsed(

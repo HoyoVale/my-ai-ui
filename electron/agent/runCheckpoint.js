@@ -139,6 +139,11 @@ export function createRunCheckpoint({
   modelSnapshot = null,
   skillId = "",
   skillSnapshot = null,
+  skillIds = [],
+  skillSnapshots = [],
+  skillRoutingMode = "manual",
+  skillSource = "manual",
+  skillRouter = null,
   runId = "",
   parentRunId = "",
   messageId = "",
@@ -201,7 +206,7 @@ export function createRunCheckpoint({
     .map((call) => call.callId);
 
   return {
-    version: 3,
+    version: 4,
     goalId: text(goalId, 120),
     taskId: text(taskId, 120),
     workspaceId: text(workspaceId, 120),
@@ -223,6 +228,19 @@ export function createRunCheckpoint({
       skillSnapshot && typeof skillSnapshot === "object"
         ? structuredClone(skillSnapshot)
         : null,
+    skillIds: Array.isArray(skillIds)
+      ? [...new Set(skillIds.map((value) => text(value, 120)).filter(Boolean))].slice(0, 4)
+      : [],
+    skillSnapshots: Array.isArray(skillSnapshots)
+      ? structuredClone(skillSnapshots).slice(0, 12)
+      : [],
+    skillRoutingMode: skillRoutingMode === "auto" ? "auto" : "manual",
+    skillSource: ["manual", "command", "router", "none"].includes(skillSource)
+      ? skillSource
+      : "manual",
+    skillRouter: skillRouter && typeof skillRouter === "object"
+      ? structuredClone(skillRouter)
+      : null,
     runId: text(runId, 120),
     parentRunId: text(parentRunId, 120),
     messageId: text(messageId, 120),

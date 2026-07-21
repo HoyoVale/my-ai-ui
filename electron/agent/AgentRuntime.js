@@ -105,6 +105,7 @@ import {
 } from "../custom-tools/index.js";
 
 import {
+  parseSkillCommand,
   resolveSkillRuntime,
   skillRegistry
 } from "../skills/index.js";
@@ -676,6 +677,16 @@ export class AgentRuntime {
         this.activeRun.skillRuntime?.skill?.id ?? "",
       skillSnapshot:
         this.activeRun.skillRuntime?.skill ?? null,
+      skillIds:
+        this.activeRun.skillRuntime?.rootSkillIds ?? [],
+      skillSnapshots:
+        this.activeRun.skillRuntime?.skills ?? [],
+      skillRoutingMode:
+        this.activeRun.skillRuntime?.routingMode ?? "manual",
+      skillSource:
+        this.activeRun.skillRuntime?.source ?? "manual",
+      skillRouter:
+        this.activeRun.skillRuntime?.router ?? null,
       goalId: this.activeRun.goalId,
       runId: this.activeRun.runId,
       parentRunId:
@@ -851,6 +862,9 @@ export class AgentRuntime {
       };
       run.activityStore?.recordSkill({
         skill: run.skillRuntime.skill,
+        skills: run.skillRuntime.skills,
+        source: run.skillRuntime.source,
+        router: run.skillRuntime.router,
         status: skillStatus,
         selectedToolNames: run.skillRun.selectedToolNames,
         missingRequired: run.skillRun.missingRequired
@@ -1086,6 +1100,8 @@ export class AgentRuntime {
     let skillRuntime = null;
     let checkpointContinuation = null;
     let continuationState = null;
+    let runMessage = message;
+    let skillCommand = null;
 
     try {
       conversation =
@@ -1113,6 +1129,20 @@ export class AgentRuntime {
           checkpointContinuation
         );
 
+      if (!continuationState) {
+        const runtimeSkills = skillRegistry.getRuntimeState({ mode: conversation.mode }).skills;
+        skillCommand = parseSkillCommand(
+          message,
+          runtimeSkills.map((skill) => skill.id)
+        );
+        if (skillCommand.matched && skillCommand.ok === false) {
+          return skillCommand;
+        }
+        if (skillCommand.matched) {
+          runMessage = skillCommand.content;
+        }
+      }
+
       const settingsSnapshot = getSettings();
       const preparedExecution =
         resolveConversationExecutionContext({
@@ -1120,11 +1150,32 @@ export class AgentRuntime {
           conversation,
           overrides: continuationState ?? {}
         });
+      const boundSkillIds = preparedExecution.conversation.skillIds ??
+        (preparedExecution.conversation.skillId ? [preparedExecution.conversation.skillId] : []);
       skillRuntime = resolveSkillRuntime({
         registry: skillRegistry,
         skillId: preparedExecution.conversation.skillId,
+        skillIds: skillCommand?.matched ? skillCommand.skillIds : boundSkillIds,
         mode: preparedExecution.metadata.mode,
-        expectedSnapshot: preparedExecution.conversation.skillSnapshot
+        expectedSnapshot: preparedExecution.conversation.skillSnapshot,
+        expectedSnapshots: skillCommand?.matched
+          ? null
+          : preparedExecution.conversation.skillSnapshots ??
+            (preparedExecution.conversation.skillSnapshot ? [preparedExecution.conversation.skillSnapshot] : []),
+        routingMode: skillCommand?.matched
+          ? "manual"
+          : preparedExecution.conversation.skillRoutingMode,
+        routeMessage: runMessage,
+        source: skillCommand?.matched
+          ? "command"
+          : continuationState
+            ? preparedExecution.conversation.skillSource ?? "manual"
+            : "manual",
+        routerSnapshot: skillCommand?.matched
+          ? null
+          : continuationState
+            ? preparedExecution.conversation.skillRouter ?? null
+            : null
       });
       if (!skillRuntime.ok) {
         return skillRuntime;
@@ -1135,7 +1186,7 @@ export class AgentRuntime {
           conversationId:
             conversation.id,
           role: "user",
-          content: message
+          content: runMessage
         });
 
       conversation =
@@ -1146,7 +1197,7 @@ export class AgentRuntime {
 
       memories =
         memoryManager.retrieve({
-          query: message
+          query: runMessage
         });
 
       const execution =
@@ -1172,7 +1223,7 @@ export class AgentRuntime {
         context,
         checkpointContinuation,
         continuationState,
-        message
+        runMessage
       );
 
     } catch (error) {
@@ -1228,9 +1279,9 @@ export class AgentRuntime {
       parentRunId:
         continuationState?.parentRunId ?? "",
       objective:
-        continuationState?.objective || message,
+        continuationState?.objective || runMessage,
       continuationInstruction:
-        continuationState ? message : "",
+        continuationState ? runMessage : "",
       continuationCount:
         continuationState?.continuationCount ?? 0,
       previousSegmentCount:
@@ -1252,11 +1303,17 @@ export class AgentRuntime {
       skillRun: skillRuntime.active
         ? {
             id: skillRuntime.skill.id,
-            name: skillRuntime.skill.name,
+            name: skillRuntime.rootSkills.map((skill) => skill.name).join(" + "),
             version: skillRuntime.skill.version,
             status: "running",
-            requiredCapabilities: [...skillRuntime.skill.requiredCapabilities],
-            optionalCapabilities: [...skillRuntime.skill.optionalCapabilities],
+            source: skillRuntime.source,
+            routingMode: skillRuntime.routingMode,
+            skills: structuredClone(skillRuntime.skills),
+            rootSkillIds: [...skillRuntime.rootSkillIds],
+            dependencySkillIds: skillRuntime.dependencySkills.map((skill) => skill.id),
+            router: skillRuntime.router ? structuredClone(skillRuntime.router) : null,
+            requiredCapabilities: [...skillRuntime.capabilityRequest.requiredCapabilities],
+            optionalCapabilities: [...skillRuntime.capabilityRequest.optionalCapabilities],
             selectedToolNames: [],
             missingRequired: [],
             startedAt,
@@ -1297,6 +1354,9 @@ export class AgentRuntime {
     if (skillRuntime.active) {
       activityStore.recordSkill({
         skill: skillRuntime.skill,
+        skills: skillRuntime.skills,
+        source: skillRuntime.source,
+        router: skillRuntime.router,
         status: "running"
       });
     }
@@ -1398,11 +1458,27 @@ export class AgentRuntime {
         return plan;
       }
 
+      const previousSkillRun = plan.targetMessage?.skillRun ?? null;
+      const regenerationSkillIds = previousSkillRun?.rootSkillIds?.length
+        ? previousSkillRun.rootSkillIds
+        : plan.conversation.skillIds ??
+          (plan.conversation.skillId ? [plan.conversation.skillId] : []);
+      const regenerationSkillSnapshots = previousSkillRun?.skills?.length
+        ? previousSkillRun.skills
+        : plan.conversation.skillSnapshots ??
+          (plan.conversation.skillSnapshot ? [plan.conversation.skillSnapshot] : []);
+
       skillRuntime = resolveSkillRuntime({
         registry: skillRegistry,
-        skillId: plan.conversation.skillId,
+        skillId: previousSkillRun?.id ?? plan.conversation.skillId,
+        skillIds: regenerationSkillIds,
         mode: plan.conversation.mode,
-        expectedSnapshot: plan.conversation.skillSnapshot
+        expectedSnapshot: plan.conversation.skillSnapshot,
+        expectedSnapshots: regenerationSkillSnapshots,
+        routingMode: previousSkillRun?.routingMode ?? plan.conversation.skillRoutingMode,
+        routeMessage: plan.userMessage.content,
+        source: previousSkillRun?.source ?? "manual",
+        routerSnapshot: previousSkillRun?.router ?? null
       });
       if (!skillRuntime.ok) {
         return skillRuntime;
@@ -1494,11 +1570,17 @@ export class AgentRuntime {
       skillRun: skillRuntime.active
         ? {
             id: skillRuntime.skill.id,
-            name: skillRuntime.skill.name,
+            name: skillRuntime.rootSkills.map((skill) => skill.name).join(" + "),
             version: skillRuntime.skill.version,
             status: "running",
-            requiredCapabilities: [...skillRuntime.skill.requiredCapabilities],
-            optionalCapabilities: [...skillRuntime.skill.optionalCapabilities],
+            source: skillRuntime.source,
+            routingMode: skillRuntime.routingMode,
+            skills: structuredClone(skillRuntime.skills),
+            rootSkillIds: [...skillRuntime.rootSkillIds],
+            dependencySkillIds: skillRuntime.dependencySkills.map((skill) => skill.id),
+            router: skillRuntime.router ? structuredClone(skillRuntime.router) : null,
+            requiredCapabilities: [...skillRuntime.capabilityRequest.requiredCapabilities],
+            optionalCapabilities: [...skillRuntime.capabilityRequest.optionalCapabilities],
             selectedToolNames: [],
             missingRequired: [],
             startedAt,
@@ -1537,6 +1619,9 @@ export class AgentRuntime {
     if (skillRuntime.active) {
       activityStore.recordSkill({
         skill: skillRuntime.skill,
+        skills: skillRuntime.skills,
+        source: skillRuntime.source,
+        router: skillRuntime.router,
         status: "running"
       });
     }
@@ -1866,8 +1951,15 @@ export class AgentRuntime {
     const skillRuntime = resolveSkillRuntime({
       registry: skillRegistry,
       skillId: execution.conversation.skillId,
+      skillIds: execution.conversation.skillIds ??
+        (execution.conversation.skillId ? [execution.conversation.skillId] : []),
       mode: execution.metadata.mode,
-      expectedSnapshot: execution.conversation.skillSnapshot
+      expectedSnapshot: execution.conversation.skillSnapshot,
+      expectedSnapshots: execution.conversation.skillSnapshots ??
+        (execution.conversation.skillSnapshot ? [execution.conversation.skillSnapshot] : []),
+      routingMode: execution.conversation.skillRoutingMode,
+      source: execution.conversation.skillSource ?? "manual",
+      routerSnapshot: execution.conversation.skillRouter ?? null
     });
     if (!skillRuntime.ok) {
       return skillRuntime;
@@ -2939,6 +3031,9 @@ export class AgentRuntime {
         };
         this.activeRun.activityStore?.recordSkill({
           skill: this.activeRun.skillRuntime.skill,
+          skills: this.activeRun.skillRuntime.skills,
+          source: this.activeRun.skillRuntime.source,
+          router: this.activeRun.skillRuntime.router,
           status: "running",
           selectedToolNames: this.activeRun.skillRun.selectedToolNames,
           missingRequired: this.activeRun.skillRun.missingRequired
@@ -2957,7 +3052,9 @@ export class AgentRuntime {
           goalId: this.activeRun.goalId,
           objective: this.activeRun.objective,
           continuationCount: this.activeRun.continuationCount,
-          skillId: this.activeRun.skillRuntime?.skill?.id ?? ""
+          skillId: this.activeRun.skillRuntime?.skill?.id ?? "",
+          skillIds: this.activeRun.skillRuntime?.rootSkillIds ?? [],
+          skillSource: this.activeRun.skillRuntime?.source ?? "none"
         },
         { runId }
       );

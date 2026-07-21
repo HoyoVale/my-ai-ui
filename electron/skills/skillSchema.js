@@ -9,6 +9,10 @@ import {
   normalizeCapabilityIds
 } from "../tools/capabilities/CapabilityTaxonomy.js";
 
+import {
+  isSupportedSkillVersionRange
+} from "./SkillVersion.js";
+
 export const SKILL_SCHEMA_VERSION = 1;
 export const SKILL_MARKDOWN_MAX_BYTES = 64 * 1024;
 export const SKILL_PACKAGE_DIRECTORIES = Object.freeze([
@@ -53,6 +57,12 @@ function normalizePermissionPolicy(value = {}) {
   );
 }
 
+const dependencyInputSchema = z.object({
+  id: z.string(),
+  version: z.string().optional().default("*"),
+  optional: z.boolean().optional().default(false)
+}).strict();
+
 const manifestInputSchema = z.object({
   schemaVersion: z.number().int(),
   id: z.string(),
@@ -66,8 +76,27 @@ const manifestInputSchema = z.object({
   author: z.string().optional().default(""),
   homepage: z.string().optional().default(""),
   license: z.string().optional().default(""),
-  keywords: z.array(z.string()).optional().default([])
+  keywords: z.array(z.string()).optional().default([]),
+  dependencies: z.array(dependencyInputSchema).optional().default([])
 }).strict();
+
+
+function normalizeDependencies(values) {
+  const dependencies = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const id = String(value?.id ?? "").trim();
+    const version = String(value?.version ?? "*").trim() || "*";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    dependencies.push({
+      id,
+      version,
+      optional: value?.optional === true
+    });
+  }
+  return dependencies;
+}
 
 function stableHash(value) {
   return crypto
@@ -157,6 +186,21 @@ export function validateSkillManifest(input) {
         .filter((value) => value && value.length <= 40)
     )
   ].slice(0, 20);
+  const dependencies = normalizeDependencies(source.dependencies);
+  if (source.dependencies.length > 16 || dependencies.length !== source.dependencies.length) {
+    issues.push({ path: "dependencies", message: "dependencies 最多 16 项，且不能重复或缺少 ID。" });
+  }
+  for (const dependency of dependencies) {
+    if (!SKILL_ID_PATTERN.test(dependency.id)) {
+      issues.push({ path: "dependencies", message: `依赖 Skill ID 无效：${dependency.id}` });
+    }
+    if (dependency.id === id) {
+      issues.push({ path: "dependencies", message: "Skill 不能依赖自身。" });
+    }
+    if (!isSupportedSkillVersionRange(dependency.version)) {
+      issues.push({ path: "dependencies", message: `不支持的依赖版本范围：${dependency.id}@${dependency.version}` });
+    }
+  }
 
   if (issues.length) {
     return {
@@ -180,7 +224,8 @@ export function validateSkillManifest(input) {
     author: source.author.trim().slice(0, 120),
     homepage: source.homepage.trim().slice(0, 500),
     license: source.license.trim().slice(0, 80),
-    keywords
+    keywords,
+    dependencies
   };
 
   return {

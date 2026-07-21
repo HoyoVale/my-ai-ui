@@ -118,6 +118,11 @@ function SkillCard({
         </span>
         <span>{skill.modes.map(modeLabel).join(" / ")}</span>
         <span>{capabilityCount} 项能力</span>
+        {skill.dependencies?.length > 0 && (
+          <span className={skill.dependencyState?.ok ? "" : "is-warning"}>
+            {skill.dependencies.length} 项依赖
+          </span>
+        )}
       </div>
 
       <div className="skill-card__runtime-actions">
@@ -159,6 +164,33 @@ function SkillCard({
             </div>
           </div>
         </div>
+        {skill.keywords?.length > 0 && (
+          <div className="skill-router-keywords">
+            <strong>自动路由关键词</strong>
+            <div>
+              {skill.keywords.map((keyword) => (
+                <code key={keyword}>{keyword}</code>
+              ))}
+            </div>
+            <small>仅用于本地保守匹配；置信度不足时不会自动启用 Skill。</small>
+          </div>
+        )}
+        {skill.dependencies?.length > 0 && (
+          <div className="skill-dependency-list">
+            <strong>Skill 依赖</strong>
+            {skill.dependencies.map((dependency) => (
+              <span key={dependency.id} className={dependency.optional ? "is-optional" : "is-required"}>
+                <code>{dependency.id}@{dependency.version}</code>
+                {dependency.optional ? "可选" : "必需"}
+              </span>
+            ))}
+            {skill.dependencyState?.diagnostics?.map((diagnostic) => (
+              <small key={`${diagnostic.code}:${diagnostic.dependencyId ?? diagnostic.skillId ?? ""}`} className="skill-card__error">
+                {diagnostic.message}
+              </small>
+            ))}
+          </div>
+        )}
         <div className="skill-permission-list">
           {Object.entries(skill.permissions ?? {}).map(([key, level]) => (
             <span key={key} className={`is-${level}`}>
@@ -258,7 +290,7 @@ export function SkillsPanel({ developerMode = false }) {
         <div>
           <span className="skills-hero__eyebrow">Skill Runtime</span>
           <strong>可复用的工作流，不是额外权限</strong>
-          <p>Skill 通过 Capability 请求工具，并继承当前模式、工作区和 Tool Security 权限。可在 Input 中为每个会话显式选择。</p>
+          <p>Skill 支持显式组合、<code>/skill-id</code> 临时调用、保守自动路由与声明式依赖。所有能力仍继承当前模式、工作区和 Tool Security 权限。</p>
         </div>
         <div className="skills-hero__actions">
           <ActionButton
@@ -298,6 +330,7 @@ export function SkillsPanel({ developerMode = false }) {
         <div><span>可运行</span><strong>{state.available}</strong></div>
         <div><span>已禁用</span><strong>{state.disabled}</strong></div>
         <div><span>完整性异常</span><strong>{state.invalid}</strong></div>
+        <div><span>依赖异常</span><strong>{state.dependencyIssues ?? 0}</strong></div>
       </div>
 
       <div className="skills-toolbar">
@@ -372,7 +405,7 @@ export function SkillsPanel({ developerMode = false }) {
         <summary>Skill 包结构与运行边界</summary>
         <div>
           <pre className="skill-package-layout">{`skills/\n└─ example-skill/\n   ├─ skill.json\n   ├─ SKILL.md\n   ├─ resources/\n   ├─ templates/\n   └─ tests/`}</pre>
-          <p>SKILL.md 只进入 Skill Prompt Stack；实际工具由 Capability Resolver 选择，权限仍由 Tool Runtime 与 Approval 决定。</p>
+          <p>SKILL.md 只进入 Skill Prompt Stack；dependencies 只声明其他 Skill，不下载或执行代码。组合最多 4 个根 Skill，依赖按拓扑顺序先加载，权限取最严格交集。</p>
         </div>
       </details>
     </div>

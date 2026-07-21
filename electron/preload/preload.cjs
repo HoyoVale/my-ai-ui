@@ -766,7 +766,11 @@ const api = Object.freeze({
             ? undefined
             : input?.skillId === null
               ? null
-              : String(input.skillId ?? "")
+              : String(input.skillId ?? ""),
+        skillIds: Array.isArray(input?.skillIds)
+          ? input.skillIds.map((value) => String(value ?? ""))
+          : undefined,
+        skillRoutingMode: input?.skillRoutingMode === "auto" ? "auto" : "manual"
       }
     );
   },
@@ -814,7 +818,11 @@ const api = Object.freeze({
         skillId:
           input?.skillId === null
             ? null
-            : String(input?.skillId ?? "")
+            : String(input?.skillId ?? ""),
+        skillIds: Array.isArray(input?.skillIds)
+          ? input.skillIds.map((value) => String(value ?? ""))
+          : undefined,
+        skillRoutingMode: input?.skillRoutingMode === "auto" ? "auto" : "manual"
       }
     );
   },

@@ -164,6 +164,19 @@ export function createCheckpointContinuationState(
       checkpoint.skillSnapshot && typeof checkpoint.skillSnapshot === "object"
         ? structuredClone(checkpoint.skillSnapshot)
         : null,
+    skillIds: Array.isArray(checkpoint.skillIds)
+      ? structuredClone(checkpoint.skillIds)
+      : checkpoint.skillId ? [String(checkpoint.skillId)] : [],
+    skillSnapshots: Array.isArray(checkpoint.skillSnapshots)
+      ? structuredClone(checkpoint.skillSnapshots)
+      : checkpoint.skillSnapshot ? [structuredClone(checkpoint.skillSnapshot)] : [],
+    skillRoutingMode: checkpoint.skillRoutingMode === "auto" ? "auto" : "manual",
+    skillSource: ["manual", "command", "router", "none"].includes(checkpoint.skillSource)
+      ? checkpoint.skillSource
+      : "manual",
+    skillRouter: checkpoint.skillRouter && typeof checkpoint.skillRouter === "object"
+      ? structuredClone(checkpoint.skillRouter)
+      : null,
     parentRunId: String(checkpoint.runId || ""),
     resumedFromMessageId: String(
       continuation?.messageId || checkpoint.messageId || ""

@@ -436,6 +436,25 @@ function sanitizeActivityEvent(source, index) {
           id: stringValue(source.skill.id, "", 120).trim(),
           name: stringValue(source.skill.name, source.skill.id ?? "Skill", 120).trim(),
           version: stringValue(source.skill.version, "", 80).trim(),
+          source: ["manual", "command", "router", "dependency", "none"].includes(source.skill.source)
+            ? source.skill.source
+            : "manual",
+          skills: Array.isArray(source.skill.skills)
+            ? source.skill.skills.map((item) => ({
+                id: stringValue(item?.id, "", 120).trim(),
+                name: stringValue(item?.name, item?.id ?? "Skill", 120).trim(),
+                version: stringValue(item?.version, "", 80).trim(),
+                requiredCapabilities: Array.isArray(item?.requiredCapabilities)
+                  ? item.requiredCapabilities.map((value) => stringValue(value, "", 160).trim()).filter(Boolean).slice(0, 32)
+                  : [],
+                optionalCapabilities: Array.isArray(item?.optionalCapabilities)
+                  ? item.optionalCapabilities.map((value) => stringValue(value, "", 160).trim()).filter(Boolean).slice(0, 32)
+                  : []
+              })).filter((item) => item.id).slice(0, 12)
+            : [],
+          router: source.skill.router && typeof source.skill.router === "object"
+            ? structuredClone(source.skill.router)
+            : null,
           requiredCapabilities: Array.isArray(source.skill.requiredCapabilities)
             ? source.skill.requiredCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
             : [],
@@ -556,7 +575,7 @@ function sanitizeCheckpoint(source) {
 
   return {
     ...sanitizedCheckpoint,
-    version: 1,
+    version: Math.max(1, Math.round(Number(checkpoint.version) || 1)),
     taskId: stringValue(
       checkpoint.taskId,
       "",

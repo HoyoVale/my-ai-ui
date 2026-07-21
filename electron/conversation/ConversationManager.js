@@ -10,7 +10,7 @@ import {
 } from "./sessionContext.js";
 
 import {
-  createSkillSnapshot
+  createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
 
@@ -190,9 +190,15 @@ export class ConversationManager {
       currentModel:
         current?.modelSnapshot ?? null,
       currentSkillId:
-        current?.skillId ?? null,
+        current?.skillId ?? current?.skillIds?.[0] ?? null,
       currentSkill:
-        current?.skillSnapshot ?? null,
+        current?.skillSnapshot ?? current?.skillSnapshots?.[0] ?? null,
+      currentSkillIds:
+        [...(current?.skillIds ?? (current?.skillId ? [current.skillId] : []))],
+      currentSkills:
+        clone(current?.skillSnapshots ?? (current?.skillSnapshot ? [current.skillSnapshot] : [])),
+      currentSkillRoutingMode:
+        current?.skillRoutingMode === "auto" ? "auto" : "manual",
 
       totalConversations:
         data.conversations.length
@@ -264,7 +270,10 @@ export class ConversationManager {
     workspaceId = undefined,
     modelSelection = undefined,
     skillId = undefined,
-    skillSnapshot = undefined
+    skillSnapshot = undefined,
+    skillIds = undefined,
+    skillSnapshots = undefined,
+    skillRoutingMode = "manual"
   } = {}) {
     const data =
       this.ensureLoaded();
@@ -302,14 +311,29 @@ export class ConversationManager {
         : modelSelection
     );
 
-    const normalizedSkillId = skillId === undefined
-      ? null
-      : String(skillId ?? "").trim() || null;
-    const candidateSkillSnapshot = createSkillSnapshot(skillSnapshot);
-    const normalizedSkillSnapshot =
-      normalizedSkillId && candidateSkillSnapshot?.id === normalizedSkillId
-        ? candidateSkillSnapshot
-        : null;
+    const normalizedSkillIds = [
+      ...new Set(
+        (Array.isArray(skillIds)
+          ? skillIds
+          : skillId === undefined
+            ? []
+            : [skillId])
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
+      )
+    ].slice(0, 4);
+    const normalizedSkillSnapshots = createSkillSnapshots(
+      Array.isArray(skillSnapshots)
+        ? skillSnapshots
+        : skillSnapshot
+          ? [skillSnapshot]
+          : [],
+      12
+    );
+    const normalizedSkillId = normalizedSkillIds[0] ?? null;
+    const normalizedSkillSnapshot = normalizedSkillSnapshots.find(
+      (snapshot) => snapshot.id === normalizedSkillId
+    ) ?? null;
 
     const timestamp =
       this.now();
@@ -327,6 +351,9 @@ export class ConversationManager {
         modelBinding.snapshot,
       skillId: normalizedSkillId,
       skillSnapshot: normalizedSkillSnapshot,
+      skillIds: normalizedSkillIds,
+      skillSnapshots: normalizedSkillSnapshots,
+      skillRoutingMode: skillRoutingMode === "auto" ? "auto" : "manual",
       title:
         String(title)
           .trim()
@@ -509,51 +536,49 @@ export class ConversationManager {
 
   setSkillSelection({
     conversationId,
-    skill = null
+    skill = null,
+    skills = undefined,
+    skillIds = undefined,
+    skillRoutingMode = undefined
   } = {}) {
     const conversation = this.findMutableConversation(
       conversationId || this.ensureLoaded().currentConversationId
     );
 
     if (!conversation) {
-      return {
-        ok: false,
-        code: "conversation-not-found",
-        message: "会话不存在。"
-      };
+      return { ok: false, code: "conversation-not-found", message: "会话不存在。" };
     }
 
-    if (!skill) {
-      conversation.skillId = null;
-      conversation.skillSnapshot = null;
-    } else {
-      const id = String(skill.id ?? "").trim();
-      if (!id) {
-        return {
-          ok: false,
-          code: "skill-id-required",
-          message: "Skill ID 无效。"
-        };
-      }
-      const snapshot = createSkillSnapshot(skill);
-      if (!snapshot || snapshot.id !== id) {
-        return {
-          ok: false,
-          code: "skill-snapshot-invalid",
-          message: "Skill 快照无效。"
-        };
-      }
-      conversation.skillId = id;
-      conversation.skillSnapshot = snapshot;
+    const inputSkills = Array.isArray(skills)
+      ? skills
+      : skill
+        ? [skill]
+        : [];
+    const snapshots = createSkillSnapshots(inputSkills, 12);
+    const rootIds = [
+      ...new Set(
+        (Array.isArray(skillIds) ? skillIds : snapshots.map((snapshot) => snapshot.id))
+          .map((value) => String(value ?? "").trim())
+          .filter((id) => snapshots.some((snapshot) => snapshot.id === id))
+      )
+    ].slice(0, 4);
+
+    conversation.skillIds = rootIds;
+    conversation.skillSnapshots = snapshots;
+    conversation.skillId = rootIds[0] ?? null;
+    conversation.skillSnapshot = snapshots.find(
+      (snapshot) => snapshot.id === conversation.skillId
+    ) ?? null;
+    if (skillRoutingMode !== undefined) {
+      conversation.skillRoutingMode = skillRoutingMode === "auto" ? "auto" : "manual";
+    } else if (!conversation.skillRoutingMode) {
+      conversation.skillRoutingMode = "manual";
     }
 
     conversation.updatedAt = this.now();
     this.commit();
 
-    return {
-      ok: true,
-      conversation: clone(conversation)
-    };
+    return { ok: true, conversation: clone(conversation) };
   }
 
   switchWorkspace(workspaceId = null) {
@@ -1760,9 +1785,15 @@ export class ConversationManager {
       modelSnapshot:
         conversation.modelSnapshot ?? null,
       skillId:
-        conversation.skillId ?? null,
+        conversation.skillId ?? conversation.skillIds?.[0] ?? null,
       skillSnapshot:
-        conversation.skillSnapshot ?? null,
+        conversation.skillSnapshot ?? conversation.skillSnapshots?.[0] ?? null,
+      skillIds:
+        [...(conversation.skillIds ?? (conversation.skillId ? [conversation.skillId] : []))],
+      skillSnapshots:
+        clone(conversation.skillSnapshots ?? (conversation.skillSnapshot ? [conversation.skillSnapshot] : [])),
+      skillRoutingMode:
+        conversation.skillRoutingMode === "auto" ? "auto" : "manual",
       workspaceAvailable:
         conversation.workspaceId
           ? Boolean(liveWorkspace && !liveWorkspace.missing)

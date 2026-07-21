@@ -5190,3 +5190,66 @@
     flex-direction: column;
   }
 }
+
+/* Skill Advanced */
+.skills-overview {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.skill-dependency-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 12px;
+}
+
+.skill-dependency-list > strong {
+  width: 100%;
+  font-size: 12px;
+}
+
+.skill-dependency-list > span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--setting-panel-soft);
+  font-size: 12px;
+}
+
+.skill-dependency-list .is-required {
+  color: var(--accent);
+}
+
+.skill-dependency-list .is-optional {
+  color: var(--setting-text-muted);
+}
+
+.skill-card__meta .is-warning {
+  color: var(--setting-danger);
+}
+
+.skill-router-keywords {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.skill-router-keywords > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skill-router-keywords code {
+  padding: 3px 7px;
+  border: 1px solid var(--setting-border, rgba(127, 127, 127, 0.18));
+  border-radius: 7px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.skill-router-keywords small {
+  opacity: 0.7;
+}

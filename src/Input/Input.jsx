@@ -276,6 +276,9 @@ export default function Input() {
         currentModelSelection,
         currentSkillId: inputContext.state.currentSkillId ?? null,
         currentSkill: inputContext.state.currentSkill ?? null,
+        currentSkillIds: inputContext.state.currentSkillIds ?? [],
+        currentSkills: inputContext.state.currentSkills ?? [],
+        currentSkillRoutingMode: inputContext.state.currentSkillRoutingMode ?? "manual",
         workspaces: inputContext.workspaces,
         conversations: inputContext.conversations,
         skills: inputContext.skills,
@@ -295,8 +298,8 @@ export default function Input() {
       onAddWorkspace={() => {
         return inputContext.addWorkspace();
       }}
-      onSkillChange={(skillId) => {
-        return inputContext.setSkill(skillId);
+      onSkillChange={(selection) => {
+        return inputContext.setSkill(selection);
       }}
       onModelChange={(selection) => {
         const parsed = parseModelOptionValue(selection);

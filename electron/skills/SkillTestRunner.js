@@ -76,6 +76,9 @@ export function runSkillRuntimeTests({
   const promptBytes = Buffer.byteLength(runtime.prompt ?? "", "utf8");
   const tests = [
     testResult("runtime-resolution", "Runtime 解析", true),
+    testResult("dependency-resolution", "Skill 依赖可解析", true, {
+      dependencies: runtime.dependencySkills.map((skill) => `${skill.id}@${skill.version}`)
+    }),
     testResult("prompt-stack", "Skill Prompt 可加载", Boolean(runtime.promptSection), {
       promptBytes
     })
@@ -119,7 +122,10 @@ export function runSkillRuntimeTests({
     message: failed === 0 ? "Skill Runtime 检查通过。" : "Skill Runtime 检查发现问题。",
     report: {
       skillId: runtime.skill.id,
-      skillName: runtime.skill.name,
+      skillIds: [...runtime.rootSkillIds],
+      skillName: runtime.rootSkills.map((skill) => skill.name).join(" + "),
+      dependencySkillIds: runtime.dependencySkills.map((skill) => skill.id),
+      source: runtime.source,
       skillVersion: runtime.skill.version,
       mode: configuredMode,
       promptBytes,
