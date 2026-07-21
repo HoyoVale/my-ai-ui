@@ -793,3 +793,22 @@
 .response-activity__event.is-attention strong {
   opacity: 0.9;
 }
+
+/* Only expose a vertical scrollbar when content really exceeds the cap. */
+.response-bubble__content {
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.response-bubble__content::-webkit-scrollbar {
+  width: 0;
+}
+
+.response-bubble__content.is-scrollable {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.response-bubble__content.is-scrollable::-webkit-scrollbar {
+  width: 5px;
+}

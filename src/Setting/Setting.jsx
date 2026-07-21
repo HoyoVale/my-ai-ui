@@ -29,7 +29,7 @@ import {
 
 import {
   useWindowMaximized
-} from "./hooks/useWindowMaximized.js";
+} from "../shared/hooks/useWindowMaximized.js";
 
 import {
   getWindowTypographyStyle

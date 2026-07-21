@@ -107,7 +107,12 @@ describe(
           read(
             "../../electron/settings/providerDefaults.js"
           );
+        const shared =
+          read(
+            "../../src/shared/defaultSettings.js"
+          );
 
+        assert.match(source, /MODEL_PROVIDER_TEMPLATES/u);
         for (const providerId of [
           "openai",
           "anthropic",
@@ -115,7 +120,7 @@ describe(
           "compatible"
         ]) {
           assert.match(
-            source,
+            shared,
             new RegExp(`${providerId}:`, "u")
           );
         }
@@ -146,7 +151,7 @@ describe(
     );
 
     it(
-      "keeps a global font family and per-window typography controls",
+      "keeps separate Latin and Chinese fonts with per-window typography controls",
       () => {
         const source =
           read(
@@ -155,11 +160,15 @@ describe(
 
         assert.match(
           source,
-          /全局字体/u
+          /英文、数字与符号/u
         );
         assert.match(
           source,
-          /appearance-font-family/u
+          /appearance-latin-font-family/u
+        );
+        assert.match(
+          source,
+          /appearance-chinese-font-family/u
         );
         assert.match(
           source,

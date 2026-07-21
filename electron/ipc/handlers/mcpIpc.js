@@ -9,7 +9,8 @@ import {
 import IPC_CHANNELS from "../../shared/ipcChannels.cjs";
 
 import {
-  getSettings
+  getSettings,
+  updateSettings
 } from "../../settings/settingsStore.js";
 
 import {
@@ -37,12 +38,34 @@ import {
   isSettingSender
 } from "../../windows/setting/settingWindow.js";
 
+import {
+  isInputSender
+} from "../../windows/input/inputWindow.js";
+
+import {
+  applySettingsToOpenWindows,
+  broadcastSettings
+} from "../../settings/settingsRuntime.js";
+
 const MAX_MCP_CONFIG_FILE_BYTES = 2 * 1024 * 1024;
 
 function assertSettingSender(event) {
   if (!isSettingSender(event.sender)) {
     throw new Error("Only the Setting window can manage MCP servers.");
   }
+}
+
+function assertQuickToggleSender(event) {
+  if (!isSettingSender(event.sender) && !isInputSender(event.sender)) {
+    throw new Error("Only the Input or Setting window can toggle MCP servers.");
+  }
+}
+
+function commitQuickSettings(patch) {
+  const settings = updateSettings(patch);
+  applySettingsToOpenWindows(settings);
+  broadcastSettings(settings);
+  return settings;
 }
 
 function currentServer(serverId) {
@@ -167,6 +190,45 @@ export function registerMcpIpc() {
         ...result,
         state: stateWithCredentials()
       };
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.mcp.QUICK_SET_ENABLED,
+    (event, request = {}) => {
+      assertQuickToggleSender(event);
+      const current = getSettings();
+      const settings = commitQuickSettings({
+        mcp: {
+          ...current.mcp,
+          enabled: request.enabled === true
+        }
+      });
+      return { ok: true, mcp: settings.mcp };
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.mcp.QUICK_SET_SERVER_ENABLED,
+    (event, request = {}) => {
+      assertQuickToggleSender(event);
+      const serverId = String(request.serverId ?? "").trim();
+      const current = getSettings();
+      const servers = current.mcp?.servers ?? [];
+      if (!servers.some((server) => server.id === serverId)) {
+        return { ok: false, message: "MCP 连接不存在。" };
+      }
+      const settings = commitQuickSettings({
+        mcp: {
+          ...current.mcp,
+          servers: servers.map((server) =>
+            server.id === serverId
+              ? { ...server, enabled: request.enabled === true }
+              : server
+          )
+        }
+      });
+      return { ok: true, mcp: settings.mcp };
     }
   );
 

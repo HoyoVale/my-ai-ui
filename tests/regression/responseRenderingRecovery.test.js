@@ -70,6 +70,26 @@ describe(
     );
 
     it(
+      "renders an after-tool final candidate directly in the answer area while it streams",
+      () => {
+        assert.deepEqual(
+          resolveResponsePresentation({
+            text: "先前工具说明最终回",
+            finalText: "",
+            liveStepText: "最终回",
+            liveStepRole: "final_candidate",
+            hasActivity: true,
+            streaming: true
+          }),
+          {
+            answerText: "最终回",
+            liveText: ""
+          }
+        );
+      }
+    );
+
+    it(
       "falls back to the completed text stream when finalText is missing",
       () => {
         assert.deepEqual(

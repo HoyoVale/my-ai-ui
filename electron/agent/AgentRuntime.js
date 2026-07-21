@@ -127,7 +127,9 @@ import {
 } from "./runStopReasons.js";
 
 import {
-  classifyAgentStep
+  classifyAgentStep,
+  inferLiveStepRole,
+  LIVE_STEP_ROLES
 } from "./stepText.js";
 
 import {
@@ -567,6 +569,9 @@ export class AgentRuntime {
       liveStepText:
         this.activeRun
           ?.currentStepText ?? "",
+      liveStepRole:
+        this.activeRun
+          ?.liveStepRole ?? LIVE_STEP_ROLES.NONE,
       finalText:
         this.activeRun
           ?.finalText ?? "",
@@ -1331,6 +1336,7 @@ export class AgentRuntime {
         conversation.id,
       abortController,
       currentStepText: "",
+      liveStepRole: LIVE_STEP_ROLES.NONE,
       finalText: "",
       stepNumber: 0,
       startedAt,
@@ -1598,6 +1604,7 @@ export class AgentRuntime {
         plan.conversation.id,
       abortController,
       currentStepText: "",
+      liveStepRole: LIVE_STEP_ROLES.NONE,
       finalText: "",
       stepNumber: 0,
       startedAt,
@@ -1780,6 +1787,8 @@ export class AgentRuntime {
 
     this.activeRun.currentStepText =
       "";
+    this.activeRun.liveStepRole =
+      LIVE_STEP_ROLES.NONE;
     this.activeRun.toolSession?.endStep?.(
       `${this.activeRun.currentSegmentId}:step:${this.activeRun.stepNumber}`
     );
@@ -2146,6 +2155,7 @@ export class AgentRuntime {
         activeToolCalls: message.toolCalls ?? [],
         activity: message.activity ?? null,
         liveStepText: "",
+        liveStepRole: LIVE_STEP_ROLES.NONE,
         finalText: message.content ?? "",
         assistantText: message.content ?? "",
         toolRuntime:
@@ -2588,6 +2598,8 @@ export class AgentRuntime {
     );
     this.activeRun.currentStepText =
       "";
+    this.activeRun.liveStepRole =
+      LIVE_STEP_ROLES.NONE;
     this.persistActiveRunCheckpoint({
       status: "running"
     });
@@ -2624,6 +2636,8 @@ export class AgentRuntime {
         attempt;
       this.activeRun.currentStepText =
         "";
+      this.activeRun.liveStepRole =
+        LIVE_STEP_ROLES.NONE;
       this.activeRun.finalText =
         "";
 
@@ -2851,6 +2865,10 @@ export class AgentRuntime {
         }
 
         this.activeRun.currentStepText = "";
+        this.activeRun.liveStepRole =
+          inferLiveStepRole({
+            records: toolSession.getRecords()
+          });
         this.activeRun.stepNumber =
           Number(stepNumber) || 0;
         const stepId = `${segment.id}:step:${this.activeRun.stepNumber}`;
@@ -3202,6 +3220,8 @@ export class AgentRuntime {
           onContinue: ({ checkpoint }) => {
             this.activeRun.finalText = "";
             this.activeRun.currentStepText = "";
+            this.activeRun.liveStepRole =
+              LIVE_STEP_ROLES.NONE;
             this.activeRun.activityStore?.updateCheckpoint(
               checkpoint
             );

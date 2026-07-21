@@ -14,6 +14,7 @@ export function ResponseBubble({
   agentStatus,
   hasActivity,
   streaming,
+  scrollable,
   side,
   theme,
   reducedMotion,
@@ -84,7 +85,7 @@ export function ResponseBubble({
 
         <div
           ref={contentRef}
-          className="response-bubble__content"
+          className={`response-bubble__content${scrollable ? " is-scrollable" : ""}`}
           onScroll={onScroll}
         >
           <ResponseActivityFlow

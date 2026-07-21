@@ -107,14 +107,14 @@ export function ResponsePanel({
 
         <SettingRow
           title="垂直锚点"
-          description="气泡相对桌宠顶部向下停靠的位置。"
+          description="以桌宠高度为单位调整垂直位置；负值向上，正值向下。"
         >
           <Slider
             value={
               response
                 .anchorRatio
             }
-            min={0}
+            min={-1}
             max={1}
             step={0.02}
             formatValue={(value) =>

@@ -103,6 +103,8 @@ export default function Response() {
           finalText,
           liveStepText:
             currentText,
+          liveStepRole:
+            agentStatus.liveStepRole ?? "none",
           hasActivity,
           streaming
         });
@@ -139,7 +141,8 @@ export default function Response() {
   ].join("\u0000");
 
   const {
-    handleScroll
+    handleScroll,
+    scrollable
   } = useResponseLayout({
     hasContent,
     contentKey,
@@ -166,6 +169,7 @@ export default function Response() {
         presentation.hasActivity
       }
       streaming={streaming}
+      scrollable={scrollable}
       side={side}
       theme={theme}
       reducedMotion={

@@ -67,6 +67,15 @@ function summarizeValue(value, toolName) {
 
   const data = value?.data;
 
+  if (data?.changePreview?.diff) {
+    const paths = data.changePreview.paths?.length
+      ? data.changePreview.paths
+      : data.changePreview.path ? [data.changePreview.path] : [];
+    const added = Math.max(0, Number(data.addedLines) || 0);
+    const removed = Math.max(0, Number(data.removedLines) || 0);
+    return `已修改 ${paths.length > 1 ? `${paths.length} 个文件` : paths[0] || "文件"}${added || removed ? `（+${added} / -${removed}）` : ""}`;
+  }
+
   if (Array.isArray(data)) {
     return `返回 ${data.length} 个结果`;
   }
@@ -92,6 +101,7 @@ function createResultEnvelope({
   preview,
   data,
   error,
+  changePreview,
   resultId = "",
   truncated = false,
   originalBytes = 0,
@@ -110,6 +120,10 @@ function createResultEnvelope({
 
   if (data !== undefined) {
     result.data = clone(data);
+  }
+
+  if (changePreview !== undefined) {
+    result.changePreview = clone(changePreview);
   }
 
   if (error !== undefined) {
@@ -404,6 +418,7 @@ export class ToolResultStore {
     const safeValue = this.redact(clone(value));
     const serialized = serialize(safeValue);
     const totalBytes = byteLength(serialized);
+    const changePreview = safeValue?.data?.changePreview;
     const summary = summarizeValue(
       safeValue,
       toolName
@@ -419,6 +434,7 @@ export class ToolResultStore {
         summary,
         preview,
         data: safeValue,
+        changePreview,
         truncated: false,
         originalBytes: totalBytes,
         storedBytes: totalBytes
@@ -487,6 +503,7 @@ export class ToolResultStore {
         status: "success",
         summary,
         preview,
+        changePreview,
         resultId,
         truncated: true,
         originalBytes: totalBytes,

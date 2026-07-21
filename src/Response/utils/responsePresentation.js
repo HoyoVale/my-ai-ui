@@ -30,6 +30,7 @@ export function resolveResponsePresentation({
   text,
   finalText,
   liveStepText,
+  liveStepRole = "none",
   hasActivity,
   streaming
 }) {
@@ -55,6 +56,17 @@ export function resolveResponsePresentation({
   if (finalAnswer) {
     return {
       answerText: finalAnswer,
+      liveText: ""
+    };
+  }
+
+  if (
+    streaming &&
+    currentStep &&
+    liveStepRole === "final_candidate"
+  ) {
+    return {
+      answerText: currentStep,
       liveText: ""
     };
   }

@@ -14,7 +14,7 @@ import {
 
 import {
   useWindowMaximized
-} from "../Conversation/hooks/useWindowMaximized.js";
+} from "../shared/hooks/useWindowMaximized.js";
 
 import {
   MemoryEditor

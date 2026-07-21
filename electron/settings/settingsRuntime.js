@@ -38,6 +38,10 @@ import {
   mcpClientManager
 } from "../mcp/index.js";
 
+import {
+  applyTraySettings
+} from "../windows/tray/trayManager.js";
+
 
 export function applyGeneralSettings(
   settings
@@ -76,6 +80,8 @@ export function applySettingsToOpenWindows(
   applyPetWindowSettings(
     settings
   );
+
+  applyTraySettings(settings);
 
   applyConversationWindowSettings(
     settings

@@ -27,6 +27,7 @@ function useDraftTextValue(value, onChange) {
   }, [normalizedValue]);
 
   const commitValue = (nextValue) => {
+    externalValueRef.current = nextValue;
     setDraftValue(nextValue);
     onChange?.(nextValue);
   };
@@ -59,6 +60,7 @@ function useDraftTextValue(value, onChange) {
 
     onChange: (event) => {
       const nextValue = event.currentTarget.value;
+      externalValueRef.current = nextValue;
       setDraftValue(nextValue);
 
       if (!composingRef.current) {
@@ -231,6 +233,7 @@ export function TextInput({
   type = "text",
   disabled = false,
   autoComplete,
+  list,
   onChange,
   testId
 }) {
@@ -248,6 +251,7 @@ export function TextInput({
       placeholder={placeholder}
       disabled={disabled}
       autoComplete={autoComplete}
+      list={list}
       onFocus={draft.onFocus}
       onBlur={draft.onBlur}
       onCompositionStart={draft.onCompositionStart}

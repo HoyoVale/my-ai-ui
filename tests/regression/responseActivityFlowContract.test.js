@@ -109,6 +109,23 @@ describe("structured Response activity flow", () => {
     );
   });
 
+  it("streams the tool-free step after tool execution as a provisional final answer", () => {
+    const runtime = read(
+      "../../electron/agent/AgentRuntime.js"
+    );
+    const presentation = read(
+      "../../src/Response/utils/responsePresentation.js"
+    );
+    const conversation = read(
+      "../../src/Conversation/components/MessageList.jsx"
+    );
+
+    assert.match(runtime, /inferLiveStepRole/u);
+    assert.match(runtime, /liveStepRole/u);
+    assert.match(presentation, /final_candidate/u);
+    assert.match(conversation, /displayedFinalText/u);
+  });
+
   it("streams finalization chunks into the structured final answer", () => {
     const runtime = read(
       "../../electron/agent/AgentRuntime.js"

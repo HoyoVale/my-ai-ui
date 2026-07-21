@@ -268,6 +268,12 @@ const IPC_CHANNELS =
       EXPORT_CONFIG:
         "mcp-export-config",
 
+      QUICK_SET_ENABLED:
+        "mcp-quick-set-enabled",
+
+      QUICK_SET_SERVER_ENABLED:
+        "mcp-quick-set-server-enabled",
+
       CHANGED:
         "mcp-changed"
     }),

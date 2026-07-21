@@ -19,18 +19,18 @@ const toolPanel = fs.readFileSync(
   "utf8"
 );
 
-test("Conversation exposes an independent Recovery Center entrance", () => {
-  assert.match(topbar, /data-testid="conversation-recovery-toggle"/u);
-  assert.match(conversation, /ConversationRecoveryPanel/u);
-  assert.match(conversation, /getToolRuntimeRecoveryHistory/u);
-  assert.match(conversation, /recoveryCount=/u);
+test("Conversation no longer exposes the obsolete global Recovery Center", () => {
+  assert.doesNotMatch(topbar, /conversation-recovery-toggle/u);
+  assert.doesNotMatch(conversation, /ConversationRecoveryPanel/u);
+  assert.doesNotMatch(conversation, /getToolRuntimeRecoveryHistory/u);
 });
 
 test("developer run details are loaded only after an explicit request", () => {
   assert.match(taskPanel, /data-testid="conversation-load-run-details"/u);
-  assert.match(taskPanel, /onLoadDeveloperDetails/u);
+  assert.match(taskPanel, /const loadDeveloperDetails = async/u);
+  assert.match(taskPanel, /onLoad=\{\(\) => void loadDeveloperDetails\(\)\}/u);
+  assert.match(taskPanel, /onClick=\{onLoad\}/u);
   assert.match(taskPanel, /运行诊断尚未载入/u);
-  assert.doesNotMatch(taskPanel, /useEffect\([\s\S]{0,500}onLoadDeveloperDetails/u);
 });
 
 test("circuit breaker settings include half-open limits and manual reset", () => {

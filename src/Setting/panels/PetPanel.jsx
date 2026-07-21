@@ -113,6 +113,18 @@ export function PetPanel({
           />
         </SettingRow>
         <SettingRow
+          title="显示在系统托盘"
+          description="关闭桌宠窗口后仍可从托盘重新打开输入、会话和设置。"
+        >
+          <Toggle
+            checked={pet.showInTray !== false}
+            label="在系统托盘显示 Xixi"
+            onChange={(value) => {
+              onUpdate({ showInTray: value });
+            }}
+          />
+        </SettingRow>
+        <SettingRow
           title="显示在任务栏"
           description="关闭后桌宠不会占用任务栏位置。"
         >

@@ -1959,6 +1959,10 @@ export function sanitizeSettings(
         pet.showInTaskbar,
         defaults.pet.showInTaskbar
       ),
+      showInTray: booleanValue(
+        pet.showInTray,
+        defaults.pet.showInTray
+      ),
       shadowOpacity: numberValue(
         pet.shadowOpacity,
         defaults.pet.shadowOpacity,
@@ -2025,7 +2029,7 @@ export function sanitizeSettings(
       anchorRatio: numberValue(
         response.anchorRatio,
         defaults.response.anchorRatio,
-        0,
+        -1,
         1
       ),
       preferredSide: enumValue(
@@ -2097,22 +2101,32 @@ export function sanitizeSettings(
         defaults.appearance
           .reducedMotion
       ),
-      fontFamily: enumValue(
-        appearance.fontFamily,
-        [
-          "system",
-          "humanist",
-          "serif",
-          "monospace",
-          "custom"
-        ],
-        defaults.appearance
-          .fontFamily
+      latinFontFamily: enumValue(
+        appearance.latinFontFamily ?? ({
+          humanist: "segoe",
+          serif: "georgia",
+          monospace: "cascadia",
+          custom: "custom"
+        }[appearance.fontFamily] ?? appearance.fontFamily),
+        ["system", "segoe", "inter", "arial", "georgia", "cascadia", "custom"],
+        defaults.appearance.latinFontFamily
       ),
-      customFontFamily: stringValue(
-        appearance.customFontFamily,
-        defaults.appearance
-          .customFontFamily,
+      chineseFontFamily: enumValue(
+        appearance.chineseFontFamily ?? ({
+          serif: "song",
+          custom: "custom"
+        }[appearance.fontFamily] ?? "system"),
+        ["system", "yahei", "pingfang", "notoSans", "sourceHanSans", "song", "custom"],
+        defaults.appearance.chineseFontFamily
+      ),
+      customLatinFontFamily: stringValue(
+        appearance.customLatinFontFamily ?? appearance.customFontFamily,
+        defaults.appearance.customLatinFontFamily,
+        180
+      ).trim(),
+      customChineseFontFamily: stringValue(
+        appearance.customChineseFontFamily ?? appearance.customFontFamily,
+        defaults.appearance.customChineseFontFamily,
         180
       ).trim(),
       typography
@@ -2133,6 +2147,17 @@ export function sanitizeSettings(
         defaults.personality.identity,
         180
       ),
+      responsePreferences: stringValue(
+        personality.responsePreferences,
+        personality.responsePreferences === undefined
+          ? [
+              personality.language === "zh-CN" ? "默认使用简体中文" : personality.language === "en-US" ? "默认使用英语" : "跟随用户使用的语言",
+              personality.tone === "friendly" ? "语气友好" : personality.tone === "professional" ? "语气专业克制" : personality.tone === "direct" ? "表达直接" : "语气自然清晰",
+              personality.responseLength === "concise" ? "回答尽量精简" : personality.responseLength === "detailed" ? "在必要时提供完整细节" : "篇幅根据问题复杂度调整"
+            ].join("；") + "。"
+          : defaults.personality.responsePreferences,
+        2000
+      ).trim(),
       language: enumValue(
         personality.language,
         ["auto", "zh-CN", "en-US"],
@@ -2140,23 +2165,13 @@ export function sanitizeSettings(
       ),
       tone: enumValue(
         personality.tone,
-        [
-          "natural",
-          "friendly",
-          "professional",
-          "direct"
-        ],
+        ["natural", "friendly", "professional", "direct"],
         defaults.personality.tone
       ),
       responseLength: enumValue(
         personality.responseLength,
-        [
-          "concise",
-          "balanced",
-          "detailed"
-        ],
-        defaults.personality
-          .responseLength
+        ["concise", "balanced", "detailed"],
+        defaults.personality.responseLength
       ),
       customInstructions:
         stringValue(

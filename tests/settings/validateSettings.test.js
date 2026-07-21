@@ -406,14 +406,23 @@ describe(
           });
 
         assert.equal(
-          settings.appearance.fontFamily,
+          settings.appearance.latinFontFamily,
           "custom"
         );
         assert.equal(
-          settings.appearance
-            .customFontFamily,
+          settings.appearance.chineseFontFamily,
+          "custom"
+        );
+        assert.equal(
+          settings.appearance.customLatinFontFamily,
           "Atkinson Hyperlegible"
         );
+        assert.equal(
+          settings.appearance.customChineseFontFamily,
+          "Atkinson Hyperlegible"
+        );
+        assert.equal(settings.appearance.fontFamily, undefined);
+        assert.equal(settings.appearance.customFontFamily, undefined);
         assert.equal(
           settings.appearance.typography
             .conversation.fontSize,

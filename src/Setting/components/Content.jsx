@@ -1,68 +1,90 @@
 import {
+  lazy,
+  Suspense,
+  useLayoutEffect,
+  useRef
+} from "react";
+
+import {
   SETTING_TABS
 } from "../constants/Tabs.js";
 
-import {
-  AboutPanel
-} from "../panels/AboutPanel.jsx";
+const AboutPanel = lazy(() => import("../panels/AboutPanel.jsx").then((module) => ({ default: module.AboutPanel })));
+const AppearancePanel = lazy(() => import("../panels/AppearancePanel.jsx").then((module) => ({ default: module.AppearancePanel })));
+const ConversationPanel = lazy(() => import("../panels/ConversationPanel.jsx").then((module) => ({ default: module.ConversationPanel })));
+const DeveloperPanel = lazy(() => import("../panels/DeveloperPanel.jsx").then((module) => ({ default: module.DeveloperPanel })));
+const GeneralPanel = lazy(() => import("../panels/GeneralPanel.jsx").then((module) => ({ default: module.GeneralPanel })));
+const InputPanel = lazy(() => import("../panels/InputPanel.jsx").then((module) => ({ default: module.InputPanel })));
+const McpPanel = lazy(() => import("../panels/McpPanel.jsx").then((module) => ({ default: module.McpPanel })));
+const MemoryPanel = lazy(() => import("../panels/MemoryPanel.jsx").then((module) => ({ default: module.MemoryPanel })));
+const ModelPanel = lazy(() => import("../panels/ModelPanel.jsx").then((module) => ({ default: module.ModelPanel })));
+const PersonalityPanel = lazy(() => import("../panels/PersonalityPanel.jsx").then((module) => ({ default: module.PersonalityPanel })));
+const PetPanel = lazy(() => import("../panels/PetPanel.jsx").then((module) => ({ default: module.PetPanel })));
+const ResponsePanel = lazy(() => import("../panels/ResponsePanel.jsx").then((module) => ({ default: module.ResponsePanel })));
+const SkillsPanel = lazy(() => import("../panels/SkillsPanel.jsx").then((module) => ({ default: module.SkillsPanel })));
+const ToolPanel = lazy(() => import("../panels/ToolPanel.jsx").then((module) => ({ default: module.ToolPanel })));
+const WorkContextPanel = lazy(() => import("../panels/WorkContextPanel.jsx").then((module) => ({ default: module.WorkContextPanel })));
 
-import {
-  AppearancePanel
-} from "../panels/AppearancePanel.jsx";
-
-import {
-  ConversationPanel
-} from "../panels/ConversationPanel.jsx";
-
-
-
-import {
-  DeveloperPanel
-} from "../panels/DeveloperPanel.jsx";
-
-import {
-  GeneralPanel
-} from "../panels/GeneralPanel.jsx";
-
-import {
-  InputPanel
-} from "../panels/InputPanel.jsx";
-
-import {
-  ModelPanel
-} from "../panels/ModelPanel.jsx";
-
-import {
-  MemoryPanel
-} from "../panels/MemoryPanel.jsx";
-
-import {
-  McpPanel
-} from "../panels/McpPanel.jsx";
-
-import {
-  PetPanel
-} from "../panels/PetPanel.jsx";
-
-import {
-  PersonalityPanel
-} from "../panels/PersonalityPanel.jsx";
-
-import {
-  ResponsePanel
-} from "../panels/ResponsePanel.jsx";
-
-import {
-  SkillsPanel
-} from "../panels/SkillsPanel.jsx";
-
-import {
-  ToolPanel
-} from "../panels/ToolPanel.jsx";
-
-import {
-  WorkContextPanel
-} from "../panels/WorkContextPanel.jsx";
+function panelForTab({
+  activeTab,
+  settings,
+  appInfo,
+  updateSection,
+  onReset
+}) {
+  switch (activeTab) {
+    case "general":
+      return <GeneralPanel settings={settings} appInfo={appInfo} onUpdate={updateSection("general")} onReset={onReset} />;
+    case "appearance":
+      return <AppearancePanel settings={settings} onUpdate={updateSection("appearance")} />;
+    case "pet":
+      return <PetPanel settings={settings} onUpdate={updateSection("pet")} />;
+    case "input":
+      return <InputPanel settings={settings} onUpdate={updateSection("input")} />;
+    case "response":
+      return <ResponsePanel settings={settings} onUpdate={updateSection("response")} />;
+    case "workspace":
+      return <WorkContextPanel settings={settings} />;
+    case "personality":
+      return <PersonalityPanel settings={settings} developerMode={settings.general.developerMode} onUpdate={updateSection("personality")} />;
+    case "model":
+      return <ModelPanel settings={settings} onUpdate={updateSection("model")} />;
+    case "conversation":
+      return (
+        <ConversationPanel
+          developerMode={settings.general.developerMode}
+          conversationSettings={settings.conversation}
+          contextSettings={settings.context}
+          onUpdateConversation={updateSection("conversation")}
+          onUpdateContext={updateSection("context")}
+        />
+      );
+    case "tools":
+      return (
+        <ToolPanel
+          settings={settings.tools}
+          appSettings={settings}
+          customToolSettings={settings.customTools}
+          developerMode={settings.general.developerMode}
+          onUpdate={updateSection("tools")}
+          onUpdateMcp={updateSection("mcp")}
+          onUpdateCustomTools={updateSection("customTools")}
+        />
+      );
+    case "mcp":
+      return <McpPanel settings={settings} developerMode={settings.general.developerMode} onUpdate={updateSection("mcp")} />;
+    case "skills":
+      return <SkillsPanel developerMode={settings.general.developerMode} />;
+    case "developer":
+      return <DeveloperPanel settings={settings} onUpdatePrompts={updateSection("prompts")} />;
+    case "memory":
+      return <MemoryPanel settings={settings} developerMode={settings.general.developerMode} onUpdate={updateSection("memory")} />;
+    case "about":
+      return <AboutPanel appInfo={appInfo} />;
+    default:
+      return null;
+  }
+}
 
 export function SettingsContent({
   activeTab,
@@ -71,239 +93,38 @@ export function SettingsContent({
   onUpdateSection,
   onReset
 }) {
-  const tab =
-    SETTING_TABS.find(
-      (item) =>
-        item.id === activeTab
-    ) ?? SETTING_TABS[0];
+  const scrollRef = useRef(null);
+  const scrollPositionsRef = useRef(new Map());
+  const tab = SETTING_TABS.find((item) => item.id === activeTab) ?? SETTING_TABS[0];
+  const updateSection = (section) => (patch) => onUpdateSection(section, patch);
+  const panel = panelForTab({ activeTab, settings, appInfo, updateSection, onReset });
 
-  const panel = {
-    general: (
-      <GeneralPanel
-        settings={settings}
-        appInfo={appInfo}
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "general",
-            patch
-          );
-        }}
-        onReset={onReset}
-      />
-    ),
-
-    appearance: (
-      <AppearancePanel
-        settings={settings}
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "appearance",
-            patch
-          );
-        }}
-      />
-    ),
-
-    pet: (
-      <PetPanel
-        settings={settings}
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "pet",
-            patch
-          );
-        }}
-      />
-    ),
-
-    input: (
-      <InputPanel
-        settings={settings}
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "input",
-            patch
-          );
-        }}
-      />
-    ),
-
-    response: (
-      <ResponsePanel
-        settings={settings}
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "response",
-            patch
-          );
-        }}
-      />
-    ),
-
-
-    workspace: (
-      <WorkContextPanel
-        settings={settings}
-      />
-    ),
-
-    personality: (
-      <PersonalityPanel
-        settings={settings}
-        developerMode={
-          settings.general.developerMode
-        }
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "personality",
-            patch
-          );
-        }}
-      />
-    ),
-
-    model: (
-      <ModelPanel
-        settings={settings}
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "model",
-            patch
-          );
-        }}
-      />
-    ),
-
-    conversation: (
-      <ConversationPanel
-        developerMode={
-          settings.general
-            .developerMode
-        }
-        conversationSettings={
-          settings.conversation
-        }
-        contextSettings={
-          settings.context
-        }
-        onUpdateConversation={(patch) => {
-          onUpdateSection(
-            "conversation",
-            patch
-          );
-        }}
-        onUpdateContext={(patch) => {
-          onUpdateSection(
-            "context",
-            patch
-          );
-        }}
-      />
-    ),
-
-    tools: (
-      <ToolPanel
-        settings={settings.tools}
-        appSettings={settings}
-        customToolSettings={settings.customTools}
-        developerMode={
-          settings.general
-            .developerMode
-        }
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "tools",
-            patch
-          );
-        }}
-        onUpdateMcp={(patch) => {
-          onUpdateSection(
-            "mcp",
-            patch
-          );
-        }}
-        onUpdateCustomTools={(patch) => {
-          onUpdateSection(
-            "customTools",
-            patch
-          );
-        }}
-      />
-    ),
-
-    mcp: (
-      <McpPanel
-        settings={settings}
-        developerMode={
-          settings.general
-            .developerMode
-        }
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "mcp",
-            patch
-          );
-        }}
-      />
-    ),
-
-    skills: (
-      <SkillsPanel
-        developerMode={
-          settings.general
-            .developerMode
-        }
-      />
-    ),
-
-    developer: (
-      <DeveloperPanel
-        settings={settings}
-        onUpdatePrompts={(patch) => {
-          onUpdateSection(
-            "prompts",
-            patch
-          );
-        }}
-      />
-    ),
-
-    memory: (
-      <MemoryPanel
-        settings={settings}
-        developerMode={
-          settings.general.developerMode
-        }
-        onUpdate={(patch) => {
-          onUpdateSection(
-            "memory",
-            patch
-          );
-        }}
-      />
-    ),
-
-    about: (
-      <AboutPanel
-        appInfo={appInfo}
-      />
-    )
-  }[activeTab];
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const saved = scrollPositionsRef.current.get(activeTab) ?? 0;
+    if (Math.abs(element.scrollTop - saved) > 1) element.scrollTop = saved;
+  }, [activeTab]);
 
   return (
     <main className="setting-content">
-      <div className="setting-content__scroll">
+      <div
+        ref={scrollRef}
+        className="setting-content__scroll"
+        onScroll={(event) => {
+          scrollPositionsRef.current.set(activeTab, event.currentTarget.scrollTop);
+        }}
+      >
         <section className="setting-page">
           <header className="setting-page__header">
             <h1>{tab.title}</h1>
-
-            <p>
-              {tab.description}
-            </p>
+            <p>{tab.description}</p>
           </header>
 
           <div className="setting-page__body">
-            {panel}
+            <Suspense fallback={<div className="settings-panel-loading">正在加载设置…</div>}>
+              {panel}
+            </Suspense>
           </div>
         </section>
       </div>

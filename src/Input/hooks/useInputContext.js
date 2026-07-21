@@ -6,6 +6,10 @@ import {
   useState
 } from "react";
 
+import {
+  normalizeSessionMode
+} from "../../shared/sessionNavigation.js";
+
 const EMPTY_STATE = {
   currentConversationId: null,
   currentConversation: null,
@@ -79,11 +83,42 @@ export function flattenModels(settings) {
   );
 }
 
+async function readConversationContext() {
+  let [nextState, nextWorkspaces, nextConversations] = await Promise.all([
+    window.api?.getConversationState?.(),
+    window.api?.listWorkspaces?.(),
+    window.api?.listConversations?.()
+  ]);
+
+  if (!nextState?.currentConversationId) {
+    await window.api?.navigateConversationContext?.({
+      mode: "chat",
+      workspaceId: null
+    });
+    [nextState, nextConversations] = await Promise.all([
+      window.api?.getConversationState?.(),
+      window.api?.listConversations?.()
+    ]);
+  }
+
+  return {
+    state: nextState ?? EMPTY_STATE,
+    workspaces: Array.isArray(nextWorkspaces)
+      ? nextWorkspaces.filter((workspace) => !workspace.missing)
+      : [],
+    conversations: Array.isArray(nextConversations)
+      ? nextConversations
+      : []
+  };
+}
+
 export function useInputContext(settings) {
   const [state, setState] = useState(EMPTY_STATE);
   const [workspaces, setWorkspaces] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [skills, setSkills] = useState([]);
+  const [skillsReady, setSkillsReady] = useState(false);
+  const [skillsError, setSkillsError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const refreshSequence = useRef(0);
@@ -95,46 +130,34 @@ export function useInputContext(settings) {
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
     try {
-      let [nextState, nextWorkspaces, nextConversations, nextSkills] = await Promise.all([
-        window.api?.getConversationState?.(),
-        window.api?.listWorkspaces?.(),
-        window.api?.listConversations?.(),
-        window.api?.getSkillRuntimeState?.("")
-      ]);
+      const context = await readConversationContext();
+      const mode = normalizeSessionMode(context.state.currentMode, "chat");
 
-      if (!nextState?.currentConversationId) {
-        await window.api?.navigateConversationContext?.({
-          mode: "chat",
-          workspaceId: null
-        });
-        [nextState, nextConversations] = await Promise.all([
-          window.api?.getConversationState?.(),
-          window.api?.listConversations?.()
-        ]);
+      let nextSkills = [];
+      let nextSkillsError = "";
+      try {
+        const runtimeState = await window.api?.getSkillRuntimeState?.(mode);
+        nextSkills = Array.isArray(runtimeState?.skills)
+          ? runtimeState.skills
+          : [];
+      } catch (skillError) {
+        console.warn("读取 Skill Runtime 状态失败：", skillError);
+        nextSkillsError = "无法读取 Skill 列表。";
       }
 
       if (sequence !== refreshSequence.current) return null;
-      setState(nextState ?? EMPTY_STATE);
-      setWorkspaces(
-        Array.isArray(nextWorkspaces)
-          ? nextWorkspaces.filter((workspace) => !workspace.missing)
-          : []
-      );
-      setConversations(
-        Array.isArray(nextConversations)
-          ? nextConversations
-          : []
-      );
-      setSkills(
-        Array.isArray(nextSkills?.skills)
-          ? nextSkills.skills
-          : []
-      );
+      setState(context.state);
+      setWorkspaces(context.workspaces);
+      setConversations(context.conversations);
+      setSkills(nextSkills);
+      setSkillsReady(true);
+      setSkillsError(nextSkillsError);
       setError("");
-      return nextState;
+      return context.state;
     } catch (refreshError) {
       if (sequence === refreshSequence.current) {
         console.error("读取输入上下文失败：", refreshError);
+        setSkillsReady(true);
         setError("无法读取当前会话上下文。");
       }
       return null;
@@ -213,6 +236,8 @@ export function useInputContext(settings) {
     workspaces,
     conversations,
     skills,
+    skillsReady,
+    skillsError,
     models,
     busy,
     error,

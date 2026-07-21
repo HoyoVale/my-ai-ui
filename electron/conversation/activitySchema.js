@@ -157,6 +157,11 @@ function sanitizeToolResult(source) {
     clipped: Boolean(source.clipped)
   };
 
+  const changePreview = jsonValue(source.changePreview, 26000);
+  if (changePreview !== undefined) {
+    result.changePreview = changePreview;
+  }
+
   const data = jsonValue(source.data, 32000);
   const error = jsonValue(source.error, 8000);
   const reference = jsonValue(

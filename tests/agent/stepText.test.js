@@ -47,3 +47,24 @@ describe("agent step text classification", () => {
     assert.equal(result.phase, "after_tools");
   });
 });
+
+it("marks the model step after completed tool work as a provisional final answer", async () => {
+  const { inferLiveStepRole } = await import("../../electron/agent/stepText.js");
+
+  assert.equal(
+    inferLiveStepRole({
+      records: [
+        {
+          toolName: "read_text_file",
+          status: "completed"
+        }
+      ]
+    }),
+    "final_candidate"
+  );
+
+  assert.equal(
+    inferLiveStepRole({ records: [] }),
+    "commentary"
+  );
+});

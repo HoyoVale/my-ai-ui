@@ -1,56 +1,34 @@
 import {
+  lazy,
+  Suspense
+} from "react";
+
+import {
   HashRouter,
   Route,
   Routes
 } from "react-router-dom";
 
-import Conversation
-  from "./Conversation/Conversation.jsx";
-import Input
-  from "./Input/Input.jsx";
-import Memory
-  from "./Memory/Memory.jsx";
-import Pet
-  from "./Pet/Pet.jsx";
-import Response
-  from "./Response/Response.jsx";
-import Setting
-  from "./Setting/Setting.jsx";
+const Conversation = lazy(() => import("./Conversation/Conversation.jsx"));
+const Input = lazy(() => import("./Input/Input.jsx"));
+const Memory = lazy(() => import("./Memory/Memory.jsx"));
+const Pet = lazy(() => import("./Pet/Pet.jsx"));
+const Response = lazy(() => import("./Response/Response.jsx"));
+const Setting = lazy(() => import("./Setting/Setting.jsx"));
 
 function App() {
   return (
     <HashRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={<Pet />}
-        />
-
-        <Route
-          path="/input"
-          element={<Input />}
-        />
-
-        <Route
-          path="/response"
-          element={<Response />}
-        />
-
-        <Route
-          path="/setting"
-          element={<Setting />}
-        />
-
-        <Route
-          path="/conversation"
-          element={<Conversation />}
-        />
-
-        <Route
-          path="/memory"
-          element={<Memory />}
-        />
-      </Routes>
+      <Suspense fallback={null}>
+        <Routes>
+          <Route path="/" element={<Pet />} />
+          <Route path="/input" element={<Input />} />
+          <Route path="/response" element={<Response />} />
+          <Route path="/setting" element={<Setting />} />
+          <Route path="/conversation" element={<Conversation />} />
+          <Route path="/memory" element={<Memory />} />
+        </Routes>
+      </Suspense>
     </HashRouter>
   );
 }

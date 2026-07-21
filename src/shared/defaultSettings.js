@@ -148,6 +148,7 @@ export const FALLBACK_SETTINGS = {
     opacity: 1,
     alwaysOnTop: true,
     showInTaskbar: false,
+    showInTray: true,
     shadowOpacity: 0.16,
     position: null
   },
@@ -178,8 +179,10 @@ export const FALLBACK_SETTINGS = {
     theme: "system",
     accentColor: "#10a37f",
     reducedMotion: false,
-    fontFamily: "system",
-    customFontFamily: "",
+    latinFontFamily: "system",
+    chineseFontFamily: "system",
+    customLatinFontFamily: "",
+    customChineseFontFamily: "",
     typography: {
       pet: { fontSize: 13, lineHeight: 1.4, letterSpacing: 0, density: "comfortable" },
       input: { fontSize: 14, lineHeight: 1.45, letterSpacing: 0, density: "comfortable" },
@@ -201,6 +204,8 @@ export const FALLBACK_SETTINGS = {
     enabled: true,
     name: "Xixi",
     identity: "运行在用户桌面上的轻量 AI 助手",
+    responsePreferences: "跟随用户使用的语言；语气自然清晰；篇幅根据问题复杂度调整。",
+    // Legacy preference fields are retained for migration compatibility.
     language: "auto",
     tone: "natural",
     responseLength: "balanced",

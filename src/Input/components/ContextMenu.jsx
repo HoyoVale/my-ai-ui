@@ -130,16 +130,21 @@ function recentWorkspaceForMode(conversations, mode) {
 export function InputContextMenu({
   context,
   disabled,
+  closeToken = 0,
   onOpenChange,
   onPanelHeightChange,
   onSelectSession,
   onCreateSession,
   onAddWorkspace,
   onSkillChange,
-  onModelChange
+  onModelChange,
+  onToggleMcp,
+  onToggleMcpServer
 }) {
   const rootRef = useRef(null);
   const panelRef = useRef(null);
+  const lastPanelHeightRef = useRef(0);
+  const consumedCloseTokenRef = useRef(closeToken);
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState("root");
   const [targetMode, setTargetMode] = useState("chat");
@@ -177,6 +182,9 @@ export function InputContextMenu({
     () => Array.isArray(context?.skills) ? context.skills : [],
     [context?.skills]
   );
+  const mcp = context?.mcp ?? { enabled: false, servers: [] };
+  const mcpServers = Array.isArray(mcp.servers) ? mcp.servers : [];
+  const enabledMcpServers = mcpServers.filter((server) => server.enabled !== false);
   const targetSkills = useMemo(
     () => allSkills.filter((skill) => skill.modes?.includes(targetMode)),
     [allSkills, targetMode]
@@ -251,7 +259,8 @@ export function InputContextMenu({
       setTargetSkillIds(currentSkillIds);
       setTargetRoutingMode(context?.currentSkillRoutingMode === "auto" ? "auto" : "manual");
       setActionError("");
-    } else {
+    } else if (lastPanelHeightRef.current !== 0) {
+      lastPanelHeightRef.current = 0;
       onPanelHeightChange?.(0);
     }
   }, [
@@ -298,6 +307,15 @@ export function InputContextMenu({
   }, [open, page, setMenuOpen]);
 
   useEffect(() => {
+    // closeToken is an edge-triggered event, not a persistent "closed" flag.
+    // Consuming the latest value while the menu is closed prevents every
+    // future open from being immediately cancelled after Slash was used once.
+    if (closeToken === consumedCloseTokenRef.current) return;
+    consumedCloseTokenRef.current = closeToken;
+    if (open) setMenuOpen(false);
+  }, [closeToken, open, setMenuOpen]);
+
+  useEffect(() => {
     if (disabled && open) {
       setMenuOpen(false);
     }
@@ -310,11 +328,17 @@ export function InputContextMenu({
 
     const panel = panelRef.current;
     const publishHeight = () => {
-      onPanelHeightChange?.(
-        Math.ceil(
-          panel.offsetHeight
-        )
+      const nextHeight = Math.max(
+        0,
+        Math.ceil(panel.offsetHeight)
       );
+
+      if (nextHeight === lastPanelHeightRef.current) {
+        return;
+      }
+
+      lastPanelHeightRef.current = nextHeight;
+      onPanelHeightChange?.(nextHeight);
     };
 
     publishHeight();
@@ -338,6 +362,7 @@ export function InputContextMenu({
     matchingSessions.length,
     targetSkills.length,
     workspaces.length,
+    mcpServers.length,
     onPanelHeightChange
   ]);
 
@@ -509,6 +534,19 @@ export function InputContextMenu({
         trailing={<Chevron />}
         onClick={() => setPage("skill")}
         testId="input-context-skill"
+      />
+      <MenuItem
+        label="MCP"
+        value={
+          mcp.enabled === false
+            ? "关闭"
+            : mcpServers.length
+              ? `${enabledMcpServers.length}/${mcpServers.length}`
+              : "无连接"
+        }
+        trailing={<Chevron />}
+        onClick={() => setPage("mcp")}
+        testId="input-context-mcp"
       />
       <MenuItem
         label="模型"
@@ -699,6 +737,52 @@ export function InputContextMenu({
     </>
   );
 
+  const toggleMcp = async (enabled) => {
+    setActionError("");
+    const result = await onToggleMcp?.(enabled);
+    if (result?.ok === false) setActionError(result.message ?? "无法更新 MCP。 ".trim());
+  };
+
+  const toggleMcpServer = async (serverId, enabled) => {
+    setActionError("");
+    const result = await onToggleMcpServer?.(serverId, enabled);
+    if (result?.ok === false) setActionError(result.message ?? "无法更新 MCP 连接。 ".trim());
+  };
+
+  const renderMcpPage = () => (
+    <>
+      {renderPageHeader("MCP")}
+      <div className="input-context-menu__items input-context-menu__items--scroll">
+        <MenuItem
+          label="启用 MCP"
+          description="快速控制所有 MCP 连接是否可供新任务使用"
+          selected={mcp.enabled !== false}
+          onClick={() => { void toggleMcp(mcp.enabled === false); }}
+          testId="input-mcp-enabled"
+        />
+        <div className="input-context-menu__divider" />
+        {mcpServers.map((server) => (
+          <MenuItem
+            key={server.id}
+            label={server.name || server.id}
+            description={server.transport === "stdio" ? "本地 MCP" : "远程 MCP"}
+            value={server.enabled === false ? "关闭" : "启用"}
+            selected={server.enabled !== false}
+            disabled={mcp.enabled === false}
+            onClick={() => { void toggleMcpServer(server.id, server.enabled === false); }}
+            testId={`input-mcp-${server.id}`}
+          />
+        ))}
+        {!mcpServers.length && (
+          <div className="input-context-menu__empty">请先在 Setting → MCP 添加连接</div>
+        )}
+        <div className="input-context-menu__notice">
+          正在运行的任务继续使用启动时快照；切换仅影响后续任务。
+        </div>
+      </div>
+    </>
+  );
+
   const renderModelPage = () => (
     <>
       {renderPageHeader("模型")}
@@ -748,6 +832,7 @@ export function InputContextMenu({
           {page === "workspace" && renderWorkspacePage()}
           {page === "session" && renderSessionPage()}
           {page === "skill" && renderSkillPage()}
+          {page === "mcp" && renderMcpPage()}
           {page === "model" && renderModelPage()}
 
           {(actionError || context?.error) && (

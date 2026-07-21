@@ -10,6 +10,7 @@ export function useToolManifest(settingsPreview = {}) {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const contextSignatureRef = useRef("");
+  const manifestRef = useRef(null);
   const normalizedPreview = settingsPreview.tools
     ? settingsPreview
     : { tools: settingsPreview };
@@ -23,7 +24,7 @@ export function useToolManifest(settingsPreview = {}) {
     let disposed = false;
 
     const refresh = () => {
-      setStatus("loading");
+      setStatus((current) => manifestRef.current || current === "ready" ? "refreshing" : "loading");
       setError("");
 
       window.api?.getToolManifest?.({
@@ -31,7 +32,9 @@ export function useToolManifest(settingsPreview = {}) {
       })
         .then((value) => {
           if (disposed) return;
-          setManifest(value ?? null);
+          const next = value ?? null;
+          manifestRef.current = next;
+          setManifest(next);
           setStatus("ready");
         })
         .catch((caught) => {

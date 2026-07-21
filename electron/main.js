@@ -42,6 +42,11 @@ import {
 } from "./windows/pet/petWindow.js";
 
 import {
+  destroyTray,
+  hasActiveTray
+} from "./windows/tray/trayManager.js";
+
+import {
   installRendererSessionSecurity
 } from "./security/rendererSecurity.js";
 
@@ -130,7 +135,8 @@ app.on(
   "window-all-closed",
   () => {
     if (
-      process.platform !== "darwin"
+      process.platform !== "darwin" &&
+      !hasActiveTray()
     ) {
       app.quit();
     }
@@ -148,6 +154,7 @@ app.on(
 
     event.preventDefault();
     persistenceFlushInProgress = true;
+    destroyTray();
 
     void Promise.all([
       flushAllPersistenceQueues(),

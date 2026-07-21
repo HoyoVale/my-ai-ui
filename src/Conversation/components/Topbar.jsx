@@ -7,17 +7,14 @@ export function ConversationTopbar({
   isMaximized,
   contextOpen,
   taskOpen,
-  recoveryOpen,
-  showRecovery = false,
-  recoveryCount = 0,
+
   skill = null,
   skills = [],
   skillRoutingMode = "manual",
   onToggleSidebar,
   onToggleContext,
   onToggleTask,
-  onToggleRecovery,
-  onCreate,
+
   onOpenInput,
   onMinimize,
   onMaximize,
@@ -88,34 +85,6 @@ export function ConversationTopbar({
           />
         </button>
 
-        {showRecovery && (
-          <button
-            type="button"
-            className={
-              `conversation-icon-button conversation-recovery-toggle${
-                recoveryOpen
-                  ? " is-active"
-                  : ""
-              }`
-            }
-            data-testid="conversation-recovery-toggle"
-            title={recoveryCount > 0 ? `恢复中心 · ${recoveryCount} 个待处理操作` : "恢复中心"}
-            aria-label="恢复中心"
-            aria-pressed={recoveryOpen}
-            onClick={onToggleRecovery}
-          >
-            <ConversationIcon
-              name={recoveryCount > 0 ? "warning" : "activity"}
-              size={17}
-            />
-            {recoveryCount > 0 && (
-              <span className="conversation-icon-button__badge">
-                {Math.min(99, recoveryCount)}
-              </span>
-            )}
-          </button>
-        )}
-
         <button
           type="button"
           className={
@@ -133,20 +102,6 @@ export function ConversationTopbar({
         >
           <ConversationIcon
             name="context"
-            size={17}
-          />
-        </button>
-
-        <button
-          type="button"
-          className="conversation-icon-button"
-          data-testid="conversation-new"
-          title="新建会话"
-          aria-label="新建会话"
-          onClick={onCreate}
-        >
-          <ConversationIcon
-            name="plus"
             size={17}
           />
         </button>

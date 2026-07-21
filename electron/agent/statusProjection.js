@@ -92,6 +92,22 @@ function publicError(error) {
   };
 }
 
+
+function publicChangePreview(result) {
+  const source = result?.changePreview ?? result?.data?.data?.changePreview ?? result?.data?.changePreview;
+  if (!source || typeof source !== "object") return undefined;
+  const diff = String(source.diff ?? "").slice(0, 24040);
+  if (!diff) return undefined;
+  return {
+    kind: "unified_diff",
+    path: String(source.path ?? "").slice(0, 500),
+    paths: Array.isArray(source.paths)
+      ? source.paths.map((item) => String(item).slice(0, 500)).slice(0, 50)
+      : undefined,
+    diff,
+    truncated: source.truncated === true
+  };
+}
 function publicResult(result) {
   if (!result || typeof result !== "object") {
     return undefined;
@@ -100,8 +116,9 @@ function publicResult(result) {
   const summary = String(result.summary ?? "").trim();
   const status = String(result.status ?? "").trim();
   const error = publicError(result.error);
+  const changePreview = publicChangePreview(result);
 
-  if (!summary && !status && !error) {
+  if (!summary && !status && !error && !changePreview) {
     return undefined;
   }
 
@@ -110,7 +127,8 @@ function publicResult(result) {
     summary: summary.slice(0, 400),
     truncated: result.truncated === true,
     clipped: result.clipped === true,
-    error
+    error,
+    changePreview
   };
 }
 
@@ -413,6 +431,7 @@ export function projectResponseStatus(status) {
       maxCalls: 12
     }),
     liveStepText: String(source.liveStepText ?? ""),
+    liveStepRole: String(source.liveStepRole ?? "none"),
     finalText: String(source.finalText ?? ""),
     assistantText: String(
       source.finalText || source.liveStepText || source.assistantText || ""
@@ -442,6 +461,7 @@ export function projectConversationStatus(status) {
       maxCalls: 24
     }),
     liveStepText: String(source.liveStepText ?? ""),
+    liveStepRole: String(source.liveStepRole ?? "none"),
     finalText: String(source.finalText ?? ""),
     assistantText: String(
       source.finalText || source.liveStepText || source.assistantText || ""

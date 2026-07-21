@@ -5253,3 +5253,162 @@
 .skill-router-keywords small {
   opacity: 0.7;
 }
+
+/* Keep the user's reading position stable while asynchronous settings previews refresh. */
+.setting-content__scroll {
+  overflow-anchor: none;
+}
+
+.tool-manifest-refreshing {
+  margin: 0 0 10px;
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}
+
+.settings-font-pair-preview span {
+  font-family: var(--app-latin-font-family, var(--app-font-family));
+}
+
+.settings-font-pair-preview p {
+  font-family: var(--app-cjk-font-family, var(--app-font-family));
+}
+
+/* Skill management: compact, task-oriented layout. */
+.skills-commandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--setting-border);
+  border-radius: 16px;
+  background: var(--setting-surface);
+}
+
+.skills-commandbar__copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.skills-commandbar__copy strong {
+  font-size: 15px;
+}
+
+.skills-commandbar__copy span {
+  color: var(--setting-text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.skills-commandbar__actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+.skills-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.skills-summary > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: var(--setting-text-soft);
+  background: var(--setting-soft-surface);
+  font-size: 11px;
+}
+
+.skills-summary strong {
+  color: var(--setting-text);
+  font-size: 12px;
+}
+
+.skills-summary .is-warning,
+.skills-summary .is-warning strong {
+  color: #b86824;
+}
+
+.skills-toolbar {
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.skill-list {
+  gap: 10px;
+}
+
+.skill-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+}
+
+.skill-card__mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.skill-card__identity-copy p {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.skill-card__meta {
+  margin-top: 9px;
+  font-size: 11px;
+}
+
+.skill-card__runtime-actions {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.skill-card__runtime-actions > span {
+  font-size: 10.5px;
+}
+
+.skill-card__details {
+  margin-top: 9px;
+}
+
+.skill-card__actions {
+  min-height: 0;
+  margin-top: 10px;
+  padding-top: 9px;
+}
+
+@media (max-width: 760px) {
+  .skills-commandbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skills-commandbar__actions {
+    flex-wrap: wrap;
+  }
+}
+
+.settings-font-input {
+  width: min(100%, 360px);
+}
+
+.settings-font-input .settings-text-input {
+  width: 100%;
+}
+
+.settings-panel-loading {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: var(--setting-text-soft);
+  font-size: 12px;
+}

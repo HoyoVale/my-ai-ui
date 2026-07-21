@@ -435,13 +435,16 @@ export function ToolPanel({
       </SettingsSection>
 
       <SettingsSection title="工具清单">
-        {manifestStatus === "loading" && (
+        {manifestStatus === "loading" && !manifest && (
           <div className="tool-manifest-empty">正在读取 Tool Manifest…</div>
+        )}
+        {manifestStatus === "refreshing" && manifest && (
+          <div className="tool-manifest-refreshing">正在同步工具状态…</div>
         )}
         {manifestStatus === "error" && (
           <div className="tool-manifest-empty is-error">{manifestError || "读取 Tool Manifest 失败。"}</div>
         )}
-        {manifestStatus === "ready" && visibleToolsets.map((toolset) => (
+        {manifest && visibleToolsets.map((toolset) => (
           <ManifestToolset
             key={toolset.id}
             toolset={toolset}

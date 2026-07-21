@@ -286,13 +286,12 @@ export function SkillsPanel({ developerMode = false }) {
 
   return (
     <div className="skills-panel" aria-busy={Boolean(busy)}>
-      <section className="skills-hero">
-        <div>
-          <span className="skills-hero__eyebrow">Skill Runtime</span>
-          <strong>可复用的工作流，不是额外权限</strong>
-          <p>Skill 支持显式组合、<code>/skill-id</code> 临时调用、保守自动路由与声明式依赖。所有能力仍继承当前模式、工作区和 Tool Security 权限。</p>
+      <section className="skills-commandbar">
+        <div className="skills-commandbar__copy">
+          <strong>本地 Skill</strong>
+          <span>声明工作流和能力，不扩大 Tool Security 权限。</span>
         </div>
-        <div className="skills-hero__actions">
+        <div className="skills-commandbar__actions">
           <ActionButton
             disabled={Boolean(busy)}
             onClick={() => {
@@ -300,7 +299,7 @@ export function SkillsPanel({ developerMode = false }) {
               void refresh();
             }}
           >
-            重新检查
+            刷新
           </ActionButton>
           <ActionButton
             disabled={Boolean(busy)}
@@ -325,12 +324,13 @@ export function SkillsPanel({ developerMode = false }) {
         </div>
       </section>
 
-      <div className="skills-overview">
-        <div><span>已安装</span><strong>{state.total}</strong></div>
-        <div><span>可运行</span><strong>{state.available}</strong></div>
-        <div><span>已禁用</span><strong>{state.disabled}</strong></div>
-        <div><span>完整性异常</span><strong>{state.invalid}</strong></div>
-        <div><span>依赖异常</span><strong>{state.dependencyIssues ?? 0}</strong></div>
+      <div className="skills-summary" aria-label="Skill 状态概览">
+        <span><strong>{state.total}</strong> 已安装</span>
+        <span><strong>{state.available}</strong> 可运行</span>
+        <span><strong>{state.disabled}</strong> 已禁用</span>
+        {(state.invalid > 0 || (state.dependencyIssues ?? 0) > 0) && (
+          <span className="is-warning"><strong>{state.invalid + (state.dependencyIssues ?? 0)}</strong> 需处理</span>
+        )}
       </div>
 
       <div className="skills-toolbar">
@@ -364,7 +364,7 @@ export function SkillsPanel({ developerMode = false }) {
         {message && <p className="skills-message is-success">{message}</p>}
       </div>
 
-      <SettingsSection title="已安装 Skill">
+      <SettingsSection title="Skill 列表">
         {status === "loading" && <p className="skills-empty">正在读取 Skill Registry…</p>}
         {status !== "loading" && state.skills.length === 0 && (
           <div className="skills-empty">

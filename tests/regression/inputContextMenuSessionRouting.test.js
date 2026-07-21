@@ -49,6 +49,7 @@ describe(
         assert.match(menu, /label="工作区"/u);
         assert.match(menu, /label="会话"/u);
         assert.match(menu, /label="模型"/u);
+        assert.match(menu, /label="MCP"/u);
 
         assert.equal(
           (composer.match(/<InputContextMenu/u) ?? []).length,
@@ -65,12 +66,15 @@ describe(
         assert.match(css, /max-height: 320px/u);
         assert.match(css, /background: transparent;/u);
 
-        assert.match(input, /menuOpen: contextMenuOpen/u);
-        assert.match(input, /menuHeight: contextMenuHeight/u);
+        assert.match(input, /menuOpen: overlayOpen/u);
+        assert.match(input, /menuHeight: overlayHeight/u);
+        assert.match(input, /menuDirection === "up"/u);
         assert.match(resizeHook, /menuExtraHeight:\s*layout\.menuExtraHeight/u);
         assert.doesNotMatch(menu, /estimatePanelHeight/u);
         assert.match(inputWindow, /logicalMenuExtraHeight/u);
-        assert.match(inputWindow, /y: anchor\.y/u);
+        assert.match(inputWindow, /logicalMenuDirection === "up"/u);
+        assert.match(inputWindow, /anchor\.y - logicalMenuExtraHeight/u);
+        assert.match(inputWindow, /"pop-up-menu"/u);
         assert.match(input, /barRef=\{barRef\}/u);
         assert.match(resizeHook, /getBoundingClientRect/u);
       }

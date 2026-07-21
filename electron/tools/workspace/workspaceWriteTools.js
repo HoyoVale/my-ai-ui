@@ -22,6 +22,10 @@ import {
   parseUnifiedPatch
 } from "./unifiedPatch.js";
 import {
+  createPatchDiffPreview,
+  createTextDiffPreview
+} from "./textDiffPreview.js";
+import {
   fileEvidence,
   receiptFields,
   transactionEvidence
@@ -161,6 +165,14 @@ const effectEvidenceSchema = z.object({
   dryRun: z.boolean()
 }).passthrough();
 
+const changePreviewSchema = z.object({
+  kind: z.literal("unified_diff"),
+  path: z.string(),
+  paths: z.array(z.string()).optional(),
+  diff: z.string().max(24040),
+  truncated: z.boolean()
+});
+
 const receiptSchemaFields = {
   operation: z.string(),
   affectedPaths: z.array(z.string()),
@@ -173,6 +185,7 @@ const receiptSchemaFields = {
   addedLines: z.number().int().nonnegative(),
   removedLines: z.number().int().nonnegative(),
   warnings: z.array(z.string()),
+  changePreview: changePreviewSchema.optional(),
   effectEvidence: effectEvidenceSchema
 };
 
@@ -434,6 +447,13 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
         const afterSha256 = sha256Buffer(desired);
         const changed = existing?.sha256 !== afterSha256;
         const summary = lineSummary(existing?.text ?? "", codec.text);
+        const changePreview = changed
+          ? createTextDiffPreview({
+              path: resolved.relativePath,
+              before: existing?.text ?? "",
+              after: codec.text
+            })
+          : undefined;
         const warnings = [];
         if (existing?.newline === "mixed" && input.preserveNewline) warnings.push("原文件包含混合换行，未强制统一换行。 ".trim());
         const effectEvidence = fileEvidence({
@@ -463,7 +483,8 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
               newline: codec.newline,
               atomic: true,
               idempotentReplay: !changed,
-              ...receiptFields(effectEvidence, { warnings, ...summary })
+              ...receiptFields(effectEvidence, { warnings, ...summary }),
+              changePreview
             }
           };
         }
@@ -494,7 +515,8 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             newline: codec.newline,
             atomic: write.atomic,
             idempotentReplay: write.idempotentReplay,
-            ...receiptFields(effectEvidence, { warnings, rollbackPerformed: write.rollbackPerformed, ...summary })
+            ...receiptFields(effectEvidence, { warnings, rollbackPerformed: write.rollbackPerformed, ...summary }),
+            changePreview
           }
         };
       }
@@ -546,6 +568,11 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
         if (desired.length > maxWriteFileBytes) throw writeError("FILE_TOO_LARGE", "替换后的文件超过写工具上限。");
         const afterSha256 = sha256Buffer(desired);
         const summary = lineSummary(existing.text, nextText);
+        const changePreview = afterSha256 !== existing.sha256
+          ? createTextDiffPreview({
+              path: resolved.relativePath, before: existing.text, after: nextText
+            })
+          : undefined;
         const effectEvidence = fileEvidence({ operation: "replace_text_in_file", relativePath: resolved.relativePath, beforeSha256: existing.sha256, afterSha256, beforeBytes: existing.sizeBytes, afterBytes: desired.length, dryRun: input.dryRun });
         if (!input.dryRun) {
           const write = await atomicWriteFileBuffer({
@@ -560,7 +587,8 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             path: resolved.relativePath, changed: afterSha256 !== existing.sha256, dryRun: input.dryRun, occurrences,
             beforeSha256: existing.sha256, afterSha256, beforeBytes: existing.sizeBytes, bytes: desired.length,
             encoding: existing.encoding, bom: existing.bom, newline: existing.newline, atomic: true,
-            ...receiptFields(effectEvidence, summary)
+            ...receiptFields(effectEvidence, summary),
+            changePreview
           }
         };
       }
@@ -611,6 +639,9 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
         const appendBuffer = encodeTextBuffer(`${separator}${appendText}`, { encoding: codec.encoding, bom: false });
         const afterSha256 = sha256Buffer(desired);
         const summary = lineSummary(existing?.text ?? "", nextText);
+        const changePreview = createTextDiffPreview({
+          path: resolved.relativePath, before: existing?.text ?? "", after: nextText
+        });
         const effectEvidence = fileEvidence({ operation: "append_text_file", relativePath: resolved.relativePath, beforeSha256: existing?.sha256 ?? "", afterSha256, beforeBytes: existing?.sizeBytes ?? 0, afterBytes: desired.length, dryRun: input.dryRun, created: !existing });
         if (!input.dryRun) {
           await atomicWriteFileBuffer({
@@ -625,7 +656,8 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             path: resolved.relativePath, changed: true, created: !existing, dryRun: input.dryRun, appendedBytes: appendBuffer.length,
             beforeSha256: existing?.sha256 ?? "", afterSha256, beforeBytes: existing?.sizeBytes ?? 0, bytes: desired.length,
             encoding: codec.encoding, bom: codec.bom, newline: codec.newline, atomic: true,
-            ...receiptFields(effectEvidence, summary)
+            ...receiptFields(effectEvidence, summary),
+            changePreview
           }
         };
       }
@@ -851,6 +883,10 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
           rollbackPerformed = transaction.rollbackPerformed;
           evidence.rollbackPerformed = rollbackPerformed;
         }
+        const changePreview = createPatchDiffPreview({
+          patch: input.patch,
+          paths: prepared.map((item) => item.path)
+        });
         return {
           ok: true,
           data: {
@@ -859,7 +895,8 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
               path: item.path, created: item.created, beforeSha256: item.beforeSha256, afterSha256: item.afterSha256,
               beforeBytes: item.beforeBytes, bytes: item.afterBytes, addedLines: item.addedLines, removedLines: item.removedLines
             })),
-            ...receiptFields(evidence, { rollbackPerformed, addedLines: parsed.addedLines, removedLines: parsed.removedLines })
+            ...receiptFields(evidence, { rollbackPerformed, addedLines: parsed.addedLines, removedLines: parsed.removedLines }),
+            changePreview
           }
         };
       }

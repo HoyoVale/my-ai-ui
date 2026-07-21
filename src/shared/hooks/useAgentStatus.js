@@ -21,6 +21,7 @@ const INITIAL_STATUS = {
   activeToolCalls: [],
   activity: null,
   liveStepText: "",
+  liveStepRole: "none",
   finalText: "",
   assistantText: ""
 };

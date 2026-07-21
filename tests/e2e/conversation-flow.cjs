@@ -664,6 +664,89 @@ async function main() {
       "false"
     );
 
+    await inputField.fill("/");
+
+    const slashMenu = input.locator(
+      '[data-testid="input-slash-menu"]'
+    );
+
+    await slashMenu.waitFor();
+
+    let slashMenuText = "";
+    let slashSkillCount = 0;
+    const slashDeadline = Date.now() + 15000;
+
+    while (Date.now() < slashDeadline) {
+      slashMenuText = await slashMenu.textContent().catch(() => "");
+      slashSkillCount = Number(
+        await slashMenu.getAttribute("data-skill-count")
+      ) || 0;
+
+      if (
+        slashSkillCount > 0 ||
+        slashMenuText.includes("可用 Skill") ||
+        slashMenuText.includes("无法读取 Skill")
+      ) {
+        break;
+      }
+
+      await delay(50);
+    }
+
+    assert.ok(
+      slashSkillCount > 0 ||
+      slashMenuText.includes("可用 Skill") ||
+      slashMenuText.includes("无法读取 Skill"),
+      "输入 / 后应显示 Skill 建议、加载状态或无可用 Skill 提示"
+    );
+
+    assert.equal(
+      await inputField.inputValue(),
+      "/",
+      "打开 Slash 菜单后输入内容不应丢失"
+    );
+    assert.equal(
+      await inputField.isVisible(),
+      true,
+      "打开 Slash 菜单后 Input Renderer 不应消失"
+    );
+
+    for (let index = 0; index < 3; index += 1) {
+      await input.keyboard.press("Escape");
+      await slashMenu.waitFor({ state: "hidden" });
+      await inputField.fill("");
+      await inputField.fill("/");
+      await slashMenu.waitFor({ state: "visible" });
+      assert.equal(
+        await inputField.isVisible(),
+        true,
+        "重复打开 Slash 菜单不应触发布局更新循环"
+      );
+    }
+
+    await input.keyboard.press("Escape");
+    await slashMenu.waitFor({ state: "hidden" });
+
+    // Slash emits a one-shot close request for the context menu. Once that
+    // request is consumed, the + menu must remain usable on every later open.
+    for (let index = 0; index < 3; index += 1) {
+      await inputMenuTrigger.click();
+      await input
+        .locator('[data-testid="input-context-menu-panel"]')
+        .waitFor({ state: "visible" });
+      await waitForAttribute(inputMenuTrigger, "aria-expanded", "true");
+      await input.keyboard.press("Escape");
+      await waitForAttribute(inputMenuTrigger, "aria-expanded", "false");
+    }
+
+    assert.equal(
+      await slashMenu.count(),
+      0,
+      "关闭 + 菜单后不应在未编辑输入时重新抢占 Slash 菜单"
+    );
+
+    await inputField.fill("");
+
     await inputField.fill(
       "first message"
     );
@@ -988,7 +1071,7 @@ async function main() {
 
     await conversation
       .locator(
-        '[data-testid="conversation-new"]'
+        '[data-testid="conversation-create-none"]'
       )
       .click();
 
@@ -1075,23 +1158,12 @@ async function main() {
 
     await conversation.bringToFront();
 
-    const recoveryToggle =
-      conversation.locator(
-        '[data-testid="conversation-recovery-toggle"]'
-      );
+    assert.equal(
+      await conversation.locator('[data-testid="conversation-recovery-toggle"]').count(),
+      0,
+      "已删除的全局 Tool Runtime 恢复入口不应在开发者模式重新出现"
+    );
 
-    await recoveryToggle.waitFor({
-      state: "visible"
-    });
-    await recoveryToggle.click();
-
-    await conversation
-      .locator(
-        '[data-testid="conversation-recovery-panel"]'
-      )
-      .waitFor();
-
-    await recoveryToggle.click();
     await setting.bringToFront();
 
     await setting
@@ -1335,25 +1407,19 @@ async function main() {
 
     await personalityName.fill("Nova");
 
-    await setting
-      .locator(
-        '[data-testid="personality-tone"]'
-      )
-      .selectOption(
-        "professional"
-      );
-
-    await setting
-      .locator(
-        '[data-testid="personality-length"]'
-      )
-      .getByRole(
-        "button",
-        {
-          name: "详细"
-        }
-      )
-      .click();
+    const responsePreferences = setting.locator(
+      '[data-testid="personality-response-preferences"]'
+    );
+    await responsePreferences.fill("跟随用户使用的语言；语气专业；复杂问题提供完整细节。");
+    await delay(520);
+    await responsePreferences.press("End");
+    await responsePreferences.press("Enter");
+    await responsePreferences.type("先给结论，再给证据。");
+    assert.equal(
+      await responsePreferences.inputValue(),
+      "跟随用户使用的语言；语气专业；复杂问题提供完整细节。\n先给结论，再给证据。",
+      "自由回复偏好输入不应丢失空格或换行"
+    );
 
     await delay(350);
 
@@ -1374,7 +1440,7 @@ async function main() {
 
     await waitForText(
       responseText,
-      "E2E_PERSONALITY:Nova:professional:detailed"
+      "E2E_PERSONALITY:Nova:natural:balanced"
     );
 
     await waitForAttribute(
@@ -1473,9 +1539,15 @@ async function main() {
 
     await setting
       .locator(
-        '[data-testid="appearance-font-family"]'
+        '[data-testid="appearance-latin-font-family"]'
       )
-      .selectOption("serif");
+      .selectOption("georgia");
+
+    await setting
+      .locator(
+        '[data-testid="appearance-chinese-font-family"]'
+      )
+      .selectOption("song");
 
     await delay(250);
 

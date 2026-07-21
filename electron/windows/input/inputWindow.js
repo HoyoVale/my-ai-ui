@@ -30,6 +30,8 @@ let logicalInputBaseHeight =
   INPUT_MIN_HEIGHT;
 
 let logicalMenuExtraHeight = 0;
+let logicalMenuDirection = "down";
+let logicalOverlayOpen = false;
 
 let petMoveHandler = null;
 let petResizeHandler = null;
@@ -147,7 +149,9 @@ function applyInputBounds(
   inputWindow.setBounds(
     {
       x: anchor.x,
-      y: anchor.y,
+      y: logicalMenuDirection === "up"
+        ? Math.round(anchor.y - logicalMenuExtraHeight)
+        : anchor.y,
 
       width:
         fixedInputWidth,
@@ -311,6 +315,8 @@ export function openInputWindow() {
     metrics.minHeight;
 
   logicalMenuExtraHeight = 0;
+  logicalMenuDirection = "down";
+  logicalOverlayOpen = false;
 
   inputWindow =
     createBaseWindow({
@@ -423,6 +429,8 @@ export function openInputWindow() {
         INPUT_MIN_HEIGHT;
 
       logicalMenuExtraHeight = 0;
+      logicalMenuDirection = "down";
+      logicalOverlayOpen = false;
     }
   );
 
@@ -448,9 +456,12 @@ export function applyInputWindowSettings(
     settings
   );
 
-  inputWindow.setAlwaysOnTop(
-    metrics.alwaysOnTop
-  );
+  if (logicalOverlayOpen) {
+    inputWindow.setAlwaysOnTop(true, "pop-up-menu");
+    inputWindow.moveTop();
+  } else {
+    inputWindow.setAlwaysOnTop(metrics.alwaysOnTop);
+  }
 
   applyInputBounds(
     settings
@@ -477,7 +488,9 @@ export function resizeInputWindow(
       : {
           height: request,
           baseHeight: request,
-          menuExtraHeight: 0
+          menuExtraHeight: 0,
+          menuDirection: "down",
+          overlayOpen: false
         };
 
   const numericHeight =
@@ -488,6 +501,14 @@ export function resizeInputWindow(
 
   const numericMenuExtraHeight =
     Number(normalized.menuExtraHeight);
+
+  const nextMenuDirection =
+    normalized.menuDirection === "up"
+      ? "up"
+      : "down";
+
+  const nextOverlayOpen =
+    normalized.overlayOpen === true;
 
   if (
     !Number.isFinite(
@@ -543,6 +564,20 @@ export function resizeInputWindow(
         metrics.maxHeight
       )
     );
+
+  logicalMenuDirection =
+    nextOverlayOpen
+      ? nextMenuDirection
+      : "down";
+
+  logicalOverlayOpen = nextOverlayOpen;
+
+  if (logicalOverlayOpen) {
+    inputWindow.setAlwaysOnTop(true, "pop-up-menu");
+    inputWindow.moveTop();
+  } else {
+    inputWindow.setAlwaysOnTop(metrics.alwaysOnTop);
+  }
 
   applyInputBounds(
     settings

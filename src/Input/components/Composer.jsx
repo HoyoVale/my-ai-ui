@@ -1,6 +1,15 @@
 import {
+  useLayoutEffect,
+  useRef
+} from "react";
+
+import {
   InputContextMenu
 } from "./ContextMenu.jsx";
+
+import {
+  SlashMenu
+} from "./SlashMenu.jsx";
 
 export function InputComposer({
   className = "",
@@ -8,24 +17,46 @@ export function InputComposer({
   barRef,
   textareaRef,
   value,
+  cursorPosition,
   placeholder,
   canSend,
   isRunning,
   isStopping,
   disabled,
   context,
+  contextMenuCloseToken = 0,
+  slashSuppressed = false,
+  skillsReady = false,
+  skillsError = "",
   onContextMenuOpenChange,
   onContextMenuPanelHeightChange,
+  onSlashMenuOpenChange,
+  onSlashMenuPanelHeightChange,
   onSelectSession,
   onCreateSession,
   onAddWorkspace,
   onSkillChange,
   onModelChange,
+  onToggleMcp,
+  onToggleMcpServer,
   onChange,
+  onCursorChange,
+  onSuppressSlash,
   onKeyDown,
   onSend,
   onClose
 }) {
+  const slashMenuRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || document.activeElement !== textarea) return;
+    const position = Math.max(0, Math.min(value.length, Number(cursorPosition) || 0));
+    if (textarea.selectionStart !== position || textarea.selectionEnd !== position) {
+      textarea.setSelectionRange(position, position);
+    }
+  }, [cursorPosition, textareaRef, value.length]);
+
   return (
     <div
       className={`input-window ${className}`.trim()}
@@ -38,6 +69,7 @@ export function InputComposer({
         <InputContextMenu
           context={context}
           disabled={disabled || isRunning || context?.busy}
+          closeToken={contextMenuCloseToken}
           onOpenChange={onContextMenuOpenChange}
           onPanelHeightChange={onContextMenuPanelHeightChange}
           onSelectSession={onSelectSession}
@@ -45,6 +77,29 @@ export function InputComposer({
           onAddWorkspace={onAddWorkspace}
           onSkillChange={onSkillChange}
           onModelChange={onModelChange}
+          onToggleMcp={onToggleMcp}
+          onToggleMcpServer={onToggleMcpServer}
+        />
+
+        <SlashMenu
+          ref={slashMenuRef}
+          value={value}
+          cursorPosition={cursorPosition}
+          skills={context?.skills}
+          skillsReady={skillsReady}
+          skillsError={skillsError}
+          mode={context?.mode}
+          disabled={disabled || isRunning || context?.busy}
+          suppressed={slashSuppressed}
+          onOpenChange={onSlashMenuOpenChange}
+          onPanelHeightChange={onSlashMenuPanelHeightChange}
+          onChange={(nextValue, nextCursor, options = {}) => {
+            if (options.suppressSlash) {
+              onSuppressSlash?.();
+              return;
+            }
+            onChange(nextValue, nextCursor);
+          }}
         />
 
         <textarea
@@ -55,8 +110,16 @@ export function InputComposer({
           placeholder={context?.error || placeholder}
           value={value}
           aria-busy={disabled}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={onKeyDown}
+          onChange={(event) => {
+            onChange(event.target.value, event.target.selectionStart);
+          }}
+          onSelect={(event) => onCursorChange?.(event.currentTarget.selectionStart)}
+          onClick={(event) => onCursorChange?.(event.currentTarget.selectionStart)}
+          onKeyUp={(event) => onCursorChange?.(event.currentTarget.selectionStart)}
+          onKeyDown={(event) => {
+            if (slashMenuRef.current?.handleKeyDown(event)) return;
+            onKeyDown(event);
+          }}
           autoFocus
         />
 

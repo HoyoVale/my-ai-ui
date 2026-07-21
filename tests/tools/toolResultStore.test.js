@@ -71,7 +71,12 @@ describe(
             {
               ok: true,
               data: {
-                text: "x".repeat(6000)
+                text: "x".repeat(6000),
+                changePreview: {
+                  paths: ["src/App.jsx"],
+                  diff: "--- a/src/App.jsx\n+++ b/src/App.jsx\n-old\n+new",
+                  truncated: false
+                }
               }
             },
             {
@@ -96,6 +101,14 @@ describe(
           captured.result.originalBytes >=
             captured.result.storedBytes,
           true
+        );
+        assert.deepEqual(
+          captured.result.changePreview?.paths,
+          ["src/App.jsx"]
+        );
+        assert.match(
+          captured.result.changePreview?.diff ?? "",
+          /\+new/u
         );
 
         const resultId =

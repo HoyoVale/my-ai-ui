@@ -14,6 +14,14 @@ import {
 } from "./MarkdownContent.jsx";
 
 import {
+  FileChangesSummary
+} from "./FileDiff.jsx";
+
+import {
+  collectFileChanges
+} from "../utils/fileChanges.js";
+
+import {
   createActivitySnapshot,
   describeToolBatch,
   formatTaskDuration,
@@ -123,6 +131,7 @@ export function ConversationMessageList({
         String(
           liveActivity?.liveStepText ?? ""
         ).length,
+        liveActivity?.liveStepRole ?? "none",
         String(
           liveActivity?.finalText ?? ""
         ).length
@@ -722,6 +731,15 @@ function LiveAgentActivity({
         live: true
       }
     );
+  const fileChanges = collectFileChanges(snapshot);
+  const finalCandidateText =
+    activity.liveStepRole === "final_candidate"
+      ? String(activity.liveStepText ?? "")
+      : "";
+  const displayedFinalText =
+    String(activity.finalText ?? "").trim()
+      ? String(activity.finalText ?? "")
+      : finalCandidateText;
 
   return (
     <article
@@ -735,8 +753,9 @@ function LiveAgentActivity({
             snapshot={snapshot}
             live
             liveText={
-              activity.liveStepText ??
-              ""
+              activity.liveStepRole === "final_candidate"
+                ? ""
+                : activity.liveStepText ?? ""
             }
             stopping={
               ["stopping", "cancelling"].includes(
@@ -749,12 +768,12 @@ function LiveAgentActivity({
             developerMode={developerMode}
           />
 
-          {String(
-            activity.finalText ?? ""
-          ).trim() && (
+          <FileChangesSummary changes={fileChanges} />
+
+          {String(displayedFinalText).trim() && (
             <div className="conversation-message__body conversation-message__body--live">
               <MarkdownContent
-                content={activity.finalText}
+                content={displayedFinalText}
               />
             </div>
           )}
@@ -774,6 +793,7 @@ function AssistantActivity({
     createActivitySnapshot(
       message
     );
+  const fileChanges = collectFileChanges(snapshot);
 
   if (
     visibleTimelineEvents(snapshot, developerMode).length === 0
@@ -793,6 +813,7 @@ function AssistantActivity({
           onOpenTaskPanel
         }
       />
+      <FileChangesSummary changes={fileChanges} />
     </div>
   );
 }

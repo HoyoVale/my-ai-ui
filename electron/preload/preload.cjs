@@ -212,6 +212,12 @@ const CHANNELS = Object.freeze({
   MCP_PING:
     "mcp-ping",
 
+  MCP_QUICK_SET_ENABLED:
+    "mcp-quick-set-enabled",
+
+  MCP_QUICK_SET_SERVER_ENABLED:
+    "mcp-quick-set-server-enabled",
+
   MCP_GET_SECRET_STATUS:
     "mcp-get-secret-status",
 
@@ -427,7 +433,9 @@ const api = Object.freeze({
         ? {
             height: Number(request.height),
             baseHeight: Number(request.baseHeight),
-            menuExtraHeight: Number(request.menuExtraHeight)
+            menuExtraHeight: Number(request.menuExtraHeight),
+            menuDirection: request.menuDirection === "up" ? "up" : "down",
+            overlayOpen: request.overlayOpen === true
           }
         : Number(request);
 
@@ -1040,6 +1048,23 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS.MCP_PING,
       { serverId: String(serverId ?? "") }
+    );
+  },
+
+  quickSetMcpEnabled: (enabled) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_QUICK_SET_ENABLED,
+      { enabled: enabled === true }
+    );
+  },
+
+  quickSetMcpServerEnabled: (serverId, enabled) => {
+    return ipcRenderer.invoke(
+      CHANNELS.MCP_QUICK_SET_SERVER_ENABLED,
+      {
+        serverId: String(serverId ?? ""),
+        enabled: enabled === true
+      }
     );
   },
 

@@ -1,121 +1,66 @@
-const LANGUAGE_RULES = {
-  auto:
-    "默认使用用户当前使用的语言回答；只有用户明确要求时才切换语言。",
-  "zh-CN":
-    "默认使用简体中文回答；必要的代码、命令和专有名词可保留原文。",
-  "en-US":
-    "默认使用自然、清晰的英语回答。"
+const LEGACY_LANGUAGE_RULES = {
+  auto: "跟随用户使用的语言",
+  "zh-CN": "默认使用简体中文",
+  "en-US": "默认使用英语"
 };
 
-const TONE_RULES = {
-  natural:
-    "语气自然、平和、不过度热情，也不过分正式。",
-  friendly:
-    "语气友好、有温度，但避免夸张、撒娇或频繁感叹。",
-  professional:
-    "语气专业、克制、结构清楚，优先使用准确措辞。",
-  direct:
-    "语气直接、简练，先给结论，再补充必要说明。"
+const LEGACY_TONE_RULES = {
+  natural: "语气自然清晰",
+  friendly: "语气友好但不过度热情",
+  professional: "语气专业、克制、结构清楚",
+  direct: "表达直接，先给结论"
 };
 
-const LENGTH_RULES = {
-  concise:
-    "优先给出精简答案，只保留完成任务所需的信息。",
-  balanced:
-    "根据问题复杂度控制篇幅，兼顾结论、解释与可执行步骤。",
-  detailed:
-    "在不重复的前提下提供更完整的背景、推理说明和操作步骤。"
+const LEGACY_LENGTH_RULES = {
+  concise: "回答尽量精简",
+  balanced: "篇幅根据问题复杂度调整",
+  detailed: "在不重复的前提下提供完整细节"
 };
 
-function normalizedText(
-  value,
-  fallback = ""
-) {
-  return typeof value === "string"
-    ? value.trim()
-    : fallback;
+function normalizedText(value, fallback = "") {
+  return typeof value === "string" ? value.trim() : fallback;
 }
 
-export function buildPersonalityContext(
-  personality = {}
-) {
-  if (!personality.enabled) {
-    return "";
-  }
+function legacyPreferences(personality) {
+  return [
+    LEGACY_LANGUAGE_RULES[personality.language] ?? LEGACY_LANGUAGE_RULES.auto,
+    LEGACY_TONE_RULES[personality.tone] ?? LEGACY_TONE_RULES.natural,
+    LEGACY_LENGTH_RULES[personality.responseLength] ?? LEGACY_LENGTH_RULES.balanced
+  ].join("；") + "。";
+}
 
-  const name =
-    normalizedText(
-      personality.name,
-      "Xixi"
-    ) || "Xixi";
+export function buildPersonalityContext(personality = {}) {
+  if (!personality.enabled) return "";
 
-  const identity =
-    normalizedText(
-      personality.identity,
-      "桌面 AI 助手"
-    ) || "桌面 AI 助手";
-
-  const languageRule =
-    LANGUAGE_RULES[
-      personality.language
-    ] ?? LANGUAGE_RULES.auto;
-
-  const toneRule =
-    TONE_RULES[
-      personality.tone
-    ] ?? TONE_RULES.natural;
-
-  const lengthRule =
-    LENGTH_RULES[
-      personality.responseLength
-    ] ?? LENGTH_RULES.balanced;
-
-  const customInstructions =
-    normalizedText(
-      personality.customInstructions
-    );
+  const name = normalizedText(personality.name, "Xixi") || "Xixi";
+  const identity = normalizedText(personality.identity, "桌面 AI 助手") || "桌面 AI 助手";
+  const preferences = normalizedText(
+    personality.responsePreferences,
+    legacyPreferences(personality)
+  );
+  const customInstructions = normalizedText(personality.customInstructions);
 
   return [
     "以下是用户为助手明确配置的人格与回复偏好，应当稳定遵循：",
     `- 名称：${name}`,
     `- 身份：${identity}`,
-    `- 语言：${languageRule}`,
-    `- 语气：${toneRule}`,
-    `- 篇幅：${lengthRule}`,
-    customInstructions
-      ? `- 补充说明：${customInstructions}`
-      : ""
-  ]
-    .filter(Boolean)
-    .join("\n");
+    preferences ? `- 回复偏好：${preferences}` : "",
+    customInstructions ? `- 补充说明：${customInstructions}` : ""
+  ].filter(Boolean).join("\n");
 }
 
-export function getPersonalitySummary(
-  personality = {}
-) {
+export function getPersonalitySummary(personality = {}) {
   return {
-    enabled:
-      Boolean(
-        personality.enabled
-      ),
-    name:
-      normalizedText(
-        personality.name,
-        "Xixi"
-      ) || "Xixi",
-    identity:
-      normalizedText(
-        personality.identity,
-        "桌面 AI 助手"
-      ) || "桌面 AI 助手",
-    language:
-      personality.language ??
-      "auto",
-    tone:
-      personality.tone ??
-      "natural",
-    responseLength:
-      personality.responseLength ??
-      "balanced"
+    enabled: Boolean(personality.enabled),
+    name: normalizedText(personality.name, "Xixi") || "Xixi",
+    identity: normalizedText(personality.identity, "桌面 AI 助手") || "桌面 AI 助手",
+    responsePreferences: normalizedText(
+      personality.responsePreferences,
+      legacyPreferences(personality)
+    ),
+    // Keep legacy fields in metadata for backward-compatible tests and histories.
+    language: personality.language ?? "auto",
+    tone: personality.tone ?? "natural",
+    responseLength: personality.responseLength ?? "balanced"
   };
 }
