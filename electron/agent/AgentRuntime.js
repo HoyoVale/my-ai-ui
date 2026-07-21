@@ -142,6 +142,10 @@ import {
 } from "./runCheckpoint.js";
 
 import {
+  createGoalVerificationInstruction
+} from "./GoalCompletionVerifier.js";
+
+import {
   createCheckpointContinuationState,
   resolveCheckpointContinuation
 } from "./checkpointResume.js";
@@ -2595,6 +2599,7 @@ export class AgentRuntime {
     records,
     plan,
     executionStopReason,
+    goalVerification = null,
     abortController
   }) {
     const maxAttempts =
@@ -2631,7 +2636,8 @@ export class AgentRuntime {
       createFinalizationInstruction({
         plan,
         records,
-        executionStopReason
+        executionStopReason,
+        goalVerification
       });
 
     for (
@@ -3151,6 +3157,11 @@ export class AgentRuntime {
         segmentCallbacks: {
           getPlan: () => toolSession.getPlan(),
           getRecords: () => toolSession.getRecords(),
+          getCompletionContext: () => ({
+            mode: this.activeRun.mode ?? "chat",
+            availableToolNames: Object.keys(toolSession.tools ?? {}),
+            runtimeRecovery: toolSession.getRuntimeRecovery?.() ?? null
+          }),
           createCheckpoint: () => {
             const checkpoint = this.buildActiveCheckpoint();
             if (checkpoint) {
@@ -3205,7 +3216,9 @@ export class AgentRuntime {
             this.activeRun.currentSegmentId = "";
             const title =
               segmentOutcome.decision === "continue"
-                ? "已整理当前进展，继续执行"
+                ? segmentOutcome.verification?.verified === false
+                  ? "完成证据不足，继续验证"
+                  : "已整理当前进展，继续执行"
                 : segmentOutcome.decision === "checkpoint"
                   ? "当前阶段进展已整理"
                   : "当前阶段已完成";
@@ -3225,7 +3238,8 @@ export class AgentRuntime {
               {
                 decision: segmentOutcome.decision,
                 stopReason: segmentOutcome.stopReason,
-                checkpointStored: Boolean(checkpoint)
+                checkpointStored: Boolean(checkpoint),
+                goalVerification: segmentOutcome.verification ?? null
               },
               { runId, segmentId: segment.id }
             );
@@ -3240,7 +3254,7 @@ export class AgentRuntime {
               );
             }
           },
-          onContinue: ({ checkpoint }) => {
+          onContinue: ({ checkpoint, segmentOutcome }) => {
             this.activeRun.finalText = "";
             this.activeRun.currentStepText = "";
             this.activeRun.liveStepRole =
@@ -3251,6 +3265,9 @@ export class AgentRuntime {
             segmentSystem = [
               context.system,
               createCheckpointInstruction(checkpoint),
+              createGoalVerificationInstruction(
+                segmentOutcome?.verification
+              ),
               "[Continued execution] Continue the same task from the saved task state. Advance unfinished work; do not repeat completed tool calls. If required user input is missing, mark the current plan step needs_input and provide a final explanation. Do not mention internal execution slices or counters to the user."
             ].filter(Boolean).join("\n\n");
             this.persistActiveRunCheckpoint({
@@ -3292,7 +3309,8 @@ export class AgentRuntime {
         runFinalization: ({
           records,
           plan,
-          executionStopReason
+          executionStopReason,
+          goalVerification
         }) =>
           this.runFinalization({
             runId,
@@ -3303,6 +3321,7 @@ export class AgentRuntime {
             records,
             plan,
             executionStopReason,
+            goalVerification,
             abortController
           })
       });
@@ -3333,7 +3352,9 @@ export class AgentRuntime {
         "RUN_COMPLETED",
         {
           outcome: engineResult.outcome,
-          stopReason: engineResult.executionStopReason
+          stopReason: engineResult.executionStopReason,
+          goalVerification:
+            engineResult.loopResult?.verification ?? null
         },
         { runId }
       );

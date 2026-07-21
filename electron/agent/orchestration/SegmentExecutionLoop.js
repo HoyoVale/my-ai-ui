@@ -34,6 +34,7 @@ export class SegmentExecutionLoop {
   async run({
     getPlan,
     getRecords,
+    getCompletionContext,
     createCheckpoint,
     executeSegment,
     onSegmentStart = () => {},
@@ -110,8 +111,20 @@ export class SegmentExecutionLoop {
         plan,
         records,
         finalText: execution?.finalText ?? "",
+        completionContext: getCompletionContext?.({
+          segment,
+          execution,
+          plan,
+          records
+        }) ?? {},
         checkpoint
       });
+      const committedCheckpoint = checkpoint
+        ? {
+            ...checkpoint,
+            orchestration: segmentOutcome.snapshot
+          }
+        : null;
 
       await onSegmentComplete({
         segment,
@@ -119,7 +132,7 @@ export class SegmentExecutionLoop {
         segmentOutcome,
         plan,
         records,
-        checkpoint
+        checkpoint: committedCheckpoint
       });
 
       if (segmentOutcome.decision !== "continue") {
@@ -129,7 +142,7 @@ export class SegmentExecutionLoop {
           execution,
           plan,
           records,
-          checkpoint
+          checkpoint: committedCheckpoint
         };
       }
 
@@ -139,7 +152,7 @@ export class SegmentExecutionLoop {
         segmentOutcome,
         plan,
         records,
-        checkpoint
+        checkpoint: committedCheckpoint
       });
     }
 

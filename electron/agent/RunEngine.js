@@ -102,7 +102,8 @@ export class RunEngine {
         plan,
         finishReason,
         executionStopReason,
-        loopResult
+        loopResult,
+        goalVerification: loopResult.verification ?? null
       });
     }
 
@@ -113,7 +114,8 @@ export class RunEngine {
         this.fallbackFactory({
           plan,
           records,
-          executionStopReason
+          executionStopReason,
+          goalVerification: loopResult.verification ?? null
         })
       ) || "当前处理已经结束，但没有生成完整说明。";
       setFinalText(finalText);
@@ -121,9 +123,10 @@ export class RunEngine {
     }
 
     const planState = this.planStateFactory(plan);
+    const goalVerified = loopResult.verification?.verified !== false;
     const outcome = this.gracefulBoundary(executionStopReason)
       ? RUN_OUTCOMES.CONTINUABLE
-      : finalText &&
+      : goalVerified && finalText &&
           (
             planState.isComplete ||
             executionStopReason === RUN_STOP_REASONS.COMPLETED

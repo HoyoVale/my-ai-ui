@@ -193,7 +193,8 @@ function summarizeRecords(records = []) {
 export function createFinalizationInstruction({
   plan = [],
   records = [],
-  executionStopReason = ""
+  executionStopReason = "",
+  goalVerification = null
 } = {}) {
   const isContinuationBoundary =
     isGracefulRunBoundary(
@@ -210,9 +211,24 @@ export function createFinalizationInstruction({
         planState.hasCancelled
         ? "The execution plan is not fully complete. Clearly state what remains or is blocked."
         : "No explicit execution plan is active.";
+  const missingEvidence = (goalVerification?.checks ?? [])
+    .filter((item) => item?.passed !== true)
+    .map((item) => `- ${text(item?.detail, 300)}`)
+    .slice(0, 10);
+  const verificationNote = goalVerification?.verified === false
+    ? [
+        "The runtime completion verifier did not accept the goal as complete. Do not claim full completion.",
+        missingEvidence.length > 0
+          ? `Missing completion evidence:\n${missingEvidence.join("\n")}`
+          : "Required completion evidence is still missing."
+      ].join("\n")
+    : goalVerification?.verified === true
+      ? "The runtime completion verifier accepted the available completion evidence."
+      : "";
   return [
     "[Finalization phase]",
     completionNote,
+    verificationNote,
     "Generate the final user-facing answer now.",
     "Do not call tools, create another plan, or ask another question.",
     isContinuationBoundary
@@ -238,7 +254,8 @@ export function createFinalizationInstruction({
 export function createFallbackFinalSummary({
   plan = [],
   records = [],
-  executionStopReason = ""
+  executionStopReason = "",
+  goalVerification = null
 } = {}) {
   const planState =
     getPlanCompletionState(plan);
@@ -266,7 +283,9 @@ export function createFallbackFinalSummary({
 
   const lines = [];
 
-  if (planState.isComplete) {
+  if (goalVerification?.verified === false) {
+    lines.push("计划步骤已经结束，但目标尚未通过完成验证。");
+  } else if (planState.isComplete) {
     lines.push("计划已执行完成。");
   } else if (completed.length > 0) {
     lines.push(
@@ -285,6 +304,16 @@ export function createFallbackFinalSummary({
     );
   }
 
+  const missingEvidence = (goalVerification?.checks ?? [])
+    .filter((item) => item?.passed !== true)
+    .map((item) => text(item?.detail, 240))
+    .filter(Boolean)
+    .slice(0, 4);
+  if (missingEvidence.length > 0) {
+    lines.push("仍需完成：");
+    lines.push(...missingEvidence.map((item) => `- ${item}`));
+  }
+
   if (
     executionStopReason &&
     executionStopReason !==
@@ -299,7 +328,7 @@ export function createFallbackFinalSummary({
 
   if (
     isGracefulRunBoundary(executionStopReason) &&
-    !planState.isComplete
+    (!planState.isComplete || goalVerification?.verified === false)
   ) {
     const nextStep = planState.items.find(
       (item) => ["in_progress", "pending", "blocked"].includes(item?.status)

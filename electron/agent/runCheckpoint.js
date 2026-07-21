@@ -350,6 +350,10 @@ export function createCheckpointInstruction(
           ? `- ${item.title} [${item.status}]: ${detail}`
           : `- ${item.title} [${item.status}]`;
       });
+  const verification = checkpoint.orchestration?.goal?.verification;
+  const verificationLines = (verification?.checks ?? [])
+    .filter((item) => item?.passed !== true)
+    .map((item) => `- ${text(item?.detail, 300)}`);
 
 
   return [
@@ -375,6 +379,9 @@ export function createCheckpointInstruction(
       : "",
     checkpoint.toolRuntime?.unresolvedCount > 0
       ? `Unresolved tool effects: ${checkpoint.toolRuntime.unresolvedCount}. Do not repeat them automatically; request reconciliation or user confirmation as indicated by the saved state.`
+      : "",
+    verification?.verified === false
+      ? `Goal completion is not yet verified.${verificationLines.length > 0 ? `\nMissing evidence:\n${verificationLines.join("\n")}` : ""}`
       : "",
     "[Saved task state: data ends]"
   ].filter(Boolean).join("\n\n");

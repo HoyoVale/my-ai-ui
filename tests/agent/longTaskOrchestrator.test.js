@@ -143,6 +143,75 @@ describe("LongTaskOrchestrator", () => {
     assert.equal(outcome.snapshot.task.status, "completed");
   });
 
+  it("continues when a coding goal claims completion without objective evidence", () => {
+    const orchestrator = new LongTaskOrchestrator({
+      taskId: "task",
+      runId: "run",
+      objective: "请修复这个 bug",
+      maxSegments: 3,
+      maxNoProgressSegments: 2
+    });
+    orchestrator.beginSegment({ plan: activePlan() });
+
+    const outcome = orchestrator.completeSegment({
+      stopReason: RUN_STOP_REASONS.COMPLETED,
+      plan: [
+        { id: "fix", title: "Fix", status: "completed" }
+      ],
+      finalText: "已经修复。",
+      completionContext: {
+        mode: "coding",
+        availableToolNames: ["apply_patch", "run_workspace_command"]
+      }
+    });
+
+    assert.equal(outcome.decision, "continue");
+    assert.equal(outcome.stopReason, RUN_STOP_REASONS.PLAN_INCOMPLETE);
+    assert.equal(outcome.verification.verified, false);
+    assert.equal(outcome.snapshot.goal.verification.status, "incomplete");
+  });
+
+  it("completes a coding goal after mutation and validation evidence", () => {
+    const orchestrator = new LongTaskOrchestrator({
+      taskId: "task",
+      runId: "run",
+      objective: "修复并测试这个 bug"
+    });
+    orchestrator.beginSegment({ plan: activePlan() });
+    const plan = [{ id: "fix", title: "Fix", status: "completed" }];
+    const records = [
+      {
+        id: "patch",
+        name: "apply_patch",
+        status: "completed",
+        result: { summary: "Applied" }
+      },
+      {
+        id: "test",
+        name: "run_workspace_command",
+        status: "completed",
+        input: { command: "npm", args: ["test"] },
+        output: { ok: true, data: { exitCode: 0 } }
+      }
+    ];
+
+    const outcome = orchestrator.completeSegment({
+      stopReason: RUN_STOP_REASONS.COMPLETED,
+      plan,
+      records,
+      finalText: "修复和测试已经完成。",
+      completionContext: {
+        mode: "coding",
+        availableToolNames: ["apply_patch", "run_workspace_command"],
+        runtimeRecovery: { unresolvedCount: 0 }
+      }
+    });
+
+    assert.equal(outcome.decision, "complete");
+    assert.equal(outcome.verification.verified, true);
+    assert.equal(outcome.snapshot.goal.status, "completed");
+  });
+
   it("turns tool budget exhaustion into a continuable checkpoint", () => {
     const orchestrator = new LongTaskOrchestrator({
       taskId: "task",

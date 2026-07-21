@@ -3,6 +3,10 @@ import {
   isGracefulRunBoundary
 } from "../runStopReasons.js";
 
+import {
+  GoalCompletionVerifier
+} from "../GoalCompletionVerifier.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -116,12 +120,19 @@ export class LongTaskOrchestrator {
     maxSegmentSteps = 6,
     maxSegments = 6,
     maxNoProgressSegments = 2,
+    completionVerifier = new GoalCompletionVerifier(),
     startedAt = Date.now()
   } = {}) {
     this.goal = {
       id: text(goalId || taskId || runId, 120),
       objective: text(objective, 1200),
-      status: "running"
+      status: "running",
+      verification: {
+        version: 1,
+        status: "pending",
+        verified: false,
+        checks: []
+      }
     };
     this.task = {
       id: text(taskId || runId, 120),
@@ -138,6 +149,7 @@ export class LongTaskOrchestrator {
       maxNoProgressSegments: integer(maxNoProgressSegments, 2)
     };
     this.startedAt = Math.max(0, Number(startedAt) || Date.now());
+    this.completionVerifier = completionVerifier;
     this.endedAt = null;
     this.noProgressSegments = 0;
     this.segments = [];
@@ -208,6 +220,7 @@ export class LongTaskOrchestrator {
     plan = [],
     records = [],
     finalText = "",
+    completionContext = {},
     checkpoint = null,
     endedAt = Date.now()
   } = {}) {
@@ -218,8 +231,15 @@ export class LongTaskOrchestrator {
     const segment = this.activeSegment;
     const end = Math.max(segment.startedAt, Number(endedAt) || Date.now());
     const currentPlanState = planState(plan);
+    const verification = this.completionVerifier.verify({
+      objective: this.goal.objective,
+      plan,
+      records,
+      finalText,
+      ...completionContext
+    });
     const madeProgress =
-      (stopReason === RUN_STOP_REASONS.COMPLETED && Boolean(text(finalText))) ||
+      verification.verified ||
       progressSignature(plan, records) !== segment.baselineSignature;
 
     segment.status = "completed";
@@ -228,6 +248,8 @@ export class LongTaskOrchestrator {
     segment.finishReason = text(finishReason, 80);
     segment.stopReason = text(stopReason, 80);
     segment.madeProgress = madeProgress;
+    segment.verification = clone(verification);
+    this.goal.verification = clone(verification);
     segment.checkpoint = checkpoint && typeof checkpoint === "object"
       ? {
           phase: text(checkpoint.phase, 40),
@@ -259,7 +281,20 @@ export class LongTaskOrchestrator {
     } else if (currentPlanState.blocked && !currentPlanState.unfinished) {
       finalStopReason = RUN_STOP_REASONS.BLOCKED;
     } else if (stopReason === RUN_STOP_REASONS.COMPLETED) {
-      decision = "complete";
+      if (verification.verified) {
+        decision = "complete";
+      } else if (this.segments.length >= this.limits.maxSegments) {
+        decision = "checkpoint";
+        finalStopReason = RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT;
+      } else if (
+        this.noProgressSegments >= this.limits.maxNoProgressSegments
+      ) {
+        decision = "checkpoint";
+        finalStopReason = RUN_STOP_REASONS.NO_PROGRESS;
+      } else {
+        decision = "continue";
+        finalStopReason = RUN_STOP_REASONS.PLAN_INCOMPLETE;
+      }
     } else if (
       [
         RUN_STOP_REASONS.AGENT_STEP_LIMIT,
@@ -273,7 +308,7 @@ export class LongTaskOrchestrator {
         !currentPlanState.needsInput &&
         !currentPlanState.blocked;
 
-      if (hasSettledPlan) {
+      if (hasSettledPlan && verification.verified) {
         decision = "complete";
         finalStopReason = RUN_STOP_REASONS.COMPLETED;
       } else if (this.segments.length >= this.limits.maxSegments) {
@@ -307,6 +342,7 @@ export class LongTaskOrchestrator {
       stopReason: finalStopReason,
       madeProgress,
       noProgressSegments: this.noProgressSegments,
+      verification: clone(verification),
       segment: clone(segment),
       snapshot: this.snapshot()
     };
