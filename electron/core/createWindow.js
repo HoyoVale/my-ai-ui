@@ -1,4 +1,5 @@
 import {
+  app,
   BrowserWindow
 } from "electron";
 
@@ -23,6 +24,12 @@ const preloadPath = path.resolve(
   "../preload/preload.cjs"
 );
 
+const appIconPath = path.join(
+  app.getAppPath(),
+  "public",
+  "icon.png"
+);
+
 /**
  * 创建所有窗口共用的安全基础配置。
  *
@@ -41,6 +48,7 @@ export function createBaseWindow(
     new BrowserWindow({
       frame: false,
       show: true,
+      icon: appIconPath,
 
       ...windowOptions,
 

@@ -134,16 +134,10 @@ export function isTrustedRendererUrl(
     return false;
   }
 
-  if (
-    [
-      "data:",
-      "blob:",
-      "devtools:"
-    ].includes(url.protocol)
-  ) {
-    return true;
-  }
-
-  return trustedOrigins
-    .has(url.origin);
+  return (
+    ["http:", "https:"].includes(
+      url.protocol
+    ) &&
+    trustedOrigins.has(url.origin)
+  );
 }

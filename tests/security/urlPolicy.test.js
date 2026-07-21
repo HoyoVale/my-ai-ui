@@ -8,6 +8,7 @@ import assert
 
 import {
   isLocalOrPrivateHost,
+  isTrustedRendererUrl,
   parseSafeExternalUrl
 } from "../../electron/security/urlPolicy.js";
 
@@ -80,6 +81,42 @@ describe(
           ),
           false
         );
+      }
+    );
+
+    it(
+      "trusts only renderer pages from an explicitly allowed web origin",
+      () => {
+        const origins = new Set([
+          "http://localhost:5173"
+        ]);
+
+        assert.equal(
+          isTrustedRendererUrl(
+            "http://localhost:5173/#/input",
+            origins
+          ),
+          true
+        );
+
+        for (
+          const value
+          of [
+            "data:text/html,<script>alert(1)</script>",
+            "blob:http://localhost:5173/renderer",
+            "devtools://devtools/bundled/inspector.html",
+            "https://example.com/"
+          ]
+        ) {
+          assert.equal(
+            isTrustedRendererUrl(
+              value,
+              origins
+            ),
+            false,
+            value
+          );
+        }
       }
     );
   }

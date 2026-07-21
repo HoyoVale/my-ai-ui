@@ -61,7 +61,11 @@ function togglePet() {
 }
 
 function trayIcon() {
-  const iconPath = path.join(app.getAppPath(), "assets", "xixi_png.png");
+  const iconPath = path.join(
+    app.getAppPath(),
+    "public",
+    "icon-32x32.png"
+  );
   const image = nativeImage.createFromPath(iconPath);
   return image.isEmpty() ? image : image.resize({ width: 20, height: 20, quality: "best" });
 }

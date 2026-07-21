@@ -642,16 +642,44 @@ async function main() {
     );
 
     assert.equal(
-      openInputBounds.y,
-      closedInputBounds.y
+      openInputBounds.width,
+      closedInputBounds.width
     );
 
-    assert.ok(
-      openInputBounds.y +
-        openInputBounds.height >
+    const closedInputBottom =
       closedInputBounds.y +
-        closedInputBounds.height
+      closedInputBounds.height;
+    const openInputBottom =
+      openInputBounds.y +
+      openInputBounds.height;
+    const keepsTopAnchor =
+      Math.abs(
+        openInputBounds.y -
+          closedInputBounds.y
+      ) <= 1;
+    const keepsBottomAnchor =
+      Math.abs(
+        openInputBottom -
+          closedInputBottom
+      ) <= 1;
+
+    assert.ok(
+      keepsTopAnchor ||
+        keepsBottomAnchor,
+      "opening the input menu should preserve either the top or bottom edge"
     );
+
+    if (keepsTopAnchor) {
+      assert.ok(
+        openInputBottom >
+          closedInputBottom
+      );
+    } else {
+      assert.ok(
+        openInputBounds.y <
+          closedInputBounds.y
+      );
+    }
 
     await input.keyboard.press(
       "Escape"

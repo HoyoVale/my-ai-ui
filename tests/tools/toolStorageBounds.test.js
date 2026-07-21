@@ -50,7 +50,7 @@ test("ToolResultStore removes the oldest persisted results when over quota", () 
     });
     const ids = [];
 
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 2; index += 1) {
       const captured = store.capture({
         ok: true,
         data: {
@@ -60,11 +60,23 @@ test("ToolResultStore removes the oldest persisted results when over quota", () 
       ids.push(captured.result.reference.resultId);
 
       const filePath = path.join(directory, `${ids[index]}.json`);
-      const timestamp = new Date(Date.now() + index * 1000);
+      const timestamp = new Date(
+        Date.now() -
+          (2 - index) * 1000
+      );
       fs.utimesSync(filePath, timestamp, timestamp);
     }
 
-    store.enforceQuota();
+    const third = store.capture({
+      ok: true,
+      data: {
+        text: "2:".padEnd(5000, "2")
+      }
+    });
+
+    ids.push(
+      third.result.reference.resultId
+    );
 
     assert.equal(store.read(ids[0]).ok, false);
     assert.equal(store.read(ids[1]).ok, true);
