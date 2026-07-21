@@ -1,7 +1,7 @@
 # Tool 与 Skill 开发路线
 
-> 基线：`my-ai-ui(60)`  
-> 当前阶段：Tool Read 2.0  
+> 基线：`my-ai-ui(61)`  
+> 当前阶段：Tool Write 2.0 已实施，下一阶段为 Capability Foundation  
 > 原则：先稳定系统工具与能力协议，再建设 Skill；Skill 不能绕过 Tool Runtime、工作区边界或用户批准。
 
 ## 一、总体路线
@@ -211,36 +211,41 @@ range
 
 ## 三、补丁 2：Tool Write 2.0
 
-下一阶段计划。
+状态：**已实施**。
 
-### 3.1 增强 `write_text_file`
+### 3.1 `write_text_file` 增强
 
-计划增加：
+支持：
 
 ```js
 {
   path,
   content,
+  encoding,
   expectedSha256,
+  createDirectories,
   createOnly,
   overwrite,
   preserveNewline,
-  encoding
+  dryRun
 }
 ```
 
-要求：
+实现能力：
 
-- Approval 前无副作用；
-- 原子写入；
-- 可选 SHA-256 前置条件；
-- 默认保留原编码与换行；
-- 返回修改前后 Hash、字节差异和 Receipt；
-- 崩溃后可核验结果。
+- 保持旧参数兼容；
+- UTF-8、UTF-8 BOM、UTF-16LE 编码；
+- 默认保留已有文件的编码、BOM 与换行风格；
+- `createOnly` 与 `overwrite` 明确表达创建和覆盖意图；
+- 可选 SHA-256 乐观并发检查；
+- Dry-run 只生成预览和证据，不产生文件副作用；
+- 临时文件写入、`fsync`、原子替换与写后 Hash 校验；
+- 已完成替换后若校验或边界钩子失败，恢复修改前内容；
+- 返回统一 Receipt 和修改证据。
 
 ### 3.2 `replace_text_in_file`
 
-用于精确替换：
+用于精确文本替换：
 
 ```js
 {
@@ -248,40 +253,80 @@ range
   oldText,
   newText,
   expectedOccurrences,
-  expectedSha256
+  expectedSha256,
+  dryRun
 }
 ```
 
-零次或多次匹配时不猜测。
+规则：
+
+- 默认要求旧文本只出现一次；
+- 零次或匹配次数与预期不一致时拒绝修改；
+- 不使用模糊匹配，不替模型猜测目标位置；
+- 保留原编码、BOM 和换行；
+- 支持 Hash 前置条件、Dry-run、原子写入与 Receipt。
 
 ### 3.3 `apply_patch`
 
-支持受限 Unified Diff：
+支持受限的标准 Unified Diff：
 
-- 先 dry-run；
-- 所有 hunk 可应用后才写入；
-- 多文件修改整体提交或整体回滚；
-- 禁止绝对路径和 `../`；
-- 所有目标必须位于同一授权工作区；
-- Approval 卡片显示文件与增删行摘要。
+- 默认最多 20 个文件，补丁文本默认上限 500 KB；
+- 所有文件和 hunk 先完整解析、路径校验和内存预应用；
+- 所有目标必须位于同一个授权工作区；
+- 禁止绝对路径、路径穿越、重复文件、删除与重命名；
+- 支持现有文件修改和显式新文件创建；
+- 支持单文件 `expectedSha256` 前置条件；
+- Dry-run 返回文件、增删行和 Hash 摘要；
+- 多文件先全部写入临时文件，再进入事务提交；
+- 事务内任一提交或校验失败，会恢复已经提交的文件；
+- 不覆盖上次异常退出遗留的 `.bak` 恢复证据，而是返回 `WRITE_TRANSACTION_RECOVERY_REQUIRED`；
+- 成功后返回事务级 Receipt 和各文件写前、写后证据。
 
-### 3.4 其他写入工具
+当前不支持：
 
-第一批：
+- 文件删除；
+- 文件重命名；
+- Git binary patch；
+- 任意非 Unified Diff 自定义补丁语法。
 
-- `append_text_file`
-- `create_directory`
-- `move_path`
+### 3.4 `append_text_file`
 
-后续独立开放：
+能力：
 
-- `delete_path`
+- 文件不存在时默认拒绝；
+- 必须显式设置 `createIfMissing` 才允许创建；
+- 可安全插入换行分隔符；
+- 保留已有编码、BOM 和换行；
+- 支持 Hash、Dry-run、原子替换与 Receipt。
 
-删除工具要求永久逐次批准，不能使用“本任务内允许”。
+追加不是直接以 `append` 模式写入磁盘，而是读取、生成目标内容后执行原子替换，避免部分追加。
 
-### 3.5 统一写入证据
+### 3.5 `create_directory`
 
-所有写工具计划返回：
+能力：
+
+- 支持单层或显式递归创建；
+- 已存在目录按幂等成功处理；
+- 文件占用目标路径时拒绝；
+- 支持 Dry-run；
+- 遵守工作区、敏感路径和符号链接边界；
+- 返回目录创建 Receipt。
+
+### 3.6 `move_path`
+
+能力：
+
+- 文件或目录只能在同一授权工作区内移动；
+- 默认且当前固定禁止覆盖目标；
+- 禁止把目录移动到自身内部；
+- 禁止符号链接逃逸；
+- 文件移动后执行 Hash 核验；
+- 已完成移动后若核验失败，在进程内尝试回滚；
+- 支持 Dry-run 和 Receipt。
+
+### 3.7 统一写入证据与 Runtime 契约
+
+所有写工具统一提供或持久化：
 
 ```js
 {
@@ -292,9 +337,60 @@ range
   bytesChanged,
   receiptId,
   rollbackAvailable,
-  warnings
+  rollbackPerformed,
+  addedLines,
+  removedLines,
+  warnings,
+  effectEvidence
 }
 ```
+
+同时接入：
+
+- Tool Approval；
+- Tool Receipt Store；
+- 幂等键；
+- 运行时核验与 Reconciliation；
+- Abort、Lease 和崩溃恢复状态；
+- 工作区写入并发键。
+
+`ToolExecutor` 会在执行成功前预留最终 Receipt ID，使工具返回值和持久化 Receipt 使用同一标识。
+
+### 3.8 原子性与回滚边界
+
+当前保证：
+
+- 单文件：临时文件 + 文件同步 + 原子替换 + 写后 Hash；
+- 多文件补丁：全部预检和暂存后提交，捕获到事务错误时恢复已提交文件；
+- Dry-run 无写副作用；
+- Approval 前无写副作用；
+- 临时文件和成功事务备份会清理；
+- 发现异常退出遗留备份时停止新事务，保留恢复证据。
+
+需要明确：多数桌面文件系统不提供真正的跨文件原子事务。当前多文件能力属于**应用层事务与进程内回滚**；若进程在多个 rename 之间被操作系统强制终止，可能需要未来的 Recovery Center 根据保留的事务证据执行显式恢复。
+
+### 3.9 暂不包含 `delete_path`
+
+删除工具将在独立补丁中设计，要求：
+
+- 永远逐次批准；
+- 不能使用“本任务内允许”；
+- 禁止删除工作区根目录和 `.git`；
+- 优先进入系统回收站，而不是直接永久删除；
+- 目录递归删除必须单独声明并展示影响范围。
+
+### 3.10 Tool Write 2.0 验收标准
+
+- 旧 `write_text_file` 调用继续工作；
+- Approval 前和 Dry-run 不产生副作用；
+- 编码、BOM 与换行保持可验证；
+- Hash 冲突拒绝修改；
+- 精确替换拒绝歧义；
+- Patch 先全量预检，再事务提交；
+- 注入提交失败后所有已提交文件恢复；
+- 异常遗留备份不会被新事务静默删除；
+- Receipt ID、持久化证据和工具返回一致；
+- 单元测试、Lint、生产构建、写入崩溃矩阵和运行时测试通过。
 
 ---
 

@@ -143,6 +143,7 @@ export class ToolReceiptStore {
 
   async store({
     callId,
+    receiptId = "",
     idempotencyKey = "",
     runId = "",
     segmentId = "",
@@ -169,7 +170,7 @@ export class ToolReceiptStore {
 
     const receipt = {
       version: 1,
-      receiptId: crypto.randomUUID(),
+      receiptId: String(receiptId ?? "").trim() || crypto.randomUUID(),
       callId: id,
       idempotencyKey: String(idempotencyKey ?? ""),
       taskId: this.taskId,

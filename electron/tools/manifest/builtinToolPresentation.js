@@ -135,7 +135,32 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
   write_text_file: {
     toolset: "workspace.write",
     title: "原子写入文本文件",
-    description: "通过临时文件、fsync、原子替换、SHA-256 校验和幂等收据安全写入文本文件。"
+    description: "通过 Dry-run、编码与换行保留、SHA-256 前置条件、原子替换和收据安全创建或覆盖文本文件。"
+  },
+  replace_text_in_file: {
+    toolset: "workspace.write",
+    title: "精确替换文件文本",
+    description: "只在匹配次数符合预期时替换文本，避免模糊修改，并保留原编码与换行。"
+  },
+  append_text_file: {
+    toolset: "workspace.write",
+    title: "追加文本文件",
+    description: "通过完整原子替换安全追加文本，文件创建必须显式允许。"
+  },
+  create_directory: {
+    toolset: "workspace.write",
+    title: "创建目录",
+    description: "在授权工作区内创建目录；递归创建父目录必须显式开启。"
+  },
+  move_path: {
+    toolset: "workspace.write",
+    title: "移动文件或目录",
+    description: "在同一授权工作区内原子移动路径，默认且当前始终禁止覆盖已有目标。"
+  },
+  apply_patch: {
+    toolset: "workspace.write",
+    title: "应用统一补丁",
+    description: "先校验全部 hunk，再以多文件事务提交 Unified Diff；失败时整体回滚。"
   },
   git_inspect: {
     toolset: "workspace.exec",

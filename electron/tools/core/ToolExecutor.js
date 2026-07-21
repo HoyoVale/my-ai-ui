@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import {
   ToolBudget,
   ToolScopeBudget
@@ -1037,6 +1039,16 @@ export class ToolExecutor {
           });
         }
         const normalizedOutput = normalizeOutput(validatedOutput.value);
+        const reservedReceiptId = ledgerCall ? crypto.randomUUID() : "";
+        if (
+          reservedReceiptId &&
+          normalizedOutput?.ok !== false &&
+          normalizedOutput?.data &&
+          typeof normalizedOutput.data === "object" &&
+          Object.hasOwn(normalizedOutput.data, "receiptId")
+        ) {
+          normalizedOutput.data.receiptId = reservedReceiptId;
+        }
         if (!isJsonSerializable(normalizedOutput)) {
           throw Object.assign(
             new Error("工具输出必须是可序列化的 JSON 值。"),
@@ -1159,6 +1171,7 @@ export class ToolExecutor {
           receipt = await this.executionLedger.storeReceipt(
             ledgerCall,
             {
+              receiptId: reservedReceiptId,
               status: "success",
               output: captured.value,
               result: captured.result,

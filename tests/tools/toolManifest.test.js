@@ -60,11 +60,11 @@ describe("Tool Manifest API", () => {
     });
 
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.tools.length, 23);
-    assert.equal(new Set(manifest.tools.map((tool) => tool.id)).size, 23);
-    assert.equal(new Set(manifest.tools.map((tool) => tool.name)).size, 23);
+    assert.equal(manifest.tools.length, 28);
+    assert.equal(new Set(manifest.tools.map((tool) => tool.id)).size, 28);
+    assert.equal(new Set(manifest.tools.map((tool) => tool.name)).size, 28);
     assert.match(manifest.revision, /^[a-f0-9]{20}$/u);
-    assert.equal(manifest.sourceSummary.builtin, 23);
+    assert.equal(manifest.sourceSummary.builtin, 28);
     assert.equal(manifest.sourceSummary.mcp, 0);
     assert.equal(manifest.sourceSummary.custom, 0);
 
