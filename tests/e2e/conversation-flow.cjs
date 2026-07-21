@@ -895,6 +895,54 @@ async function main() {
       4
     );
 
+    await conversation
+      .locator('[data-testid="conversation-goal-toggle"]')
+      .click();
+
+    const goalPanel = conversation.locator(
+      '[data-testid="conversation-goal-panel"]'
+    );
+    await goalPanel.waitFor({ state: "visible" });
+
+    await goalPanel
+      .locator('[data-testid="conversation-goal-objective"]')
+      .fill("E2E Goal：保持当前会话可用，并通过验证。");
+    await goalPanel
+      .locator('[data-testid="conversation-goal-save"]')
+      .click();
+    await waitForText(
+      goalPanel.locator(".conversation-inspector__header"),
+      "进行中"
+    );
+
+    await goalPanel
+      .locator('[data-testid="conversation-goal-pause"]')
+      .click();
+    await waitForText(
+      goalPanel.locator(".conversation-inspector__header"),
+      "已暂停"
+    );
+
+    await goalPanel
+      .locator('[data-testid="conversation-goal-save"]')
+      .click();
+    await waitForText(
+      goalPanel.locator(".conversation-inspector__header"),
+      "进行中"
+    );
+
+    await goalPanel
+      .locator('[data-testid="conversation-goal-clear"]')
+      .click();
+    await waitForText(
+      goalPanel.locator(".conversation-inspector__header"),
+      "未设置"
+    );
+    await conversation
+      .locator('[data-testid="conversation-goal-toggle"]')
+      .click();
+    await goalPanel.waitFor({ state: "hidden" });
+
     const currentHistoryItem =
       conversation.locator(
         '.conversation-history-item.is-current'
@@ -1568,13 +1616,13 @@ async function main() {
       .locator(
         '[data-testid="appearance-latin-font-family"]'
       )
-      .selectOption("georgia");
+      .fill("Georgia");
 
     await setting
       .locator(
         '[data-testid="appearance-chinese-font-family"]'
       )
-      .selectOption("song");
+      .fill("Source Han Serif SC");
 
     await delay(250);
 

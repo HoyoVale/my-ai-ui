@@ -170,6 +170,17 @@ export function assembleAgentContext({
   const skillContext = String(
     skillRuntime?.promptSection ?? ""
   ).trim();
+  const activeGoal = conversation?.goal?.status === "active"
+    ? conversation.goal
+    : null;
+  const goalContext = activeGoal
+    ? [
+        "The user has set a persistent goal for this conversation.",
+        `Goal:\n${String(activeGoal.objective ?? "").trim()}`,
+        "Treat each new user message as guidance for advancing this goal unless the user explicitly edits, pauses, or clears it.",
+        "Keep working through the plan and objective evidence. Do not claim the goal is complete until the runtime completion verifier accepts it."
+      ].join("\n\n")
+    : "";
 
   const promptSections = [
     createPromptSection({
@@ -226,6 +237,13 @@ export function assembleAgentContext({
       source: skillRuntime?.skill?.id ? `skill.${skillRuntime.skill.id}` : "skill",
       title: skillRuntime?.skill?.name ?? "active skill",
       content: skillContext
+    }),
+    createPromptSection({
+      id: "goal",
+      authority: "user",
+      source: "conversation",
+      title: "persistent goal",
+      content: goalContext
     }),
     createPromptSection({
       id: "personality",
@@ -308,6 +326,11 @@ export function assembleAgentContext({
           tokens: estimateTextTokens(skillContext)
         },
         {
+          id: "goal",
+          label: "会话目标",
+          tokens: estimateTextTokens(goalContext)
+        },
+        {
           id: "personality",
           label: "Personality",
           tokens:
@@ -386,6 +409,7 @@ export function assembleAgentContext({
         ),
         developerInstructionsEnabled: Boolean(developerInstructions),
         skillEnabled: Boolean(skillContext),
+        goalEnabled: Boolean(goalContext),
         sectionCount: promptSections.length
       },
       skill: skillRuntime?.active

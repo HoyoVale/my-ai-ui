@@ -137,6 +137,26 @@
     );
 }
 
+.conversation-goal-toggle {
+  position: relative;
+}
+
+.conversation-goal-toggle > span {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--conversation-topbar);
+  border-radius: 999px;
+  background: var(--conversation-accent);
+}
+
+.conversation-goal-toggle.is-paused,
+.conversation-goal-toggle.is-completed {
+  color: var(--conversation-soft);
+}
+
 .conversation-window-controls {
   gap: 2px;
   margin-left: 4px;
@@ -2162,6 +2182,146 @@
   padding: 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--conversation-border-strong) transparent;
+}
+
+.conversation-goal-panel__scroll {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.conversation-goal-status {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid var(--conversation-border);
+  border-radius: 12px;
+  background: var(--conversation-surface);
+}
+
+.conversation-goal-status > span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--conversation-accent);
+  background: color-mix(in srgb, var(--conversation-accent) 10%, transparent);
+}
+
+.conversation-goal-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.conversation-goal-status strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.conversation-goal-status small,
+.conversation-goal-help {
+  color: var(--conversation-soft);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.conversation-goal-status.is-completed > span {
+  color: #2d9b68;
+  background: rgb(45 155 104 / 0.1);
+}
+
+.conversation-goal-field {
+  position: relative;
+  display: grid;
+  gap: 7px;
+}
+
+.conversation-goal-field > span {
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.conversation-goal-field textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 11px 12px 24px;
+  border: 1px solid var(--conversation-border-strong);
+  border-radius: 11px;
+  outline: none;
+  color: var(--conversation-text);
+  background: var(--conversation-surface);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.conversation-goal-field textarea:focus {
+  border-color: color-mix(in srgb, var(--conversation-accent) 55%, var(--conversation-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--conversation-accent) 10%, transparent);
+}
+
+.conversation-goal-field > small {
+  position: absolute;
+  right: 9px;
+  bottom: 7px;
+  color: var(--conversation-faint);
+  font-size: 9px;
+}
+
+.conversation-goal-help {
+  margin: 0;
+}
+
+.conversation-goal-error {
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--conversation-danger);
+  background: color-mix(in srgb, var(--conversation-danger) 9%, transparent);
+  font-size: 10.5px;
+}
+
+.conversation-goal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: auto;
+}
+
+.conversation-goal-actions button {
+  min-height: 33px;
+  padding: 0 12px;
+  border: 1px solid var(--conversation-border-strong);
+  border-radius: 9px;
+  color: var(--conversation-text);
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.conversation-goal-actions button.is-primary {
+  border-color: transparent;
+  color: #fff;
+  background: var(--conversation-accent);
+}
+
+.conversation-goal-actions button.is-danger {
+  margin-right: auto;
+  color: var(--conversation-danger);
+}
+
+.conversation-goal-actions button:disabled {
+  opacity: 0.42;
+  cursor: default;
 }
 
 .conversation-task-overview {

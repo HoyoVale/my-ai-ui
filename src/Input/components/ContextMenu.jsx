@@ -137,6 +137,7 @@ export function InputContextMenu({
   onCreateSession,
   onAddWorkspace,
   onSkillChange,
+  onGoalChange,
   onModelChange,
   onToggleMcp,
   onToggleMcpServer
@@ -152,6 +153,7 @@ export function InputContextMenu({
   const [targetSkillIds, setTargetSkillIds] = useState([]);
   const targetSkillId = targetSkillIds[0] ?? "";
   const [targetRoutingMode, setTargetRoutingMode] = useState("manual");
+  const [goalDraft, setGoalDraft] = useState("");
   const [actionError, setActionError] = useState("");
 
   const currentMode = normalizeSessionMode(context?.mode, "chat");
@@ -159,6 +161,7 @@ export function InputContextMenu({
   const currentConversationId = context?.currentConversationId ?? null;
   const currentConversationTitle =
     context?.currentConversationTitle ?? "新会话";
+  const currentGoal = context?.currentGoal ?? null;
 
   const workspaces = useMemo(
     () => Array.isArray(context?.workspaces)
@@ -258,6 +261,7 @@ export function InputContextMenu({
       setTargetWorkspaceId(currentWorkspaceId);
       setTargetSkillIds(currentSkillIds);
       setTargetRoutingMode(context?.currentSkillRoutingMode === "auto" ? "auto" : "manual");
+      setGoalDraft(currentGoal?.objective ?? "");
       setActionError("");
     } else if (lastPanelHeightRef.current !== 0) {
       lastPanelHeightRef.current = 0;
@@ -265,6 +269,7 @@ export function InputContextMenu({
     }
   }, [
     context?.currentSkillRoutingMode,
+    currentGoal?.objective,
     currentSkillIds,
     currentMode,
     currentWorkspaceId,
@@ -497,6 +502,16 @@ export function InputContextMenu({
     setMenuOpen(false);
   };
 
+  const updateGoal = async ({ objective = goalDraft, status = "active" } = {}) => {
+    setActionError("");
+    const result = await onGoalChange?.({ objective, status });
+    if (result?.ok === false) {
+      setActionError(result.message ?? "无法更新 Goal。");
+      return;
+    }
+    setMenuOpen(false);
+  };
+
   const renderRoot = () => (
     <div className="input-context-menu__items">
       <MenuItem
@@ -519,6 +534,21 @@ export function InputContextMenu({
         trailing={<Chevron />}
         onClick={() => setPage("session")}
         testId="input-context-session"
+      />
+      <MenuItem
+        label="Goal"
+        value={
+          currentGoal?.status === "active"
+            ? "进行中"
+            : currentGoal?.status === "paused"
+              ? "已暂停"
+              : currentGoal?.status === "completed"
+                ? "已完成"
+                : "未设置"
+        }
+        trailing={<Chevron />}
+        onClick={() => setPage("goal")}
+        testId="input-context-goal"
       />
       <MenuItem
         label="Skill"
@@ -737,6 +767,60 @@ export function InputContextMenu({
     </>
   );
 
+  const renderGoalPage = () => (
+    <>
+      {renderPageHeader("Goal")}
+      <div className="input-goal-editor">
+        <textarea
+          data-testid="input-goal-objective"
+          value={goalDraft}
+          maxLength={4000}
+          rows={5}
+          placeholder="描述最终目标与完成标准…"
+          onChange={(event) => setGoalDraft(event.target.value)}
+        />
+        <div className="input-context-menu__notice">
+          Goal 绑定当前会话。新消息会作为推进目标的补充指令；只有完成验证通过后才会自动标记完成。
+        </div>
+        <div className="input-goal-editor__actions">
+          {currentGoal && (
+            <button
+              type="button"
+              className="is-secondary"
+              data-testid="input-goal-clear"
+              onClick={() => { void updateGoal({ objective: "" }); }}
+            >
+              清除
+            </button>
+          )}
+          {currentGoal?.status === "active" && (
+            <button
+              type="button"
+              className="is-secondary"
+              data-testid="input-goal-pause"
+              onClick={() => { void updateGoal({ objective: goalDraft, status: "paused" }); }}
+            >
+              暂停
+            </button>
+          )}
+          <button
+            type="button"
+            className="is-primary"
+            data-testid="input-goal-save"
+            disabled={!goalDraft.trim() || context?.busy}
+            onClick={() => { void updateGoal({ status: "active" }); }}
+          >
+            {currentGoal?.status === "paused" || currentGoal?.status === "completed"
+              ? "恢复并保存"
+              : currentGoal
+                ? "保存"
+                : "设为 Goal"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
   const toggleMcp = async (enabled) => {
     setActionError("");
     const result = await onToggleMcp?.(enabled);
@@ -830,8 +914,9 @@ export function InputContextMenu({
           {page === "root" && renderRoot()}
           {page === "mode" && renderModePage()}
           {page === "workspace" && renderWorkspacePage()}
-          {page === "session" && renderSessionPage()}
-          {page === "skill" && renderSkillPage()}
+      {page === "session" && renderSessionPage()}
+      {page === "goal" && renderGoalPage()}
+      {page === "skill" && renderSkillPage()}
           {page === "mcp" && renderMcpPage()}
           {page === "model" && renderModelPage()}
 

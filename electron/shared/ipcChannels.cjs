@@ -143,6 +143,9 @@ const IPC_CHANNELS =
       SET_SKILL:
         "conversation-set-skill",
 
+      SET_GOAL:
+        "conversation-set-goal",
+
       SELECT:
         "conversation-select",
 

@@ -86,6 +86,14 @@ export function ConversationIcon({
       </>
     ),
 
+    goal: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <circle cx="12" cy="12" r="4.5" />
+        <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+      </>
+    ),
+
     pin: (
       <>
         <path d="m9 4 6 6" />

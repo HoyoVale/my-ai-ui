@@ -281,6 +281,13 @@ export function useInputContext(settings) {
         skillIds,
         skillRoutingMode: selection?.skillRoutingMode ?? state.currentSkillRoutingMode
       });
-    })
+    }),
+    setGoal: ({ objective = "", status = "active" } = {}) => runAction(() =>
+      window.api?.setConversationGoal?.({
+        conversationId: state.currentConversationId,
+        objective,
+        status
+      })
+    )
   };
 }

@@ -358,6 +358,7 @@ export class ConversationManager {
       skillIds: normalizedSkillIds,
       skillSnapshots: normalizedSkillSnapshots,
       skillRoutingMode: skillRoutingMode === "auto" ? "auto" : "manual",
+      goal: null,
       title:
         String(title)
           .trim()
@@ -641,6 +642,96 @@ export class ConversationManager {
         this.getConversation(
           conversationId
         )
+    };
+  }
+
+  setGoal({
+    conversationId,
+    objective = "",
+    status = "active"
+  } = {}) {
+    const conversation = this.findMutableConversation(
+      conversationId || this.ensureLoaded().currentConversationId
+    );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    const normalizedObjective = String(objective ?? "")
+      .replace(/\r\n?/gu, "\n")
+      .trim()
+      .slice(0, 4000);
+
+    if (!normalizedObjective) {
+      conversation.goal = null;
+      conversation.updatedAt = this.now();
+      this.commit();
+      return {
+        ok: true,
+        conversation: clone(conversation),
+        goal: null
+      };
+    }
+
+    const normalizedStatus = ["active", "paused", "completed"].includes(status)
+      ? status
+      : "active";
+    const timestamp = this.now();
+    const existing = conversation.goal;
+    const keepIdentity = Boolean(
+      existing?.id &&
+      existing.objective === normalizedObjective &&
+      existing.status !== "completed"
+    );
+
+    conversation.goal = {
+      id: keepIdentity ? existing.id : this.createId(),
+      objective: normalizedObjective,
+      status: normalizedStatus,
+      createdAt: keepIdentity ? existing.createdAt : timestamp,
+      updatedAt: timestamp,
+      completedAt: normalizedStatus === "completed" ? timestamp : null
+    };
+    conversation.updatedAt = timestamp;
+    this.commit();
+
+    return {
+      ok: true,
+      conversation: clone(conversation),
+      goal: clone(conversation.goal)
+    };
+  }
+
+  completeGoal({
+    conversationId,
+    goalId
+  } = {}) {
+    const conversation = this.findMutableConversation(conversationId);
+    const goal = conversation?.goal;
+
+    if (!conversation || !goal || goal.status !== "active") {
+      return { ok: false, code: "goal-not-active" };
+    }
+
+    if (goalId && goal.id !== goalId) {
+      return { ok: false, code: "goal-changed" };
+    }
+
+    const timestamp = this.now();
+    goal.status = "completed";
+    goal.updatedAt = timestamp;
+    goal.completedAt = timestamp;
+    conversation.updatedAt = timestamp;
+    this.commit();
+
+    return {
+      ok: true,
+      goal: clone(goal)
     };
   }
 
@@ -1808,6 +1899,8 @@ export class ConversationManager {
         clone(conversation.skillSnapshots ?? (conversation.skillSnapshot ? [conversation.skillSnapshot] : [])),
       skillRoutingMode:
         conversation.skillRoutingMode === "auto" ? "auto" : "manual",
+      goal:
+        conversation.goal ? clone(conversation.goal) : null,
       workspaceAvailable:
         conversation.workspaceId
           ? Boolean(liveWorkspace && !liveWorkspace.missing)

@@ -111,6 +111,13 @@ describe(
             .CHANGED,
           "conversation-changed"
         );
+
+        assert.equal(
+          channels
+            .conversation
+            .SET_GOAL,
+          "conversation-set-goal"
+        );
       }
     );
 

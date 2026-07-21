@@ -6,6 +6,7 @@ import {
 
 import { ConversationContextInspector } from "./components/ContextInspector.jsx";
 import { ConversationMessageList } from "./components/MessageList.jsx";
+import { ConversationGoalPanel } from "./components/GoalPanel.jsx";
 import { ConversationPlanDock } from "./components/PlanDock.jsx";
 import { ConversationTaskPanel } from "./components/TaskPanel.jsx";
 import { ToolApprovalPanel } from "./components/ToolApprovalPanel.jsx";
@@ -31,6 +32,7 @@ export default function Conversation() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
+  const [goalOpen, setGoalOpen] = useState(false);
   const [taskTargetMessageId, setTaskTargetMessageId] = useState(null);
   const [query, setQuery] = useState("");
   const [sidebarMode, setSidebarMode] = useState("chat");
@@ -53,6 +55,7 @@ export default function Conversation() {
 
   useEffect(() => {
     setTaskOpen(false);
+    setGoalOpen(false);
     setTaskTargetMessageId(null);
   }, [currentConversationId]);
 
@@ -61,10 +64,11 @@ export default function Conversation() {
     theme === "dark" ? "theme-dark" : "",
     settings.appearance.reducedMotion ? "reduce-motion" : "",
     sidebarCollapsed ? "is-sidebar-collapsed" : "",
-    contextOpen || taskOpen ? "is-context-open" : "",
+    contextOpen || taskOpen || goalOpen ? "is-context-open" : "",
     isMaximized ? "is-maximized" : ""
   ].filter(Boolean).join(" "), [
     contextOpen,
+    goalOpen,
     isMaximized,
     settings.appearance.reducedMotion,
     sidebarCollapsed,
@@ -107,6 +111,8 @@ export default function Conversation() {
         sidebarCollapsed={sidebarCollapsed}
         contextOpen={contextOpen}
         taskOpen={taskOpen}
+        goalOpen={goalOpen}
+        goal={history.current?.goal ?? null}
         skill={history.current?.skillSnapshot ?? null}
         skills={history.current?.skillSnapshots ?? []}
         skillRoutingMode={history.current?.skillRoutingMode ?? "manual"}
@@ -114,10 +120,12 @@ export default function Conversation() {
         onToggleSidebar={() => setSidebarCollapsed((current) => !current)}
         onToggleContext={() => {
           setTaskOpen(false);
+          setGoalOpen(false);
           setContextOpen((current) => !current);
         }}
         onToggleTask={() => {
           setContextOpen(false);
+          setGoalOpen(false);
           setTaskOpen((current) => !current);
           setTaskTargetMessageId((current) => current ?? (
             agentStatus.conversationId === history.current?.id &&
@@ -125,6 +133,11 @@ export default function Conversation() {
               ? "live"
               : null
           ));
+        }}
+        onToggleGoal={() => {
+          setContextOpen(false);
+          setTaskOpen(false);
+          setGoalOpen((current) => !current);
         }}
         onOpenInput={openInput}
         onMinimize={() => window.api?.minimizeWindow?.()}
@@ -159,6 +172,7 @@ export default function Conversation() {
             busy={history.busy}
             onOpenTaskPanel={(messageId) => {
               setContextOpen(false);
+              setGoalOpen(false);
               setTaskTargetMessageId(messageId);
               setTaskOpen(true);
             }}
@@ -195,6 +209,18 @@ export default function Conversation() {
           developerMode={developerMode}
           onLoadDeveloperDetails={(request) => window.api?.getAgentRunDetails?.(request)}
           onClose={() => setTaskOpen(false)}
+        />
+
+        <ConversationGoalPanel
+          open={goalOpen}
+          conversation={history.current}
+          busy={history.busy || Boolean(currentLiveActivity)}
+          onUpdate={({ objective, status }) => history.setGoal({
+            conversationId: history.current?.id ?? "",
+            objective,
+            status
+          })}
+          onClose={() => setGoalOpen(false)}
         />
 
         <ConversationContextInspector

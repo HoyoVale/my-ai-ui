@@ -378,3 +378,37 @@ describe(
     );
   }
 );
+
+describe("ContextAssembler persistent Goal", () => {
+  it("injects only an active conversation Goal", () => {
+    const active = assembleAgentContext({
+      settings: SETTINGS,
+      conversation: {
+        goal: {
+          id: "goal-1",
+          objective: "交付一个经过测试的桌面应用。",
+          status: "active"
+        },
+        messages: []
+      }
+    });
+    assert.match(active.system, /persistent goal/u);
+    assert.match(active.system, /交付一个经过测试的桌面应用/u);
+    assert.equal(active.metadata.prompt.goalEnabled, true);
+    assert.equal(active.budget.sections.some((section) => section.id === "goal"), true);
+
+    const paused = assembleAgentContext({
+      settings: SETTINGS,
+      conversation: {
+        goal: {
+          id: "goal-1",
+          objective: "不应注入",
+          status: "paused"
+        },
+        messages: []
+      }
+    });
+    assert.doesNotMatch(paused.system, /不应注入/u);
+    assert.equal(paused.metadata.prompt.goalEnabled, false);
+  });
+});

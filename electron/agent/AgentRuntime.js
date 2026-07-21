@@ -1266,8 +1266,14 @@ export class AgentRuntime {
     const runId =
       crypto.randomUUID();
 
+    const persistentGoal =
+      executionConversation.goal?.status === "active"
+        ? executionConversation.goal
+        : null;
+
     const goalId =
       continuationState?.goalId ||
+      persistentGoal?.id ||
       crypto.randomUUID();
 
     const taskId =
@@ -1293,7 +1299,11 @@ export class AgentRuntime {
       parentRunId:
         continuationState?.parentRunId ?? "",
       objective:
-        continuationState?.objective || runMessage,
+        continuationState?.objective ||
+        persistentGoal?.objective ||
+        runMessage,
+      persistentGoalId:
+        persistentGoal?.id ?? "",
       continuationInstruction:
         continuationState ? runMessage : "",
       continuationCount:
@@ -1548,7 +1558,13 @@ export class AgentRuntime {
     const runId =
       crypto.randomUUID();
 
+    const persistentGoal =
+      plan.conversation.goal?.status === "active"
+        ? plan.conversation.goal
+        : null;
+
     const goalId =
+      persistentGoal?.id ||
       crypto.randomUUID();
 
     const taskId =
@@ -1571,7 +1587,11 @@ export class AgentRuntime {
     this.activeRun = {
       runId,
       goalId,
-      objective: plan.userMessage.content,
+      objective:
+        persistentGoal?.objective ||
+        plan.userMessage.content,
+      persistentGoalId:
+        persistentGoal?.id ?? "",
       orchestrator: null,
       currentSegmentId: "",
       taskId,
@@ -3339,6 +3359,17 @@ export class AgentRuntime {
 
       if (!this.isCurrentRun(runId)) {
         return;
+      }
+
+      if (
+        this.activeRun.persistentGoalId &&
+        engineResult.outcome === RUN_OUTCOMES.COMPLETED &&
+        engineResult.loopResult?.verification?.verified === true
+      ) {
+        conversationManager.completeGoal({
+          conversationId,
+          goalId: this.activeRun.persistentGoalId
+        });
       }
 
       const finalCheckpoint = this.buildActiveCheckpoint();

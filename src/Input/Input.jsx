@@ -210,6 +210,7 @@ export default function Input() {
         workspaceId: inputContext.state.currentWorkspaceId ?? null,
         currentConversationId: inputContext.state.currentConversationId,
         currentConversationTitle: inputContext.state.currentConversation?.title ?? "新会话",
+        currentGoal: inputContext.state.currentConversation?.goal ?? null,
         currentModelSelection,
         currentSkillId: inputContext.state.currentSkillId ?? null,
         currentSkill: inputContext.state.currentSkill ?? null,
@@ -233,6 +234,7 @@ export default function Input() {
       onCreateSession={(input) => inputContext.createSession(input)}
       onAddWorkspace={() => inputContext.addWorkspace()}
       onSkillChange={(selection) => inputContext.setSkill(selection)}
+      onGoalChange={(goal) => inputContext.setGoal(goal)}
       onModelChange={(selection) => {
         const parsed = parseModelOptionValue(selection);
         if (!parsed) {

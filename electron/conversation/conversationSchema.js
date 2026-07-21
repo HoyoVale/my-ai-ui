@@ -18,7 +18,7 @@ import {
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
-const STORE_VERSION = 16;
+const STORE_VERSION = 17;
 
 const MESSAGE_ROLES =
   new Set([
@@ -37,6 +37,12 @@ const MESSAGE_STATUSES =
 const SESSION_MODES = new Set([
   "chat",
   "coding"
+]);
+
+const GOAL_STATUSES = new Set([
+  "active",
+  "paused",
+  "completed"
 ]);
 
 function sanitizeModelSelection(source) {
@@ -110,6 +116,39 @@ function nullableStringValue(
   ).trim();
 
   return normalized || null;
+}
+
+function sanitizeConversationGoal(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const id = nullableStringValue(source.id, 120);
+  const objective = stringValue(source.objective, "", 4000).trim();
+
+  if (!id || !objective) {
+    return null;
+  }
+
+  const createdAt = timestampValue(source.createdAt, 0);
+  const updatedAt = Math.max(
+    createdAt,
+    timestampValue(source.updatedAt, createdAt)
+  );
+  const status = GOAL_STATUSES.has(source.status)
+    ? source.status
+    : "active";
+
+  return {
+    id,
+    objective,
+    status,
+    createdAt,
+    updatedAt,
+    completedAt: status === "completed"
+      ? Math.max(updatedAt, timestampValue(source.completedAt, updatedAt))
+      : null
+  };
 }
 
 function sanitizeWorkspaceSnapshot(source) {
@@ -711,6 +750,7 @@ export function sanitizeConversation(
   const modelSnapshot = sanitizeModelSnapshot(
     source.modelSnapshot
   );
+  const goal = sanitizeConversationGoal(source.goal);
 
   return {
     id,
@@ -735,6 +775,8 @@ export function sanitizeConversation(
       modelSnapshot?.modelConfigId === modelSelection.modelConfigId
         ? modelSnapshot
         : null,
+
+    goal,
 
     title:
       stringValue(

@@ -142,6 +142,9 @@ const CHANNELS = Object.freeze({
   CONVERSATION_SET_SKILL:
     "conversation-set-skill",
 
+  CONVERSATION_SET_GOAL:
+    "conversation-set-goal",
+
   CONVERSATION_SELECT:
     "conversation-select",
 
@@ -841,6 +844,19 @@ const api = Object.freeze({
           ? input.skillIds.map((value) => String(value ?? ""))
           : undefined,
         skillRoutingMode: input?.skillRoutingMode === "auto" ? "auto" : "manual"
+      }
+    );
+  },
+
+  setConversationGoal: (input = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CONVERSATION_SET_GOAL,
+      {
+        conversationId: String(input.conversationId ?? ""),
+        objective: String(input.objective ?? ""),
+        status: ["active", "paused", "completed"].includes(input.status)
+          ? input.status
+          : "active"
       }
     );
   },

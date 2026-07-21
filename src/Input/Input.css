@@ -447,6 +447,62 @@
   background: rgb(182 106 60 / 0.1);
 }
 
+.input-goal-editor {
+  display: grid;
+  gap: 8px;
+  padding: 7px;
+}
+
+.input-goal-editor textarea {
+  width: 100%;
+  min-height: 108px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 9px;
+  outline: none;
+  color: var(--input-text);
+  background: var(--input-hover);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.input-goal-editor textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--input-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.input-goal-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.input-goal-editor__actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  color: var(--input-text);
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.input-goal-editor__actions button.is-primary {
+  border-color: transparent;
+  color: #fff;
+  background: var(--accent);
+}
+
+.input-goal-editor__actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* ============================================================
    Edge-aware Input overlays
    ============================================================ */

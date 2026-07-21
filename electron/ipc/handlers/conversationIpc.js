@@ -301,6 +301,20 @@ export function registerConversationIpc() {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.conversation.SET_GOAL,
+    (_event, input = {}) => {
+      const busy = rejectWhenBusy();
+      if (busy) return busy;
+
+      return conversationManager.setGoal({
+        conversationId: String(input.conversationId ?? ""),
+        objective: String(input.objective ?? ""),
+        status: String(input.status ?? "active")
+      });
+    }
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS
       .conversation
       .SELECT,
