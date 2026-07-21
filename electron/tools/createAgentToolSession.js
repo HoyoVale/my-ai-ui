@@ -167,6 +167,11 @@ export function createAgentToolSession({
     settings,
     request: capabilityRequest ?? {}
   });
+  const enforceCapabilityApproval = Boolean(
+    capabilityRequest &&
+    typeof capabilityRequest === "object" &&
+    Object.keys(capabilityRequest).length > 0
+  );
   const capabilitySelectedNames = new Set(
     capabilityResolution.selectedToolNames
   );
@@ -199,8 +204,14 @@ export function createAgentToolSession({
               details: permission.details
             };
           }
+          const capabilityDecision = enforceCapabilityApproval
+            ? capabilityResolution.toolDecisions[request.definition.name] ?? null
+            : null;
           return typeof authorizeTool === "function"
-            ? await authorizeTool(request)
+            ? await authorizeTool({
+                ...request,
+                capabilityDecision
+              })
             : { decision: "allow" };
         }
       }),

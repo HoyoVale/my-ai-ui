@@ -274,8 +274,11 @@ export default function Input() {
         currentConversationTitle:
           inputContext.state.currentConversation?.title ?? "新会话",
         currentModelSelection,
+        currentSkillId: inputContext.state.currentSkillId ?? null,
+        currentSkill: inputContext.state.currentSkill ?? null,
         workspaces: inputContext.workspaces,
         conversations: inputContext.conversations,
+        skills: inputContext.skills,
         models: inputContext.models,
         modelValue,
         busy: inputContext.busy,
@@ -291,6 +294,9 @@ export default function Input() {
       }}
       onAddWorkspace={() => {
         return inputContext.addWorkspace();
+      }}
+      onSkillChange={(skillId) => {
+        return inputContext.setSkill(skillId);
       }}
       onModelChange={(selection) => {
         const parsed = parseModelOptionValue(selection);

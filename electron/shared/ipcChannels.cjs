@@ -137,6 +137,9 @@ const IPC_CHANNELS =
       SET_MODEL:
         "conversation-set-model",
 
+      SET_SKILL:
+        "conversation-set-skill",
+
       SELECT:
         "conversation-select",
 
@@ -208,6 +211,12 @@ const IPC_CHANNELS =
 
       GET:
         "skills-get",
+
+      GET_RUNTIME_STATE:
+        "skills-get-runtime-state",
+
+      TEST_RUNTIME:
+        "skills-test-runtime",
 
       IMPORT_DIRECTORY:
         "skills-import-directory",

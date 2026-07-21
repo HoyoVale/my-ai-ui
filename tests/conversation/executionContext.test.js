@@ -52,8 +52,12 @@ describe("conversation execution context contract", () => {
     assert.match(source, /checkpoint\.mode/u);
     assert.match(source, /checkpoint\.workspaceId/u);
     assert.match(source, /checkpoint\.modelSelection/u);
+    assert.match(source, /checkpoint\.skillId/u);
+    assert.match(source, /checkpoint\.skillSnapshot/u);
     assert.match(runtime, /getTaskRuntimeRecord/u);
     assert.match(runtime, /getRecoveryExecutionOverrides\(record\.message\)/u);
     assert.match(runtime, /workspaceId: execution\.conversation\.workspaceId/u);
+    assert.match(runtime, /skillId: execution\.conversation\.skillId/u);
+    assert.match(runtime, /expectedSnapshot: execution\.conversation\.skillSnapshot/u);
   });
 });

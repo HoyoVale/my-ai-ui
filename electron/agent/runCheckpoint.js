@@ -137,6 +137,8 @@ export function createRunCheckpoint({
   mode = "chat",
   modelSelection = null,
   modelSnapshot = null,
+  skillId = "",
+  skillSnapshot = null,
   runId = "",
   parentRunId = "",
   messageId = "",
@@ -215,6 +217,11 @@ export function createRunCheckpoint({
     modelSnapshot:
       modelSnapshot && typeof modelSnapshot === "object"
         ? structuredClone(modelSnapshot)
+        : null,
+    skillId: text(skillId, 120),
+    skillSnapshot:
+      skillSnapshot && typeof skillSnapshot === "object"
+        ? structuredClone(skillSnapshot)
         : null,
     runId: text(runId, 120),
     parentRunId: text(parentRunId, 120),

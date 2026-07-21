@@ -19,6 +19,7 @@ export function InputComposer({
   onSelectSession,
   onCreateSession,
   onAddWorkspace,
+  onSkillChange,
   onModelChange,
   onChange,
   onKeyDown,
@@ -42,6 +43,7 @@ export function InputComposer({
           onSelectSession={onSelectSession}
           onCreateSession={onCreateSession}
           onAddWorkspace={onAddWorkspace}
+          onSkillChange={onSkillChange}
           onModelChange={onModelChange}
         />
 

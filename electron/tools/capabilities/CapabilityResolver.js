@@ -19,6 +19,11 @@ const SOURCE_PRIORITY = Object.freeze({
   unknown: 4
 });
 
+const RUNTIME_SUPPORT_CAPABILITIES = Object.freeze([
+  "agent.plan",
+  "agent.result.page"
+]);
+
 function sourceKind(tool = {}) {
   const declared = String(tool.capabilitySourceKind ?? tool.sourceKind ?? "");
   if (["built_in", "builtin"].includes(declared)) return "built_in";
@@ -202,9 +207,21 @@ export function resolveCapabilitySet({
     )
   ];
 
+  const supportToolNames = [];
+  const supportingCapabilities = [];
   if (requestedIds.size === 0) {
     for (const [name, decision] of Object.entries(toolDecisions)) {
       if (decision.ready) selectedToolNames.push(name);
+    }
+  } else {
+    for (const capabilityId of RUNTIME_SUPPORT_CAPABILITIES) {
+      const entry = byId.get(capabilityId);
+      if (!entry?.available || entry.selectedProviders.length === 0) continue;
+      supportingCapabilities.push(capabilityId);
+      for (const provider of entry.selectedProviders) {
+        selectedToolNames.push(provider.name);
+        supportToolNames.push(provider.name);
+      }
     }
   }
 
@@ -227,6 +244,8 @@ export function resolveCapabilitySet({
     satisfied: missingRequired.length === 0,
     missingRequired,
     unavailableOptional,
+    supportingCapabilities: [...supportingCapabilities],
+    supportToolNames: [...new Set(supportToolNames)].sort(),
     selectedToolNames: uniqueSelectedTools,
     summary: {
       total: capabilityEntries.length,

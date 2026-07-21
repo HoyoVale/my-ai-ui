@@ -159,6 +159,11 @@ export function createCheckpointContinuationState(
       checkpoint.modelSnapshot && typeof checkpoint.modelSnapshot === "object"
         ? structuredClone(checkpoint.modelSnapshot)
         : null,
+    skillId: String(checkpoint.skillId || ""),
+    skillSnapshot:
+      checkpoint.skillSnapshot && typeof checkpoint.skillSnapshot === "object"
+        ? structuredClone(checkpoint.skillSnapshot)
+        : null,
     parentRunId: String(checkpoint.runId || ""),
     resumedFromMessageId: String(
       continuation?.messageId || checkpoint.messageId || ""

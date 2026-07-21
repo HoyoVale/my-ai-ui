@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 
@@ -13,6 +14,8 @@ const EMPTY_STATE = {
   currentMode: "chat",
   currentModelSelection: null,
   currentModel: null,
+  currentSkillId: null,
+  currentSkill: null,
   totalConversations: 0
 };
 
@@ -77,19 +80,23 @@ export function useInputContext(settings) {
   const [state, setState] = useState(EMPTY_STATE);
   const [workspaces, setWorkspaces] = useState([]);
   const [conversations, setConversations] = useState([]);
+  const [skills, setSkills] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const refreshSequence = useRef(0);
   const models = useMemo(
     () => flattenModels(settings),
     [settings]
   );
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     try {
-      let [nextState, nextWorkspaces, nextConversations] = await Promise.all([
+      let [nextState, nextWorkspaces, nextConversations, nextSkills] = await Promise.all([
         window.api?.getConversationState?.(),
         window.api?.listWorkspaces?.(),
-        window.api?.listConversations?.()
+        window.api?.listConversations?.(),
+        window.api?.getSkillRuntimeState?.("")
       ]);
 
       if (!nextState?.currentConversationId) {
@@ -103,6 +110,7 @@ export function useInputContext(settings) {
         ]);
       }
 
+      if (sequence !== refreshSequence.current) return null;
       setState(nextState ?? EMPTY_STATE);
       setWorkspaces(
         Array.isArray(nextWorkspaces)
@@ -114,10 +122,19 @@ export function useInputContext(settings) {
           ? nextConversations
           : []
       );
+      setSkills(
+        Array.isArray(nextSkills?.skills)
+          ? nextSkills.skills
+          : []
+      );
       setError("");
+      return nextState;
     } catch (refreshError) {
-      console.error("读取输入上下文失败：", refreshError);
-      setError("无法读取当前会话上下文。");
+      if (sequence === refreshSequence.current) {
+        console.error("读取输入上下文失败：", refreshError);
+        setError("无法读取当前会话上下文。");
+      }
+      return null;
     }
   }, []);
 
@@ -131,10 +148,18 @@ export function useInputContext(settings) {
           void refresh();
         }
       });
+    const unsubscribeSkills = window.api
+      ?.onSkillsChanged?.(() => {
+        if (!disposed) {
+          void refresh();
+        }
+      });
 
     return () => {
       disposed = true;
+      refreshSequence.current += 1;
       unsubscribe?.();
+      unsubscribeSkills?.();
     };
   }, [refresh]);
 
@@ -184,6 +209,7 @@ export function useInputContext(settings) {
     state,
     workspaces,
     conversations,
+    skills,
     models,
     busy,
     error,
@@ -194,12 +220,14 @@ export function useInputContext(settings) {
     createSession: ({
       mode,
       workspaceId,
-      modelSelection
+      modelSelection,
+      skillId
     }) => runAction(() =>
       window.api?.createConversation?.({
         mode,
         workspaceId,
-        modelSelection
+        modelSelection,
+        skillId
       })
     ),
     addWorkspace,
@@ -208,6 +236,12 @@ export function useInputContext(settings) {
         conversationId: state.currentConversationId,
         providerId,
         modelConfigId
+      })
+    ),
+    setSkill: (skillId) => runAction(() =>
+      window.api?.setConversationSkill?.({
+        conversationId: state.currentConversationId,
+        skillId
       })
     )
   };

@@ -4425,3 +4425,45 @@ button.conversation-thinking-event:focus-visible > strong {
   color: #fff;
   background: var(--conversation-accent);
 }
+
+.conversation-topbar__skill {
+  max-width: min(36vw, 320px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--conversation-accent) 24%, var(--conversation-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--conversation-accent) 7%, transparent);
+  color: var(--conversation-soft);
+  font-size: 11px;
+  -webkit-app-region: no-drag;
+}
+
+.conversation-topbar__skill span {
+  color: var(--conversation-accent);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.conversation-topbar__skill strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--conversation-text);
+  font-weight: 580;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-thinking-event--skill > svg,
+.conversation-activity-timeline__event.is-skill > span {
+  color: var(--conversation-accent);
+}
+
+.conversation-thinking-event--skill.is-failed > svg,
+.conversation-thinking-event--skill.is-interrupted > svg,
+.conversation-activity-timeline__event.is-skill.is-failed > span,
+.conversation-activity-timeline__event.is-skill.is-interrupted > span {
+  color: var(--conversation-danger, #c45151);
+}

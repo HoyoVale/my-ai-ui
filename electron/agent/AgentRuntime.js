@@ -105,6 +105,11 @@ import {
 } from "../custom-tools/index.js";
 
 import {
+  resolveSkillRuntime,
+  skillRegistry
+} from "../skills/index.js";
+
+import {
   configureRuntimeCircuitBreakers,
   getRuntimeCircuitBreakerSnapshot,
   providerCircuitBreakers,
@@ -612,6 +617,9 @@ export class AgentRuntime {
       toolSecurity:
         this.activeRun
           ?.toolSecurity ?? null,
+      skillRun:
+        this.activeRun
+          ?.skillRun ?? null,
       toolRuntimeDiagnostics:
         developerMode
           ? this.activeRun
@@ -664,6 +672,10 @@ export class AgentRuntime {
         this.activeRun.modelSelection ?? null,
       modelSnapshot:
         this.activeRun.modelSnapshot ?? null,
+      skillId:
+        this.activeRun.skillRuntime?.skill?.id ?? "",
+      skillSnapshot:
+        this.activeRun.skillRuntime?.skill ?? null,
       goalId: this.activeRun.goalId,
       runId: this.activeRun.runId,
       parentRunId:
@@ -824,6 +836,26 @@ export class AgentRuntime {
     }
 
     run.finalText = String(content ?? "").trim();
+    if (run.skillRun) {
+      const skillStatus = state.outcome === RUN_OUTCOMES.COMPLETED
+        ? "completed"
+        : state.outcome === RUN_OUTCOMES.CANCELLED
+          ? "cancelled"
+          : state.outcome === RUN_OUTCOMES.FAILED
+            ? "failed"
+            : "interrupted";
+      run.skillRun = {
+        ...run.skillRun,
+        status: skillStatus,
+        endedAt: state.endedAt
+      };
+      run.activityStore?.recordSkill({
+        skill: run.skillRuntime.skill,
+        status: skillStatus,
+        selectedToolNames: run.skillRun.selectedToolNames,
+        missingRequired: run.skillRun.missingRequired
+      }, state.endedAt);
+    }
     run.activityStore?.finalize(
       state.executionStopReason,
       state.endedAt,
@@ -1051,6 +1083,7 @@ export class AgentRuntime {
     let runSettings;
     let activeWorkspace = null;
     let executionConversation;
+    let skillRuntime = null;
     let checkpointContinuation = null;
     let continuationState = null;
 
@@ -1080,6 +1113,23 @@ export class AgentRuntime {
           checkpointContinuation
         );
 
+      const settingsSnapshot = getSettings();
+      const preparedExecution =
+        resolveConversationExecutionContext({
+          settings: settingsSnapshot,
+          conversation,
+          overrides: continuationState ?? {}
+        });
+      skillRuntime = resolveSkillRuntime({
+        registry: skillRegistry,
+        skillId: preparedExecution.conversation.skillId,
+        mode: preparedExecution.metadata.mode,
+        expectedSnapshot: preparedExecution.conversation.skillSnapshot
+      });
+      if (!skillRuntime.ok) {
+        return skillRuntime;
+      }
+
       conversationManager
         .appendMessage({
           conversationId:
@@ -1101,7 +1151,7 @@ export class AgentRuntime {
 
       const execution =
         resolveConversationExecutionContext({
-          settings: getSettings(),
+          settings: settingsSnapshot,
           conversation,
           overrides: continuationState ?? {}
         });
@@ -1114,7 +1164,8 @@ export class AgentRuntime {
           settings: runSettings,
           conversation:
             executionConversation,
-          memories
+          memories,
+          skillRuntime
         });
 
       context = appendTaskContinuationToContext(
@@ -1197,6 +1248,21 @@ export class AgentRuntime {
         executionConversation.modelSelection ?? null,
       modelSnapshot:
         executionConversation.modelSnapshot ?? null,
+      skillRuntime,
+      skillRun: skillRuntime.active
+        ? {
+            id: skillRuntime.skill.id,
+            name: skillRuntime.skill.name,
+            version: skillRuntime.skill.version,
+            status: "running",
+            requiredCapabilities: [...skillRuntime.skill.requiredCapabilities],
+            optionalCapabilities: [...skillRuntime.skill.optionalCapabilities],
+            selectedToolNames: [],
+            missingRequired: [],
+            startedAt,
+            endedAt: null
+          }
+        : null,
       activeWorkspace,
       runtimePreferences: {
         saveAbortedReplies:
@@ -1227,6 +1293,13 @@ export class AgentRuntime {
         continuationState?.contextCompactionCount ?? 0,
       ...createRunStateFields(startedAt)
     };
+
+    if (skillRuntime.active) {
+      activityStore.recordSkill({
+        skill: skillRuntime.skill,
+        status: "running"
+      });
+    }
 
     this.ensureActiveAssistantMessage(
       conversation.id
@@ -1305,6 +1378,7 @@ export class AgentRuntime {
     let context;
     let runSettings;
     let activeWorkspace = null;
+    let skillRuntime = null;
 
     try {
       plan =
@@ -1322,6 +1396,16 @@ export class AgentRuntime {
 
       if (!plan.ok) {
         return plan;
+      }
+
+      skillRuntime = resolveSkillRuntime({
+        registry: skillRegistry,
+        skillId: plan.conversation.skillId,
+        mode: plan.conversation.mode,
+        expectedSnapshot: plan.conversation.skillSnapshot
+      });
+      if (!skillRuntime.ok) {
+        return skillRuntime;
       }
 
       memories =
@@ -1344,7 +1428,8 @@ export class AgentRuntime {
           settings: runSettings,
           conversation:
             plan.conversation,
-          memories
+          memories,
+          skillRuntime
         });
 
       context.metadata = {
@@ -1405,6 +1490,21 @@ export class AgentRuntime {
         plan.conversation.modelSelection ?? null,
       modelSnapshot:
         plan.conversation.modelSnapshot ?? null,
+      skillRuntime,
+      skillRun: skillRuntime.active
+        ? {
+            id: skillRuntime.skill.id,
+            name: skillRuntime.skill.name,
+            version: skillRuntime.skill.version,
+            status: "running",
+            requiredCapabilities: [...skillRuntime.skill.requiredCapabilities],
+            optionalCapabilities: [...skillRuntime.skill.optionalCapabilities],
+            selectedToolNames: [],
+            missingRequired: [],
+            startedAt,
+            endedAt: null
+          }
+        : null,
       activeWorkspace,
       runtimePreferences: {
         saveAbortedReplies:
@@ -1433,6 +1533,13 @@ export class AgentRuntime {
       contextCompactionCount: 0,
       ...createRunStateFields(startedAt)
     };
+
+    if (skillRuntime.active) {
+      activityStore.recordSkill({
+        skill: skillRuntime.skill,
+        status: "running"
+      });
+    }
 
     this.ensureActiveAssistantMessage(
       plan.conversation.id
@@ -1663,7 +1770,11 @@ export class AgentRuntime {
       taskId:
         this.activeRun.taskId,
       activity:
-        persistedActivity
+        persistedActivity,
+      skillRun:
+        this.activeRun.skillRun
+          ? structuredClone(this.activeRun.skillRun)
+          : null
     };
 
     if (
@@ -1752,6 +1863,15 @@ export class AgentRuntime {
       ...mcpDefinitions,
       ...declarativeHttpToolManager.getToolDefinitions(settings)
     ];
+    const skillRuntime = resolveSkillRuntime({
+      registry: skillRegistry,
+      skillId: execution.conversation.skillId,
+      mode: execution.metadata.mode,
+      expectedSnapshot: execution.conversation.skillSnapshot
+    });
+    if (!skillRuntime.ok) {
+      return skillRuntime;
+    }
 
     const session = createAgentToolSession({
       activeModel,
@@ -1762,7 +1882,8 @@ export class AgentRuntime {
       runId: `recovery-${crypto.randomUUID()}`,
       workspaceId: execution.conversation.workspaceId ?? "",
       mode: execution.metadata.mode,
-      segmentId: "recovery"
+      segmentId: "recovery",
+      capabilityRequest: skillRuntime.capabilityRequest
     });
 
     try {
@@ -2181,7 +2302,8 @@ export class AgentRuntime {
           runId,
           workspaceId: this.activeRun.workspaceId ?? "",
           mode: this.activeRun.mode ?? "chat",
-          segmentId: "e2e-approved-write"
+          segmentId: "e2e-approved-write",
+          capabilityRequest: this.activeRun.skillRuntime?.capabilityRequest ?? null
         });
         this.activeRun.toolSession = toolSession;
 
@@ -2803,16 +2925,39 @@ export class AgentRuntime {
           this.activeRun.workspaceId ?? "",
         mode: this.activeRun.mode ?? "chat",
         getSegmentId: () => orchestrator.currentSegmentId(),
-        segmentId: runId
+        segmentId: runId,
+        capabilityRequest: this.activeRun.skillRuntime?.capabilityRequest ?? null
       });
 
       this.activeRun.toolSession = toolSession;
+      if (this.activeRun.skillRun) {
+        const resolution = toolSession.capabilityResolution;
+        this.activeRun.skillRun = {
+          ...this.activeRun.skillRun,
+          selectedToolNames: [...(resolution?.selectedToolNames ?? [])],
+          missingRequired: [...(resolution?.missingRequired ?? [])]
+        };
+        this.activeRun.activityStore?.recordSkill({
+          skill: this.activeRun.skillRuntime.skill,
+          status: "running",
+          selectedToolNames: this.activeRun.skillRun.selectedToolNames,
+          missingRequired: this.activeRun.skillRun.missingRequired
+        });
+        if (this.activeRun.skillRun.missingRequired.length > 0) {
+          const error = new Error(
+            `Skill 缺少必需能力：${this.activeRun.skillRun.missingRequired.join(", ")}`
+          );
+          error.code = "SKILL_CAPABILITY_MISSING";
+          throw error;
+        }
+      }
       await toolSession.recordRuntimeEvent?.(
         "RUN_STARTED",
         {
           goalId: this.activeRun.goalId,
           objective: this.activeRun.objective,
-          continuationCount: this.activeRun.continuationCount
+          continuationCount: this.activeRun.continuationCount,
+          skillId: this.activeRun.skillRuntime?.skill?.id ?? ""
         },
         { runId }
       );
@@ -2825,7 +2970,7 @@ export class AgentRuntime {
       }
       const activeCapabilityContext = buildCapabilityContext({
         toolSettings: runSettings.tools,
-        toolManifest: toolSession.registryManifest
+        toolManifest: toolSession.definitions
       });
       const activePromptSections =
         (context.promptSections ?? []).map((section) =>

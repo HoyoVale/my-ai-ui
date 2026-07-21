@@ -39,3 +39,14 @@ export const skillRegistry = new SkillRegistry({
 export function getSkillRootPath() {
   return skillRoot();
 }
+
+export {
+  resolveSkillRuntime,
+  buildSkillPrompt,
+  skillPermissionEnvelope,
+  skillSupportsMode
+} from "./SkillRuntime.js";
+
+export {
+  runSkillRuntimeTests
+} from "./SkillTestRunner.js";

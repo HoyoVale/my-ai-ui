@@ -460,6 +460,24 @@ function ActivityTimelineEvent({ event }) {
     );
   }
 
+  if (event.type === "skill") {
+    const skill = event.skill ?? {};
+    const detail = skill.missingRequired?.length
+      ? `缺少能力：${skill.missingRequired.join("、")}`
+      : skill.selectedToolNames?.length
+        ? `实际工具：${skill.selectedToolNames.join("、")}`
+        : `版本 ${skill.version || "-"}`;
+    return (
+      <div className={`conversation-activity-timeline__event is-skill is-${event.status ?? "running"}`}>
+        <span><ConversationIcon name="activity" size={15} /></span>
+        <div className="conversation-activity-timeline__copy">
+          <strong>{event.title || `Skill · ${skill.name ?? skill.id}`}</strong>
+          <small>{detail}</small>
+        </div>
+      </div>
+    );
+  }
+
   if (event.type === "tool_batch") {
     return (
       <details

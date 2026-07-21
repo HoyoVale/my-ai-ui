@@ -9,6 +9,10 @@ import {
   resolveModelBinding
 } from "./sessionContext.js";
 
+import {
+  createSkillSnapshot
+} from "../skills/skillSnapshot.js";
+
 
 function clone(value) {
   return structuredClone(value);
@@ -185,6 +189,10 @@ export class ConversationManager {
         current?.modelSelection ?? null,
       currentModel:
         current?.modelSnapshot ?? null,
+      currentSkillId:
+        current?.skillId ?? null,
+      currentSkill:
+        current?.skillSnapshot ?? null,
 
       totalConversations:
         data.conversations.length
@@ -254,7 +262,9 @@ export class ConversationManager {
     title = "新会话",
     mode = undefined,
     workspaceId = undefined,
-    modelSelection = undefined
+    modelSelection = undefined,
+    skillId = undefined,
+    skillSnapshot = undefined
   } = {}) {
     const data =
       this.ensureLoaded();
@@ -292,6 +302,15 @@ export class ConversationManager {
         : modelSelection
     );
 
+    const normalizedSkillId = skillId === undefined
+      ? null
+      : String(skillId ?? "").trim() || null;
+    const candidateSkillSnapshot = createSkillSnapshot(skillSnapshot);
+    const normalizedSkillSnapshot =
+      normalizedSkillId && candidateSkillSnapshot?.id === normalizedSkillId
+        ? candidateSkillSnapshot
+        : null;
+
     const timestamp =
       this.now();
 
@@ -306,6 +325,8 @@ export class ConversationManager {
         modelBinding.selection,
       modelSnapshot:
         modelBinding.snapshot,
+      skillId: normalizedSkillId,
+      skillSnapshot: normalizedSkillSnapshot,
       title:
         String(title)
           .trim()
@@ -486,6 +507,55 @@ export class ConversationManager {
     };
   }
 
+  setSkillSelection({
+    conversationId,
+    skill = null
+  } = {}) {
+    const conversation = this.findMutableConversation(
+      conversationId || this.ensureLoaded().currentConversationId
+    );
+
+    if (!conversation) {
+      return {
+        ok: false,
+        code: "conversation-not-found",
+        message: "会话不存在。"
+      };
+    }
+
+    if (!skill) {
+      conversation.skillId = null;
+      conversation.skillSnapshot = null;
+    } else {
+      const id = String(skill.id ?? "").trim();
+      if (!id) {
+        return {
+          ok: false,
+          code: "skill-id-required",
+          message: "Skill ID 无效。"
+        };
+      }
+      const snapshot = createSkillSnapshot(skill);
+      if (!snapshot || snapshot.id !== id) {
+        return {
+          ok: false,
+          code: "skill-snapshot-invalid",
+          message: "Skill 快照无效。"
+        };
+      }
+      conversation.skillId = id;
+      conversation.skillSnapshot = snapshot;
+    }
+
+    conversation.updatedAt = this.now();
+    this.commit();
+
+    return {
+      ok: true,
+      conversation: clone(conversation)
+    };
+  }
+
   switchWorkspace(workspaceId = null) {
     return this.navigateContext({
       mode: "chat",
@@ -643,7 +713,8 @@ export class ConversationManager {
     stopReason = "",
     resumedFromMessageId = "",
     taskId = "",
-    activity = null
+    activity = null,
+    skillRun = null
   }) {
     const data =
       this.ensureLoaded();
@@ -701,7 +772,8 @@ export class ConversationManager {
         stopReason,
         resumedFromMessageId,
         taskId,
-        activity
+        activity,
+        skillRun
       }
     );
 
@@ -838,6 +910,7 @@ export class ConversationManager {
     resumedFromMessageId = "",
     taskId = "",
     activity = null,
+    skillRun = null,
     preserveCreatedAt = false
   }) {
     const conversation =
@@ -904,6 +977,7 @@ export class ConversationManager {
     delete message.resumedFromMessageId;
     delete message.taskId;
     delete message.activity;
+    delete message.skillRun;
 
     this.applyAssistantMetadata(
       message,
@@ -914,7 +988,8 @@ export class ConversationManager {
         stopReason,
         resumedFromMessageId,
         taskId,
-        activity
+        activity,
+        skillRun
       }
     );
 
@@ -948,7 +1023,8 @@ export class ConversationManager {
       stopReason = "",
       resumedFromMessageId = "",
       taskId = "",
-      activity = null
+      activity = null,
+      skillRun = null
     } = {}
   ) {
     if (
@@ -1010,6 +1086,13 @@ export class ConversationManager {
     ) {
       message.activity =
         clone(activity);
+    }
+
+    if (
+      skillRun &&
+      typeof skillRun === "object"
+    ) {
+      message.skillRun = clone(skillRun);
     }
   }
 
@@ -1676,6 +1759,10 @@ export class ConversationManager {
         conversation.modelSelection ?? null,
       modelSnapshot:
         conversation.modelSnapshot ?? null,
+      skillId:
+        conversation.skillId ?? null,
+      skillSnapshot:
+        conversation.skillSnapshot ?? null,
       workspaceAvailable:
         conversation.workspaceId
           ? Boolean(liveWorkspace && !liveWorkspace.missing)

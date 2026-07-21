@@ -692,5 +692,55 @@ describe(
         );
       }
     );
+    it(
+      "binds and clears a Skill snapshot per conversation",
+      () => {
+        const manager = createManager();
+        const conversation = manager.create({
+          mode: "chat",
+          skillId: "debug",
+          skillSnapshot: {
+            id: "debug",
+            name: "Debug",
+            version: "1.0.0",
+            description: "Find issues.",
+            modes: ["chat"],
+            requiredCapabilities: ["runtime.info"],
+            optionalCapabilities: [],
+            permissions: { localWrite: "deny" },
+            manifestHash: "a".repeat(64),
+            promptHash: "b".repeat(64),
+            packageHash: "c".repeat(64)
+          }
+        });
+
+        assert.equal(conversation.skillId, "debug");
+        assert.equal(manager.getState().currentSkill.name, "Debug");
+        assert.equal(conversation.skillSnapshot.promptHash, "b".repeat(64));
+        assert.deepEqual(conversation.skillSnapshot.requiredCapabilities, ["runtime.info"]);
+
+        const changed = manager.setSkillSelection({
+          conversationId: conversation.id,
+          skill: {
+            id: "review",
+            name: "Review",
+            version: "2.0.0",
+            description: "Review changes."
+          }
+        });
+        assert.equal(changed.ok, true);
+        assert.equal(changed.conversation.skillId, "review");
+        assert.equal(changed.conversation.skillSnapshot.version, "2.0.0");
+
+        const cleared = manager.setSkillSelection({
+          conversationId: conversation.id,
+          skill: null
+        });
+        assert.equal(cleared.ok, true);
+        assert.equal(cleared.conversation.skillId, null);
+        assert.equal(cleared.conversation.skillSnapshot, null);
+      }
+    );
+
   }
 );

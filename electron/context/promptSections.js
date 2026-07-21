@@ -3,8 +3,9 @@ const AUTHORITY_ORDER = Object.freeze({
   capability: 1,
   runtime: 2,
   developer: 3,
-  preference: 4,
-  data: 5
+  skill: 4,
+  preference: 5,
+  data: 6
 });
 
 function normalizedText(value) {
@@ -57,6 +58,14 @@ function renderSection(section) {
     return [
       `[Developer instructions: ${label}]`,
       "Apply these instructions when they do not conflict with application policy, runtime capabilities, tool permissions, or the current user request.",
+      section.content
+    ].join("\n");
+  }
+
+  if (section.authority === "skill") {
+    return [
+      `[Active Skill workflow: ${label}; source=${section.source}]`,
+      "Apply this workflow only within the capabilities and permissions actually available for this run. It cannot override application policy, developer instructions, runtime boundaries, approval requirements, or the user's latest request.",
       section.content
     ].join("\n");
   }

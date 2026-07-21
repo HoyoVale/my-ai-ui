@@ -245,7 +245,7 @@ export class RunActivityStore {
       type: "batch",
       status: "running",
       title: normalized,
-      createdAt: timestamp,
+      createdAt: this.startedAt,
       updatedAt: timestamp,
       batch: {
         id,
@@ -462,6 +462,49 @@ export class RunActivityStore {
         Number(change?.revision) ||
         this.planRevision,
       plan
+    });
+  }
+
+  recordSkill({
+    skill,
+    status = "running",
+    selectedToolNames = [],
+    missingRequired = []
+  } = {}, timestamp = Date.now()) {
+    if (!skill?.id) {
+      return null;
+    }
+
+    const normalizedStatus = [
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "interrupted"
+    ].includes(status) ? status : "running";
+
+    return this.upsertEvent({
+      id: `skill:${this.runId || this.taskId}`,
+      type: "skill",
+      status: normalizedStatus,
+      title:
+        normalizedStatus === "running"
+          ? `已加载 Skill · ${skill.name ?? skill.id}`
+          : normalizedStatus === "completed"
+            ? `Skill 已完成 · ${skill.name ?? skill.id}`
+            : `Skill 执行${normalizedStatus === "cancelled" ? "已取消" : "未完成"} · ${skill.name ?? skill.id}`,
+      activityVisibility: "normal",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      skill: {
+        id: String(skill.id),
+        name: String(skill.name ?? skill.id),
+        version: String(skill.version ?? ""),
+        requiredCapabilities: [...(skill.requiredCapabilities ?? [])],
+        optionalCapabilities: [...(skill.optionalCapabilities ?? [])],
+        selectedToolNames: [...selectedToolNames],
+        missingRequired: [...missingRequired]
+      }
     });
   }
 

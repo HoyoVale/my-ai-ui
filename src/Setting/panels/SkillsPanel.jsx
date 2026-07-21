@@ -1,10 +1,13 @@
 import {
+  useEffect,
+  useMemo,
   useState
 } from "react";
 
 import {
   ActionButton,
   SettingsSection,
+  TextInput,
   Toggle
 } from "../components/Controls.jsx";
 
@@ -33,18 +36,51 @@ function integrityLabel(value) {
   }[value] ?? value;
 }
 
+function RuntimeReport({ report }) {
+  if (!report) return null;
+
+  return (
+    <div className={`skill-runtime-report${report.failed > 0 ? " is-failed" : " is-passed"}`}>
+      <div className="skill-runtime-report__summary">
+        <strong>{report.failed > 0 ? "兼容性检查未通过" : "兼容性检查通过"}</strong>
+        <span>{report.passed} 通过 · {report.failed} 失败 · {modeLabel(report.mode)}</span>
+      </div>
+      <div className="skill-runtime-report__facts">
+        <span>{report.selectedToolNames?.length ?? 0} 个可用工具</span>
+        <span>{report.promptBytes ?? 0} bytes Prompt</span>
+        {report.unavailableOptional?.length > 0 && (
+          <span>{report.unavailableOptional.length} 项可选能力不可用</span>
+        )}
+      </div>
+      <div className="skill-runtime-report__tests">
+        {(report.tests ?? []).map((test) => (
+          <div key={test.id} className={`is-${test.status}`}>
+            <span>{test.status === "passed" ? "✓" : "!"}</span>
+            <strong>{test.title}</strong>
+            {test.message && <small>{test.message}</small>}
+            {test.missingRequired?.length > 0 && (
+              <small>缺少：{test.missingRequired.join("、")}</small>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SkillCard({
   skill,
   developerMode,
   busy,
+  report,
   onToggle,
+  onTest,
   onUninstall
 }) {
   const [confirming, setConfirming] = useState(false);
-  const capabilities = [
-    ...(skill.requiredCapabilities ?? []),
-    ...(skill.optionalCapabilities ?? [])
-  ];
+  const capabilityCount =
+    (skill.requiredCapabilities?.length ?? 0) +
+    (skill.optionalCapabilities?.length ?? 0);
 
   return (
     <article
@@ -53,20 +89,23 @@ function SkillCard({
     >
       <header className="skill-card__header">
         <div className="skill-card__identity">
-          <div className="skill-card__mark">S</div>
-          <div>
+          <div className="skill-card__mark" aria-hidden="true">S</div>
+          <div className="skill-card__identity-copy">
             <div className="skill-card__title-line">
               <strong>{skill.name}</strong>
-              <code>{skill.id}</code>
-              <span>v{skill.version}</span>
+              <span className="skill-card__version">v{skill.version}</span>
+              <span className={`skill-integrity is-${skill.integrity}`}>
+                {integrityLabel(skill.integrity)}
+              </span>
             </div>
             <p>{skill.description}</p>
+            <code className="skill-card__id">{skill.id}</code>
           </div>
         </div>
 
         <Toggle
           checked={skill.enabled}
-          disabled={busy}
+          disabled={Boolean(busy) || (!skill.enabled && skill.integrity !== "verified")}
           label={`${skill.enabled ? "禁用" : "启用"} ${skill.name}`}
           testId={`skill-toggle-${skill.id}`}
           onChange={onToggle}
@@ -74,38 +113,61 @@ function SkillCard({
       </header>
 
       <div className="skill-card__meta">
+        <span className={`skill-runtime-state is-${skill.available ? "available" : "unavailable"}`}>
+          {skill.available ? "可运行" : skill.enabled ? "已阻止" : "已禁用"}
+        </span>
         <span>{skill.modes.map(modeLabel).join(" / ")}</span>
-        <span>{skill.requiredCapabilities.length} 项必需能力</span>
-        <span className={`skill-integrity is-${skill.integrity}`}>{integrityLabel(skill.integrity)}</span>
+        <span>{capabilityCount} 项能力</span>
       </div>
 
-      {capabilities.length > 0 && (
-        <details className="skill-card__details">
-          <summary>能力与权限</summary>
-          <div className="skill-capability-list">
-            {skill.requiredCapabilities.map((capability) => (
-              <span key={`required:${capability}`} className="is-required">
-                <code>{capability}</code>
-                必需
-              </span>
-            ))}
-            {skill.optionalCapabilities.map((capability) => (
-              <span key={`optional:${capability}`}>
-                <code>{capability}</code>
-                可选
-              </span>
-            ))}
+      <div className="skill-card__runtime-actions">
+        <ActionButton
+          disabled={busy || !skill.enabled || skill.integrity !== "verified"}
+          testId={`skill-runtime-test-${skill.id}`}
+          onClick={onTest}
+        >
+          {busy === `test:${skill.id}` ? "检查中…" : "兼容性检查"}
+        </ActionButton>
+        <span>使用当前会话的模式、工作区和权限进行只读解析，不执行 Skill。</span>
+      </div>
+
+      <RuntimeReport report={report} />
+
+      <details className="skill-card__details">
+        <summary>能力与权限</summary>
+        <div className="skill-capability-groups">
+          <div>
+            <strong>必需能力</strong>
+            <div className="skill-capability-list">
+              {(skill.requiredCapabilities ?? []).map((capability) => (
+                <span key={`required:${capability}`} className="is-required">
+                  <code>{capability}</code>
+                </span>
+              ))}
+              {!skill.requiredCapabilities?.length && <small>无</small>}
+            </div>
           </div>
-          <div className="skill-permission-list">
-            {Object.entries(skill.permissions ?? {}).map(([key, level]) => (
-              <span key={key} className={`is-${level}`}>
-                <code>{key}</code>
-                {permissionLabel(level)}
-              </span>
-            ))}
+          <div>
+            <strong>可选能力</strong>
+            <div className="skill-capability-list">
+              {(skill.optionalCapabilities ?? []).map((capability) => (
+                <span key={`optional:${capability}`}>
+                  <code>{capability}</code>
+                </span>
+              ))}
+              {!skill.optionalCapabilities?.length && <small>无</small>}
+            </div>
           </div>
-        </details>
-      )}
+        </div>
+        <div className="skill-permission-list">
+          {Object.entries(skill.permissions ?? {}).map(([key, level]) => (
+            <span key={key} className={`is-${level}`}>
+              <code>{key}</code>
+              {permissionLabel(level)}
+            </span>
+          ))}
+        </div>
+      </details>
 
       {developerMode && (
         <details className="skill-card__details skill-card__developer">
@@ -147,21 +209,69 @@ export function SkillsPanel({ developerMode = false }) {
     error,
     message,
     run,
-    clearFeedback
+    clearFeedback,
+    refresh
   } = useSkills(developerMode);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [reports, setReports] = useState({});
 
-  const busy = Boolean(action);
+  useEffect(() => {
+    setReports({});
+  }, [state.revision]);
+
+  const filteredSkills = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return state.skills.filter((skill) => {
+      const filterMatches =
+        filter === "all" ||
+        (filter === "available" && skill.available) ||
+        (filter === "disabled" && !skill.enabled) ||
+        (filter === "issues" && skill.integrity !== "verified");
+      const queryMatches = !keyword || [
+        skill.name,
+        skill.id,
+        skill.description,
+        ...(skill.requiredCapabilities ?? []),
+        ...(skill.optionalCapabilities ?? [])
+      ].some((value) => String(value ?? "").toLowerCase().includes(keyword));
+      return filterMatches && queryMatches;
+    });
+  }, [filter, query, state.skills]);
+
+  const busy = action || "";
+
+  const testRuntime = async (skill) => {
+    clearFeedback();
+    const result = await run(
+      `test:${skill.id}`,
+      () => window.api.testSkillRuntime(skill.id)
+    );
+    if (result?.report) {
+      setReports((current) => ({ ...current, [skill.id]: result.report }));
+    }
+  };
 
   return (
-    <div className="skills-panel">
+    <div className="skills-panel" aria-busy={Boolean(busy)}>
       <section className="skills-hero">
         <div>
-          <strong>Skills</strong>
-          <p>安装由 skill.json 与 SKILL.md 组成的本地能力包。Skill 只能请求 Capability，不能自行提升权限。</p>
+          <span className="skills-hero__eyebrow">Skill Runtime</span>
+          <strong>可复用的工作流，不是额外权限</strong>
+          <p>Skill 通过 Capability 请求工具，并继承当前模式、工作区和 Tool Security 权限。可在 Input 中为每个会话显式选择。</p>
         </div>
         <div className="skills-hero__actions">
           <ActionButton
-            disabled={busy}
+            disabled={Boolean(busy)}
+            onClick={() => {
+              clearFeedback();
+              void refresh();
+            }}
+          >
+            重新检查
+          </ActionButton>
+          <ActionButton
+            disabled={Boolean(busy)}
             testId="skill-import-directory"
             onClick={() => {
               clearFeedback();
@@ -171,7 +281,7 @@ export function SkillsPanel({ developerMode = false }) {
             导入文件夹
           </ActionButton>
           <ActionButton
-            disabled={busy}
+            disabled={Boolean(busy)}
             testId="skill-import-zip"
             onClick={() => {
               clearFeedback();
@@ -185,32 +295,70 @@ export function SkillsPanel({ developerMode = false }) {
 
       <div className="skills-overview">
         <div><span>已安装</span><strong>{state.total}</strong></div>
-        <div><span>已启用</span><strong>{state.enabled}</strong></div>
+        <div><span>可运行</span><strong>{state.available}</strong></div>
         <div><span>已禁用</span><strong>{state.disabled}</strong></div>
-        <div><span>异常</span><strong>{state.invalid}</strong></div>
+        <div><span>完整性异常</span><strong>{state.invalid}</strong></div>
       </div>
 
-      {error && <p className="skills-message is-error">{error}</p>}
-      {message && <p className="skills-message is-success">{message}</p>}
+      <div className="skills-toolbar">
+        <TextInput
+          value={query}
+          placeholder="搜索名称、ID 或 Capability"
+          ariaLabel="搜索 Skill"
+          onChange={setQuery}
+        />
+        <div className="skills-filter" role="group" aria-label="Skill 筛选">
+          {[
+            ["all", "全部"],
+            ["available", "可运行"],
+            ["disabled", "已禁用"],
+            ["issues", "异常"]
+          ].map(([value, label]) => (
+            <button
+              type="button"
+              key={value}
+              className={filter === value ? "is-active" : ""}
+              onClick={() => setFilter(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div aria-live="polite">
+        {error && <p className="skills-message is-error">{error}</p>}
+        {message && <p className="skills-message is-success">{message}</p>}
+      </div>
 
       <SettingsSection title="已安装 Skill">
         {status === "loading" && <p className="skills-empty">正在读取 Skill Registry…</p>}
         {status !== "loading" && state.skills.length === 0 && (
           <div className="skills-empty">
             <strong>尚未安装 Skill</strong>
-            <p>导入一个包含 skill.json 与 SKILL.md 的文件夹或 ZIP。</p>
+            <p>导入一个包含 skill.json 与 SKILL.md 的本地文件夹或 ZIP。</p>
+          </div>
+        )}
+        {status !== "loading" && state.skills.length > 0 && filteredSkills.length === 0 && (
+          <div className="skills-empty">
+            <strong>没有匹配的 Skill</strong>
+            <p>调整搜索词或筛选条件。</p>
           </div>
         )}
 
         <div className="skill-list">
-          {state.skills.map((skill) => (
+          {filteredSkills.map((skill) => (
             <SkillCard
               key={skill.id}
               skill={skill}
               developerMode={developerMode}
               busy={busy}
+              report={reports[skill.id]}
               onToggle={(enabled) => {
                 void run(`toggle:${skill.id}`, () => window.api.setSkillEnabled(skill.id, enabled));
+              }}
+              onTest={() => {
+                void testRuntime(skill);
               }}
               onUninstall={() => {
                 void run(`uninstall:${skill.id}`, () => window.api.uninstallSkill(skill.id), "Skill 已卸载");
@@ -220,9 +368,13 @@ export function SkillsPanel({ developerMode = false }) {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="包结构">
-        <pre className="skill-package-layout">{`skills/\n└─ example-skill/\n   ├─ skill.json\n   ├─ SKILL.md\n   ├─ resources/\n   ├─ templates/\n   └─ tests/`}</pre>
-      </SettingsSection>
+      <details className="skill-package-guide">
+        <summary>Skill 包结构与运行边界</summary>
+        <div>
+          <pre className="skill-package-layout">{`skills/\n└─ example-skill/\n   ├─ skill.json\n   ├─ SKILL.md\n   ├─ resources/\n   ├─ templates/\n   └─ tests/`}</pre>
+          <p>SKILL.md 只进入 Skill Prompt Stack；实际工具由 Capability Resolver 选择，权限仍由 Tool Runtime 与 Approval 决定。</p>
+        </div>
+      </details>
     </div>
   );
 }

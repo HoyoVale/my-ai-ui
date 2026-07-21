@@ -192,7 +192,8 @@ export function isActivityEventVisible(
       "commentary",
       "tool",
       "plan",
-      "batch"
+      "batch",
+      "skill"
     ].includes(event.type)
   ) {
     return true;

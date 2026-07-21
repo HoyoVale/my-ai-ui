@@ -108,9 +108,15 @@ function normalizedSecuritySettings(settings = {}) {
   };
 }
 
-function approvalReason(effect, definition, tainted) {
+function approvalReason(effect, definition, tainted, capabilityDecision = null) {
   if (tainted) {
     return "此前 MCP 返回内容包含疑似提示词注入信号，此操作必须由你逐次确认。";
+  }
+  if (capabilityDecision?.requiresApproval) {
+    const permissions = Array.isArray(capabilityDecision.approvalPermissions)
+      ? capabilityDecision.approvalPermissions.join("、")
+      : "受限能力";
+    return `当前 Skill 将此操作的 ${permissions || "权限"} 设为询问。`;
   }
   if (effect === "destructive") {
     return "此工具可能执行破坏性操作，必须由你确认。";
@@ -271,8 +277,14 @@ export class ToolApprovalController {
       definition.runtimeContract?.effect ??
       (definition.sideEffect === "write" ? "local_write" : "read")
     );
+    const capabilityDecision =
+      request.capabilityDecision && typeof request.capabilityDecision === "object"
+        ? request.capabilityDecision
+        : null;
+    const capabilityRequiresApproval =
+      capabilityDecision?.requiresApproval === true;
 
-    if (!UNSAFE_EFFECTS.has(effect)) {
+    if (!UNSAFE_EFFECTS.has(effect) && !capabilityRequiresApproval) {
       return { decision: "allow" };
     }
 
@@ -293,8 +305,9 @@ export class ToolApprovalController {
       };
     }
 
-    const configuredApproval =
-      effect === "local_write"
+    const configuredApproval = capabilityRequiresApproval
+      ? true
+      : effect === "local_write"
         ? this.settings.approval.localWrite
         : effect === "destructive"
           ? true
@@ -313,11 +326,12 @@ export class ToolApprovalController {
     return this.requestApproval(request, {
       effect,
       tainted,
-      key
+      key,
+      capabilityDecision
     });
   }
 
-  requestApproval(request, { effect, tainted, key }) {
+  requestApproval(request, { effect, tainted, key, capabilityDecision = null }) {
     const definition = request.definition ?? {};
     const approvalId = crypto.randomUUID();
     const requestedAt = Date.now();
@@ -338,12 +352,16 @@ export class ToolApprovalController {
       source: boundedString(definition.source ?? "builtin", 160),
       riskLevel: String(definition.riskLevel ?? "medium"),
       effect,
-      reason: approvalReason(effect, definition, tainted),
+      reason: approvalReason(effect, definition, tainted, capabilityDecision),
       input,
       inputTruncated,
       allowRunGrant,
       untrustedContent: tainted,
       security: tainted ? this.securitySnapshot() : null,
+      capabilityApproval: capabilityDecision?.requiresApproval === true,
+      approvalPermissions: [
+        ...(capabilityDecision?.approvalPermissions ?? [])
+      ],
       requestedAt,
       expiresAt: requestedAt + timeoutMs
     };

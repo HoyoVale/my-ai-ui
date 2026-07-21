@@ -25,6 +25,11 @@ import {
   inspectConversationContext
 } from "../../context/contextInspector.js";
 
+import {
+  resolveSkillRuntime,
+  skillRegistry
+} from "../../skills/index.js";
+
 function isAgentBusy() {
   const state =
     agentRuntime
@@ -107,6 +112,21 @@ export function registerConversationIpc() {
       let conversation;
 
       try {
+        const mode = input.mode === "coding" ? "coding" : "chat";
+        const requestedSkillId = input.skillId === null
+          ? ""
+          : String(input.skillId ?? "").trim();
+        const runtimeSkill = requestedSkillId
+          ? resolveSkillRuntime({
+              registry: skillRegistry,
+              skillId: requestedSkillId,
+              mode
+            })
+          : { ok: true, active: false, skill: null };
+        if (!runtimeSkill.ok) {
+          return runtimeSkill;
+        }
+
         conversation = conversationManager.create({
           mode: input.mode || undefined,
           workspaceId:
@@ -116,7 +136,9 @@ export function registerConversationIpc() {
           modelSelection:
             input.modelSelection && typeof input.modelSelection === "object"
               ? input.modelSelection
-              : undefined
+              : undefined,
+          skillId: runtimeSkill.skill?.id ?? null,
+          skillSnapshot: runtimeSkill.skill ?? null
         });
       } catch (error) {
         return {
@@ -210,6 +232,44 @@ export function registerConversationIpc() {
         conversationId: String(input.conversationId ?? ""),
         providerId: String(input.providerId ?? ""),
         modelConfigId: String(input.modelConfigId ?? "")
+      });
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.conversation.SET_SKILL,
+    (_event, input = {}) => {
+      const busy = rejectWhenBusy();
+      if (busy) return busy;
+
+      const conversation = conversationManager.getConversation(
+        String(input.conversationId ?? "") ||
+        conversationManager.getState().currentConversationId
+      );
+      if (!conversation) {
+        return { ok: false, code: "conversation-not-found", message: "会话不存在。" };
+      }
+
+      const skillId = input.skillId === null
+        ? ""
+        : String(input.skillId ?? "").trim();
+      if (!skillId) {
+        return conversationManager.setSkillSelection({
+          conversationId: conversation.id,
+          skill: null
+        });
+      }
+
+      const runtimeSkill = resolveSkillRuntime({
+        registry: skillRegistry,
+        skillId,
+        mode: conversation.mode
+      });
+      if (!runtimeSkill.ok) return runtimeSkill;
+
+      return conversationManager.setSkillSelection({
+        conversationId: conversation.id,
+        skill: runtimeSkill.skill
       });
     }
   );

@@ -9,7 +9,11 @@ import {
   normalizeRunStopReason
 } from "../agent/runStopReasons.js";
 
-const STORE_VERSION = 13;
+import {
+  createSkillSnapshot
+} from "../skills/skillSnapshot.js";
+
+const STORE_VERSION = 14;
 
 const MESSAGE_ROLES =
   new Set([
@@ -132,6 +136,48 @@ function sanitizeWorkspaceSnapshot(source) {
       rootPath,
       2000
     ).trim() || rootPath
+  };
+}
+
+
+function sanitizeSkillSnapshot(source) {
+  return createSkillSnapshot(source);
+}
+
+function sanitizeSkillRun(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const id = nullableStringValue(source.id ?? source.skillId, 120);
+  if (!id) {
+    return null;
+  }
+
+  const status = ["running", "completed", "failed", "cancelled", "interrupted"]
+    .includes(source.status)
+    ? source.status
+    : "completed";
+
+  return {
+    id,
+    name: stringValue(source.name, id, 120).trim() || id,
+    version: stringValue(source.version, "", 80).trim(),
+    status,
+    requiredCapabilities: Array.isArray(source.requiredCapabilities)
+      ? source.requiredCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+      : [],
+    optionalCapabilities: Array.isArray(source.optionalCapabilities)
+      ? source.optionalCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+      : [],
+    selectedToolNames: Array.isArray(source.selectedToolNames)
+      ? source.selectedToolNames.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 100)
+      : [],
+    missingRequired: Array.isArray(source.missingRequired)
+      ? source.missingRequired.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+      : [],
+    startedAt: timestampValue(source.startedAt, 0),
+    endedAt: source.endedAt === null ? null : timestampValue(source.endedAt, 0)
   };
 }
 
@@ -469,6 +515,11 @@ export function sanitizeMessage(
         legacyStopReason;
     }
 
+    const skillRun = sanitizeSkillRun(source.skillRun);
+    if (skillRun) {
+      message.skillRun = skillRun;
+    }
+
     const resumedFromMessageId =
       stringValue(
         source.resumedFromMessageId,
@@ -569,6 +620,13 @@ export function sanitizeConversation(
     : workspaceId
       ? "coding"
       : "chat";
+  const skillId = nullableStringValue(
+    source.skillId ?? source.activeSkillId,
+    120
+  );
+  const skillSnapshot = sanitizeSkillSnapshot(
+    source.skillSnapshot ?? source.activeSkill
+  );
   const modelSelection = sanitizeModelSelection(
     source.modelSelection
   );
@@ -584,6 +642,12 @@ export function sanitizeConversation(
     workspaceSnapshot:
       workspaceId && workspaceSnapshot?.id === workspaceId
         ? workspaceSnapshot
+        : null,
+
+    skillId,
+    skillSnapshot:
+      skillId && skillSnapshot?.id === skillId
+        ? skillSnapshot
         : null,
 
     modelSelection,

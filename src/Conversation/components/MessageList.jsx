@@ -629,6 +629,26 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
     );
   }
 
+  if (event.type === "skill") {
+    const skill = event.skill ?? {};
+    const detail = skill.missingRequired?.length
+      ? `缺少 ${skill.missingRequired.length} 项能力`
+      : skill.selectedToolNames?.length
+        ? `映射 ${skill.selectedToolNames.length} 个工具`
+        : `v${skill.version || ""}`;
+    return (
+      <button
+        type="button"
+        className={`conversation-thinking-event conversation-thinking-event--skill is-${event.status ?? "running"}`}
+        onClick={onOpenTaskPanel}
+      >
+        <ConversationIcon name="activity" size={16} />
+        <strong>{event.title || `Skill · ${skill.name ?? skill.id}`}</strong>
+        <small>{detail}</small>
+      </button>
+    );
+  }
+
   if (event.type === "tool_batch") {
     return (
       <details

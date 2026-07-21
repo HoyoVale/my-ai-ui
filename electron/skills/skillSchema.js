@@ -10,6 +10,7 @@ import {
 } from "../tools/capabilities/CapabilityTaxonomy.js";
 
 export const SKILL_SCHEMA_VERSION = 1;
+export const SKILL_MARKDOWN_MAX_BYTES = 64 * 1024;
 export const SKILL_PACKAGE_DIRECTORIES = Object.freeze([
   "resources",
   "templates",
@@ -121,8 +122,8 @@ export function validateSkillManifest(input) {
   if (!description || description.length > 400) {
     issues.push({ path: "description", message: "description 长度必须为 1–400。" });
   }
-  if (!modes.length || modes.length !== new Set(source.modes.map((value) => String(value).trim().toLowerCase())).size) {
-    issues.push({ path: "modes", message: "modes 只能包含 Chat 或 Coding，且至少包含一个。" });
+  if (!modes.length || modes.length !== source.modes.length) {
+    issues.push({ path: "modes", message: "modes 只能包含不重复的 Chat 或 Coding，且至少包含一个。" });
   }
   if (unknownCapabilities.length) {
     issues.push({
@@ -199,11 +200,11 @@ export function validateSkillMarkdown(value) {
       message: "SKILL.md 不能为空。"
     };
   }
-  if (bytes > 262144) {
+  if (bytes > SKILL_MARKDOWN_MAX_BYTES) {
     return {
       ok: false,
       code: "skill-markdown-too-large",
-      message: "SKILL.md 不能超过 256 KB。"
+      message: "SKILL.md 不能超过 64 KB。较大的参考资料应放入 resources。"
     };
   }
   if (!/^#{1,3}\s+\S+/mu.test(content)) {

@@ -63,6 +63,19 @@ function sanitizeRegistryEntry(value) {
   };
 }
 
+function sanitizeRegistryEntries(values) {
+  const byId = new Map();
+  for (const value of Array.isArray(values) ? values : []) {
+    const entry = sanitizeRegistryEntry(value);
+    if (!entry) continue;
+    const current = byId.get(entry.id);
+    if (!current || entry.updatedAt > current.updatedAt) {
+      byId.set(entry.id, entry);
+    }
+  }
+  return [...byId.values()];
+}
+
 export class SkillStore {
   constructor({ getFilePath }) {
     if (typeof getFilePath !== "function") {
@@ -81,9 +94,7 @@ export class SkillStore {
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
       return {
         version: 1,
-        skills: Array.isArray(parsed?.skills)
-          ? parsed.skills.map(sanitizeRegistryEntry).filter(Boolean)
-          : []
+        skills: sanitizeRegistryEntries(parsed?.skills)
       };
     } catch (error) {
       if (error?.code !== "ENOENT") {

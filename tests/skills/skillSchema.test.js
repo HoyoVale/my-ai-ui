@@ -51,3 +51,16 @@ test("Skill markdown requires content and a heading", () => {
   assert.equal(result.ok, true);
   assert.match(result.promptHash, /^[a-f0-9]{64}$/u);
 });
+
+test("Skill manifest rejects duplicate modes and oversized prompts", () => {
+  const duplicateModes = validateSkillManifest({
+    ...VALID,
+    modes: ["chat", "chat"]
+  });
+  assert.equal(duplicateModes.ok, false);
+  assert.ok(duplicateModes.issues.some((issue) => issue.path === "modes"));
+
+  const oversized = validateSkillMarkdown(`# Large\n\n${"x".repeat(64 * 1024)}`);
+  assert.equal(oversized.ok, false);
+  assert.equal(oversized.code, "skill-markdown-too-large");
+});

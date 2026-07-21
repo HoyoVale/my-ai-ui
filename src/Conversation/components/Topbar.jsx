@@ -10,6 +10,7 @@ export function ConversationTopbar({
   recoveryOpen,
   showRecovery = false,
   recoveryCount = 0,
+  skill = null,
   onToggleSidebar,
   onToggleContext,
   onToggleTask,
@@ -44,6 +45,13 @@ export function ConversationTopbar({
           />
         </button>
       </div>
+
+      {skill?.id && (
+        <div className="conversation-topbar__skill" title={`${skill.name} · ${skill.id}`}>
+          <span>Skill</span>
+          <strong>{skill.name}</strong>
+        </div>
+      )}
 
       <div className="conversation-topbar__right">
         <button

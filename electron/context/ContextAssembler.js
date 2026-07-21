@@ -52,7 +52,8 @@ export function assembleAgentContext({
   settings,
   conversation,
   memories = [],
-  toolManifest = []
+  toolManifest = [],
+  skillRuntime = null
 } = {}) {
   const normalizedSettings =
     settings ?? {};
@@ -166,6 +167,9 @@ export function assembleAgentContext({
   const developerInstructions = String(
     promptSettings.developerInstructions ?? ""
   ).trim();
+  const skillContext = String(
+    skillRuntime?.promptSection ?? ""
+  ).trim();
 
   const promptSections = [
     createPromptSection({
@@ -215,6 +219,13 @@ export function assembleAgentContext({
       title: "custom behavior",
       content: developerInstructions,
       editable: true
+    }),
+    createPromptSection({
+      id: "skill",
+      authority: "skill",
+      source: skillRuntime?.skill?.id ? `skill.${skillRuntime.skill.id}` : "skill",
+      title: skillRuntime?.skill?.name ?? "active skill",
+      content: skillContext
     }),
     createPromptSection({
       id: "personality",
@@ -290,6 +301,11 @@ export function assembleAgentContext({
           id: "developer",
           label: "开发者附加指令",
           tokens: estimateTextTokens(developerInstructions)
+        },
+        {
+          id: "skill",
+          label: skillRuntime?.skill?.name ? `Skill · ${skillRuntime.skill.name}` : "Skill",
+          tokens: estimateTextTokens(skillContext)
         },
         {
           id: "personality",
@@ -369,8 +385,18 @@ export function assembleAgentContext({
           promptSettings.modeOverrides?.[toolMode]
         ),
         developerInstructionsEnabled: Boolean(developerInstructions),
+        skillEnabled: Boolean(skillContext),
         sectionCount: promptSections.length
       },
+      skill: skillRuntime?.active
+        ? {
+            id: skillRuntime.skill.id,
+            name: skillRuntime.skill.name,
+            version: skillRuntime.skill.version,
+            requiredCapabilities: [...skillRuntime.skill.requiredCapabilities],
+            optionalCapabilities: [...skillRuntime.skill.optionalCapabilities]
+          }
+        : null,
 
       personality:
         getPersonalitySummary(

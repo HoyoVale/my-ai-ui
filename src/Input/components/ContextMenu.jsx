@@ -71,6 +71,7 @@ function CheckMark() {
 
 function MenuItem({
   label,
+  description = "",
   value = "",
   selected = false,
   disabled = false,
@@ -87,8 +88,15 @@ function MenuItem({
       disabled={disabled}
       onClick={onClick}
     >
-      <span className="input-context-menu__item-label" title={label}>
-        {label}
+      <span className="input-context-menu__item-copy">
+        <span className="input-context-menu__item-label" title={label}>
+          {label}
+        </span>
+        {description && (
+          <span className="input-context-menu__item-description">
+            {description}
+          </span>
+        )}
       </span>
       <span className="input-context-menu__item-end">
         {value && (
@@ -127,6 +135,7 @@ export function InputContextMenu({
   onSelectSession,
   onCreateSession,
   onAddWorkspace,
+  onSkillChange,
   onModelChange
 }) {
   const rootRef = useRef(null);
@@ -135,6 +144,7 @@ export function InputContextMenu({
   const [page, setPage] = useState("root");
   const [targetMode, setTargetMode] = useState("chat");
   const [targetWorkspaceId, setTargetWorkspaceId] = useState(null);
+  const [targetSkillId, setTargetSkillId] = useState(null);
   const [actionError, setActionError] = useState("");
 
   const currentMode = normalizeSessionMode(context?.mode, "chat");
@@ -160,6 +170,14 @@ export function InputContextMenu({
       ? context.models
       : [],
     [context?.models]
+  );
+  const allSkills = useMemo(
+    () => Array.isArray(context?.skills) ? context.skills : [],
+    [context?.skills]
+  );
+  const targetSkills = useMemo(
+    () => allSkills.filter((skill) => skill.modes?.includes(targetMode)),
+    [allSkills, targetMode]
   );
 
   const workspaceMap = useMemo(
@@ -193,6 +211,27 @@ export function InputContextMenu({
   const currentModel = models.find(
     (model) => model.value === context?.modelValue
   ) ?? null;
+  const currentRuntimeSkill = allSkills.find(
+    (skill) => skill.id === context?.currentSkillId
+  ) ?? null;
+  const targetSkill = targetSkills.find(
+    (skill) => skill.id === targetSkillId
+  ) ?? null;
+  const displayedSkill = targetMatchesCurrent
+    ? currentRuntimeSkill ?? context?.currentSkill ?? null
+    : targetSkill;
+  const boundSkillChanged = Boolean(
+    targetMatchesCurrent &&
+    currentRuntimeSkill &&
+    context?.currentSkill?.packageHash &&
+    currentRuntimeSkill.runtimeFingerprint &&
+    context.currentSkill.packageHash !== currentRuntimeSkill.runtimeFingerprint
+  );
+  const boundSkillUnavailable = Boolean(
+    targetMatchesCurrent &&
+    context?.currentSkillId &&
+    (!currentRuntimeSkill || boundSkillChanged)
+  );
 
 
   const setMenuOpen = useCallback((nextOpen) => {
@@ -203,11 +242,13 @@ export function InputContextMenu({
       setPage("root");
       setTargetMode(currentMode);
       setTargetWorkspaceId(currentWorkspaceId);
+      setTargetSkillId(context?.currentSkillId ?? null);
       setActionError("");
     } else {
       onPanelHeightChange?.(0);
     }
   }, [
+    context?.currentSkillId,
     currentMode,
     currentWorkspaceId,
     onOpenChange,
@@ -287,6 +328,7 @@ export function InputContextMenu({
     page,
     models.length,
     matchingSessions.length,
+    targetSkills.length,
     workspaces.length,
     onPanelHeightChange
   ]);
@@ -303,6 +345,15 @@ export function InputContextMenu({
       normalized === "coding"
         ? nextWorkspaceId
         : nextWorkspaceId ?? null
+    );
+    setTargetSkillId(
+      normalized === currentMode &&
+      allSkills.some((skill) =>
+        skill.id === context?.currentSkillId &&
+        skill.modes?.includes(normalized)
+      )
+        ? context?.currentSkillId ?? null
+        : null
     );
     setActionError("");
     setPage("workspace");
@@ -346,7 +397,8 @@ export function InputContextMenu({
     const result = await onCreateSession?.({
       mode: targetMode,
       workspaceId: targetWorkspaceId,
-      modelSelection: context?.currentModelSelection ?? undefined
+      modelSelection: context?.currentModelSelection ?? undefined,
+      skillId: targetSkillId
     });
 
     if (result?.ok === false) {
@@ -354,6 +406,33 @@ export function InputContextMenu({
       return;
     }
 
+    setMenuOpen(false);
+  };
+
+  const selectSkill = async (skillId) => {
+    setActionError("");
+    const normalizedSkillId = skillId ? String(skillId) : null;
+    if (
+      normalizedSkillId &&
+      !targetSkills.some((skill) => skill.id === normalizedSkillId)
+    ) {
+      setActionError("该 Skill 不支持当前目标模式。");
+      return;
+    }
+
+    if (!targetMatchesCurrent) {
+      setTargetSkillId(normalizedSkillId);
+      setPage("root");
+      return;
+    }
+
+    const result = await onSkillChange?.(normalizedSkillId);
+    if (result?.ok === false) {
+      setActionError(result.message ?? "无法切换 Skill。");
+      return;
+    }
+
+    setTargetSkillId(normalizedSkillId);
     setMenuOpen(false);
   };
 
@@ -391,6 +470,17 @@ export function InputContextMenu({
         trailing={<Chevron />}
         onClick={() => setPage("session")}
         testId="input-context-session"
+      />
+      <MenuItem
+        label="Skill"
+        value={
+          displayedSkill?.name
+            ? `${displayedSkill.name}${boundSkillChanged ? "（需重新绑定）" : boundSkillUnavailable ? "（不可用）" : ""}`
+            : "无"
+        }
+        trailing={<Chevron />}
+        onClick={() => setPage("skill")}
+        testId="input-context-skill"
       />
       <MenuItem
         label="模型"
@@ -519,6 +609,48 @@ export function InputContextMenu({
     </>
   );
 
+  const renderSkillPage = () => (
+    <>
+      {renderPageHeader("Skill")}
+      <div className="input-context-menu__items input-context-menu__items--scroll">
+        <MenuItem
+          label="无 Skill"
+          description="仅使用当前模式下的默认工具与上下文"
+          selected={!targetSkillId}
+          onClick={() => {
+            void selectSkill(null);
+          }}
+          testId="input-skill-none"
+        />
+        {boundSkillUnavailable && (
+          <div className="input-context-menu__notice is-warning">
+            {boundSkillChanged
+              ? "当前 Skill 已更新。重新选择它以刷新会话绑定，旧任务不会静默使用新版本。"
+              : "当前绑定的 Skill 已禁用、卸载或完整性异常。请选择其他 Skill，或清除绑定。"}
+          </div>
+        )}
+        {targetSkills.map((skill) => (
+          <MenuItem
+            key={skill.id}
+            label={skill.name}
+            description={skill.description}
+            value={`v${skill.version}`}
+            selected={skill.id === targetSkillId}
+            onClick={() => {
+              void selectSkill(skill.id);
+            }}
+            testId={`input-skill-${skill.id}`}
+          />
+        ))}
+        {!targetSkills.length && (
+          <div className="input-context-menu__empty">
+            当前模式没有可用 Skill
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   const renderModelPage = () => (
     <>
       {renderPageHeader("模型")}
@@ -567,6 +699,7 @@ export function InputContextMenu({
           {page === "mode" && renderModePage()}
           {page === "workspace" && renderWorkspacePage()}
           {page === "session" && renderSessionPage()}
+          {page === "skill" && renderSkillPage()}
           {page === "model" && renderModelPage()}
 
           {(actionError || context?.error) && (

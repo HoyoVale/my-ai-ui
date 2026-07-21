@@ -45,7 +45,15 @@ export function createExecutionConversation(
     modelSnapshot:
       overrides.modelSnapshot === undefined
         ? source.modelSnapshot ?? null
-        : overrides.modelSnapshot
+        : overrides.modelSnapshot,
+    skillId:
+      overrides.skillId === undefined
+        ? source.skillId ?? null
+        : overrides.skillId,
+    skillSnapshot:
+      overrides.skillSnapshot === undefined
+        ? source.skillSnapshot ?? null
+        : overrides.skillSnapshot
   };
 }
 
@@ -110,6 +118,8 @@ export function getRecoveryExecutionOverrides(message = {}) {
     workspaceId: checkpoint.workspaceId,
     workspaceSnapshot: checkpoint.workspaceSnapshot,
     modelSelection: checkpoint.modelSelection,
-    modelSnapshot: checkpoint.modelSnapshot
+    modelSnapshot: checkpoint.modelSnapshot,
+    skillId: checkpoint.skillId,
+    skillSnapshot: checkpoint.skillSnapshot
   };
 }

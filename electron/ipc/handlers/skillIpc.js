@@ -10,6 +10,15 @@ import {
 } from "../../settings/settingsStore.js";
 
 import {
+  conversationManager
+} from "../../conversation/index.js";
+
+import {
+  resolveConversationExecutionContext
+} from "../../conversation/executionContext.js";
+
+import {
+  runSkillRuntimeTests,
   skillRegistry
 } from "../../skills/index.js";
 
@@ -54,6 +63,33 @@ export function registerSkillIpc() {
       requireSettingSender(event);
       return skillRegistry.get(String(skillId ?? ""), {
         developerMode: developerMode()
+      });
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.skills.GET_RUNTIME_STATE,
+    (_event, input = {}) => {
+      return skillRegistry.getRuntimeState({
+        mode: String(input.mode ?? "")
+      });
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.skills.TEST_RUNTIME,
+    (event, input = {}) => {
+      requireSettingSender(event);
+      const conversation = conversationManager.getCurrentConversation();
+      const execution = resolveConversationExecutionContext({
+        settings: getSettings(),
+        conversation
+      });
+      return runSkillRuntimeTests({
+        registry: skillRegistry,
+        skillId: String(input.skillId ?? ""),
+        settings: execution.settings,
+        conversation: execution.conversation
       });
     }
   );

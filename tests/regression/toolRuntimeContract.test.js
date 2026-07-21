@@ -63,7 +63,7 @@ describe(
         );
         assert.match(
           source,
-          /toolManifest: toolSession\.registryManifest/u
+          /toolManifest: toolSession\.definitions/u
         );
         assert.match(
           source,

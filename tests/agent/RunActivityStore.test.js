@@ -16,6 +16,59 @@ describe("RunActivityStore", () => {
     assert.equal(events[0].tool.result.summary, "读取完成");
   });
 
+  it("updates one Skill event through mapped and terminal states", () => {
+    const store = new RunActivityStore({
+      taskId: "task-skill",
+      runId: "run-skill",
+      startedAt: 100
+    });
+
+    store.recordSkill({
+      skill: {
+        id: "debug",
+        name: "Debug",
+        version: "1.0.0",
+        requiredCapabilities: ["workspace.file.read"],
+        optionalCapabilities: ["workspace.file.modify"]
+      }
+    }, 110);
+    store.recordSkill({
+      skill: {
+        id: "debug",
+        name: "Debug",
+        version: "1.0.0",
+        requiredCapabilities: ["workspace.file.read"],
+        optionalCapabilities: ["workspace.file.modify"]
+      },
+      selectedToolNames: ["read_text_file", "apply_patch"],
+      missingRequired: []
+    }, 120);
+    store.recordSkill({
+      skill: {
+        id: "debug",
+        name: "Debug",
+        version: "1.0.0",
+        requiredCapabilities: ["workspace.file.read"],
+        optionalCapabilities: ["workspace.file.modify"]
+      },
+      status: "completed",
+      selectedToolNames: ["read_text_file", "apply_patch"],
+      missingRequired: []
+    }, 160);
+
+    const events = store.snapshot().events.filter(
+      (event) => event.type === "skill"
+    );
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0].status, "completed");
+    assert.equal(events[0].skill.id, "debug");
+    assert.deepEqual(
+      events[0].skill.selectedToolNames,
+      ["read_text_file", "apply_patch"]
+    );
+  });
+
   it("preserves developer-only Tool visibility for diagnostics", () => {
     const store = new RunActivityStore({ taskId: "task-hidden", runId: "run-hidden", startedAt: 100 });
     store.upsertTool({

@@ -33,6 +33,7 @@ export class SkillRegistry {
     this.createId = createId;
     this.onChange = onChange;
     this.data = null;
+    this.revision = 0;
   }
 
   ensureLoaded() {
@@ -52,9 +53,20 @@ export class SkillRegistry {
     return path.join(this.rootDirectory(), ".staging", this.createId());
   }
 
+  notify(state = this.getState()) {
+    try {
+      this.onChange(state);
+    } catch (error) {
+      console.warn("广播 Skill 状态失败：", error);
+    }
+  }
+
   commit() {
     this.store.save(this.ensureLoaded());
-    this.onChange(this.getState());
+    this.revision += 1;
+    const state = this.getState();
+    this.notify(state);
+    return state;
   }
 
   publicSkill(entry, { developerMode = false } = {}) {
@@ -67,6 +79,7 @@ export class SkillRegistry {
         ? packageInfo.packageHash === entry.packageHash ? "verified" : "changed"
         : "invalid";
     }
+    const available = entry.enabled !== false && integrity === "verified";
     const skill = {
       id: entry.id,
       name: entry.name,
@@ -81,22 +94,39 @@ export class SkillRegistry {
       license: entry.license ?? "",
       keywords: [...(entry.keywords ?? [])],
       enabled: entry.enabled !== false,
+      available,
       installedAt: Number(entry.installedAt ?? 0),
       updatedAt: Number(entry.updatedAt ?? 0),
       sourceType: entry.sourceType ?? "unknown",
       sourceName: entry.sourceName ?? "",
       fileCount: Number(entry.fileCount ?? 0),
       totalBytes: Number(entry.totalBytes ?? 0),
-      integrity
+      integrity,
+      runtimeFingerprint: String(entry.packageHash ?? "")
     };
     if (developerMode) {
       skill.manifestHash = entry.manifestHash;
       skill.promptHash = entry.promptHash;
       skill.packageHash = entry.packageHash;
       skill.installedPath = installedPath;
-      skill.integrityError = packageInfo && !packageInfo.ok
-        ? { code: packageInfo.code, message: packageInfo.message }
-        : null;
+      skill.integrityError = integrity === "verified"
+        ? null
+        : integrity === "changed"
+          ? {
+              code: "skill-integrity-changed",
+              message: "Skill 文件内容与安装记录不一致。"
+            }
+          : integrity === "missing"
+            ? {
+                code: "skill-package-missing",
+                message: "Skill 安装目录不存在。"
+              }
+            : packageInfo && !packageInfo.ok
+              ? { code: packageInfo.code, message: packageInfo.message }
+              : {
+                  code: "skill-package-invalid",
+                  message: "Skill 包无法通过完整性检查。"
+                };
     }
     return skill;
   }
@@ -107,10 +137,13 @@ export class SkillRegistry {
       .sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
     return {
       schemaVersion: 1,
+      revision: this.revision,
       total: skills.length,
       enabled: skills.filter((skill) => skill.enabled).length,
       disabled: skills.filter((skill) => !skill.enabled).length,
-      invalid: skills.filter((skill) => !["verified"].includes(skill.integrity)).length,
+      available: skills.filter((skill) => skill.available).length,
+      unavailable: skills.filter((skill) => !skill.available).length,
+      invalid: skills.filter((skill) => skill.integrity !== "verified").length,
       skills
     };
   }
@@ -122,6 +155,36 @@ export class SkillRegistry {
   get(skillId, options = {}) {
     const entry = this.ensureLoaded().skills.find((skill) => skill.id === String(skillId ?? ""));
     return entry ? this.publicSkill(entry, options) : null;
+  }
+
+  getRuntimeState({ mode = null } = {}) {
+    const normalizedMode = mode === "coding" ? "coding" : mode === "chat" ? "chat" : null;
+    const skills = this.list()
+      .filter((skill) =>
+        skill.enabled &&
+        skill.integrity === "verified" &&
+        (!normalizedMode || skill.modes.includes(normalizedMode))
+      )
+      .map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        version: skill.version,
+        description: skill.description,
+        modes: [...skill.modes],
+        requiredCapabilities: [...skill.requiredCapabilities],
+        optionalCapabilities: [...skill.optionalCapabilities],
+        permissions: clone(skill.permissions),
+        integrity: skill.integrity,
+        runtimeFingerprint: skill.runtimeFingerprint
+      }));
+
+    return {
+      schemaVersion: 1,
+      revision: this.revision,
+      mode: normalizedMode,
+      total: skills.length,
+      skills
+    };
   }
 
   installFromDirectory(sourceDirectory, options = {}) {
@@ -225,6 +288,10 @@ export class SkillRegistry {
     const data = this.ensureLoaded();
     const entry = data.skills.find((skill) => skill.id === id);
     if (!entry) return { ok: false, code: "skill-not-found", message: "Skill 不存在。" };
+
+    if (entry.enabled === Boolean(enabled)) {
+      return { ok: true, unchanged: true, skill: this.publicSkill(entry) };
+    }
 
     if (enabled === true) {
       const installedPath = this.installedDirectory(entry.id);

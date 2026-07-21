@@ -1,7 +1,7 @@
 # Tool 与 Skill 开发路线
 
-> 基线：`my-ai-ui(63)`  
-> 当前阶段：Skill Foundation 已实施，下一阶段为 Skill Runtime  
+> 基线：`my-ai-ui(65)`  
+> 当前阶段：Skill Runtime 稳定化已实施；Skill Advanced 暂缓  
 > 原则：先稳定系统工具与能力协议，再建设 Skill；Skill 不能绕过 Tool Runtime、工作区边界或用户批准。
 
 ## 一、总体路线
@@ -26,7 +26,7 @@ Skill Advanced
 | Tool Write 2.0 | 增强精确改写、补丁、目录与路径操作 | Agent 能够安全、可核验地修改工作区 |
 | Capability Foundation | 建立工具能力、风险和来源协议 | Skill 不依赖具体工具名称 |
 | Skill Foundation | 安装、校验、启停和卸载 Skill | **已实施：Skill 可以安全进入本地 Registry** |
-| Skill Runtime | 显式选择 Skill，并解析能力和权限 | Skill 能参与真实 Agent Run |
+| Skill Runtime | 显式选择 Skill，并解析能力和权限 | **已实施并完成稳定化审查** |
 | Skill Advanced | 自动路由、组合、更新、签名和市场 | 形成可扩展 Skill 生态 |
 
 ---
@@ -676,7 +676,7 @@ Manifest 使用严格 Schema，主要字段：
 
 - 非空；
 - 至少包含一个 Markdown 标题；
-- 最大 256 KB；
+- 最大 64 KB，较大的静态资料放入 `resources`；
 - 安装时生成稳定 Prompt Hash；
 - Foundation 阶段只保存和校验，不注入 Agent Prompt。
 
@@ -761,30 +761,114 @@ invalid
 
 ## 六、补丁 5：Skill Runtime
 
-第一版只支持显式触发：
+状态：**已实施**。
 
-- Input 菜单选择 Skill；
-- `/skill-id`；
-- 模型建议后由用户确认。
+### 6.1 显式会话选择
 
-运行权限：
+Input 的上下文菜单新增 Skill 页面。用户可以为当前会话选择一个已启用、完整性通过且支持当前 Chat/Coding 模式的 Skill，也可以随时切回“无 Skill”。Skill 绑定保存到 Conversation，不使用全局 Skill 状态。
+
+### 6.2 Skill Prompt Stack
+
+`SKILL.md` 经过完整性校验后进入独立 `skill` authority 层：
+
+```text
+Application Policy
+→ Runtime / Capability
+→ Developer Instructions
+→ Skill Workflow
+→ Personality / Preferences
+→ Context Data
+```
+
+Skill Prompt 不能覆盖产品策略、开发者指令、工作区边界、Tool 权限、Approval 或用户最新请求。
+
+### 6.3 Capability 与 Tool 映射
+
+每次 Agent Run 都会使用 Skill 的 `requiredCapabilities`、`optionalCapabilities` 和权限声明重新解析 Tool：
+
+```text
+Skill Capability Request
+∩ 当前 Chat/Coding 模式
+∩ 当前工作区
+∩ Tool 开关与来源权限
+∩ MCP / Custom HTTP 权限
+= 本次实际 Tool Set
+```
+
+缺少必需 Capability 时，Run 在模型调用前明确失败，不会让模型假装具备该能力。
+
+### 6.4 权限继承
+
+Skill 权限只能收紧：
 
 ```text
 Skill 声明权限
 ∩ 用户设置
-∩ 当前 Chat/Coding 模式
-∩ 当前工作区
+∩ 当前模式与工作区
 ∩ Tool/MCP 权限
 = 实际权限
 ```
 
-Conversation 只需显示：
+`ask` 不仅出现在诊断中，也会进入 Tool Approval；Skill 不能将现有 `deny` 提升为 `allow`。
 
-```text
-正在使用 Debug Skill
-```
+### 6.5 Conversation 状态与执行日志
 
-开发者展开后显示 Capability、实际工具、Prompt Stack 和加载诊断。
+Conversation 保存：
+
+- `skillId`；
+- 安装时快照；
+- Assistant 消息中的 `skillRun`；
+- 实际映射 Tool；
+- 缺失 Capability；
+- 开始、完成、失败、取消或中断状态。
+
+Conversation 顶栏显示当前 Skill，思考时间线和任务活动面板显示 Skill 加载、工具映射和最终执行状态。
+
+### 6.6 Skill Runtime 测试框架
+
+Setting → Skills 增加“运行检查”，在当前会话执行上下文中验证：
+
+- Skill 完整性与模式；
+- Prompt 可读取；
+- 必需 Capability；
+- 实际 Tool 映射；
+- 权限求交集。
+
+自动化测试覆盖 Skill 解析、Prompt authority 顺序、会话绑定、Capability 限定 Tool Set，以及 `ask` 权限传递。
+
+### 6.7 UI
+
+Skills 页面增加搜索、状态筛选、Runtime 检查报告、能力与权限分组以及更简洁的包结构说明。普通模式展示运行所需信息，Developer mode 才显示路径和 Hash。
+
+### 6.8 稳定化补充
+
+在进入 Skill Advanced 前，Runtime 已增加以下稳定性约束：
+
+- 会话、续跑、重新生成和恢复任务统一使用同一 Skill 快照；
+- 快照保存版本、Capability、权限与 Manifest/Prompt/Package Hash；
+- Skill 在任务中途发生更新时拒绝静默续跑，要求新建任务或重新选择；
+- Skill Capability 过滤 Tool 时，仍保留受权限约束的计划与大型结果分页工具；
+- 切换目标模式或工作区时，Skill 只作为新会话草稿，不会误改当前会话；
+- 已禁用、卸载或完整性异常的绑定会明确提示并允许清除；
+- Registry 广播失败不再回滚已经成功持久化的安装或状态修改；
+- Registry 自动去重，前端异步状态更新按 Revision 和请求序列防止旧结果覆盖；
+- Runtime 检查报告在 Registry 变化后自动失效，避免显示过期诊断；
+- 重复模式、过大的 SKILL.md 和空 Skill 测试请求会返回明确错误。
+
+详细审查记录见 `docs/SKILL_RUNTIME_STABILITY.md`。
+
+### 6.9 阶段边界
+
+本阶段不实现：
+
+- 自动 Skill Router；
+- 多 Skill 组合；
+- `/skill-id` 命令；
+- Skill 依赖与更新；
+- 网络安装和 Marketplace；
+- Skill 脚本执行。
+
+这些能力留给 Skill Advanced。
 
 ---
 

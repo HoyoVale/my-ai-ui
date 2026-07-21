@@ -218,7 +218,7 @@ function publicEvent(event) {
     };
   }
 
-  if (["commentary", "plan", "batch"].includes(event.type)) {
+  if (["commentary", "plan", "batch", "skill"].includes(event.type)) {
     return clone(event);
   }
 
@@ -343,6 +343,26 @@ function publicApproval(value) {
   };
 }
 
+function publicSkillRun(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return {
+    id: String(value.id ?? "").slice(0, 120),
+    name: String(value.name ?? value.id ?? "Skill").slice(0, 120),
+    version: String(value.version ?? "").slice(0, 80),
+    status: String(value.status ?? "running").slice(0, 40),
+    selectedToolNames: (value.selectedToolNames ?? [])
+      .map((item) => String(item).slice(0, 160))
+      .slice(0, 100),
+    missingRequired: (value.missingRequired ?? [])
+      .map((item) => String(item).slice(0, 160))
+      .slice(0, 32),
+    startedAt: Number(value.startedAt ?? 0),
+    endedAt: value.endedAt === null ? null : Number(value.endedAt ?? 0)
+  };
+}
+
 function publicToolSecurity(value) {
   if (!value || typeof value !== "object") {
     return null;
@@ -383,6 +403,7 @@ export function projectResponseStatus(status) {
     ...basePublicStatus(source),
     pendingApproval: publicApproval(source.pendingApproval),
     toolSecurity: publicToolSecurity(source.toolSecurity),
+    skillRun: publicSkillRun(source.skillRun),
     plan: compactPlan(source.plan),
     activity: projectActivitySnapshot(source.activity, {
       maxEvents: 30
@@ -408,6 +429,7 @@ export function projectConversationStatus(status) {
     ...basePublicStatus(source),
     pendingApproval: publicApproval(source.pendingApproval),
     toolSecurity: publicToolSecurity(source.toolSecurity),
+    skillRun: publicSkillRun(source.skillRun),
     plan: compactPlan(source.plan),
     activeToolCalls: (source.activeToolCalls ?? [])
       .slice(-80)

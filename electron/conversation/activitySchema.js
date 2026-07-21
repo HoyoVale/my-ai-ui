@@ -351,7 +351,8 @@ function sanitizeActivityEvent(source, index) {
     "tool",
     "plan",
     "commentary",
-    "batch"
+    "batch",
+    "skill"
   ].includes(source.type)
     ? source.type
     : null;
@@ -427,6 +428,33 @@ function sanitizeActivityEvent(source, index) {
 
     event.tool = tool;
     event.status = tool.status;
+  }
+
+  if (type === "skill") {
+    const skill = source.skill && typeof source.skill === "object"
+      ? {
+          id: stringValue(source.skill.id, "", 120).trim(),
+          name: stringValue(source.skill.name, source.skill.id ?? "Skill", 120).trim(),
+          version: stringValue(source.skill.version, "", 80).trim(),
+          requiredCapabilities: Array.isArray(source.skill.requiredCapabilities)
+            ? source.skill.requiredCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+            : [],
+          optionalCapabilities: Array.isArray(source.skill.optionalCapabilities)
+            ? source.skill.optionalCapabilities.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+            : [],
+          selectedToolNames: Array.isArray(source.skill.selectedToolNames)
+            ? source.skill.selectedToolNames.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 100)
+            : [],
+          missingRequired: Array.isArray(source.skill.missingRequired)
+            ? source.skill.missingRequired.map((item) => stringValue(item, "", 160).trim()).filter(Boolean).slice(0, 32)
+            : []
+        }
+      : null;
+
+    if (!skill?.id) {
+      return null;
+    }
+    event.skill = skill;
   }
 
   if (type === "plan") {

@@ -28,7 +28,7 @@ function settings(root, mode) {
   };
 }
 
-test("Agent Session exposes only tools selected by a capability request", async () => {
+test("Agent Session exposes requested tools plus bounded Agent support tools", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "capability-session-"));
   const session = createAgentToolSession({
     settings: settings(root, "chat"),
@@ -40,8 +40,14 @@ test("Agent Session exposes only tools selected by a capability request", async 
   try {
     assert.equal(session.capabilityResolution.satisfied, true);
     assert.deepEqual(Object.keys(session.tools).sort(), [
+      "read_tool_result",
       "search_files",
-      "search_text"
+      "search_text",
+      "update_plan"
+    ]);
+    assert.deepEqual(session.capabilityResolution.supportingCapabilities, [
+      "agent.plan",
+      "agent.result.page"
     ]);
   } finally {
     await session.closePersistence();

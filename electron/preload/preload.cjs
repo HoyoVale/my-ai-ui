@@ -136,6 +136,9 @@ const CHANNELS = Object.freeze({
   CONVERSATION_SET_MODEL:
     "conversation-set-model",
 
+  CONVERSATION_SET_SKILL:
+    "conversation-set-skill",
+
   CONVERSATION_SELECT:
     "conversation-select",
 
@@ -172,6 +175,12 @@ const CHANNELS = Object.freeze({
 
   SKILLS_GET:
     "skills-get",
+
+  SKILLS_GET_RUNTIME_STATE:
+    "skills-get-runtime-state",
+
+  SKILLS_TEST_RUNTIME:
+    "skills-test-runtime",
 
   SKILLS_IMPORT_DIRECTORY:
     "skills-import-directory",
@@ -751,7 +760,13 @@ const api = Object.freeze({
                 providerId: String(input.modelSelection.providerId ?? ""),
                 modelConfigId: String(input.modelSelection.modelConfigId ?? "")
               }
-            : undefined
+            : undefined,
+        skillId:
+          input?.skillId === undefined
+            ? undefined
+            : input?.skillId === null
+              ? null
+              : String(input.skillId ?? "")
       }
     );
   },
@@ -787,6 +802,19 @@ const api = Object.freeze({
         conversationId: String(input?.conversationId ?? ""),
         providerId: String(input?.providerId ?? ""),
         modelConfigId: String(input?.modelConfigId ?? "")
+      }
+    );
+  },
+
+  setConversationSkill: (input = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.CONVERSATION_SET_SKILL,
+      {
+        conversationId: String(input?.conversationId ?? ""),
+        skillId:
+          input?.skillId === null
+            ? null
+            : String(input?.skillId ?? "")
       }
     );
   },
@@ -916,6 +944,20 @@ const api = Object.freeze({
     return ipcRenderer.invoke(
       CHANNELS.SKILLS_GET,
       String(skillId ?? "")
+    );
+  },
+
+  getSkillRuntimeState: (mode = "") => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_GET_RUNTIME_STATE,
+      { mode: String(mode ?? "") }
+    );
+  },
+
+  testSkillRuntime: (skillId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.SKILLS_TEST_RUNTIME,
+      { skillId: String(skillId ?? "") }
     );
   },
 
