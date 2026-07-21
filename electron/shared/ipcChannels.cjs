@@ -34,6 +34,9 @@ const IPC_CHANNELS =
     }),
 
     response: Object.freeze({
+      RENDERER_READY:
+        "response-renderer-ready",
+
       DISMISS_WINDOW:
         "dismiss-response-window",
 

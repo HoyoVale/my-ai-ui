@@ -34,5 +34,43 @@ describe(
         );
       }
     );
+
+    it(
+      "waits for the Response renderer subscription handshake before flushing queued chunks",
+      () => {
+        const controllerSource =
+          fs.readFileSync(
+            new URL(
+              "../../electron/windows/response/ResponseWindowController.js",
+              import.meta.url
+            ),
+            "utf8"
+          );
+
+        const hookSource =
+          fs.readFileSync(
+            new URL(
+              "../../src/Response/hooks/useResponseStream.js",
+              import.meta.url
+            ),
+            "utf8"
+          );
+
+        assert.match(
+          controllerSource,
+          /markRendererReady\(\)[\s\S]*this\.ready\s*=\s*true[\s\S]*this\.flushPendingMessages\(\)/u
+        );
+
+        assert.doesNotMatch(
+          controllerSource,
+          /did-finish-load[\s\S]{0,400}flushPendingMessages\(\)/u
+        );
+
+        assert.match(
+          hookSource,
+          /offSide[\s\S]*notifyResponseReady\?\.\(\)[\s\S]*return\s*\(\)\s*=>/u
+        );
+      }
+    );
   }
 );

@@ -8,6 +8,7 @@ import IPC_CHANNELS
 import {
   dismissResponseWindow,
   isResponseSender,
+  markResponseRendererReady,
   resizeResponseWindow
 } from "../../windows/response/index.js";
 
@@ -29,6 +30,23 @@ export function registerResponseIpc() {
       .OPEN_RESPONSE,
     () => {
       runResponseDemo();
+    }
+  );
+
+  ipcMain.on(
+    IPC_CHANNELS
+      .response
+      .RENDERER_READY,
+    (event) => {
+      if (
+        !isResponseSender(
+          event.sender
+        )
+      ) {
+        return;
+      }
+
+      markResponseRendererReady();
     }
   );
 

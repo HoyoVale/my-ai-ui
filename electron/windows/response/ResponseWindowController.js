@@ -162,16 +162,10 @@ export class ResponseWindowController {
     this.currentSide =
       placement.side;
 
-    this.window.loadURL(
-      getRendererUrl(
-        "/response"
-      )
-    );
-
     this.window
       .webContents
-      .once(
-        "did-finish-load",
+      .on(
+        "did-start-loading",
         () => {
           if (
             !this.window ||
@@ -180,21 +174,20 @@ export class ResponseWindowController {
             return;
           }
 
-          this.ready = true;
-
-          this.flushPendingMessages();
-
-          this.send(
-            IPC_CHANNELS
-              .response
-              .SIDE_CHANGED,
-
-            this.currentSide
-          );
-
-          this.revealForStream();
+          /*
+           * did-finish-load 只代表文档加载完成，不代表 React effect 中的
+           * IPC 订阅已经安装。导航期间重新进入排队模式，等待 Renderer
+           * 显式握手，避免快速回复在首屏挂载或热重载时丢失。
+           */
+          this.ready = false;
         }
       );
+
+    this.window.loadURL(
+      getRendererUrl(
+        "/response"
+      )
+    );
 
     this.attachToPet(pet);
 
@@ -501,6 +494,29 @@ export class ResponseWindowController {
       this.window.webContents ===
         webContents
     );
+  }
+
+  markRendererReady() {
+    if (
+      !this.window ||
+      this.window.isDestroyed()
+    ) {
+      return;
+    }
+
+    this.ready = true;
+
+    this.flushPendingMessages();
+
+    this.send(
+      IPC_CHANNELS
+        .response
+        .SIDE_CHANGED,
+
+      this.currentSide
+    );
+
+    this.revealForStream();
   }
 
   send(channel, ...args) {

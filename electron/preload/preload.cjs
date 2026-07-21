@@ -58,6 +58,9 @@ const CHANNELS = Object.freeze({
   RESPONSE_SIDE_CHANGED:
     "response-side-changed",
 
+  RESPONSE_RENDERER_READY:
+    "response-renderer-ready",
+
   AGENT_SEND_MESSAGE:
     "agent-send-message",
 
@@ -540,6 +543,13 @@ const api = Object.freeze({
         side === "left"
           ? "left"
           : "right"
+    );
+  },
+
+  notifyResponseReady: () => {
+    ipcRenderer.send(
+      CHANNELS
+        .RESPONSE_RENDERER_READY
     );
   },
 

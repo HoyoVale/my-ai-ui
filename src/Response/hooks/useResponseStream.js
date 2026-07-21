@@ -213,6 +213,12 @@ export function useResponseStream() {
         setSide
       );
 
+    /*
+     * Electron 的 did-finish-load 可能早于 React effect。只有所有流事件
+     * 监听器都已注册后才通知主进程刷新排队消息，避免首条快速回复丢失。
+     */
+    api?.notifyResponseReady?.();
+
     return () => {
       disposed = true;
       offStatus?.();

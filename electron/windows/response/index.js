@@ -17,6 +17,10 @@ export function resizeResponseWindow(
   );
 }
 
+export function markResponseRendererReady() {
+  controller.markRendererReady();
+}
+
 export function applyResponseWindowSettings(
   settings
 ) {
