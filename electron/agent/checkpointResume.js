@@ -185,6 +185,12 @@ export function createCheckpointContinuationState(
     initialPlan: Array.isArray(checkpoint.plan)
       ? structuredClone(checkpoint.plan)
       : [],
+    initialPlanState:
+      checkpoint.planState && typeof checkpoint.planState === "object"
+        ? structuredClone(checkpoint.planState)
+        : Array.isArray(checkpoint.plan)
+          ? structuredClone(checkpoint.plan)
+          : [],
     continuationCount:
       nonNegativeInteger(checkpoint.continuationCount) + 1,
     previousSegmentCount:

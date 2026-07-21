@@ -151,7 +151,7 @@ function summarizeRecords(records = []) {
 
   return records
     .filter((record) =>
-      record?.name !== "update_plan"
+      !["update_plan", "update_step_work"].includes(record?.name)
     )
     .slice(-20)
     .map((record, index) => {
@@ -250,7 +250,7 @@ export function createFallbackFinalSummary({
     ? records
         .filter((record) =>
           record?.status === "completed" &&
-          record?.name !== "update_plan"
+          !["update_plan", "update_step_work"].includes(record?.name)
         )
         .map((record) =>
           text(

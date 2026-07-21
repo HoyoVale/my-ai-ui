@@ -53,7 +53,7 @@ function progressSignature(plan = [], records = []) {
   ) {
     if (
       record?.status !== "completed" ||
-      record?.name === "update_plan"
+      ["update_plan", "update_step_work"].includes(record?.name)
     ) {
       continue;
     }

@@ -42,7 +42,7 @@ test("runtime checkpoints retain receipts and unresolved effects without raw dia
     }
   });
 
-  assert.equal(checkpoint.version, 4);
+  assert.equal(checkpoint.version, 5);
   assert.equal(checkpoint.toolRuntime.unresolvedCount, 1);
   assert.equal(checkpoint.toolRuntime.calls.length, 2);
   assert.equal(checkpoint.toolRuntime.calls[0].idempotencyKey, undefined);

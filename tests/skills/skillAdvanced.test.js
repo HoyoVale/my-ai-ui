@@ -246,7 +246,7 @@ test("Skill command and router provenance survive checkpoint continuation", () =
       selected: { id: "debug", name: "Debug", score: 10, reasons: ["关键词：debug"] }
     }
   });
-  assert.equal(checkpoint.version, 4);
+  assert.equal(checkpoint.version, 5);
   assert.equal(checkpoint.skillSource, "router");
 
   const continuation = createCheckpointContinuationState({
@@ -264,6 +264,6 @@ test("Skill command and router provenance survive checkpoint continuation", () =
     checkpoint,
     events: []
   });
-  assert.equal(activity.checkpoint.version, 4);
+  assert.equal(activity.checkpoint.version, 5);
   assert.equal(activity.checkpoint.skillSource, "router");
 });

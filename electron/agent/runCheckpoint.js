@@ -1,3 +1,9 @@
+import {
+  activeSubplan,
+  compactPlanState,
+  rootPlanFromState
+} from "./planState.js";
+
 function text(value, maxLength = 1200) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -35,7 +41,7 @@ function compactToolRecords(
 ) {
   return (Array.isArray(records) ? records : [])
     .filter((record) =>
-      record?.name !== "update_plan"
+      !["update_plan", "update_step_work"].includes(record?.name)
     )
     .slice(-maxRecords)
     .map((record) => ({
@@ -154,6 +160,7 @@ export function createRunCheckpoint({
   resumable = false,
   publicStatus = "running",
   plan = [],
+  planState = null,
   records = [],
   stopReason = "",
   contextCompactions = 0,
@@ -169,8 +176,17 @@ export function createRunCheckpoint({
   snapshotSource = "checkpoint",
   updatedAt = Date.now()
 } = {}) {
-  const compactedPlan =
-    compactPlan(plan);
+  const compactedPlanState = compactPlanState(
+    planState ?? plan,
+    {
+      maxRootItems: 20,
+      maxSubplans: 8,
+      maxSubplanItems: 12
+    }
+  );
+  const compactedPlan = compactPlan(
+    rootPlanFromState(compactedPlanState)
+  );
   const tools =
     compactToolRecords(records);
   const counts = {
@@ -206,7 +222,7 @@ export function createRunCheckpoint({
     .map((call) => call.callId);
 
   return {
-    version: 4,
+    version: 5,
     goalId: text(goalId, 120),
     taskId: text(taskId, 120),
     workspaceId: text(workspaceId, 120),
@@ -277,6 +293,7 @@ export function createRunCheckpoint({
       )
     },
     plan: compactedPlan,
+    planState: compactedPlanState,
     tools,
     orchestration:
       orchestration && typeof orchestration === "object"
@@ -312,6 +329,13 @@ export function createCheckpointInstruction(
       .map((item, index) =>
         `${index + 1}. [${item.status}] ${item.title}${item.reason ? ` — ${item.reason}` : ""}`
       );
+  const internalStepWork = activeSubplan(
+    checkpoint.planState ?? checkpoint.plan ?? []
+  );
+  const stepWorkLines = (internalStepWork?.items ?? [])
+    .map((item, index) =>
+      `${index + 1}. [${item.status}] ${item.title}${item.reason ? ` — ${item.reason}` : ""}`
+    );
   const toolLines =
     (checkpoint.tools ?? [])
       .map((item) => {
@@ -341,7 +365,10 @@ export function createCheckpointInstruction(
       ? `Continuation number: ${checkpoint.continuationCount}`
       : "",
     planLines.length > 0
-      ? "Plan:\n" + planLines.join("\n")
+      ? "Root task plan:\n" + planLines.join("\n")
+      : "",
+    stepWorkLines.length > 0
+      ? `Internal work for active root step (${internalStepWork.rootStepId}):\n${stepWorkLines.join("\n")}`
       : "",
     toolLines.length > 0
       ? "Recent tool results:\n" + toolLines.join("\n")

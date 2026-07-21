@@ -43,7 +43,8 @@ test("Agent Session exposes requested tools plus bounded Agent support tools", a
       "read_tool_result",
       "search_files",
       "search_text",
-      "update_plan"
+      "update_plan",
+      "update_step_work"
     ]);
     assert.deepEqual(session.capabilityResolution.supportingCapabilities, [
       "agent.plan",

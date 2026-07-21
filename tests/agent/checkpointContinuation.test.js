@@ -50,6 +50,21 @@ function resumableConversation(stopReason = "agent_segment_limit") {
                 status: "in_progress"
               }
             ],
+            planState: {
+              schemaVersion: 2,
+              rootItems: [
+                { id: "inspect", title: "Inspect", status: "completed" },
+                { id: "finish", title: "Finish", status: "in_progress" }
+              ],
+              subplans: [
+                {
+                  rootStepId: "finish",
+                  items: [
+                    { id: "detail", title: "Verify", status: "in_progress" }
+                  ]
+                }
+              ]
+            },
             counts: {
               contextCompactions: 3
             },
@@ -82,6 +97,8 @@ describe("segment-boundary task continuation", () => {
     assert.equal(state.previousSegmentCount, 24);
     assert.equal(state.contextCompactionCount, 3);
     assert.equal(state.initialPlan[1].status, "in_progress");
+    assert.equal(state.initialPlanState.schemaVersion, 2);
+    assert.equal(state.initialPlanState.subplans[0].items[0].id, "detail");
     assert.equal(Object.hasOwn(state, "segmentCount"), false);
   });
 

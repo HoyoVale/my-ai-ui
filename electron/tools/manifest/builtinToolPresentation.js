@@ -184,8 +184,13 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
   },
   update_plan: {
     toolset: "agent.internal",
-    title: "更新任务计划",
-    description: "创建或更新当前 Agent Run 的结构化任务步骤和状态。"
+    title: "更新总计划",
+    description: "创建或更新面向用户展示的根任务计划。"
+  },
+  update_step_work: {
+    toolset: "agent.internal",
+    title: "更新内部子计划",
+    description: "更新当前总计划步骤的内部执行拆分；不显示在普通计划栏，也不影响任务完成判断。"
   },
   read_tool_result: {
     toolset: "agent.internal",

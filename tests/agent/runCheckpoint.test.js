@@ -87,4 +87,37 @@ describe("persisted run checkpoints", () => {
     assert.equal(checkpoint.publicStatus, "complete");
   });
 
+  it("persists root and internal plan state while exposing only root completion", () => {
+    const checkpoint = createRunCheckpoint({
+      objective: "Refactor plan storage",
+      planState: {
+        schemaVersion: 2,
+        revision: 3,
+        rootRevision: 2,
+        rootItems: [
+          { id: "root", title: "Implement", status: "in_progress", reason: "" }
+        ],
+        subplans: [
+          {
+            rootStepId: "root",
+            revision: 1,
+            archivedCount: 0,
+            items: [
+              { id: "detail", title: "Update schema", status: "in_progress", reason: "" }
+            ]
+          }
+        ]
+      }
+    });
+
+    assert.equal(checkpoint.version, 5);
+    assert.equal(checkpoint.plan.length, 1);
+    assert.equal(checkpoint.planState.schemaVersion, 2);
+    assert.equal(checkpoint.planState.subplans[0].items[0].id, "detail");
+
+    const instruction = createCheckpointInstruction(checkpoint);
+    assert.match(instruction, /Root task plan/u);
+    assert.match(instruction, /Internal work for active root step/u);
+  });
+
 });

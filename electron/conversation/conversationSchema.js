@@ -10,11 +10,15 @@ import {
 } from "../agent/runStopReasons.js";
 
 import {
+  compactPlanState
+} from "../agent/planState.js";
+
+import {
   createSkillSnapshot,
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
-const STORE_VERSION = 15;
+const STORE_VERSION = 16;
 
 const MESSAGE_ROLES =
   new Set([
@@ -436,13 +440,22 @@ export function sanitizeMessage(
             .slice(0, 100)
         : [];
 
-    const sourcePlan =
-      Array.isArray(source.plan)
-        ? source.plan
-            .map(sanitizePlanItem)
-            .filter(Boolean)
-            .slice(0, 20)
-        : [];
+    const normalizedPlanState = compactPlanState(
+      source.planState && typeof source.planState === "object"
+        ? source.planState
+        : Array.isArray(source.plan)
+          ? source.plan
+          : [],
+      {
+        maxRootItems: 20,
+        maxSubplans: 12,
+        maxSubplanItems: 20
+      }
+    );
+    const sourcePlan = normalizedPlanState.rootItems
+      .map(sanitizePlanItem)
+      .filter(Boolean)
+      .slice(0, 20);
 
     const migratedPlan =
       legacyQuestion && !legacyAnswer
@@ -533,6 +546,16 @@ export function sanitizeMessage(
 
     if (plan.length > 0) {
       message.plan = plan;
+    }
+
+    if (
+      plan.length > 0 ||
+      normalizedPlanState.subplans.length > 0
+    ) {
+      message.planState = {
+        ...normalizedPlanState,
+        rootItems: migratedPlan.length > 0 ? migratedPlan : plan
+      };
     }
 
     if (activity) {

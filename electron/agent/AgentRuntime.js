@@ -714,6 +714,11 @@ export class AgentRuntime {
         this.activeRun.toolSession
           ?.getPlan?.() ??
         this.activeRun.initialPlan ?? [],
+      planState:
+        this.activeRun.toolSession
+          ?.getPlanState?.() ??
+        this.activeRun.initialPlanState ??
+        this.activeRun.initialPlan ?? [],
       records:
         this.activeRun.toolSession
           ?.getRecords?.() ??
@@ -1348,6 +1353,9 @@ export class AgentRuntime {
       activityStore,
       initialPlan:
         continuationState?.initialPlan ?? [],
+      initialPlanState:
+        continuationState?.initialPlanState ??
+        continuationState?.initialPlan ?? [],
       resumedFromMessageId:
         continuationState?.resumedFromMessageId ?? "",
       resumeInPlace: false,
@@ -1616,6 +1624,7 @@ export class AgentRuntime {
       approvalController: null,
       activityStore,
       initialPlan: [],
+      initialPlanState: [],
       resumedFromMessageId: "",
       resumeInPlace: false,
       finalizationAttemptCount: 0,
@@ -1849,6 +1858,14 @@ export class AgentRuntime {
         this.activeRun
           .toolSession
           ?.getPlan?.() ??
+        this.activeRun
+          .initialPlan ?? [],
+      planState:
+        this.activeRun
+          .toolSession
+          ?.getPlanState?.() ??
+        this.activeRun
+          .initialPlanState ??
         this.activeRun
           .initialPlan ?? [],
       stopReason:
@@ -2396,7 +2413,9 @@ export class AgentRuntime {
             approvalController.authorize(request),
           activityStore: this.activeRun.activityStore,
           settings: runSettings,
-          initialPlan: this.activeRun.initialPlan,
+          initialPlan:
+            this.activeRun.initialPlanState ??
+            this.activeRun.initialPlan,
           resultStoreDirectory: getTaskResultDirectory(
             this.activeRun.taskId
           ),
@@ -3011,11 +3030,13 @@ export class AgentRuntime {
             return;
           }
 
-          this.activeRun.activityStore?.recordPlan(
-            plan,
-            Date.now(),
-            change
-          );
+          if (change?.scope !== "step_work") {
+            this.activeRun.activityStore?.recordPlan(
+              plan,
+              Date.now(),
+              change
+            );
+          }
           this.persistActiveRunCheckpoint({
             status: "running"
           });
@@ -3025,7 +3046,9 @@ export class AgentRuntime {
         },
         activityStore: this.activeRun.activityStore,
         settings: runSettings,
-        initialPlan: this.activeRun.initialPlan,
+        initialPlan:
+          this.activeRun.initialPlanState ??
+          this.activeRun.initialPlan,
         resultStoreDirectory: getTaskResultDirectory(
           this.activeRun.taskId
         ),

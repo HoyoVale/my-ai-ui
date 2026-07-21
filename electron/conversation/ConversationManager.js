@@ -13,6 +13,10 @@ import {
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
+import {
+  interruptPlanState
+} from "../agent/planState.js";
+
 
 function clone(value) {
   return structuredClone(value);
@@ -735,6 +739,7 @@ export class ConversationManager {
     durationMs = 0,
     toolCalls = [],
     plan = [],
+    planState = null,
     stopReason = "",
     resumedFromMessageId = "",
     taskId = "",
@@ -794,6 +799,7 @@ export class ConversationManager {
         durationMs,
         toolCalls,
         plan,
+        planState,
         stopReason,
         resumedFromMessageId,
         taskId,
@@ -931,6 +937,7 @@ export class ConversationManager {
     durationMs = 0,
     toolCalls = [],
     plan = [],
+    planState = null,
     stopReason = "",
     resumedFromMessageId = "",
     taskId = "",
@@ -998,6 +1005,7 @@ export class ConversationManager {
     delete message.durationMs;
     delete message.toolCalls;
     delete message.plan;
+    delete message.planState;
     delete message.stopReason;
     delete message.resumedFromMessageId;
     delete message.taskId;
@@ -1010,6 +1018,7 @@ export class ConversationManager {
         durationMs,
         toolCalls,
         plan,
+        planState,
         stopReason,
         resumedFromMessageId,
         taskId,
@@ -1045,6 +1054,7 @@ export class ConversationManager {
       durationMs = 0,
       toolCalls = [],
       plan = [],
+      planState = null,
       stopReason = "",
       resumedFromMessageId = "",
       taskId = "",
@@ -1086,6 +1096,10 @@ export class ConversationManager {
       plan.length > 0
     ) {
       message.plan = clone(plan);
+    }
+
+    if (planState && typeof planState === "object") {
+      message.planState = clone(planState);
     }
 
     if (stopReason) {
@@ -1167,21 +1181,16 @@ export class ConversationManager {
         message.status = messageStatus;
         message.stopReason = stopReason;
 
-        if (Array.isArray(message.plan)) {
-          message.plan = message.plan.map((item) =>
-            item.status === "in_progress"
-              ? {
-                  ...item,
-                  status: "blocked",
-                  reason: item.reason || (
-                    runtimeDecision?.recovery?.unresolvedCount > 0
-                      ? "请先处理尚未确认的工具操作"
-                      : "应用退出导致执行中断"
-                  )
-                }
-              : item
-          );
-        }
+        const interruptionReason =
+          runtimeDecision?.recovery?.unresolvedCount > 0
+            ? "请先处理尚未确认的工具操作"
+            : "应用退出导致执行中断";
+        const interruptedPlanState = interruptPlanState(
+          message.planState ?? message.plan ?? [],
+          interruptionReason
+        );
+        message.planState = interruptedPlanState;
+        message.plan = interruptedPlanState.rootItems;
 
         if (activity && typeof activity === "object") {
           activity.status = activityStatus;
@@ -1207,7 +1216,12 @@ export class ConversationManager {
               activity.checkpoint?.toolRuntime ??
               null,
             updatedAt: timestamp,
-            plan: clone(message.plan ?? activity.checkpoint?.plan ?? [])
+            plan: clone(message.plan ?? activity.checkpoint?.plan ?? []),
+            planState: clone(
+              message.planState ??
+              activity.checkpoint?.planState ??
+              message.plan ?? []
+            )
           };
 
           const events = Array.isArray(activity.events)

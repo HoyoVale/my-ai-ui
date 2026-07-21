@@ -594,11 +594,10 @@ async function main() {
         '[data-testid="input-context-menu-trigger"]'
       );
 
+    await inputMenuTrigger.waitFor({ state: "visible" });
     assert.equal(
-      await inputMenuTrigger
-        .locator("svg")
-        .count(),
-      1
+      await inputMenuTrigger.getAttribute("aria-label"),
+      "会话与模型"
     );
 
     const inputBrowserWindow =

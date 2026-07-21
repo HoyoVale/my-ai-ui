@@ -321,6 +321,10 @@ export function createAgentToolSession({
       runtime.getRecords(),
     getPlan: () =>
       planStore.get(),
+    getPlanState: () =>
+      planStore.getState(),
+    getStepWork: (rootStepId = "") =>
+      planStore.getStepWork(rootStepId),
     getResultEntries: () =>
       resultStore.list(),
     getCallCount: () =>
