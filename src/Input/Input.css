@@ -474,6 +474,21 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.input-goal-editor__toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 2px;
+  color: var(--input-text-soft);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.input-goal-editor__toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .input-goal-editor__actions {
   display: flex;
   justify-content: flex-end;
@@ -629,6 +644,16 @@
   font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.input-slash-menu__item em {
+  margin-left: auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: var(--input-text-soft);
+  background: var(--input-hover);
+  font-size: 8.5px;
+  font-style: normal;
 }
 
 .input-slash-menu__item small {

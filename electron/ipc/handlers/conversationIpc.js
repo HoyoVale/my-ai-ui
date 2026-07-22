@@ -309,6 +309,8 @@ export function registerConversationIpc() {
       return conversationManager.setGoal({
         conversationId: String(input.conversationId ?? ""),
         objective: String(input.objective ?? ""),
+        criteria: Array.isArray(input.criteria) ? input.criteria : [],
+        autoContinue: input.autoContinue !== false,
         status: String(input.status ?? "active")
       });
     }

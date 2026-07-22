@@ -65,8 +65,20 @@ function validationKinds(command) {
     .map(([kind]) => kind);
 }
 
+function expectedValidationCommand(value) {
+  const source = String(value ?? "");
+  const fencedCandidate = source.match(/`([^`]{2,160})`/u)?.[1] ?? "";
+  const fenced = /^(?:npm|pnpm|yarn|bun|pytest|vitest|jest|playwright|tsc|mypy|pyright)\b/iu
+    .test(fencedCandidate.trim())
+    ? fencedCandidate
+    : "";
+  const direct = source.match(/\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test(?::[\w-]+)?|build|lint|check|typecheck)(?:\s+[-\w:./=]+){0,4}/iu)?.[0];
+  const standalone = source.match(/\b(?:pytest|vitest|jest|playwright\s+test|tsc|mypy|pyright)\b(?:\s+[-\w:./=]+){0,4}/iu)?.[0];
+  return text(fenced || direct || standalone || "", 180).toLowerCase();
+}
+
 function requestedValidationKinds(objective) {
-  const source = text(objective, 2400);
+  const source = text(objective, 4000);
   const requested = [];
   if (/(?:测试|test|e2e|端到端)/iu.test(source)) requested.push("test");
   if (/(?:构建|打包|build|compile)/iu.test(source)) requested.push("build");
@@ -93,13 +105,27 @@ function planSummary(plan) {
   };
 }
 
-function check(id, passed, detail, evidence = []) {
+function check(id, passed, detail, evidence = [], extra = {}) {
   return {
     id,
     passed: passed === true,
     detail: text(detail, 500),
-    evidence: evidence.map((value) => text(value, 120)).filter(Boolean).slice(0, 20)
+    evidence: evidence.map((value) => text(value, 240)).filter(Boolean).slice(0, 20),
+    ...extra
   };
+}
+
+export function inferGoalCriterionKind(criterion) {
+  const explicit = String(criterion?.verificationKind ?? "auto");
+  if (explicit !== "auto") return explicit;
+  const source = text(criterion?.text, 800);
+  if (/(?:测试|test|e2e|端到端|vitest|jest|pytest|playwright)/iu.test(source)) return "test";
+  if (/(?:构建|打包|build|compile|编译)/iu.test(source)) return "build";
+  if (/(?:lint|代码规范|静态检查|eslint|oxlint|biome|ruff)/iu.test(source)) return "lint";
+  if (/(?:类型检查|type[\s_-]?check|tsc|mypy|pyright)/iu.test(source)) return "typecheck";
+  if (/(?:检查命令|check\s+(?:passes|通过)|npm\s+run\s+check)/iu.test(source)) return "check";
+  if (MUTATION_INTENT.test(source)) return "change";
+  return "manual";
 }
 
 export function createGoalVerificationInstruction(verification) {
@@ -120,6 +146,7 @@ export function createGoalVerificationInstruction(verification) {
 
 export class GoalCompletionVerifier {
   verify({
+    goal = null,
     objective = "",
     mode = "chat",
     plan = [],
@@ -127,6 +154,10 @@ export class GoalCompletionVerifier {
     runtimeRecovery = null,
     availableToolNames = []
   } = {}) {
+    const goalObjective = text(goal?.objective || objective, 4000);
+    const criteria = (Array.isArray(goal?.criteria) ? goal.criteria : [])
+      .filter((item) => item?.id && item?.text)
+      .slice(0, 12);
     const tools = Array.isArray(records) ? records : [];
     const available = new Set(
       Array.isArray(availableToolNames) ? availableToolNames : []
@@ -180,10 +211,10 @@ export class GoalCompletionVerifier {
         mutationEvidence.push(record?.id ?? record?.name);
       }
     });
-    const actionRequested = requestsAction(objective);
+    const actionRequested = requestsAction(goalObjective);
     const mutationRequested = mode === "coding" &&
       actionRequested &&
-      MUTATION_INTENT.test(text(objective, 2400));
+      MUTATION_INTENT.test(goalObjective);
     const mutationRequired = mutationRequested || mutationIndexes.length > 0;
 
     if (mutationRequired) {
@@ -220,7 +251,8 @@ export class GoalCompletionVerifier {
       }
     });
 
-    const requestedKinds = requestedValidationKinds(objective);
+    const criteriaText = criteria.map((item) => item.text).join("\n");
+    const requestedKinds = requestedValidationKinds(`${goalObjective}\n${criteriaText}`);
     const validatedKinds = new Set(validation.flatMap((item) => item.kinds));
     const missingRequestedKinds = requestedKinds.filter((kind) =>
       !validatedKinds.has(kind)
@@ -263,6 +295,52 @@ export class GoalCompletionVerifier {
       ));
     }
 
+    for (const criterion of criteria) {
+      const kind = inferGoalCriterionKind(criterion);
+      let passed = false;
+      let detail = "";
+      let evidence = [];
+
+      if (kind === "manual") {
+        passed = criterion.manualSatisfied === true;
+        detail = passed
+          ? `完成标准“${text(criterion.text, 180)}”已由用户确认。`
+          : `完成标准“${text(criterion.text, 180)}”无法从工具结果客观判断，需要用户确认。`;
+        evidence = passed ? ["user-confirmed"] : [];
+      } else if (kind === "change") {
+        passed = mutationIndexes.length > 0;
+        detail = passed
+          ? `完成标准“${text(criterion.text, 180)}”已有变更收据。`
+          : `完成标准“${text(criterion.text, 180)}”缺少工作区变更收据。`;
+        evidence = mutationEvidence;
+      } else {
+        const expectedCommand = expectedValidationCommand(criterion.text);
+        const matchingValidation = validation.filter((item) =>
+          item.kinds.includes(kind) &&
+          (!expectedCommand || item.command.toLowerCase().includes(expectedCommand))
+        );
+        passed = matchingValidation.length > 0;
+        detail = passed
+          ? `完成标准“${text(criterion.text, 180)}”已有 ${kind} 验证证据。`
+          : expectedCommand
+            ? `完成标准“${text(criterion.text, 180)}”缺少命令“${expectedCommand}”的成功证据。`
+            : `完成标准“${text(criterion.text, 180)}”缺少修改后的 ${kind} 成功证据。`;
+        evidence = matchingValidation.map((item) => item.id);
+      }
+
+      checks.push(check(
+        `criterion:${criterion.id}`,
+        passed,
+        detail,
+        evidence,
+        {
+          criterionId: criterion.id,
+          criterionText: text(criterion.text, 500),
+          verificationKind: kind
+        }
+      ));
+    }
+
     const passed = checks.every((item) => item.passed);
     return this.result(passed ? "verified" : "incomplete", checks, {
       reason: passed
@@ -276,6 +354,14 @@ export class GoalCompletionVerifier {
           command: text(item.command, 300)
         })),
         inspections: inspection.map((item) => text(item, 120)),
+        criteria: checks
+          .filter((item) => item.criterionId)
+          .map((item) => ({
+            id: item.criterionId,
+            passed: item.passed,
+            verificationKind: item.verificationKind,
+            evidence: item.evidence
+          })),
         level: validation.length > 0
           ? "strong"
           : inspection.length > 0
@@ -287,7 +373,7 @@ export class GoalCompletionVerifier {
 
   result(status, checks, extra = {}) {
     return {
-      version: 1,
+      version: 2,
       status,
       verified: status === "verified",
       checkedAt: Date.now(),

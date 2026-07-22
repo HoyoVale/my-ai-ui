@@ -27,6 +27,10 @@ import {
 } from "./handlers/petIpc.js";
 
 import {
+  registerPlatformIpc
+} from "./handlers/platformIpc.js";
+
+import {
   registerResponseIpc
 } from "./handlers/responseIpc.js";
 
@@ -74,6 +78,7 @@ export function registerIpcHandlers() {
   registerInputIpc();
   registerMemoryIpc();
   registerMcpIpc();
+  registerPlatformIpc();
   registerResponseIpc();
   registerSettingIpc();
   registerSettingsIpc();

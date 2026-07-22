@@ -2250,7 +2250,7 @@
 
 .conversation-goal-field textarea {
   width: 100%;
-  min-height: 220px;
+  min-height: 96px;
   resize: vertical;
   box-sizing: border-box;
   padding: 11px 12px 24px;
@@ -2262,6 +2262,10 @@
   font: inherit;
   font-size: 11px;
   line-height: 1.55;
+}
+
+.conversation-goal-field textarea[data-testid="conversation-goal-criteria"] {
+  min-height: 126px;
 }
 
 .conversation-goal-field textarea:focus {
@@ -2279,6 +2283,132 @@
 
 .conversation-goal-help {
   margin: 0;
+}
+
+.conversation-goal-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid var(--conversation-border);
+  border-radius: 10px;
+  background: var(--conversation-surface);
+  cursor: pointer;
+}
+
+.conversation-goal-toggle-row input {
+  margin: 2px 0 0;
+  accent-color: var(--conversation-accent);
+}
+
+.conversation-goal-toggle-row > span {
+  display: grid;
+  gap: 2px;
+}
+
+.conversation-goal-toggle-row strong {
+  font-size: 10.5px;
+}
+
+.conversation-goal-toggle-row small {
+  color: var(--conversation-soft);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.conversation-goal-criteria-list {
+  display: grid;
+  gap: 7px;
+}
+
+.conversation-goal-criteria-list > div {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--conversation-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--conversation-surface) 82%, transparent);
+}
+
+.conversation-goal-criteria-list > div > span {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--conversation-soft);
+  background: var(--conversation-hover);
+  font-size: 10px;
+}
+
+.conversation-goal-criteria-list > div.is-passed > span {
+  color: #fff;
+  background: #2d9b68;
+}
+
+.conversation-goal-criteria-list > div.is-failed > span {
+  color: var(--conversation-danger);
+  background: color-mix(in srgb, var(--conversation-danger) 12%, transparent);
+}
+
+.conversation-goal-criteria-list > div > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.conversation-goal-criteria-list strong {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.conversation-goal-criteria-list small,
+.conversation-goal-criteria-list code {
+  color: var(--conversation-soft);
+  font-size: 9px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.conversation-goal-criterion-actions {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.conversation-goal-criteria-list button,
+.conversation-goal-criteria-list select {
+  padding: 4px 7px;
+  border: 1px solid var(--conversation-border-strong);
+  border-radius: 7px;
+  color: var(--conversation-text);
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.conversation-goal-criteria-list select {
+  max-width: 92px;
+  color: var(--conversation-soft);
+  background: var(--conversation-surface);
+}
+
+.conversation-goal-verification {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--conversation-soft);
+  background: var(--conversation-hover);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.conversation-goal-verification.is-verified {
+  color: #2d7d58;
+  background: rgb(45 155 104 / 0.1);
 }
 
 .conversation-goal-error {

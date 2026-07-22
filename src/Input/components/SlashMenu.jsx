@@ -10,11 +10,7 @@ import {
 } from "react";
 
 import {
-  normalizeSessionMode
-} from "../../shared/sessionNavigation.js";
-
-import {
-  filterSlashSkillSuggestions,
+  filterSlashCommandSuggestions,
   findSlashCommand
 } from "../utils/slashCommand.js";
 
@@ -28,6 +24,7 @@ export const SlashMenu = forwardRef(function SlashMenu({
   disabled = false,
   suppressed = false,
   onChange,
+  onExecuteCommand,
   onOpenChange,
   onPanelHeightChange
 }, ref) {
@@ -40,18 +37,15 @@ export const SlashMenu = forwardRef(function SlashMenu({
     [cursorPosition, value]
   );
 
-  const compatibleSkills = useMemo(() =>
-    filterSlashSkillSuggestions(skills, { mode, limit: 20 }),
-  [mode, skills]);
-
   const suggestions = useMemo(() => {
     if (!command || disabled || suppressed) return [];
-    return filterSlashSkillSuggestions(compatibleSkills, {
+    return filterSlashCommandSuggestions({
+      skills,
       mode,
       query: command.query,
-      limit: 8
+      limit: 16
     });
-  }, [command, compatibleSkills, disabled, mode, suppressed]);
+  }, [command, disabled, mode, skills, suppressed]);
 
   const open = Boolean(command && !disabled && !suppressed);
 
@@ -83,13 +77,19 @@ export const SlashMenu = forwardRef(function SlashMenu({
     return () => observer.disconnect();
   }, [onPanelHeightChange, open, suggestions.length, skillsError, skillsReady]);
 
-  const select = useCallback((skill) => {
-    if (!command || !skill) return false;
-    const nextValue = `${String(value).slice(0, command.start)}/${skill.id} ${String(value).slice(command.end)}`;
-    const nextCursor = command.start + skill.id.length + 2;
+  const select = useCallback((item) => {
+    if (!command || !item) return false;
+    if (item.kind === "command") {
+      const nextValue = `${String(value).slice(0, command.start)}${String(value).slice(command.end)}`;
+      onChange?.(nextValue, command.start);
+      onExecuteCommand?.(item);
+      return true;
+    }
+    const nextValue = `${String(value).slice(0, command.start)}/${item.id} ${String(value).slice(command.end)}`;
+    const nextCursor = command.start + item.id.length + 2;
     onChange?.(nextValue, nextCursor);
     return true;
-  }, [command, onChange, value]);
+  }, [command, onChange, onExecuteCommand, value]);
 
   useImperativeHandle(ref, () => ({
     handleKeyDown(event) {
@@ -120,41 +120,40 @@ export const SlashMenu = forwardRef(function SlashMenu({
 
   if (!open) return null;
 
-  const emptyMessage = skillsError
-    ? skillsError
-    : !skillsReady
-      ? "正在读取可用 Skill…"
-      : compatibleSkills.length === 0
-        ? `当前 ${normalizeSessionMode(mode) === "coding" ? "Coding" : "Chat"} 模式没有可用 Skill。请先在 Setting → Skills 中安装并启用。`
-        : "没有匹配当前命令的 Skill。";
-
   return (
     <div
       ref={panelRef}
       className="input-slash-menu"
       data-testid="input-slash-menu"
-      data-skill-count={suggestions.length}
+      data-command-count={suggestions.filter((item) => item.kind === "command").length}
+      data-skill-count={suggestions.filter((item) => item.kind === "skill").length}
       role="listbox"
-      aria-label="Skill 命令"
+      aria-label="命令与 Skill"
     >
       <div className="input-slash-menu__header">
-        <span>临时调用 Skill</span>
+        <span>命令与 Skills</span>
         {suggestions.length > 0 && <><kbd>↑↓</kbd><kbd>Enter</kbd></>}
       </div>
       {suggestions.length > 0 ? (
         <div className="input-slash-menu__items">
-          {suggestions.map((skill, index) => (
+          {suggestions.map((item, index) => (
             <button
-              key={skill.id}
+              key={`${item.kind}:${item.id}`}
               type="button"
               role="option"
               aria-selected={index === activeIndex}
               className={`input-slash-menu__item${index === activeIndex ? " is-active" : ""}`}
               onPointerDown={(event) => event.preventDefault()}
-              onClick={() => select(skill)}
+              data-kind={item.kind}
+              data-testid={`input-slash-${item.kind}-${item.id}`}
+              onClick={() => select(item)}
             >
-              <span><code>/{skill.id}</code><strong>{skill.name}</strong></span>
-              <small>{skill.description}</small>
+              <span>
+                <code>/{item.id}</code>
+                <strong>{item.name}</strong>
+                <em>{item.kind === "skill" ? "Skill" : "命令"}</em>
+              </span>
+              <small>{item.description}</small>
             </button>
           ))}
         </div>
@@ -163,7 +162,7 @@ export const SlashMenu = forwardRef(function SlashMenu({
           className={`input-slash-menu__empty${skillsError ? " is-error" : ""}`}
           role="status"
         >
-          {emptyMessage}
+          {skillsError || (skillsReady ? "没有匹配的命令或 Skill。" : "正在读取命令与 Skills…")}
         </div>
       )}
     </div>

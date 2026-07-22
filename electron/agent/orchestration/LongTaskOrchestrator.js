@@ -113,6 +113,7 @@ function planState(plan = []) {
 
 export class LongTaskOrchestrator {
   constructor({
+    goal = null,
     goalId = "",
     taskId = "",
     runId = "",
@@ -126,6 +127,8 @@ export class LongTaskOrchestrator {
     this.goal = {
       id: text(goalId || taskId || runId, 120),
       objective: text(objective, 1200),
+      criteria: clone(Array.isArray(goal?.criteria) ? goal.criteria : []),
+      autoContinue: goal?.autoContinue !== false,
       status: "running",
       verification: {
         version: 1,
@@ -232,6 +235,7 @@ export class LongTaskOrchestrator {
     const end = Math.max(segment.startedAt, Number(endedAt) || Date.now());
     const currentPlanState = planState(plan);
     const verification = this.completionVerifier.verify({
+      goal: this.goal,
       objective: this.goal.objective,
       plan,
       records,

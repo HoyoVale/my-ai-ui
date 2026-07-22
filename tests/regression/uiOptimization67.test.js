@@ -11,6 +11,8 @@ import {
 } from "../../src/Input/utils/inputLayout.js";
 
 import {
+  BUILTIN_SLASH_COMMANDS,
+  filterSlashCommandSuggestions,
   filterSlashSkillSuggestions,
   findSlashCommand
 } from "../../src/Input/utils/slashCommand.js";
@@ -98,6 +100,20 @@ test("slash Skill suggestions normalize modes and hide unavailable entries", () 
     filterSlashSkillSuggestions(skills, { mode: "chat" }),
     []
   );
+});
+
+test("slash command registry combines real app commands and compatible Skills", () => {
+  assert.equal(BUILTIN_SLASH_COMMANDS.some((command) => command.id === "goal"), true);
+  assert.equal(BUILTIN_SLASH_COMMANDS.some((command) => command.id === "model"), true);
+  const suggestions = filterSlashCommandSuggestions({
+    mode: "coding",
+    query: "goal",
+    skills: [{ id: "goal-review", name: "Goal Review", description: "Review", modes: ["coding"], enabled: true, available: true, integrity: "verified" }]
+  });
+  assert.deepEqual(suggestions.slice(0, 2).map((item) => `${item.kind}:${item.id}`), [
+    "command:goal",
+    "skill:goal-review"
+  ]);
 });
 
 test("Conversation creates sessions from workspace groups and clamps long titles", () => {

@@ -36,6 +36,10 @@ import {
 } from "./tools/runtime-state/RuntimeRecoveryManager.js";
 
 import {
+  platformKernel
+} from "./platform/index.js";
+
+import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
 
@@ -65,6 +69,24 @@ if (e2eUserData) {
 registerIpcHandlers();
 
 app.whenReady().then(async () => {
+  try {
+    const platformRecovery = platformKernel.recoverInterruptedRuns();
+    if (
+      platformRecovery.recoveredRunIds.length > 0 ||
+      platformRecovery.expiredLeaseIds.length > 0
+    ) {
+      console.info(
+        "Platform Kernel recovered interrupted work:",
+        platformRecovery
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "Platform Kernel startup recovery failed:",
+      error
+    );
+  }
+
   let runtimeRecoveryReport = { decisions: [] };
   try {
     const runtimeRecoveryManager = new RuntimeRecoveryManager({

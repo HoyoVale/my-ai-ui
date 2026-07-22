@@ -48,6 +48,33 @@ export function InputComposer({
   onClose
 }) {
   const slashMenuRef = useRef(null);
+  const contextMenuRef = useRef(null);
+
+  const executeSlashCommand = (command) => {
+    const action = command?.action ?? {};
+    if (action.type === "open-context") {
+      contextMenuRef.current?.openPage(action.page);
+      return;
+    }
+    if (action.type === "new-session") {
+      void onCreateSession?.({
+        mode: context?.mode,
+        workspaceId: context?.workspaceId ?? null,
+        modelSelection: context?.currentModelSelection ?? undefined,
+        skillIds: context?.currentSkillIds ?? [],
+        skillRoutingMode: context?.currentSkillRoutingMode ?? "manual"
+      });
+      return;
+    }
+    if (action.type === "open-window") {
+      const open = {
+        conversation: window.api?.openConversation,
+        memory: window.api?.openMemory,
+        settings: window.api?.openSetting
+      }[action.window];
+      open?.();
+    }
+  };
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -68,6 +95,7 @@ export function InputComposer({
         className="input-bar"
       >
         <InputContextMenu
+          ref={contextMenuRef}
           context={context}
           disabled={disabled || isRunning || context?.busy}
           closeToken={contextMenuCloseToken}
@@ -95,6 +123,7 @@ export function InputComposer({
           suppressed={slashSuppressed}
           onOpenChange={onSlashMenuOpenChange}
           onPanelHeightChange={onSlashMenuPanelHeightChange}
+          onExecuteCommand={executeSlashCommand}
           onChange={(nextValue, nextCursor, options = {}) => {
             if (options.suppressSlash) {
               onSuppressSlash?.();

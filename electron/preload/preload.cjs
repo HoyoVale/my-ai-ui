@@ -118,6 +118,15 @@ const CHANNELS = Object.freeze({
   AGENT_RESET_CIRCUIT_BREAKER:
     "agent-reset-circuit-breaker",
 
+  PLATFORM_GET_STATE:
+    "platform-get-state",
+
+  PLATFORM_GET_RUN:
+    "platform-get-run",
+
+  PLATFORM_CHANGED:
+    "platform-changed",
+
   CONVERSATION_GET_STATE:
     "conversation-get-state",
 
@@ -611,6 +620,28 @@ const api = Object.freeze({
     );
   },
 
+  getPlatformState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.PLATFORM_GET_STATE
+    );
+  },
+
+  getPlatformRun: (platformRunId) => {
+    return ipcRenderer.invoke(
+      CHANNELS.PLATFORM_GET_RUN,
+      { platformRunId: String(platformRunId ?? "") }
+    );
+  },
+
+  onPlatformChanged: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on(CHANNELS.PLATFORM_CHANGED, listener);
+    return () => {
+      ipcRenderer.removeListener(CHANNELS.PLATFORM_CHANGED, listener);
+    };
+  },
+
   getToolRuntimeRecovery: (taskId) => {
     return ipcRenderer.invoke(
       CHANNELS.AGENT_GET_RUNTIME_RECOVERY,
@@ -854,7 +885,16 @@ const api = Object.freeze({
       {
         conversationId: String(input.conversationId ?? ""),
         objective: String(input.objective ?? ""),
-        status: ["active", "paused", "completed"].includes(input.status)
+        criteria: Array.isArray(input.criteria)
+          ? input.criteria.slice(0, 12).map((criterion) => ({
+              id: String(criterion?.id ?? ""),
+              text: String(criterion?.text ?? ""),
+              verificationKind: String(criterion?.verificationKind ?? "auto"),
+              manualSatisfied: criterion?.manualSatisfied === true
+            }))
+          : [],
+        autoContinue: input.autoContinue !== false,
+        status: ["active", "paused"].includes(input.status)
           ? input.status
           : "active"
       }

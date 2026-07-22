@@ -215,10 +215,13 @@ export default function Conversation() {
           open={goalOpen}
           conversation={history.current}
           busy={history.busy || Boolean(currentLiveActivity)}
-          onUpdate={({ objective, status }) => history.setGoal({
+          developerMode={developerMode}
+          onUpdate={({ objective, status, criteria, autoContinue }) => history.setGoal({
             conversationId: history.current?.id ?? "",
             objective,
-            status
+            status,
+            criteria,
+            autoContinue
           })}
           onClose={() => setGoalOpen(false)}
         />

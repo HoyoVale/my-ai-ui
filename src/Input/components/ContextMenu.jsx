@@ -1,6 +1,8 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -127,7 +129,22 @@ function recentWorkspaceForMode(conversations, mode) {
   return recent?.workspaceId ?? null;
 }
 
-export function InputContextMenu({
+function goalCriteriaFromLines(value, currentGoal) {
+  const existing = new Map((currentGoal?.criteria ?? []).map((item) => [item.text, item]));
+  return String(value ?? "")
+    .split(/\n/gu)
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+    .map((text, index) => ({
+      id: existing.get(text)?.id ?? `criterion-${index + 1}`,
+      text,
+      verificationKind: existing.get(text)?.verificationKind ?? "auto",
+      manualSatisfied: existing.get(text)?.manualSatisfied === true
+    }));
+}
+
+export const InputContextMenu = forwardRef(function InputContextMenu({
   context,
   disabled,
   closeToken = 0,
@@ -141,7 +158,7 @@ export function InputContextMenu({
   onModelChange,
   onToggleMcp,
   onToggleMcpServer
-}) {
+}, ref) {
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const lastPanelHeightRef = useRef(0);
@@ -154,6 +171,8 @@ export function InputContextMenu({
   const targetSkillId = targetSkillIds[0] ?? "";
   const [targetRoutingMode, setTargetRoutingMode] = useState("manual");
   const [goalDraft, setGoalDraft] = useState("");
+  const [goalCriteriaDraft, setGoalCriteriaDraft] = useState("");
+  const [goalAutoContinue, setGoalAutoContinue] = useState(true);
   const [actionError, setActionError] = useState("");
 
   const currentMode = normalizeSessionMode(context?.mode, "chat");
@@ -262,6 +281,8 @@ export function InputContextMenu({
       setTargetSkillIds(currentSkillIds);
       setTargetRoutingMode(context?.currentSkillRoutingMode === "auto" ? "auto" : "manual");
       setGoalDraft(currentGoal?.objective ?? "");
+      setGoalCriteriaDraft((currentGoal?.criteria ?? []).map((item) => item.text).join("\n"));
+      setGoalAutoContinue(currentGoal?.autoContinue !== false);
       setActionError("");
     } else if (lastPanelHeightRef.current !== 0) {
       lastPanelHeightRef.current = 0;
@@ -269,6 +290,8 @@ export function InputContextMenu({
     }
   }, [
     context?.currentSkillRoutingMode,
+    currentGoal?.autoContinue,
+    currentGoal?.criteria,
     currentGoal?.objective,
     currentSkillIds,
     currentMode,
@@ -276,6 +299,19 @@ export function InputContextMenu({
     onOpenChange,
     onPanelHeightChange
   ]);
+
+  useImperativeHandle(ref, () => ({
+    openPage(nextPage = "root") {
+      if (disabled) return false;
+      setMenuOpen(true);
+      setPage(["root", "mode", "workspace", "session", "goal", "skill", "mcp", "model"]
+        .includes(nextPage) ? nextPage : "root");
+      return true;
+    },
+    close() {
+      setMenuOpen(false);
+    }
+  }), [disabled, setMenuOpen]);
 
   useEffect(() => {
     if (!open) {
@@ -502,9 +538,14 @@ export function InputContextMenu({
     setMenuOpen(false);
   };
 
-  const updateGoal = async ({ objective = goalDraft, status = "active" } = {}) => {
+  const updateGoal = async ({
+    objective = goalDraft,
+    status = "active",
+    criteria = goalCriteriaFromLines(goalCriteriaDraft, currentGoal),
+    autoContinue = goalAutoContinue
+  } = {}) => {
     setActionError("");
-    const result = await onGoalChange?.({ objective, status });
+    const result = await onGoalChange?.({ objective, status, criteria, autoContinue });
     if (result?.ok === false) {
       setActionError(result.message ?? "无法更新 Goal。");
       return;
@@ -776,9 +817,25 @@ export function InputContextMenu({
           value={goalDraft}
           maxLength={4000}
           rows={5}
-          placeholder="描述最终目标与完成标准…"
+          placeholder="描述最终结果…"
           onChange={(event) => setGoalDraft(event.target.value)}
         />
+        <textarea
+          data-testid="input-goal-criteria"
+          value={goalCriteriaDraft}
+          maxLength={6000}
+          rows={4}
+          placeholder={"Done when（每行一条）\n例如：npm test 全部通过"}
+          onChange={(event) => setGoalCriteriaDraft(event.target.value)}
+        />
+        <label className="input-goal-editor__toggle">
+          <input
+            type="checkbox"
+            checked={goalAutoContinue}
+            onChange={(event) => setGoalAutoContinue(event.target.checked)}
+          />
+          <span>证据不足且仍有进展时自动继续</span>
+        </label>
         <div className="input-context-menu__notice">
           Goal 绑定当前会话。新消息会作为推进目标的补充指令；只有完成验证通过后才会自动标记完成。
         </div>
@@ -788,7 +845,7 @@ export function InputContextMenu({
               type="button"
               className="is-secondary"
               data-testid="input-goal-clear"
-              onClick={() => { void updateGoal({ objective: "" }); }}
+              onClick={() => { void updateGoal({ objective: "", criteria: [] }); }}
             >
               清除
             </button>
@@ -929,4 +986,4 @@ export function InputContextMenu({
       )}
     </div>
   );
-}
+});

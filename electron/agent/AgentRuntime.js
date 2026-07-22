@@ -20,6 +20,10 @@ import {
 } from "../conversation/index.js";
 
 import {
+  platformKernel
+} from "../platform/index.js";
+
+import {
   getRecoveryExecutionOverrides,
   resolveConversationExecutionContext
 } from "../conversation/executionContext.js";
@@ -841,6 +845,44 @@ export class AgentRuntime {
     const effectiveStopReason = recoveryOutcome
       ? RUN_STOP_REASONS.INTERRUPTED
       : executionStopReason;
+
+    if (run.platformRunId) {
+      const platformStatus = effectiveOutcome === RUN_OUTCOMES.CANCELLED
+        ? "cancelled"
+        : effectiveOutcome === RUN_OUTCOMES.FAILED
+          ? "failed"
+          : effectiveOutcome === RUN_OUTCOMES.COMPLETED
+            ? "completed"
+            : "interrupted";
+      const platformTaskStatus = platformStatus === "completed"
+        ? "continuable"
+        : platformStatus === "interrupted"
+          ? "continuable"
+          : platformStatus;
+      platformKernel.finishAgentRun(
+        run.platformRunId,
+        run.runId,
+        {
+          status: platformStatus,
+          outcome: effectiveOutcome,
+          stopReason: effectiveStopReason,
+          error: lastError,
+          taskStatus: platformTaskStatus
+        }
+      );
+      const currentPlatformRun = platformKernel.getRun(run.platformRunId);
+      if (currentPlatformRun && currentPlatformRun.status !== "completed") {
+        platformKernel.setRunStatus(
+          run.platformRunId,
+          platformStatus === "cancelled"
+            ? "cancelled"
+            : platformStatus === "failed"
+              ? "failed"
+              : "continuable",
+          effectiveStopReason
+        );
+      }
+    }
     const state = this.applyRunState(
       run.stateMachine.finalize({
         executionStopReason: effectiveStopReason,
@@ -1304,6 +1346,7 @@ export class AgentRuntime {
         runMessage,
       persistentGoalId:
         persistentGoal?.id ?? "",
+      goalSpec: persistentGoal ? structuredClone(persistentGoal) : null,
       continuationInstruction:
         continuationState ? runMessage : "",
       continuationCount:
@@ -1372,12 +1415,51 @@ export class AgentRuntime {
         continuationState?.initialPlan ?? [],
       resumedFromMessageId:
         continuationState?.resumedFromMessageId ?? "",
+      platformRunId: "",
+      platformLeaseIds: [],
+      platformError: null,
       resumeInPlace: false,
       finalizationAttemptCount: 0,
       contextCompactionCount:
         continuationState?.contextCompactionCount ?? 0,
       ...createRunStateFields(startedAt)
     };
+
+    if (persistentGoal) {
+      try {
+        const platformExecution = platformKernel.prepareExecution({
+          conversationId: conversation.id,
+          goal: persistentGoal,
+          agentRunId: runId,
+          taskId,
+          workspaceId: executionConversation.workspaceId ?? null,
+          workspaceResource: activeWorkspace
+            ? `workspace:${activeWorkspace.canonicalPath ?? activeWorkspace.rootPath ?? activeWorkspace.id}`
+            : "",
+          mode: executionConversation.mode ?? "chat"
+        });
+        if (platformExecution.ok) {
+          this.activeRun.platformRunId = platformExecution.platformRunId;
+          this.activeRun.platformLeaseIds = platformExecution.leaseIds;
+          const linked = conversationManager.linkGoalPlatformRun({
+            conversationId: conversation.id,
+            goalId: persistentGoal.id,
+            platformRunId: platformExecution.platformRunId
+          });
+          if (!linked.ok) {
+            this.activeRun.platformError = linked;
+          }
+        } else {
+          this.activeRun.platformError = platformExecution;
+        }
+      } catch (error) {
+        this.activeRun.platformError = {
+          ok: false,
+          code: "platform-kernel-start-failed",
+          message: String(error?.message ?? error)
+        };
+      }
+    }
 
     if (skillRuntime.active) {
       activityStore.recordSkill({
@@ -1592,6 +1674,7 @@ export class AgentRuntime {
         plan.userMessage.content,
       persistentGoalId:
         persistentGoal?.id ?? "",
+      goalSpec: persistentGoal ? structuredClone(persistentGoal) : null,
       orchestrator: null,
       currentSegmentId: "",
       taskId,
@@ -1650,11 +1733,48 @@ export class AgentRuntime {
       initialPlan: [],
       initialPlanState: [],
       resumedFromMessageId: "",
+      platformRunId: "",
+      platformLeaseIds: [],
+      platformError: null,
       resumeInPlace: false,
       finalizationAttemptCount: 0,
       contextCompactionCount: 0,
       ...createRunStateFields(startedAt)
     };
+
+    if (persistentGoal) {
+      try {
+        const platformExecution = platformKernel.prepareExecution({
+          conversationId: plan.conversation.id,
+          goal: persistentGoal,
+          agentRunId: runId,
+          taskId,
+          workspaceId: plan.conversation.workspaceId ?? null,
+          workspaceResource: activeWorkspace
+            ? `workspace:${activeWorkspace.canonicalPath ?? activeWorkspace.rootPath ?? activeWorkspace.id}`
+            : "",
+          mode: plan.conversation.mode ?? "chat"
+        });
+        if (platformExecution.ok) {
+          this.activeRun.platformRunId = platformExecution.platformRunId;
+          this.activeRun.platformLeaseIds = platformExecution.leaseIds;
+          const linked = conversationManager.linkGoalPlatformRun({
+            conversationId: plan.conversation.id,
+            goalId: persistentGoal.id,
+            platformRunId: platformExecution.platformRunId
+          });
+          if (!linked.ok) this.activeRun.platformError = linked;
+        } else {
+          this.activeRun.platformError = platformExecution;
+        }
+      } catch (error) {
+        this.activeRun.platformError = {
+          ok: false,
+          code: "platform-kernel-start-failed",
+          message: String(error?.message ?? error)
+        };
+      }
+    }
 
     if (skillRuntime.active) {
       activityStore.recordSkill({
@@ -3009,12 +3129,15 @@ export class AgentRuntime {
       runtime = createModelRuntime(modelSettings);
       const runtimeSettings = runSettings.tools?.runtime ?? {};
       const orchestrator = new LongTaskOrchestrator({
+        goal: this.activeRun.goalSpec,
         goalId: this.activeRun.goalId,
         taskId: this.activeRun.taskId,
         runId,
         objective: this.activeRun.objective,
         maxSegmentSteps: runtimeSettings.maxSteps ?? 6,
-        maxSegments: runtimeSettings.maxSegments ?? 6,
+        maxSegments: this.activeRun.goalSpec?.autoContinue === false
+          ? 1
+          : runtimeSettings.maxSegments ?? 6,
         maxNoProgressSegments:
           runtimeSettings.maxNoProgressSegments ?? 2,
         startedAt: this.activeRun.startedAt
@@ -3253,6 +3376,13 @@ export class AgentRuntime {
                 : "failed",
               stopReason: segmentOutcome.stopReason
             });
+            if (this.activeRun.persistentGoalId && segmentOutcome.verification) {
+              conversationManager.recordGoalVerification({
+                conversationId,
+                goalId: this.activeRun.persistentGoalId,
+                verification: segmentOutcome.verification
+              });
+            }
             await toolSession.recordRuntimeEvent?.(
               "SEGMENT_COMMITTED",
               {
@@ -3366,10 +3496,39 @@ export class AgentRuntime {
         engineResult.outcome === RUN_OUTCOMES.COMPLETED &&
         engineResult.loopResult?.verification?.verified === true
       ) {
-        conversationManager.completeGoal({
-          conversationId,
-          goalId: this.activeRun.persistentGoalId
-        });
+        const completion = this.activeRun.platformRunId
+          ? platformKernel.authorizeCompletion({
+              platformRunId: this.activeRun.platformRunId,
+              agentRunId: runId,
+              verification: engineResult.loopResult.verification,
+              records: engineResult.records
+            })
+          : {
+              ok: false,
+              code: this.activeRun.platformError?.code ??
+                "platform-completion-authority-unavailable"
+            };
+        if (completion.ok) {
+          const completedGoal = conversationManager.completeGoal({
+            conversationId,
+            goalId: this.activeRun.persistentGoalId,
+            verification: engineResult.loopResult.verification,
+            completionPermit: completion.permit
+          });
+          if (completedGoal.ok) {
+            platformKernel.setRunStatus(
+              this.activeRun.platformRunId,
+              "completed",
+              "goal-completion-authorized"
+            );
+          } else {
+            platformKernel.setRunStatus(
+              this.activeRun.platformRunId,
+              "blocked",
+              completedGoal.code
+            );
+          }
+        }
       }
 
       const finalCheckpoint = this.buildActiveCheckpoint();

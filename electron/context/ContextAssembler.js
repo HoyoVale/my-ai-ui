@@ -173,10 +173,19 @@ export function assembleAgentContext({
   const activeGoal = conversation?.goal?.status === "active"
     ? conversation.goal
     : null;
+  const goalCriteria = (activeGoal?.criteria ?? [])
+    .map((criterion, index) =>
+      `${index + 1}. ${criterion.text}${criterion.manualSatisfied ? " [user-confirmed]" : ""}`
+    )
+    .join("\n");
   const goalContext = activeGoal
     ? [
         "The user has set a persistent goal for this conversation.",
         `Goal:\n${String(activeGoal.objective ?? "").trim()}`,
+        goalCriteria ? `Done when:\n${goalCriteria}` : "Done when: derive concrete checks from the goal and root plan.",
+        activeGoal.autoContinue === false
+          ? "Automatic continuation is disabled. Complete one execution segment, then save a resumable checkpoint if more work remains."
+          : "Automatic continuation is enabled. Continue across execution segments while progress is being made and safety limits permit.",
         "Treat each new user message as guidance for advancing this goal unless the user explicitly edits, pauses, or clears it.",
         "Keep working through the plan and objective evidence. Do not claim the goal is complete until the runtime completion verifier accepts it."
       ].join("\n\n")

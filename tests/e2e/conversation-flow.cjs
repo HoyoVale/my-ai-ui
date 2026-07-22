@@ -701,6 +701,7 @@ async function main() {
 
     let slashMenuText = "";
     let slashSkillCount = 0;
+    let slashCommandCount = 0;
     const slashDeadline = Date.now() + 15000;
 
     while (Date.now() < slashDeadline) {
@@ -708,8 +709,12 @@ async function main() {
       slashSkillCount = Number(
         await slashMenu.getAttribute("data-skill-count")
       ) || 0;
+      slashCommandCount = Number(
+        await slashMenu.getAttribute("data-command-count")
+      ) || 0;
 
       if (
+        slashCommandCount > 0 ||
         slashSkillCount > 0 ||
         slashMenuText.includes("可用 Skill") ||
         slashMenuText.includes("无法读取 Skill")
@@ -721,10 +726,11 @@ async function main() {
     }
 
     assert.ok(
+      slashCommandCount > 0 ||
       slashSkillCount > 0 ||
       slashMenuText.includes("可用 Skill") ||
       slashMenuText.includes("无法读取 Skill"),
-      "输入 / 后应显示 Skill 建议、加载状态或无可用 Skill 提示"
+      "输入 / 后应显示应用命令、Skill 建议或加载状态"
     );
 
     assert.equal(
@@ -737,6 +743,19 @@ async function main() {
       true,
       "打开 Slash 菜单后 Input Renderer 不应消失"
     );
+
+    await inputField.fill("/go");
+    await input
+      .locator('[data-testid="input-slash-command-goal"]')
+      .click();
+    await input
+      .locator('[data-testid="input-context-menu-panel"]')
+      .waitFor({ state: "visible" });
+    await input
+      .locator('[data-testid="input-goal-criteria"]')
+      .waitFor({ state: "visible" });
+    assert.equal(await inputField.inputValue(), "");
+    await input.keyboard.press("Escape");
 
     for (let index = 0; index < 3; index += 1) {
       await input.keyboard.press("Escape");
@@ -907,6 +926,13 @@ async function main() {
     await goalPanel
       .locator('[data-testid="conversation-goal-objective"]')
       .fill("E2E Goal：保持当前会话可用，并通过验证。");
+    await goalPanel
+      .locator('[data-testid="conversation-goal-criteria"]')
+      .fill("E2E 测试全部通过\n人工确认 Goal 面板可用");
+    assert.equal(
+      await goalPanel.locator('[data-testid="conversation-goal-auto-continue"]').isChecked(),
+      true
+    );
     await goalPanel
       .locator('[data-testid="conversation-goal-save"]')
       .click();

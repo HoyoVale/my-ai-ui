@@ -152,4 +152,59 @@ describe("GoalCompletionVerifier", () => {
     assert.match(instruction, /没有成功的工作区写入/u);
     assert.doesNotMatch(instruction, /thought|chain of thought/iu);
   });
+
+  it("binds each Done when criterion to matching post-change evidence", () => {
+    const result = new GoalCompletionVerifier().verify({
+      goal: {
+        objective: "交付稳定版本",
+        criteria: [
+          { id: "tests", text: "npm test 全部通过", verificationKind: "auto" },
+          { id: "build", text: "生产构建成功", verificationKind: "auto" }
+        ]
+      },
+      mode: "coding",
+      plan: completedPlan,
+      records: [
+        writeRecord(),
+        commandRecord(["test"], "test-after")
+      ],
+      availableToolNames: ["apply_patch", "run_workspace_command"]
+    });
+
+    assert.equal(result.verified, false);
+    assert.equal(result.checks.find((item) => item.criterionId === "tests")?.passed, true);
+    assert.equal(result.checks.find((item) => item.criterionId === "build")?.passed, false);
+  });
+
+  it("never auto-accepts a semantic criterion without user confirmation", () => {
+    const result = new GoalCompletionVerifier().verify({
+      goal: {
+        objective: "完成 UI",
+        criteria: [{ id: "visual", text: "用户确认界面布局正确", verificationKind: "auto" }]
+      },
+      mode: "coding",
+      plan: completedPlan,
+      records: [writeRecord(), commandRecord(["test"])],
+      availableToolNames: ["apply_patch", "run_workspace_command"]
+    });
+
+    const criterion = result.checks.find((item) => item.criterionId === "visual");
+    assert.equal(criterion.verificationKind, "manual");
+    assert.equal(criterion.passed, false);
+  });
+
+  it("requires the named validation command instead of an unrelated test", () => {
+    const result = new GoalCompletionVerifier().verify({
+      goal: {
+        objective: "验证项目",
+        criteria: [{ id: "e2e", text: "`npm run test:e2e` 通过", verificationKind: "test" }]
+      },
+      mode: "coding",
+      plan: completedPlan,
+      records: [commandRecord(["test"], "unit-only")],
+      availableToolNames: ["run_workspace_command"]
+    });
+
+    assert.equal(result.checks.find((item) => item.criterionId === "e2e")?.passed, false);
+  });
 });

@@ -34,8 +34,9 @@ test("slash menu remains visible without Skills and deduplicates measured height
   const context = read("../../src/Input/hooks/useInputContext.js");
 
   assert.match(menu, /const open = Boolean\(command && !disabled && !suppressed\)/u);
-  assert.match(menu, /正在读取可用 Skill/u);
-  assert.match(menu, /当前 .*模式没有可用 Skill/u);
+  assert.match(menu, /正在读取命令与 Skills/u);
+  assert.match(menu, /没有匹配的命令或 Skill/u);
+  assert.match(menu, /data-command-count/u);
   assert.match(context, /getSkillRuntimeState\?\.\(mode\)/u);
   assert.match(context, /skillsReady/u);
 

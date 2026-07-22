@@ -387,6 +387,10 @@ describe("ContextAssembler persistent Goal", () => {
         goal: {
           id: "goal-1",
           objective: "交付一个经过测试的桌面应用。",
+          criteria: [
+            { id: "tests", text: "所有测试通过", verificationKind: "test" }
+          ],
+          autoContinue: true,
           status: "active"
         },
         messages: []
@@ -394,6 +398,9 @@ describe("ContextAssembler persistent Goal", () => {
     });
     assert.match(active.system, /persistent goal/u);
     assert.match(active.system, /交付一个经过测试的桌面应用/u);
+    assert.match(active.system, /Done when:/u);
+    assert.match(active.system, /所有测试通过/u);
+    assert.match(active.system, /Automatic continuation is enabled/u);
     assert.equal(active.metadata.prompt.goalEnabled, true);
     assert.equal(active.budget.sections.some((section) => section.id === "goal"), true);
 

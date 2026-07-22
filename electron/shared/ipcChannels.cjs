@@ -118,6 +118,17 @@ const IPC_CHANNELS =
         "agent-reset-circuit-breaker"
     }),
 
+    platform: Object.freeze({
+      GET_STATE:
+        "platform-get-state",
+
+      GET_RUN:
+        "platform-get-run",
+
+      CHANGED:
+        "platform-changed"
+    }),
+
     conversation: Object.freeze({
       GET_STATE:
         "conversation-get-state",
