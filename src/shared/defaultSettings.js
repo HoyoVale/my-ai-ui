@@ -339,6 +339,7 @@ export const FALLBACK_SETTINGS = {
       maxSearchDepth: 6,
       maxHashFileBytes: 50000000,
       maxWriteFileBytes: 5000000,
+      controlledProcess: true,
       allowedCommands: []
     },
     developer: {
@@ -379,6 +380,7 @@ export const FALLBACK_SETTINGS = {
       compute_file_hash: true,
       write_text_file: true,
       git_inspect: true,
+      run_project_script: true,
       run_workspace_command: true,
       update_plan: true,
       replan_goal: true,

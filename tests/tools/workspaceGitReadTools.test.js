@@ -82,6 +82,8 @@ describe("git_diff", () => {
     assert.match(result.diff, /Unstaged changes/u);
     assert.match(result.diff, /Staged changes/u);
     assert.equal(result.empty, false);
+    assert.equal(result.displayCommand, "git diff (unstaged + staged)");
+    assert.equal(result.kind, "git_diff");
   });
 
   it("supports a bounded revision range and rejects unsafe values", async () => {

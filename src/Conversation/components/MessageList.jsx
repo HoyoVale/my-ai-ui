@@ -14,12 +14,16 @@ import {
 } from "./MarkdownContent.jsx";
 
 import {
-  FileChangesSummary
+  FileDiffPreview,
+  FinalDiffSummary
 } from "./FileDiff.jsx";
 
 import {
-  collectFileChanges
-} from "../utils/fileChanges.js";
+  ToolCommandPreview
+} from "./CommandOutput.jsx";
+import {
+  hasCommandPreview
+} from "./commandOutputModel.js";
 
 import {
   createActivitySnapshot,
@@ -361,6 +365,10 @@ export function ConversationMessageList({
                     </div>
                   )}
 
+                  {isAssistant && message.status !== "running" && (
+                    <FinalDiffSummary summary={message.diffSummary} />
+                  )}
+
                   <div className="conversation-message__actions">
                     <div className="conversation-message__status-group">
                       {isAssistant &&
@@ -684,6 +692,40 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
 
   if (event.type === "tool") {
     const tool = event.tool;
+    const changePreview = tool?.result?.changePreview;
+    const hasInlineDetails = Boolean(changePreview?.diff) || hasCommandPreview(tool);
+
+    if (hasInlineDetails) {
+      return (
+        <details
+          className={`conversation-thinking-tool is-${tool?.status ?? event.status}`}
+          data-batch-id={event.batchId || tool?.batchId || undefined}
+          data-testid="conversation-thinking-tool"
+        >
+          <summary>
+            <ConversationIcon name="tool" size={16} />
+            <strong>{getToolTitle(tool)}</strong>
+            <ConversationIcon name="chevron" size={13} />
+          </summary>
+          <div className="conversation-thinking-tool__body">
+            <ToolCommandPreview tool={tool} compact defaultOpen />
+            <FileDiffPreview
+              change={changePreview?.diff ? {
+                id: tool.id,
+                paths: changePreview.paths?.length
+                  ? changePreview.paths
+                  : changePreview.path ? [changePreview.path] : [],
+                diff: changePreview.diff,
+                truncated: changePreview.truncated
+              } : null}
+              compact
+              defaultOpen
+            />
+            <button type="button" onClick={onOpenTaskPanel}>查看工具详情</button>
+          </div>
+        </details>
+      );
+    }
 
     return (
       <button
@@ -731,7 +773,6 @@ function LiveAgentActivity({
         live: true
       }
     );
-  const fileChanges = collectFileChanges(snapshot);
   const finalCandidateText =
     activity.liveStepRole === "final_candidate"
       ? String(activity.liveStepText ?? "")
@@ -768,8 +809,6 @@ function LiveAgentActivity({
             developerMode={developerMode}
           />
 
-          <FileChangesSummary changes={fileChanges} />
-
           {String(displayedFinalText).trim() && (
             <div className="conversation-message__body conversation-message__body--live">
               <MarkdownContent
@@ -793,8 +832,6 @@ function AssistantActivity({
     createActivitySnapshot(
       message
     );
-  const fileChanges = collectFileChanges(snapshot);
-
   if (
     visibleTimelineEvents(snapshot, developerMode).length === 0
   ) {
@@ -813,7 +850,6 @@ function AssistantActivity({
           onOpenTaskPanel
         }
       />
-      <FileChangesSummary changes={fileChanges} />
     </div>
   );
 }

@@ -68,8 +68,10 @@ function normalizedRequest(request = {}) {
   };
 }
 
-function processOverrideEnabled(settings = {}) {
-  return settings.tools?.developer?.toolsetOverrides?.["workspace.exec"] === "enabled";
+function processOverrideEnabled(settings = {}, mode = "chat") {
+  if (mode !== "coding") return false;
+  return settings.tools?.workspace?.controlledProcess !== false ||
+    settings.tools?.developer?.toolsetOverrides?.["workspace.exec"] === "enabled";
 }
 
 export function resolveCapabilitySet({
@@ -83,7 +85,7 @@ export function resolveCapabilitySet({
   const environmentPermissions = createEnvironmentPermissionEnvelope({
     mode,
     workspaceAvailable,
-    processEnabled: processOverrideEnabled(settings),
+    processEnabled: processOverrideEnabled(settings, mode),
     settings
   });
   const effectivePermissions = intersectPermissionEnvelopes(

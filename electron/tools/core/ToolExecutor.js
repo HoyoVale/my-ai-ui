@@ -617,6 +617,14 @@ export class ToolExecutor {
         )
       );
     }
+    if (typeof definition.commandPreview === "function") {
+      try {
+        baseRecord.commandPreview = definition.commandPreview(validatedInput.value);
+      } catch {
+        // Command previews are presentation metadata and must never block execution.
+      }
+    }
+
     if (!isJsonSerializable(validatedInput.value)) {
       return this.finishRejected(
         baseRecord,
@@ -1029,6 +1037,22 @@ export class ToolExecutor {
             abortSignal,
             idempotencyKey: options.idempotencyKey ?? "",
             metadata: options.metadata ?? null,
+            onToolProgress: (progress = {}) => {
+              const commandPreview = progress?.commandPreview ?? baseRecord.commandPreview;
+              this.emit({
+                ...baseRecord,
+                status: "running",
+                startedAt,
+                attempt,
+                maxAttempts: retryPolicy.maxAttempts,
+                commandPreview,
+                runtime: {
+                  ...baseRecord.runtime,
+                  state: "dispatched",
+                  attempt
+                }
+              });
+            },
             onWriteBoundary: async (boundary, details = {}) => {
               await this.injectFault(`write:${boundary}`, {
                 definition,

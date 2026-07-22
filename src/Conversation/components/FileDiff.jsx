@@ -238,3 +238,84 @@ export function FileChangesSummary({ changes }) {
     </section>
   );
 }
+
+function finalStatusLabel(file) {
+  const labels = {
+    added: "新增",
+    deleted: "删除",
+    modified: "修改",
+    renamed: "重命名",
+    binary_added: "新增二进制",
+    binary_deleted: "删除二进制",
+    binary_modified: "二进制修改"
+  };
+  return labels[file?.status] ?? "修改";
+}
+
+function FinalDiffFile({ file, index }) {
+  const title = file.status === "renamed" && file.oldPath
+    ? `${file.oldPath} → ${file.path}`
+    : file.path;
+  if (!file.diff) {
+    return (
+      <div
+        className="conversation-final-diff__status-row"
+        data-testid="conversation-final-diff-file"
+      >
+        <span>{index + 1}</span>
+        <strong title={title}>{title}</strong>
+        <small>{finalStatusLabel(file)}</small>
+      </div>
+    );
+  }
+  return (
+    <FileDiffPreview
+      change={{
+        id: `${file.status}:${file.oldPath}:${file.path}`,
+        paths: [file.path],
+        diff: file.diff,
+        truncated: file.truncated
+      }}
+      compact
+    />
+  );
+}
+
+export function FinalDiffSummary({ summary }) {
+  const files = Array.isArray(summary?.files) ? summary.files : [];
+  if (!files.length) return null;
+  const totals = summary?.totals ?? {};
+  return (
+    <section
+      className="conversation-final-diff"
+      data-testid="conversation-final-diff"
+    >
+      <header>
+        <div>
+          <strong>本次改动</strong>
+          <span>{files.length} 个文件</span>
+        </div>
+        <div className="conversation-final-diff__totals">
+          <b className="is-add">+{Number(totals.added) || 0}</b>
+          <b className="is-remove">−{Number(totals.removed) || 0}</b>
+        </div>
+      </header>
+      <div className="conversation-final-diff__files">
+        {files.map((file, index) => (
+          <FinalDiffFile
+            file={file}
+            index={index}
+            key={`${file.oldPath ?? ""}:${file.path}:${file.status}`}
+          />
+        ))}
+      </div>
+      {(Number(totals.renamedFiles) > 0 || Number(totals.binaryFiles) > 0) && (
+        <small>
+          {Number(totals.renamedFiles) > 0 ? `${totals.renamedFiles} 个重命名` : ""}
+          {Number(totals.renamedFiles) > 0 && Number(totals.binaryFiles) > 0 ? " · " : ""}
+          {Number(totals.binaryFiles) > 0 ? `${totals.binaryFiles} 个二进制文件` : ""}
+        </small>
+      )}
+    </section>
+  );
+}

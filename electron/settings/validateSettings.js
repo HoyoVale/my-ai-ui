@@ -1910,6 +1910,10 @@ function sanitizeToolSettings(
         65536,
         20000000
       ),
+      controlledProcess: booleanValue(
+        workspace.controlledProcess,
+        defaults.workspace.controlledProcess !== false
+      ),
       allowedCommands: Array.isArray(workspace.allowedCommands)
         ? [...new Set(workspace.allowedCommands
             .map(allowedCommandValue)

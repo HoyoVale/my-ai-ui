@@ -54,9 +54,8 @@ export function baseToolsetEnabled(mode, toolset) {
     return mode === "coding";
   }
 
-  // Process execution is intentionally opt-in through a developer override.
   if (toolset === "workspace.exec") {
-    return false;
+    return mode === "coding";
   }
 
   return true;
@@ -100,7 +99,7 @@ export function resolveEnabledToolCatalog(
     if (toolset === "workspace.write" && mode !== "coding") {
       return false;
     }
-    if (toolset === "workspace.exec" && toolsetOverride !== "enabled") {
+    if (toolset === "workspace.exec" && mode !== "coding") {
       return false;
     }
 

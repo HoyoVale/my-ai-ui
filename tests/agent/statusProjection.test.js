@@ -218,3 +218,31 @@ test("Conversation receives the bounded Tool Approval and security state", () =>
   assert.equal(projected.toolSecurity.suspiciousResults, 1);
   assert.equal(projected.toolSecurity.lastSignals, undefined);
 });
+
+test("Conversation sees a safe command preview while a process tool is still running", () => {
+  const projected = projectConversationStatus({
+    state: "running",
+    runId: "run-command",
+    activeToolCalls: [{
+      id: "call-command",
+      name: "run_project_script",
+      status: "running",
+      commandPreview: {
+        displayCommand: "npm run test",
+        command: "npm",
+        args: ["run", "test"],
+        cwd: ".",
+        kind: "project_script",
+        script: "test"
+      },
+      input: { task: "test", secret: "hidden" }
+    }],
+    activity: { events: [] }
+  });
+
+  const tool = projected.activeToolCalls[0];
+  assert.equal(tool.commandPreview.displayCommand, "npm run test");
+  assert.deepEqual(tool.commandPreview.args, ["run", "test"]);
+  assert.equal(tool.commandPreview.stdout, "");
+  assert.equal(tool.input, undefined);
+});

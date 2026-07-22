@@ -84,7 +84,7 @@ describe(
         assert.deepEqual(
           store.load(),
           {
-            version: 20,
+            version: 21,
             currentConversationId:
               null,
             conversations: []
@@ -207,7 +207,7 @@ describe(
 
         assert.equal(
           loaded.version,
-          20
+          21
         );
         assert.equal(
           Object.hasOwn(
@@ -233,6 +233,58 @@ describe(
             .pinnedToContext,
           false
         );
+      }
+    );
+
+    it(
+      "persists a bounded final baseline-to-workspace diff summary",
+      async () => {
+        const { filePath, store } = createStore();
+        store.save({
+          currentConversationId: "conversation-diff",
+          conversations: [{
+            id: "conversation-diff",
+            title: "Diff",
+            createdAt: 1,
+            updatedAt: 2,
+            messages: [{
+              id: "assistant-diff",
+              role: "assistant",
+              content: "done",
+              status: "complete",
+              createdAt: 2,
+              diffSummary: {
+                version: 1,
+                runId: "run-diff",
+                workspaceId: "workspace-diff",
+                revision: 2,
+                empty: false,
+                totals: { files: 1, added: 1, removed: 1, addedFiles: 0, deletedFiles: 0, renamedFiles: 0, binaryFiles: 0 },
+                files: [{
+                  path: "src/app.js",
+                  oldPath: "",
+                  status: "modified",
+                  binary: false,
+                  beforeSha256: "a",
+                  afterSha256: "b",
+                  beforeBytes: 4,
+                  afterBytes: 4,
+                  added: 1,
+                  removed: 1,
+                  diff: "--- a/src/app.js\n+++ b/src/app.js\n-old\n+new",
+                  truncated: false
+                }]
+              }
+            }]
+          }]
+        });
+        await store.flush();
+        const secondStore = new ConversationStore({ getFilePath: () => filePath });
+        stores.push(secondStore);
+        const summary = secondStore.load().conversations[0].messages[0].diffSummary;
+        assert.equal(summary.runId, "run-diff");
+        assert.equal(summary.files.length, 1);
+        assert.match(summary.files[0].diff, /\+new/u);
       }
     );
 
@@ -268,7 +320,7 @@ describe(
           assert.deepEqual(
             store.load(),
             {
-              version: 20,
+              version: 21,
               currentConversationId:
                 null,
               conversations: []

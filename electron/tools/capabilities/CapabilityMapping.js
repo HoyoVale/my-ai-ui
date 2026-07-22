@@ -32,6 +32,7 @@ const BUILTIN_CAPABILITY_MAP = Object.freeze({
   delete_path: ["workspace.file.delete"],
   apply_patch: ["workspace.file.create", "workspace.file.modify"],
   git_inspect: ["git.read.status", "git.read.diff"],
+  run_project_script: ["process.execute"],
   run_workspace_command: ["process.execute"],
   update_plan: ["agent.plan"],
   replan_goal: ["agent.plan"],

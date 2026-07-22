@@ -109,7 +109,7 @@ function resourcesForTool(definition = {}, input = {}, context = {}) {
     };
   }
 
-  if (name === "apply_patch" || name === "run_workspace_command") {
+  if (["apply_patch", "run_project_script", "run_workspace_command"].includes(name)) {
     return {
       barrier: true,
       resources: [{

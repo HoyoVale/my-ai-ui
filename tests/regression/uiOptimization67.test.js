@@ -135,7 +135,8 @@ test("obsolete Recovery Center UI is removed and file diffs are visible", () => 
 
   assert.doesNotMatch(conversation, /ConversationRecoveryPanel/u);
   assert.match(taskPanel, /FileDiffPreview/u);
-  assert.match(messageList, /FileChangesSummary/u);
+  assert.match(messageList, /FinalDiffSummary/u);
+  assert.match(messageList, /ToolCommandPreview/u);
 });
 
 test("Response only enables the vertical scrollbar after overflow is measured", () => {

@@ -95,6 +95,27 @@ function summarizeValue(value, toolName) {
   return `${toolName || "工具"}执行完成`;
 }
 
+function commandPreviewFromValue(value) {
+  const data = value?.data;
+  if (!data || typeof data !== "object" || !data.displayCommand) return undefined;
+  return {
+    displayCommand: String(data.displayCommand).slice(0, 1200),
+    command: String(data.command ?? "").slice(0, 500),
+    args: Array.isArray(data.args) ? data.args.map(String).slice(0, 64) : [],
+    cwd: String(data.cwd ?? "").slice(0, 500),
+    kind: String(data.kind ?? "process").slice(0, 80),
+    script: String(data.script ?? "").slice(0, 120),
+    exitCode: data.exitCode === null ? null : Number(data.exitCode),
+    durationMs: Math.max(0, Number(data.durationMs) || 0),
+    stdout: String(data.stdout ?? "").slice(0, 24000),
+    stderr: String(data.stderr ?? "").slice(0, 12000),
+    stdoutTruncated: data.stdoutTruncated === true,
+    stderrTruncated: data.stderrTruncated === true,
+    terminated: data.terminated === true,
+    terminationReason: String(data.terminationReason ?? "").slice(0, 120)
+  };
+}
+
 function createResultEnvelope({
   status,
   summary,
@@ -102,6 +123,7 @@ function createResultEnvelope({
   data,
   error,
   changePreview,
+  commandPreview,
   resultId = "",
   truncated = false,
   originalBytes = 0,
@@ -124,6 +146,10 @@ function createResultEnvelope({
 
   if (changePreview !== undefined) {
     result.changePreview = clone(changePreview);
+  }
+
+  if (commandPreview !== undefined) {
+    result.commandPreview = clone(commandPreview);
   }
 
   if (error !== undefined) {
@@ -419,6 +445,7 @@ export class ToolResultStore {
     const serialized = serialize(safeValue);
     const totalBytes = byteLength(serialized);
     const changePreview = safeValue?.data?.changePreview;
+    const commandPreview = commandPreviewFromValue(safeValue);
     const summary = summarizeValue(
       safeValue,
       toolName
@@ -435,6 +462,7 @@ export class ToolResultStore {
         preview,
         data: safeValue,
         changePreview,
+        commandPreview,
         truncated: false,
         originalBytes: totalBytes,
         storedBytes: totalBytes
@@ -504,6 +532,7 @@ export class ToolResultStore {
         summary,
         preview,
         changePreview,
+        commandPreview,
         resultId,
         truncated: true,
         originalBytes: totalBytes,

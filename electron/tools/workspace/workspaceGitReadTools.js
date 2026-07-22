@@ -175,6 +175,21 @@ export function createWorkspaceGitReadToolDefinitions(workspaceSettings = {}) {
       outputSchema: z.object({
         root: z.string(),
         cwd: z.string(),
+        command: z.string(),
+        args: z.array(z.string()),
+        displayCommand: z.string(),
+        kind: z.string(),
+        script: z.string(),
+        exitCode: z.number().nullable(),
+        signal: z.string().nullable(),
+        stdout: z.string(),
+        stderr: z.string(),
+        stdoutBytes: z.number().int().nonnegative(),
+        stderrBytes: z.number().int().nonnegative(),
+        stdoutTruncated: z.boolean(),
+        stderrTruncated: z.boolean(),
+        terminated: z.boolean(),
+        terminationReason: z.string().nullable(),
         mode: z.enum(["unstaged", "staged", "all", "range"]),
         paths: z.array(z.string()),
         sections: z.array(sectionSchema),
@@ -195,6 +210,26 @@ export function createWorkspaceGitReadToolDefinitions(workspaceSettings = {}) {
         retryMode: "safe",
         supportsAbort: true,
         supportsResume: true
+      },
+      commandPreview(input) {
+        const paths = Array.isArray(input.paths) && input.paths.length
+          ? ` -- ${input.paths.join(" ")}`
+          : "";
+        const display = input.mode === "range"
+          ? `git diff ${input.base}..${input.head}${paths}`
+          : input.mode === "all"
+            ? `git diff (unstaged + staged)${paths}`
+            : input.mode === "staged"
+              ? `git diff --cached${paths}`
+              : `git diff${paths}`;
+        return {
+          displayCommand: display,
+          command: "git",
+          args: [],
+          cwd: input.cwd,
+          kind: "git_diff",
+          script: ""
+        };
       },
       async execute(input, context = {}) {
         const mode = input.mode ?? "all";
@@ -295,9 +330,28 @@ export function createWorkspaceGitReadToolDefinitions(workspaceSettings = {}) {
           return section.stdout;
         }).filter(Boolean).join("\n\n");
 
+        const firstArgs = requests[0]?.args ?? [];
+        const display = requests.length === 1
+          ? ["git", ...firstArgs].join(" ")
+          : `git diff (${requests.map((item) => item.kind).join(" + ")})`;
         return {
           root: resolved.root,
           cwd: resolved.relativePath,
+          command: "git",
+          args: firstArgs,
+          displayCommand: display,
+          kind: "git_diff",
+          script: "",
+          exitCode: 0,
+          signal: null,
+          stdout: "",
+          stderr: sections.map((section) => section.stderr).filter(Boolean).join("\n"),
+          stdoutBytes: sections.reduce((sum, section) => sum + section.stdoutBytes, 0),
+          stderrBytes: sections.reduce((sum, section) => sum + section.stderrBytes, 0),
+          stdoutTruncated: truncated,
+          stderrTruncated: false,
+          terminated: false,
+          terminationReason: null,
           mode,
           paths,
           sections,

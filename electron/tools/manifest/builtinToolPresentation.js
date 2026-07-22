@@ -177,6 +177,11 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
     title: "检查 Git 仓库",
     description: "通过受监管子进程运行保守的只读 Git 检查，并拦截危险参数。"
   },
+  run_project_script: {
+    toolset: "workspace.exec",
+    title: "运行项目脚本",
+    description: "通过受监管进程运行 package.json 中声明的 test、build、lint、check 或指定脚本。"
+  },
   run_workspace_command: {
     toolset: "workspace.exec",
     title: "运行工作区命令",

@@ -183,8 +183,8 @@ describe(
           }
         });
 
-        assert.match(text, /访问模式：读写/u);
-        assert.match(text, /写入前受权限策略约束/u);
+        assert.match(text, /访问模式：读写与受限命令/u);
+        assert.match(text, /受限命令/u);
         assert.doesNotMatch(text, /只读工作区/u);
       }
     );

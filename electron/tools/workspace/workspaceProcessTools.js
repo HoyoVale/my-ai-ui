@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 import { z } from "zod";
@@ -248,6 +249,66 @@ function resolveAllowedCommand(input, allowedCommands) {
   return match.value;
 }
 
+function displayArgument(value) {
+  const text = String(value ?? "");
+  return /^[a-zA-Z0-9_./:@+-]+$/u.test(text)
+    ? text
+    : JSON.stringify(text);
+}
+
+function displayCommand(command, args = []) {
+  return [command, ...args].map(displayArgument).join(" ");
+}
+
+function readPackageManifest(cwd) {
+  const manifestPath = path.join(cwd, "package.json");
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    throw processToolError(
+      error?.code === "ENOENT" ? "PACKAGE_MANIFEST_NOT_FOUND" : "PACKAGE_MANIFEST_INVALID",
+      error?.code === "ENOENT"
+        ? "当前目录没有 package.json。"
+        : "package.json 无法解析。"
+    );
+  }
+  return parsed && typeof parsed === "object" ? parsed : {};
+}
+
+function packageManagerFor(cwd, manifest = {}) {
+  const declared = String(manifest.packageManager ?? "").split("@")[0];
+  const candidates = [
+    ["pnpm", "pnpm-lock.yaml"],
+    ["yarn", "yarn.lock"],
+    ["bun", "bun.lockb"],
+    ["bun", "bun.lock"],
+    ["npm", "package-lock.json"]
+  ];
+  return ["npm", "pnpm", "yarn", "bun"].includes(declared)
+    ? declared
+    : candidates.find(([, lock]) => fs.existsSync(path.join(cwd, lock)))?.[0] ?? "npm";
+}
+
+function projectScriptInvocation(manager, script, platform = process.platform) {
+  const args = ["run", script];
+  if (platform === "win32" && ["npm", "pnpm", "yarn"].includes(manager)) {
+    // .cmd launchers cannot be spawned directly on Windows. The command line is
+    // host-constructed from fixed manager names and a schema-bounded script id;
+    // no user-provided shell fragment or command chaining is accepted.
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", `${manager}.cmd run ${script}`],
+      displayCommand: `${manager} run ${script}`
+    };
+  }
+  return {
+    command: manager,
+    args,
+    displayCommand: `${manager} run ${script}`
+  };
+}
+
 function bounded(value, max = 200_000) {
   const text = String(value ?? "");
   return text.length > max
@@ -255,13 +316,57 @@ function bounded(value, max = 200_000) {
     : text;
 }
 
-function executionResult(command, args, cwd, outcome) {
+function createProcessProgressReporter(context, preview) {
+  let stdout = "";
+  let stderr = "";
+  let timer = null;
+  const emit = () => {
+    timer = null;
+    context.onToolProgress?.({
+      commandPreview: {
+        ...preview,
+        exitCode: null,
+        durationMs: 0,
+        stdout,
+        stderr,
+        stdoutTruncated: stdout.includes("…[truncated]"),
+        stderrTruncated: stderr.includes("…[truncated]"),
+        terminated: false,
+        terminationReason: ""
+      }
+    });
+  };
+  const schedule = () => {
+    if (timer) return;
+    timer = setTimeout(emit, 80);
+    timer.unref?.();
+  };
+  return {
+    onStdout(chunk) {
+      stdout = bounded(`${stdout}${String(chunk ?? "")}`, 24_000);
+      schedule();
+    },
+    onStderr(chunk) {
+      stderr = bounded(`${stderr}${String(chunk ?? "")}`, 12_000);
+      schedule();
+    },
+    flush() {
+      if (timer) clearTimeout(timer);
+      if (stdout || stderr) emit();
+    }
+  };
+}
+
+function executionResult(command, args, cwd, outcome, metadata = {}) {
   return {
     ok: outcome.ok,
     data: {
       command,
       args,
       cwd,
+      displayCommand: metadata.displayCommand || displayCommand(command, args),
+      kind: metadata.kind || "process",
+      script: metadata.script || "",
       exitCode: outcome.code,
       signal: outcome.signal,
       stdout: bounded(outcome.stdout),
@@ -308,6 +413,9 @@ const processOutputSchema = z.object({
     command: z.string(),
     args: z.array(z.string()),
     cwd: z.string(),
+    displayCommand: z.string(),
+    kind: z.string(),
+    script: z.string(),
     exitCode: z.number().nullable(),
     signal: z.string().nullable(),
     stdout: z.string(),
@@ -376,6 +484,16 @@ export function createWorkspaceProcessToolDefinitions(
         supportsAbort: true,
         supportsResume: true
       },
+      commandPreview(input) {
+        return {
+          displayCommand: displayCommand("git", buildGitArgs(input.command, input.args)),
+          command: "git",
+          args: buildGitArgs(input.command, input.args),
+          cwd: input.cwd,
+          kind: "git_inspect",
+          script: ""
+        };
+      },
       async execute(input, context = {}) {
         if (!SAFE_GIT_SUBCOMMANDS.has(input.command)) {
           throw processToolError(
@@ -391,6 +509,14 @@ export function createWorkspaceProcessToolDefinitions(
         }
         const resolved = resolveCwd(input.cwd);
         const args = buildGitArgs(input.command, input.args);
+        const progress = createProcessProgressReporter(context, {
+          displayCommand: displayCommand("git", args),
+          command: "git",
+          args,
+          cwd: resolved.relativePath,
+          kind: "git_inspect",
+          script: ""
+        });
         const outcome = await context.subprocessSupervisor.run(
           "git",
           args,
@@ -399,18 +525,118 @@ export function createWorkspaceProcessToolDefinitions(
             timeoutMs: input.timeoutMs,
             abortSignal: context.abortSignal,
             shell: false,
+            onStdout: progress.onStdout,
+            onStderr: progress.onStderr,
             env: {
               ...process.env,
               ...SAFE_GIT_ENV
             }
           }
         );
-        return executionResult("git", args, resolved.relativePath, outcome);
+        progress.flush();
+        return executionResult("git", args, resolved.relativePath, outcome, { kind: "git_inspect" });
+      }
+    },
+    {
+      name: "run_project_script",
+      title: "Run project script",
+      description:
+        "Run one script declared in the workspace package.json through the detected package manager. The host constructs the launcher and bounded script identifier; no user-provided shell fragment, command chaining, environment override, or arbitrary executable is accepted. The process tree is supervised and output is bounded.",
+      inputSchema: z.object({
+        task: z.enum(["test", "build", "lint", "check", "script"]).default("test"),
+        script: z.string().trim().regex(/^[a-zA-Z0-9:_-]{1,120}$/u).optional(),
+        cwd: z.string().max(500).default("."),
+        timeoutMs: z.number().int().min(1_000).max(900_000).default(180_000)
+      }).refine((value) => value.task !== "script" || Boolean(value.script), {
+        message: "task=script 时必须提供 script。"
+      }),
+      outputSchema: processOutputSchema,
+      sideEffect: "external",
+      riskLevel: "high",
+      idempotency: "none",
+      timeoutMs: 900_000,
+      retryPolicy: { maxAttempts: 1 },
+      concurrencyKey(input) {
+        return `project-script:${path.normalize(String(input?.cwd ?? "."))}`;
+      },
+      runtimeContract: {
+        effect: "destructive",
+        retryMode: "manual_only",
+        supportsAbort: true,
+        supportsResume: false,
+        leaseTtlMs: 960_000,
+        heartbeatMs: 5_000
+      },
+      commandPreview(input) {
+        const script = input.task === "script" ? input.script : input.task;
+        let manager = "package-manager";
+        try {
+          const resolved = resolveCwd(input.cwd);
+          manager = packageManagerFor(resolved.path, readPackageManifest(resolved.path));
+        } catch {
+          // Keep a safe generic preview until execution reports the concrete manager.
+        }
+        return {
+          displayCommand: `${manager} run ${script}`,
+          command: manager,
+          args: ["run", script],
+          cwd: input.cwd,
+          kind: "project_script",
+          script
+        };
+      },
+      async execute(input, context = {}) {
+        if (!context.subprocessSupervisor) {
+          throw processToolError(
+            "SUBPROCESS_SUPERVISOR_UNAVAILABLE",
+            "受控子进程运行器不可用。"
+          );
+        }
+        const resolved = resolveCwd(input.cwd);
+        const manifest = readPackageManifest(resolved.path);
+        const script = input.task === "script" ? input.script : input.task;
+        if (!Object.hasOwn(manifest.scripts ?? {}, script)) {
+          throw processToolError(
+            "PACKAGE_SCRIPT_NOT_FOUND",
+            `package.json 未声明脚本 ${script}。`
+          );
+        }
+        const manager = packageManagerFor(resolved.path, manifest);
+        const invocation = projectScriptInvocation(manager, script);
+        const progress = createProcessProgressReporter(context, {
+          displayCommand: invocation.displayCommand,
+          command: invocation.command,
+          args: invocation.args,
+          cwd: resolved.relativePath,
+          kind: "project_script",
+          script
+        });
+        const outcome = await context.subprocessSupervisor.run(invocation.command, invocation.args, {
+          cwd: resolved.path,
+          timeoutMs: input.timeoutMs,
+          abortSignal: context.abortSignal,
+          shell: false,
+          onStdout: progress.onStdout,
+          onStderr: progress.onStderr,
+          env: {
+            ...process.env,
+            CI: process.env.CI || "1",
+            FORCE_COLOR: "0",
+            NO_COLOR: "1"
+          }
+        });
+        progress.flush();
+        return executionResult(invocation.command, invocation.args, resolved.relativePath, outcome, {
+          kind: "project_script",
+          script,
+          displayCommand: invocation.displayCommand
+        });
       }
     },
     {
       name: "run_workspace_command",
       title: "Run workspace command",
+      ready: allowedCommands.length > 0,
       description:
         "Run one developer-configured executable with a literal argument array inside the authorized workspace. No shell is used and the process tree is supervised for timeout, cancellation, and bounded output. This is not an operating-system sandbox; only explicitly trusted commands should be enabled.",
       inputSchema: z.object({
@@ -437,6 +663,16 @@ export function createWorkspaceProcessToolDefinitions(
         leaseTtlMs: 660_000,
         heartbeatMs: 5_000
       },
+      commandPreview(input) {
+        return {
+          displayCommand: displayCommand(input.command, input.args),
+          command: input.command,
+          args: input.args,
+          cwd: input.cwd,
+          kind: "workspace_command",
+          script: ""
+        };
+      },
       async execute(input, context = {}) {
         if (!context.subprocessSupervisor) {
           throw processToolError(
@@ -446,6 +682,14 @@ export function createWorkspaceProcessToolDefinitions(
         }
         const command = resolveAllowedCommand(input.command, allowedCommands);
         const resolved = resolveCwd(input.cwd);
+        const progress = createProcessProgressReporter(context, {
+          displayCommand: displayCommand(command, input.args),
+          command,
+          args: input.args,
+          cwd: resolved.relativePath,
+          kind: "workspace_command",
+          script: ""
+        });
         const outcome = await context.subprocessSupervisor.run(
           command,
           input.args,
@@ -454,10 +698,13 @@ export function createWorkspaceProcessToolDefinitions(
             stdin: input.stdin,
             timeoutMs: input.timeoutMs,
             abortSignal: context.abortSignal,
-            shell: false
+            shell: false,
+            onStdout: progress.onStdout,
+            onStderr: progress.onStderr
           }
         );
-        return executionResult(command, input.args, resolved.relativePath, outcome);
+        progress.flush();
+        return executionResult(command, input.args, resolved.relativePath, outcome, { kind: "workspace_command" });
       }
     }
   ];

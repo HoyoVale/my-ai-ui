@@ -77,7 +77,8 @@ export function createAgentToolSession({
   faultInjector = null,
   externalDefinitions = [],
   authorizeTool = null,
-  capabilityRequest = null
+  capabilityRequest = null,
+  onFileMutation = null
 } = {}) {
   const planStore =
     new RunPlanStore(
@@ -196,7 +197,8 @@ export function createAgentToolSession({
         workspaceId,
         segmentId,
         mode: sessionMode,
-        subprocessSupervisor
+        subprocessSupervisor,
+        onFileMutation
       },
       policyEngine: new ToolPolicyEngine({
         authorize: async (request) => {

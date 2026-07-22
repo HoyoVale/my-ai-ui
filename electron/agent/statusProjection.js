@@ -108,6 +108,31 @@ function publicChangePreview(result) {
     truncated: source.truncated === true
   };
 }
+
+function publicCommandPreview(result) {
+  const source = result?.commandPreview ?? result?.data?.data ?? result?.data ??
+    (result?.displayCommand ? result : undefined);
+  if (!source || typeof source !== "object" || !source.displayCommand) return undefined;
+  return {
+    displayCommand: String(source.displayCommand).slice(0, 1200),
+    command: String(source.command ?? "").slice(0, 500),
+    args: Array.isArray(source.args) ? source.args.map((item) => String(item).slice(0, 1000)).slice(0, 64) : [],
+    cwd: String(source.cwd ?? "").slice(0, 500),
+    kind: String(source.kind ?? "process").slice(0, 80),
+    script: String(source.script ?? "").slice(0, 120),
+    exitCode: source.exitCode === undefined || source.exitCode === null
+      ? null
+      : Number(source.exitCode),
+    durationMs: Math.max(0, Number(source.durationMs) || 0),
+    stdout: String(source.stdout ?? "").slice(0, 24000),
+    stderr: String(source.stderr ?? "").slice(0, 12000),
+    stdoutTruncated: source.stdoutTruncated === true,
+    stderrTruncated: source.stderrTruncated === true,
+    terminated: source.terminated === true,
+    terminationReason: String(source.terminationReason ?? "").slice(0, 120)
+  };
+}
+
 function publicResult(result) {
   if (!result || typeof result !== "object") {
     return undefined;
@@ -117,8 +142,9 @@ function publicResult(result) {
   const status = String(result.status ?? "").trim();
   const error = publicError(result.error);
   const changePreview = publicChangePreview(result);
+  const commandPreview = publicCommandPreview(result);
 
-  if (!summary && !status && !error && !changePreview) {
+  if (!summary && !status && !error && !changePreview && !commandPreview) {
     return undefined;
   }
 
@@ -128,7 +154,8 @@ function publicResult(result) {
     truncated: result.truncated === true,
     clipped: result.clipped === true,
     error,
-    changePreview
+    changePreview,
+    commandPreview
   };
 }
 
@@ -191,6 +218,7 @@ export function projectToolRecord(
     batchId: record.batchId,
     batchObjective: record.batchObjective,
     input: publicInput(record.input),
+    commandPreview: publicCommandPreview(record.commandPreview),
     result: publicResult(record.result),
     planStep: clone(record.planStep),
     queuedAt: record.queuedAt,
@@ -433,6 +461,9 @@ export function projectResponseStatus(status) {
     liveStepText: String(source.liveStepText ?? ""),
     liveStepRole: String(source.liveStepRole ?? "none"),
     finalText: String(source.finalText ?? ""),
+    diffSummary: source.diffSummary && typeof source.diffSummary === "object"
+      ? structuredClone(source.diffSummary)
+      : null,
     assistantText: String(
       source.finalText || source.liveStepText || source.assistantText || ""
     )
@@ -463,6 +494,9 @@ export function projectConversationStatus(status) {
     liveStepText: String(source.liveStepText ?? ""),
     liveStepRole: String(source.liveStepRole ?? "none"),
     finalText: String(source.finalText ?? ""),
+    diffSummary: source.diffSummary && typeof source.diffSummary === "object"
+      ? structuredClone(source.diffSummary)
+      : null,
     assistantText: String(
       source.finalText || source.liveStepText || source.assistantText || ""
     )

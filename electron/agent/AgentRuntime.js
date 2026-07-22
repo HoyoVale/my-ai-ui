@@ -151,6 +151,10 @@ import {
 } from "./TokenLedger.js";
 
 import {
+  RunDiffTracker
+} from "./RunDiffTracker.js";
+
+import {
   createCheckpointInstruction,
   createRunCheckpoint
 } from "./runCheckpoint.js";
@@ -725,6 +729,10 @@ export class AgentRuntime {
       finalText:
         this.activeRun
           ?.finalText ?? "",
+      diffSummary:
+        this.activeRun
+          ?.diffTracker
+          ?.snapshot?.() ?? null,
       replaceMessageId:
         this.activeRun
           ?.replaceMessageId ?? "",
@@ -1610,6 +1618,10 @@ export class AgentRuntime {
       finalizationAttemptCount: 0,
       contextCompactionCount:
         continuationState?.contextCompactionCount ?? 0,
+      diffTracker: new RunDiffTracker({
+        runId,
+        workspaceId: executionConversation.workspaceId ?? ""
+      }),
       tokenLedger: new TokenLedger({
         runId,
         goalId,
@@ -1954,6 +1966,10 @@ export class AgentRuntime {
       resumeInPlace: false,
       finalizationAttemptCount: 0,
       contextCompactionCount: 0,
+      diffTracker: new RunDiffTracker({
+        runId,
+        workspaceId: plan.conversation.workspaceId ?? ""
+      }),
       tokenLedger: new TokenLedger({
         runId,
         goalId,
@@ -2269,7 +2285,9 @@ export class AgentRuntime {
           ? structuredClone(this.activeRun.skillRun)
           : null,
       tokenLedger:
-        this.activeRun.tokenLedger?.snapshot?.() ?? null
+        this.activeRun.tokenLedger?.snapshot?.() ?? null,
+      diffSummary:
+        this.activeRun.diffTracker?.snapshot?.() ?? null
     };
 
     if (
@@ -3492,7 +3510,12 @@ export class AgentRuntime {
         mode: this.activeRun.mode ?? "chat",
         getSegmentId: () => orchestrator.currentSegmentId(),
         segmentId: runId,
-        capabilityRequest: this.activeRun.skillRuntime?.capabilityRequest ?? null
+        capabilityRequest: this.activeRun.skillRuntime?.capabilityRequest ?? null,
+        onFileMutation: (mutation) => {
+          if (!this.isCurrentRun(runId)) return;
+          this.activeRun.diffTracker?.record?.(mutation);
+          this.setStatus({ ...this.status });
+        }
       });
 
       this.activeRun.toolSession = toolSession;

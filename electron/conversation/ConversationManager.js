@@ -1116,7 +1116,9 @@ export class ConversationManager {
     resumedFromMessageId = "",
     taskId = "",
     activity = null,
-    skillRun = null
+    skillRun = null,
+    tokenLedger = null,
+    diffSummary = null
   }) {
     const data =
       this.ensureLoaded();
@@ -1176,7 +1178,9 @@ export class ConversationManager {
         resumedFromMessageId,
         taskId,
         activity,
-        skillRun
+        skillRun,
+        tokenLedger,
+        diffSummary
       }
     );
 
@@ -1315,6 +1319,8 @@ export class ConversationManager {
     taskId = "",
     activity = null,
     skillRun = null,
+    tokenLedger = null,
+    diffSummary = null,
     preserveCreatedAt = false
   }) {
     const conversation =
@@ -1383,6 +1389,8 @@ export class ConversationManager {
     delete message.taskId;
     delete message.activity;
     delete message.skillRun;
+    delete message.tokenLedger;
+    delete message.diffSummary;
 
     this.applyAssistantMetadata(
       message,
@@ -1395,7 +1403,9 @@ export class ConversationManager {
         resumedFromMessageId,
         taskId,
         activity,
-        skillRun
+        skillRun,
+        tokenLedger,
+        diffSummary
       }
     );
 
@@ -1431,7 +1441,9 @@ export class ConversationManager {
       resumedFromMessageId = "",
       taskId = "",
       activity = null,
-      skillRun = null
+      skillRun = null,
+      tokenLedger = null,
+      diffSummary = null
     } = {}
   ) {
     if (
@@ -1504,6 +1516,14 @@ export class ConversationManager {
       typeof skillRun === "object"
     ) {
       message.skillRun = clone(skillRun);
+    }
+
+    if (tokenLedger && typeof tokenLedger === "object") {
+      message.tokenLedger = clone(tokenLedger);
+    }
+
+    if (diffSummary && typeof diffSummary === "object" && diffSummary.empty !== true) {
+      message.diffSummary = clone(diffSummary);
     }
   }
 

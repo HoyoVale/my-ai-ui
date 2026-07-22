@@ -139,6 +139,48 @@ describe("conversation activity migration", () => {
     assert.equal(tool.tool.batchId, batch.batch.id);
   });
 
+  it("preserves a bounded command preview on a running tool event", () => {
+    const message = sanitizeMessage({
+      id: "assistant-command",
+      role: "assistant",
+      content: "",
+      createdAt: 200,
+      activity: {
+        version: 3,
+        taskId: "task-command",
+        runId: "run-command",
+        status: "running",
+        startedAt: 100,
+        events: [{
+          id: "tool:command",
+          type: "tool",
+          sequence: 0,
+          status: "running",
+          title: "运行项目脚本",
+          createdAt: 100,
+          updatedAt: 120,
+          tool: {
+            id: "command",
+            name: "run_project_script",
+            title: "运行项目脚本",
+            status: "running",
+            commandPreview: {
+              displayCommand: "npm run test",
+              command: "npm",
+              args: ["run", "test"],
+              cwd: ".",
+              kind: "project_script",
+              script: "test"
+            }
+          }
+        }]
+      }
+    });
+    const tool = message.activity.events[0].tool;
+    assert.equal(tool.commandPreview.displayCommand, "npm run test");
+    assert.deepEqual(tool.commandPreview.args, ["run", "test"]);
+  });
+
   it("does not invent an activity stream for ordinary historical replies", () => {
     const message = sanitizeMessage({
       id: "assistant-plain",

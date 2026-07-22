@@ -340,3 +340,28 @@ describe(
     );
   }
 );
+
+describe("ToolResultStore command previews", () => {
+  it("preserves bounded command output beside the tool result", () => {
+    const store = new ToolResultStore({ maxInlineBytes: 20_000 });
+    const captured = store.capture({
+      ok: true,
+      data: {
+        displayCommand: "npm run test",
+        kind: "project_script",
+        script: "test",
+        cwd: ".",
+        exitCode: 0,
+        stdout: "723 tests passed\n",
+        stderr: "",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        durationMs: 1200
+      }
+    }, { toolName: "run_project_script" });
+
+    assert.equal(captured.result.commandPreview.displayCommand, "npm run test");
+    assert.equal(captured.result.commandPreview.exitCode, 0);
+    assert.match(captured.result.commandPreview.stdout, /723 tests passed/u);
+  });
+});

@@ -10,7 +10,7 @@ test("Goal Runtime persists criteria, completion authority and bounded evidence 
   const schema = read("../../electron/conversation/conversationSchema.js");
   const goalRuntime = read("../../electron/goal/GoalRuntime.js");
   const manager = read("../../electron/conversation/ConversationManager.js");
-  assert.match(schema, /const STORE_VERSION = 20/u);
+  assert.match(schema, /const STORE_VERSION = 21/u);
   assert.match(schema, /sanitizeGoal/u);
   assert.match(goalRuntime, /GOAL_SCHEMA_VERSION = 6/u);
   assert.match(goalRuntime, /verificationHistory/u);

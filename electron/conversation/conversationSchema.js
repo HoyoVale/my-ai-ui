@@ -26,7 +26,53 @@ import {
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
-const STORE_VERSION = 20;
+const STORE_VERSION = 21;
+
+
+function sanitizeDiffSummary(source) {
+  if (!source || typeof source !== "object") return null;
+  const files = (Array.isArray(source.files) ? source.files : [])
+    .slice(0, 200)
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const path = String(item.path ?? "").slice(0, 500);
+      if (!path) return null;
+      return {
+        path,
+        oldPath: String(item.oldPath ?? "").slice(0, 500),
+        status: String(item.status ?? "modified").slice(0, 40),
+        binary: item.binary === true,
+        beforeSha256: String(item.beforeSha256 ?? "").slice(0, 80),
+        afterSha256: String(item.afterSha256 ?? "").slice(0, 80),
+        beforeBytes: Math.max(0, Number(item.beforeBytes) || 0),
+        afterBytes: Math.max(0, Number(item.afterBytes) || 0),
+        added: Math.max(0, Number(item.added) || 0),
+        removed: Math.max(0, Number(item.removed) || 0),
+        diff: String(item.diff ?? "").slice(0, 180000),
+        truncated: item.truncated === true
+      };
+    })
+    .filter(Boolean);
+  if (!files.length) return null;
+  const totals = source.totals && typeof source.totals === "object" ? source.totals : {};
+  return {
+    version: 1,
+    runId: String(source.runId ?? "").slice(0, 120),
+    workspaceId: String(source.workspaceId ?? "").slice(0, 120),
+    revision: Math.max(0, Number(source.revision) || 0),
+    files,
+    totals: {
+      files: files.length,
+      added: Math.max(0, Number(totals.added) || 0),
+      removed: Math.max(0, Number(totals.removed) || 0),
+      addedFiles: Math.max(0, Number(totals.addedFiles) || 0),
+      deletedFiles: Math.max(0, Number(totals.deletedFiles) || 0),
+      renamedFiles: Math.max(0, Number(totals.renamedFiles) || 0),
+      binaryFiles: Math.max(0, Number(totals.binaryFiles) || 0)
+    },
+    empty: false
+  };
+}
 
 const MESSAGE_ROLES =
   new Set([
@@ -588,6 +634,11 @@ export function sanitizeMessage(
     const tokenLedger = sanitizeTokenLedgerSnapshot(source.tokenLedger);
     if (tokenLedger) {
       message.tokenLedger = tokenLedger;
+    }
+
+    const diffSummary = sanitizeDiffSummary(source.diffSummary);
+    if (diffSummary) {
+      message.diffSummary = diffSummary;
     }
 
     const resumedFromMessageId =

@@ -47,6 +47,16 @@ function writeError(code, message, details = undefined) {
   return error;
 }
 
+
+function recordFileMutation(context, mutation) {
+  if (typeof context?.onFileMutation !== "function") return;
+  try {
+    context.onFileMutation(mutation);
+  } catch (error) {
+    console.warn("记录运行级 Diff 失败：", error);
+  }
+}
+
 function normalizeHash(value) {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -614,6 +624,20 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
           abortSignal: context.abortSignal,
           onBoundary: context.onWriteBoundary
         });
+        if (write.changed) {
+          recordFileMutation(context, {
+            kind: existing ? "modify" : "add",
+            path: resolved.relativePath,
+            changed: true,
+            beforeExists: Boolean(existing),
+            beforeText: existing?.text ?? "",
+            afterText: codec.text,
+            beforeSha256: existing?.sha256 ?? "",
+            afterSha256: write.afterSha256,
+            beforeBytes: existing?.sizeBytes ?? 0,
+            afterBytes: write.bytes
+          });
+        }
         return {
           ok: true,
           data: {
@@ -695,6 +719,19 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             idempotencyKey: context.idempotencyKey || context.callId, abortSignal: context.abortSignal, onBoundary: context.onWriteBoundary
           });
           effectEvidence.rollbackPerformed = write.rollbackPerformed === true;
+          if (afterSha256 !== existing.sha256) {
+            recordFileMutation(context, {
+              kind: "modify",
+              path: resolved.relativePath,
+              changed: true,
+              beforeText: existing.text,
+              afterText: nextText,
+              beforeSha256: existing.sha256,
+              afterSha256,
+              beforeBytes: existing.sizeBytes,
+              afterBytes: desired.length
+            });
+          }
         }
         return {
           ok: true,
@@ -763,6 +800,18 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             targetPath: resolved.path, buffer: desired, expectedSha256: input.expectedSha256,
             createDirectories: input.createDirectories, createOnly: !existing, overwrite: true,
             idempotencyKey: context.idempotencyKey || context.callId, abortSignal: context.abortSignal, onBoundary: context.onWriteBoundary
+          });
+          recordFileMutation(context, {
+            kind: existing ? "modify" : "add",
+            path: resolved.relativePath,
+            changed: true,
+            beforeExists: Boolean(existing),
+            beforeText: existing?.text ?? "",
+            afterText: nextText,
+            beforeSha256: existing?.sha256 ?? "",
+            afterSha256,
+            beforeBytes: existing?.sizeBytes ?? 0,
+            afterBytes: desired.length
           });
         }
         return {
@@ -862,6 +911,17 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
         } else if (input.expectedSha256) {
           throw writeError("HASH_NOT_SUPPORTED_FOR_DIRECTORY", "目录移动不支持 expectedSha256。");
         }
+        let movedText = "";
+        let movedBinary = false;
+        if (source.type === "file") {
+          try {
+            const inspected = await inspectFile(source, maxWriteFileBytes, { required: true });
+            movedText = inspected.text;
+          } catch (error) {
+            movedBinary = ["BINARY_FILE_BLOCKED", "INVALID_TEXT_ENCODING", "UNSUPPORTED_TEXT_ENCODING", "FILE_TOO_LARGE"].includes(error?.code);
+            if (!movedBinary) throw error;
+          }
+        }
         const effectEvidence = fileEvidence({
           operation: "move_path", relativePath: destination.relativePath, beforeSha256: hash, afterSha256: hash,
           beforeBytes: bytes, afterBytes: bytes, dryRun: input.dryRun, movedFrom: source.relativePath, movedTo: destination.relativePath
@@ -891,6 +951,21 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             throw error;
           }
           await context.onWriteBoundary?.("after_move", { sourcePath: source.path, destinationPath: destination.path });
+          if (source.type === "file") {
+            recordFileMutation(context, {
+              kind: "rename",
+              source: source.relativePath,
+              path: destination.relativePath,
+              changed: true,
+              binary: movedBinary,
+              beforeText: movedText,
+              afterText: movedText,
+              beforeSha256: hash,
+              afterSha256: hash,
+              beforeBytes: bytes,
+              afterBytes: bytes
+            });
+          }
         }
         return {
           ok: true,
@@ -957,14 +1032,18 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
           }
         }
         let beforeSha256 = "";
+        let deletedText = "";
+        let deletedBinary = false;
         let changePreview;
         if (target.type === "file") {
           const current = await sha256File(resolved.path, { maxBytes: maxDeleteBytes });
           beforeSha256 = current.sha256;
           assertExpectedHash(input.expectedSha256, beforeSha256);
+          deletedBinary = current.bytes > maxWriteFileBytes;
           if (current.bytes <= maxWriteFileBytes) {
             try {
               const existing = await inspectFile(resolved, maxWriteFileBytes, { required: true });
+              deletedText = existing.text;
               changePreview = createTextDiffPreview({
                 path: resolved.relativePath,
                 before: existing.text,
@@ -974,6 +1053,7 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
               if (!["BINARY_FILE_BLOCKED", "INVALID_TEXT_ENCODING", "UNSUPPORTED_TEXT_ENCODING"].includes(error?.code)) {
                 throw error;
               }
+              deletedBinary = true;
             }
           }
         } else if (input.expectedSha256) {
@@ -1053,6 +1133,17 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             throw writeError("DELETE_VERIFY_FAILED", "删除后的路径核验失败。 ".trim());
           }
           await context.onWriteBoundary?.("after_delete", { targetPath: resolved.path });
+          if (target.type === "file") {
+            recordFileMutation(context, {
+              kind: "delete",
+              path: resolved.relativePath,
+              changed: true,
+              beforeText: deletedText,
+              beforeSha256,
+              beforeBytes: target.bytes,
+              binary: deletedBinary
+            });
+          }
         } catch (error) {
           if (fs.existsSync(staging) && !fs.existsSync(resolved.path)) {
             await fs.promises.rename(staging, resolved.path).catch(() => {});
@@ -1164,6 +1255,7 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
             targetPath: resolved.path, path: resolved.relativePath, buffer, expectedSha256: expected,
             createOnly: file.created, createDirectories: input.createDirectories,
             created: file.created, beforeSha256: existing?.sha256 ?? "", beforeBytes: existing?.sizeBytes ?? 0,
+            beforeText: currentText, afterText: nextText,
             afterSha256: sha256Buffer(buffer), afterBytes: buffer.length, addedLines: file.addedLines, removedLines: file.removedLines
           });
         }
@@ -1181,6 +1273,20 @@ export function createWorkspaceWriteToolDefinitions(workspaceSettings = {}) {
           });
           rollbackPerformed = transaction.rollbackPerformed;
           evidence.rollbackPerformed = rollbackPerformed;
+          for (const item of prepared) {
+            recordFileMutation(context, {
+              kind: item.created ? "add" : "modify",
+              path: item.path,
+              changed: item.beforeSha256 !== item.afterSha256,
+              beforeExists: !item.created,
+              beforeText: item.beforeText,
+              afterText: item.afterText,
+              beforeSha256: item.beforeSha256,
+              afterSha256: item.afterSha256,
+              beforeBytes: item.beforeBytes,
+              afterBytes: item.afterBytes
+            });
+          }
         }
         const changePreview = createPatchDiffPreview({
           patch: input.patch,

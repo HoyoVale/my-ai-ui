@@ -162,6 +162,11 @@ function sanitizeToolResult(source) {
     result.changePreview = changePreview;
   }
 
+  const commandPreview = jsonValue(source.commandPreview, 40000);
+  if (commandPreview !== undefined) {
+    result.commandPreview = commandPreview;
+  }
+
   const data = jsonValue(source.data, 32000);
   const error = jsonValue(source.error, 8000);
   const reference = jsonValue(
@@ -284,6 +289,7 @@ export function sanitizeActivityTool(
   const meta = jsonValue(source.meta, 8000);
   const runtime = jsonValue(source.runtime, 8000);
   const runtimeContract = jsonValue(source.runtimeContract, 4000);
+  const commandPreview = jsonValue(source.commandPreview, 40000);
   const result = sanitizeToolResult(
     source.result
   );
@@ -326,6 +332,10 @@ export function sanitizeActivityTool(
 
   if (runtimeContract !== undefined) {
     tool.runtimeContract = runtimeContract;
+  }
+
+  if (commandPreview !== undefined) {
+    tool.commandPreview = commandPreview;
   }
 
   if (result) {

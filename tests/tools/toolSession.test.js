@@ -144,7 +144,11 @@ describe(
         );
         assert.equal(
           "git_inspect" in codingSession.tools,
-          false
+          true
+        );
+        assert.equal(
+          "run_project_script" in codingSession.tools,
+          true
         );
         assert.equal(
           "run_workspace_command" in codingSession.tools,
@@ -152,10 +156,7 @@ describe(
         );
 
         const expectedDefaultTools = SAFE_TOOL_NAMES.filter(
-          (name) => ![
-            "git_inspect",
-            "run_workspace_command"
-          ].includes(name)
+          (name) => name !== "run_workspace_command"
         );
         assert.deepEqual(
           Object.keys(codingSession.tools).sort(),
@@ -167,7 +168,7 @@ describe(
           settings: {
             tools: {
               mode: "coding",
-              workspace: { roots: [root] },
+              workspace: { roots: [root], allowedCommands: ["node"] },
               runtime: {},
               developer: {
                 toolsetOverrides: {

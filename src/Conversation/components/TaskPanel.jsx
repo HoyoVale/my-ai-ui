@@ -17,6 +17,10 @@ import {
 } from "./FileDiff.jsx";
 
 import {
+  ToolCommandPreview
+} from "./CommandOutput.jsx";
+
+import {
   createActivitySnapshot,
   createTaskSnapshot,
   describeToolBatch,
@@ -353,6 +357,7 @@ function ActivityTimelineEvent({ event }) {
           {(summary || target) && (
             <small>{summary || target}</small>
           )}
+          <ToolCommandPreview tool={tool} compact />
           <FileDiffPreview
             change={tool?.result?.changePreview ? {
               id: tool.id,
@@ -612,6 +617,7 @@ function ToolDetails({ toolCall }) {
             {toolCall.result.summary}
           </p>
         )}
+        <ToolCommandPreview tool={toolCall} defaultOpen />
         {toolCall.result?.changePreview && (
           <FileDiffPreview
             change={{
