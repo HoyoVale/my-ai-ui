@@ -146,6 +146,21 @@ describe("Execution Consistency phase 1", () => {
     assert.equal(containsProviderProtocol(output), false);
     assert.doesNotMatch(output, /src\/a\.js/u);
   });
+  it("keeps nested DSML invoke blocks suppressed until the outer tool_calls end", () => {
+    const sanitizer = new PublicTextStreamSanitizer({ tailLength: 32 });
+    const chunks = [
+      "准备完成。\n<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name=\"read_text_file\">",
+      "<｜｜DSML｜｜parameter name=\"filePath\">src/a.js</｜｜DSML｜｜parameter>",
+      "</｜｜DSML｜｜invoke>\n<｜｜DSML｜｜invoke name=\"read_text_file\">",
+      "<｜｜DSML｜｜parameter name=\"filePath\">src/b.js</｜｜DSML｜｜parameter>",
+      "</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>\n最终结果。"
+    ];
+    const output = chunks.map((chunk) => sanitizer.push(chunk)).join("") + sanitizer.flush();
+    assert.equal(output, "准备完成。\n最终结果。");
+    assert.equal(containsProviderProtocol(output), false);
+    assert.doesNotMatch(output, /src\/[ab]\.js/u);
+  });
+
   it("removes provider tool protocol from public text", () => {
     const raw = [
       "已完成分析。",

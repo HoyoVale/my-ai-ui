@@ -1,17 +1,26 @@
-const PROTOCOL_MARKER = /(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*(?:tool_calls|invoke|function_calls)?\s*>|<\/?\s*(?:tool_calls?|function_calls?|invoke)\b[^>]*>|<\|(?:tool_calls?|function_calls?|assistant to=|tool)\|>)/iu;
+const PROTOCOL_MARKER = /(?:<\/?\s*[｜|]{0,2}DSML[｜|]{0,2}\s*(?:tool_calls|invoke|parameter|function_calls)?[^>]*>|<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*(?:tool_calls|invoke|parameter|function_calls)\s*>|<\/?\s*(?:tool_calls?|function_calls?|invoke)\b[^>]*>|<\|(?:tool_calls?|function_calls?|assistant to=|tool)\|>)/iu;
 
 const BLOCK_PATTERNS = [
-  /<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*tool_calls\s*>[\s\S]*?<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*tool_calls\s*>/giu,
+  /<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*tool_calls\s*>[\s\S]*?(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*tool_calls\s*>|<\s*\/\s*[｜|]{0,2}DSML[｜|]{0,2}\s*tool_calls\s*>)/giu,
+  /<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*function_calls\s*>[\s\S]*?(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*function_calls\s*>|<\s*\/\s*[｜|]{0,2}DSML[｜|]{0,2}\s*function_calls\s*>)/giu,
   /<\s*tool_calls?\b[^>]*>[\s\S]*?<\s*\/\s*tool_calls?\s*>/giu,
   /<\s*function_calls?\b[^>]*>[\s\S]*?<\s*\/\s*function_calls?\s*>/giu,
   /<\|tool_calls_section_begin\|>[\s\S]*?<\|tool_calls_section_end\|>/giu
 ];
 
 const LINE_PATTERNS = [
-  /^.*<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*(?:invoke|tool_calls|\/tool_calls)[^>]*>.*$/gimu,
+  /^.*<\/?\s*[｜|]{0,2}DSML[｜|]{0,2}\s*(?:invoke|parameter|tool_calls|function_calls)[^>]*>.*$/gimu,
+  /^.*<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*(?:invoke|parameter|tool_calls|function_calls)\s*>.*$/gimu,
   /^.*<\/?\s*(?:invoke|tool_call|function_call)\b[^>]*>.*$/gimu,
   /^.*<\|(?:tool_call|tool_calls|function_call)[^>]*\|>.*$/gimu
 ];
+
+const END_MARKERS = Object.freeze({
+  tool_calls: /(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*tool_calls\s*>|<\s*\/\s*[｜|]{0,2}DSML[｜|]{0,2}\s*tool_calls\s*>|<\s*\/\s*tool_calls?\s*>|<\|tool_calls_section_end\|>)/iu,
+  function_calls: /(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*function_calls\s*>|<\s*\/\s*[｜|]{0,2}DSML[｜|]{0,2}\s*function_calls\s*>|<\s*\/\s*function_calls?\s*>)/iu,
+  invoke: /(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*invoke\s*>|<\s*\/\s*[｜|]{0,2}DSML[｜|]{0,2}\s*invoke\s*>|<\s*\/\s*invoke\s*>)/iu,
+  parameter: /(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*parameter\s*>|<\s*\/\s*[｜|]{0,2}DSML[｜|]{0,2}\s*parameter\s*>)/iu
+});
 
 function jsonProtocolOnly(value) {
   const trimmed = String(value ?? "").trim();
@@ -56,12 +65,27 @@ export function sanitizePublicAssistantText(value) {
     .trim();
 }
 
-const PROTOCOL_END_MARKER = /(?:<\s*[｜|]{0,2}DSML[｜|]{0,2}\s*\/\s*tool_calls\s*>|<\s*\/\s*(?:tool_calls?|function_calls?|invoke)\s*>|<\|tool_calls_section_end\|>)/iu;
+function protocolKind(markerText) {
+  const marker = String(markerText ?? "").toLowerCase();
+  if (marker.includes("tool_calls") || marker.includes("tool-calls")) {
+    return "tool_calls";
+  }
+  if (marker.includes("function_calls")) return "function_calls";
+  if (marker.includes("parameter")) return "parameter";
+  if (marker.includes("invoke") || marker.includes("tool_call") || marker.includes("function_call")) {
+    return "invoke";
+  }
+  return "tool_calls";
+}
 
 function markerMatch(text, pattern) {
   const match = pattern.exec(text);
   return match
-    ? { index: match.index, end: match.index + match[0].length }
+    ? {
+        index: match.index,
+        end: match.index + match[0].length,
+        text: match[0]
+      }
     : null;
 }
 
@@ -70,6 +94,7 @@ export class PublicTextStreamSanitizer {
     this.buffer = "";
     this.tailLength = Math.max(32, Number(tailLength) || 40);
     this.suppressingProtocol = false;
+    this.protocolEndPattern = END_MARKERS.tool_calls;
     this.publicTextEmitted = false;
     this.pendingProtocolSeparator = false;
   }
@@ -87,7 +112,7 @@ export class PublicTextStreamSanitizer {
 
   consumeSuppressed(chunk) {
     const candidate = `${this.buffer}${String(chunk ?? "")}`;
-    const endMarker = markerMatch(candidate, PROTOCOL_END_MARKER);
+    const endMarker = markerMatch(candidate, this.protocolEndPattern);
     if (!endMarker) {
       this.buffer = candidate.slice(-this.tailLength * 2);
       return "";
@@ -95,6 +120,7 @@ export class PublicTextStreamSanitizer {
 
     this.buffer = "";
     this.suppressingProtocol = false;
+    this.protocolEndPattern = END_MARKERS.tool_calls;
     return this.push(candidate.slice(endMarker.end));
   }
 
@@ -112,6 +138,7 @@ export class PublicTextStreamSanitizer {
       const protocolAndRemainder = this.buffer.slice(startMarker.index);
       this.buffer = "";
       this.suppressingProtocol = true;
+      this.protocolEndPattern = END_MARKERS[protocolKind(startMarker.text)] ?? END_MARKERS.tool_calls;
       this.pendingProtocolSeparator = this.publicTextEmitted;
       const afterProtocol = this.consumeSuppressed(protocolAndRemainder);
       return `${safePrefix}${afterProtocol}`;
@@ -130,6 +157,7 @@ export class PublicTextStreamSanitizer {
       : this.emitPublic(sanitizePublicAssistantText(this.buffer));
     this.buffer = "";
     this.suppressingProtocol = false;
+    this.protocolEndPattern = END_MARKERS.tool_calls;
     this.pendingProtocolSeparator = false;
     return emitted;
   }

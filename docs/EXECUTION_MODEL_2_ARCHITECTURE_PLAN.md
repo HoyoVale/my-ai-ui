@@ -950,3 +950,29 @@ electron/execution-model/
 - 新增 Phase A 独立测试命令。
 
 下一步进入 Phase B 前，应先使用真实历史对话样本验证 Item Projection 的排序与去重规则。
+
+---
+
+## Phase B 实施状态（103）
+
+Phase B 已完成只读 Run 与 Execution Item 投影：
+
+```text
+ExecutionItemProjector
+ExecutionItemSequence
+RunProjection
+```
+
+当前特性：
+
+- 从已有 Message、Activity、Tool、Plan、Checkpoint、Verification 与 Diff 投影；
+- 不新增第二套 Runtime 写入；
+- Item 使用稳定 ID、连续 Sequence 与确定性 Fingerprint；
+- Activity Tool 和旧 Tool Calls 自动去重；
+- Tool Result 与完整 Diff 仅保存引用；
+- Conversation Store 仍为版本 22；
+- 生产 Runtime 与 UI 尚未导入投影层；
+- 真实压力测试对话已验证 2 个 Run、各 47 个 Item，重载顺序稳定；
+- Provider DSML 嵌套关闭格式已补强清洗。
+
+下一步进入 Phase C 前，应先保持投影旁路运行，并为新旧 Thread Routing Decision 建立 Shadow Comparison。
