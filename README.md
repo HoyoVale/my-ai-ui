@@ -31,20 +31,24 @@ Input Window
 - 新建、切换、删除和清空会话
 - 中止回复保存策略
 - 自动化回归测试
+- Goal、Platform Kernel、隔离 Worktree 与有界多 Agent Supervisor
+- 主模型与 Worker 模型独立配置
+- MCP 与 Custom HTTP Tool
 
 暂未加入：
 
 - 自动提取记忆
 - 向量检索
-- 工具调用
-- MCP
-- 多 Agent
+- 多 Agent commit 自动集成与冲突处理
+- 独立 Reviewer 完成门与视觉验证
 
 ## 安装
 
 ```powershell
-npm install
+npm ci
 ```
+
+当前锁文件已固定安全的 MCP 传递依赖。不要运行 `npm audit fix --force`；需要检查时使用 `npm audit`。
 
 ## 启动
 
@@ -71,7 +75,7 @@ npm run electron
    - 最大输出 Tokens
    - Temperature 与超时
 4. Base URL 与 API Key 由同一 Provider 下的模型共享。
-5. 在“使用模型”中选择当前模型并点击“测试连接”。
+5. 在顶部分别选择“主模型”和“Worker 模型”，并设置 1–4 个 Worker 并发数。
 6. 打开 Input 窗口发送消息。
 
 也可以在项目根目录 `.env` 中配置开发环境回退：
@@ -96,7 +100,7 @@ Ollama              本地 OpenAI-compatible API
 OpenAI-compatible   LM Studio、LiteLLM 与自建网关
 ```
 
-Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 共同决定下一次请求使用的模型。旧版单模型设置会自动迁移到 DeepSeek Provider。
+Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 决定主模型；`runtimeAssignments.worker` 独立决定多 Agent Worker。旧版单模型设置会自动迁移，未配置 Worker 时会安全跟随主模型。
 
 Provider SDK、运行时解析和扩展步骤见 [`docs/MODEL_PROVIDERS.md`](docs/MODEL_PROVIDERS.md)。
 

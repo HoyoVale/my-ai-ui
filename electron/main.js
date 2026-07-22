@@ -36,7 +36,8 @@ import {
 } from "./tools/runtime-state/RuntimeRecoveryManager.js";
 
 import {
-  platformKernel
+  platformKernel,
+  worktreeRuntime
 } from "./platform/index.js";
 
 import {
@@ -71,6 +72,7 @@ registerIpcHandlers();
 app.whenReady().then(async () => {
   try {
     const platformRecovery = platformKernel.recoverInterruptedRuns();
+    const worktreeRecovery = worktreeRuntime.recover();
     if (
       platformRecovery.recoveredRunIds.length > 0 ||
       platformRecovery.expiredLeaseIds.length > 0
@@ -78,6 +80,12 @@ app.whenReady().then(async () => {
       console.info(
         "Platform Kernel recovered interrupted work:",
         platformRecovery
+      );
+    }
+    if (worktreeRecovery.recoveredWorktreeIds.length > 0) {
+      console.info(
+        "Worktree Runtime recovered isolated work:",
+        worktreeRecovery
       );
     }
   } catch (error) {

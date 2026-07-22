@@ -1,4 +1,7 @@
-import { spawn as nodeSpawn } from "node:child_process";
+import {
+  spawn as nodeSpawn,
+  spawnSync as nodeSpawnSync
+} from "node:child_process";
 
 function asText(chunk) {
   return Buffer.isBuffer(chunk)
@@ -135,6 +138,34 @@ export class SubprocessSupervisor {
         terminating: entry.terminating,
         reason: entry.reason
       }))
+    };
+  }
+
+  runSync(command, args = [], options = {}) {
+    const executable = String(command ?? "").trim();
+    if (!executable) {
+      throw new TypeError("Subprocess command is required.");
+    }
+    if (!Array.isArray(args)) {
+      throw new TypeError("Subprocess args must be an array.");
+    }
+    const result = nodeSpawnSync(executable, args.map(String), {
+      cwd: options.cwd,
+      env: options.env,
+      encoding: "utf8",
+      input: options.stdin,
+      windowsHide: true,
+      shell: false,
+      timeout: Math.max(0, Number(options.timeoutMs ?? this.defaultTimeoutMs) || 0),
+      maxBuffer: Math.max(1_024, Number(options.maxOutputBytes) || this.maxOutputBytes)
+    });
+    if (result.error) throw result.error;
+    return {
+      exitCode: result.status,
+      signal: result.signal,
+      stdout: String(result.stdout ?? ""),
+      stderr: String(result.stderr ?? ""),
+      timedOut: result.error?.code === "ETIMEDOUT"
     };
   }
 

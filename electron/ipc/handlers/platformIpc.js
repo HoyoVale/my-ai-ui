@@ -6,7 +6,8 @@ import IPC_CHANNELS
   from "../../shared/ipcChannels.cjs";
 
 import {
-  platformKernel
+  platformKernel,
+  worktreeRuntime
 } from "../../platform/index.js";
 
 import {
@@ -26,7 +27,10 @@ export function registerPlatformIpc() {
     IPC_CHANNELS.platform.GET_STATE,
     (event) => {
       requireConversationSender(event);
-      return platformKernel.getSnapshot();
+      return {
+        ...platformKernel.getSnapshot(),
+        worktrees: worktreeRuntime.getSnapshot().worktrees
+      };
     }
   );
 

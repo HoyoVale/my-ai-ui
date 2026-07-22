@@ -165,6 +165,107 @@ function ModelList({
   );
 }
 
+function encodeSelection(providerId, modelConfigId) {
+  return `${providerId}::${modelConfigId}`;
+}
+
+function decodeSelection(value) {
+  const [providerId, modelConfigId] = String(value ?? "").split("::");
+  return providerId && modelConfigId
+    ? { providerId, modelConfigId }
+    : null;
+}
+
+function RuntimeAssignments({
+  modelSettings,
+  onUpdate
+}) {
+  const options = Object.values(modelSettings.providers ?? {})
+    .flatMap((item) => (item.models ?? []).map((model) => ({
+      value: encodeSelection(item.id, model.id),
+      label: `${item.name} · ${model.name || model.modelId}`
+    })));
+  const activeProvider = modelSettings.providers?.[modelSettings.activeProvider];
+  const mainValue = activeProvider
+    ? encodeSelection(
+        activeProvider.id,
+        activeProvider.activeModelId ?? activeProvider.models?.[0]?.id
+      )
+    : "";
+  const workerSelection = modelSettings.runtimeAssignments?.worker;
+  const workerValue = workerSelection
+    ? encodeSelection(workerSelection.providerId, workerSelection.modelConfigId)
+    : mainValue;
+
+  const selectMain = (value) => {
+    const selection = decodeSelection(value);
+    if (!selection) return;
+    const selectedProvider = modelSettings.providers[selection.providerId];
+    onUpdate({
+      activeProvider: selection.providerId,
+      providers: {
+        ...modelSettings.providers,
+        [selection.providerId]: {
+          ...selectedProvider,
+          activeModelId: selection.modelConfigId
+        }
+      }
+    });
+  };
+
+  const selectWorker = (value) => {
+    const selection = decodeSelection(value);
+    if (!selection) return;
+    onUpdate({
+      runtimeAssignments: {
+        ...(modelSettings.runtimeAssignments ?? {}),
+        worker: selection
+      }
+    });
+  };
+
+  return (
+    <section className="model-runtime-assignments" data-testid="model-runtime-assignments">
+      <div>
+        <span className="model-eyebrow">Runtime routing</span>
+        <strong>主模型与 Worker 独立配置</strong>
+        <small>会话由主模型负责；多 Agent 子任务统一使用 Worker 模型。</small>
+      </div>
+      <SettingRow title="主模型">
+        <Select
+          testId="main-model-assignment"
+          value={mainValue}
+          options={options}
+          onChange={selectMain}
+        />
+      </SettingRow>
+      <SettingRow title="Worker 模型">
+        <Select
+          testId="worker-model-assignment"
+          value={workerValue}
+          options={options}
+          onChange={selectWorker}
+        />
+      </SettingRow>
+      <SettingRow title="Worker 并发数">
+        <Slider
+          value={modelSettings.runtimeAssignments?.maxConcurrency ?? 2}
+          min={1}
+          max={4}
+          step={1}
+          unit=" 个"
+          onChange={(maxConcurrency) => onUpdate({
+            runtimeAssignments: {
+              ...(modelSettings.runtimeAssignments ?? {}),
+              maxConcurrency
+            }
+          })}
+        />
+      </SettingRow>
+    </section>
+  );
+}
+
 function ProviderConnection({
   provider,
   status,
@@ -663,6 +764,11 @@ export function ModelPanel({
 
   return (
     <div className="model-panel">
+      <RuntimeAssignments
+        modelSettings={modelSettings}
+        onUpdate={onUpdate}
+      />
+
       <ProviderSelector
         modelSettings={modelSettings}
         providerId={providerId}

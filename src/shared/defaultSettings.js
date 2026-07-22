@@ -388,6 +388,10 @@ export const FALLBACK_SETTINGS = {
   },
   model: {
     activeProvider: "",
-    providers: {}
+    providers: {},
+    runtimeAssignments: {
+      worker: null,
+      maxConcurrency: 2
+    }
   }
 };

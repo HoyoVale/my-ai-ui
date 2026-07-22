@@ -1,0 +1,90 @@
+import {
+  z
+} from "zod";
+
+import {
+  multiAgentSupervisor,
+  platformKernel
+} from "./index.js";
+
+const taskSchema = z.object({
+  id: z.string().min(1).max(80),
+  title: z.string().min(1).max(300),
+  role: z.enum([
+    "planner",
+    "explorer",
+    "implementer",
+    "tester",
+    "reviewer"
+  ]).default("implementer"),
+  dependencies: z.array(z.string().min(1).max(80)).max(12).default([]),
+  instructions: z.string().max(4000).optional(),
+  maxAttempts: z.number().int().min(1).max(3).optional()
+});
+
+export function createDelegationToolDefinition({
+  getPlatformRunId
+} = {}) {
+  return {
+    name: "delegate_tasks",
+    title: "Delegate tasks to Worker agents",
+    description:
+      "Delegate independent, bounded Coding tasks to isolated Worker agents. Use this only when two or more tasks can be separated safely, or when an independent explorer/tester/reviewer materially improves the result. Dependencies must refer to earlier task ids in this same call. Workers cannot create child agents. Wait for the structured handoffs before integrating their conclusions.",
+    source: "builtin.platform.multi-agent",
+    toolsets: ["agent.internal"],
+    sideEffect: "write",
+    riskLevel: "medium",
+    inputSchema: z.object({
+      tasks: z.array(taskSchema).min(1).max(4)
+    }),
+    outputSchema: z.object({}).passthrough(),
+    async execute(input) {
+      const platformRunId = String(getPlatformRunId?.() ?? "").trim();
+      const run = platformKernel.getRun(platformRunId);
+      if (!run || run.mode !== "coding") {
+        return {
+          ok: false,
+          code: "multi-agent-coding-goal-required",
+          message: "只有绑定 Git 工作区的 Coding Goal 可以启动 Worker。"
+        };
+      }
+      const added = multiAgentSupervisor.addTasks(platformRunId, input.tasks);
+      if (!added.ok) {
+        return {
+          ok: false,
+          code: "multi-agent-task-graph-invalid",
+          results: added.results
+        };
+      }
+      const requestedIds = input.tasks.map((task) => task.id);
+      const execution = await multiAgentSupervisor.run(platformRunId);
+      const latest = platformKernel.getRun(platformRunId);
+      const tasks = requestedIds.map((id) => latest.tasks[id]).filter(Boolean);
+      const agentRuns = Object.values(latest.agentRuns)
+        .filter((agent) => requestedIds.includes(agent.taskId))
+        .map((agent) => ({
+          id: agent.id,
+          taskId: agent.taskId,
+          role: agent.role,
+          status: agent.status,
+          modelSelection: agent.modelSelection,
+          outputCommit: agent.handoff?.outputCommit ?? null,
+          summary: agent.handoff?.summary ?? "",
+          evidence: agent.handoff?.evidence ?? [],
+          unresolved: agent.handoff?.unresolved ?? []
+        }));
+      return {
+        ok: tasks.every((task) => task.status === "completed"),
+        tasks: tasks.map((task) => ({
+          id: task.id,
+          status: task.status,
+          attemptCount: task.attemptCount,
+          statusReason: task.statusReason
+        })),
+        agentRuns,
+        blockedTaskIds: execution.blockedTaskIds
+          .filter((id) => requestedIds.includes(id))
+      };
+    }
+  };
+}

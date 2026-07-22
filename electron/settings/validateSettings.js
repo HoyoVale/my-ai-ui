@@ -923,9 +923,30 @@ function sanitizeModelSettings(
       ? requestedProvider
       : Object.keys(providers)[0] ?? "";
 
+  const sanitizeRuntimeAssignment = (value) => {
+    const providerId = nonEmptyStringValue(value?.providerId, "", 80);
+    const modelConfigId = nonEmptyStringValue(value?.modelConfigId, "", 120);
+    const provider = providers[providerId];
+    if (!provider?.models?.some((item) => item.id === modelConfigId)) {
+      return null;
+    }
+    return { providerId, modelConfigId };
+  };
+
   return {
     activeProvider,
-    providers
+    providers,
+    runtimeAssignments: {
+      worker: sanitizeRuntimeAssignment(
+        sourceModel.runtimeAssignments?.worker
+      ),
+      maxConcurrency: integerValue(
+        sourceModel.runtimeAssignments?.maxConcurrency,
+        defaults.runtimeAssignments?.maxConcurrency ?? 2,
+        1,
+        4
+      )
+    }
   };
 }
 

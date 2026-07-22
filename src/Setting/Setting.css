@@ -1989,6 +1989,24 @@
   gap: 16px;
 }
 
+.model-runtime-assignments {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--setting-border);
+  border-radius: 16px;
+  background: var(--setting-surface);
+}
+
+.model-runtime-assignments > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.model-runtime-assignments > div:first-child small {
+  color: var(--setting-text-faint);
+}
+
 .model-provider-header,
 .model-runtime-summary {
   display: flex;

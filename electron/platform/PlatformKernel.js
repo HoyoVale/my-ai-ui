@@ -241,6 +241,13 @@ export class PlatformKernel {
       case "AGENT_RUN_STARTED":
         if (run) {
           run.agentRuns[payload.agentRun.id] = clone(payload.agentRun);
+          if (run.tasks[payload.agentRun.taskId]) {
+            run.tasks[payload.agentRun.taskId].attemptCount =
+              Math.max(
+                Number(run.tasks[payload.agentRun.taskId].attemptCount) || 0,
+                Number(payload.agentRun.attempt) || 1
+              );
+          }
           run.updatedAt = event.timestamp;
         }
         break;
@@ -252,6 +259,24 @@ export class PlatformKernel {
           agent.stopReason = text(payload.stopReason, 240);
           agent.error = text(payload.error, 500);
           agent.endedAt = event.timestamp;
+          run.updatedAt = event.timestamp;
+        }
+        break;
+      case "AGENT_WORKTREE_ATTACHED":
+        if (run?.agentRuns[payload.agentRunId]) {
+          run.agentRuns[payload.agentRunId].worktreeId = payload.worktreeId;
+          run.updatedAt = event.timestamp;
+        }
+        break;
+      case "AGENT_HANDOFF_RECORDED":
+        if (run?.agentRuns[payload.agentRunId]) {
+          run.agentRuns[payload.agentRunId].handoff = clone(payload.handoff);
+          run.updatedAt = event.timestamp;
+        }
+        break;
+      case "ARTIFACT_RECORDED":
+        if (run) {
+          run.artifacts.push(clone(payload.artifact));
           run.updatedAt = event.timestamp;
         }
         break;
@@ -368,7 +393,9 @@ export class PlatformKernel {
     taskId,
     title,
     dependencies = [],
-    role = "implementer"
+    role = "implementer",
+    instructions = "",
+    maxAttempts = 2
   } = {}) {
     const run = this.ensureLoaded().runs[text(platformRunId, 120)];
     if (!run) return { ok: false, code: "platform-run-not-found" };
@@ -392,7 +419,10 @@ export class PlatformKernel {
       id,
       title: text(title, 500) || "未命名任务",
       role: text(role, 80) || "implementer",
+      instructions: text(instructions, 4000),
       dependencies: normalizedDependencies,
+      attemptCount: 0,
+      maxAttempts: Math.max(1, Math.min(5, Math.round(Number(maxAttempts) || 2))),
       status: normalizedDependencies.length === 0 ? "ready" : "pending",
       statusReason: "",
       createdAt: timestamp,
@@ -542,7 +572,8 @@ export class PlatformKernel {
     agentRunId,
     taskId,
     role = "implementer",
-    workspaceResource = ""
+    workspaceResource = "",
+    modelSelection = null
   } = {}) {
     const run = this.ensureLoaded().runs[text(platformRunId, 120)];
     const task = run?.tasks[text(taskId, 120)];
@@ -571,11 +602,21 @@ export class PlatformKernel {
     }
 
     const timestamp = this.now();
+    task.attemptCount = Math.max(0, Number(task.attemptCount) || 0) + 1;
     const agentRun = {
       version: 1,
       id,
       taskId: task.id,
       role: text(role, 80) || "implementer",
+      attempt: task.attemptCount,
+      modelSelection: modelSelection && typeof modelSelection === "object"
+        ? {
+            providerId: text(modelSelection.providerId, 80),
+            modelConfigId: text(modelSelection.modelConfigId, 120)
+          }
+        : null,
+      worktreeId: null,
+      handoff: null,
       status: "running",
       outcome: "",
       stopReason: "",
@@ -586,6 +627,63 @@ export class PlatformKernel {
     };
     this.commit("AGENT_RUN_STARTED", { runId: run.id, agentRun });
     return { ok: true, created: true, agentRun: clone(agentRun) };
+  }
+
+  attachAgentWorktree(platformRunId, agentRunId, worktreeId) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    const agent = run?.agentRuns[text(agentRunId, 120)];
+    if (!agent) return { ok: false, code: "platform-agent-run-not-found" };
+    this.commit("AGENT_WORKTREE_ATTACHED", {
+      runId: run.id,
+      agentRunId: agent.id,
+      worktreeId: text(worktreeId, 120)
+    });
+    return { ok: true, agentRun: clone(run.agentRuns[agent.id]) };
+  }
+
+  recordAgentHandoff(platformRunId, agentRunId, handoff = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    const agent = run?.agentRuns[text(agentRunId, 120)];
+    if (!agent) return { ok: false, code: "platform-agent-run-not-found" };
+    const normalized = {
+      version: 1,
+      inputRevision: Math.max(0, Number(handoff.inputRevision) || run.taskGraphRevision),
+      outputCommit: text(handoff.outputCommit, 120) || null,
+      summary: text(handoff.summary, 2000),
+      evidence: (Array.isArray(handoff.evidence) ? handoff.evidence : [])
+        .slice(0, 40)
+        .map((item) => text(item, 500))
+        .filter(Boolean),
+      unresolved: (Array.isArray(handoff.unresolved) ? handoff.unresolved : [])
+        .slice(0, 20)
+        .map((item) => text(item, 500))
+        .filter(Boolean),
+      recordedAt: this.now()
+    };
+    this.commit("AGENT_HANDOFF_RECORDED", {
+      runId: run.id,
+      agentRunId: agent.id,
+      handoff: normalized
+    });
+    return { ok: true, handoff: clone(normalized) };
+  }
+
+  recordArtifact(platformRunId, artifact = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    if (!run) return { ok: false, code: "platform-run-not-found" };
+    const normalized = {
+      version: 1,
+      id: text(artifact.id, 120) || this.createId(),
+      taskId: text(artifact.taskId, 120) || null,
+      agentRunId: text(artifact.agentRunId, 120) || null,
+      kind: text(artifact.kind, 80) || "worker-output",
+      commit: text(artifact.commit, 120) || null,
+      digest: text(artifact.digest, 160) || null,
+      summary: text(artifact.summary, 1000),
+      createdAt: this.now()
+    };
+    this.commit("ARTIFACT_RECORDED", { runId: run.id, artifact: normalized });
+    return { ok: true, artifact: clone(normalized) };
   }
 
   finishAgentRun(platformRunId, agentRunId, {

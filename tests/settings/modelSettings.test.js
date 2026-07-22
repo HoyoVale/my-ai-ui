@@ -7,7 +7,8 @@ import assert
   from "node:assert/strict";
 
 import {
-  resolveActiveModelSettings
+  resolveActiveModelSettings,
+  resolveWorkerModelSettings
 } from "../../electron/settings/modelSettings.js";
 
 describe(
@@ -66,6 +67,55 @@ describe(
     );
   }
 );
+
+describe("independent runtime model assignments", () => {
+  it("resolves the Worker without changing the active main model", () => {
+    const settings = {
+      activeProvider: "main-provider",
+      runtimeAssignments: {
+        worker: {
+          providerId: "worker-provider",
+          modelConfigId: "worker"
+        }
+      },
+      providers: {
+        "main-provider": {
+          id: "main-provider",
+          type: "openai-compatible",
+          name: "Main",
+          baseURL: "https://main.invalid/v1",
+          activeModelId: "main",
+          models: [{
+            id: "main",
+            name: "Main model",
+            modelId: "main-model",
+            contextTokenBudget: 64000,
+            maxOutputTokens: 4096,
+            timeoutMs: 60000
+          }]
+        },
+        "worker-provider": {
+          id: "worker-provider",
+          type: "openai-compatible",
+          name: "Worker",
+          baseURL: "https://worker.invalid/v1",
+          activeModelId: "worker",
+          models: [{
+            id: "worker",
+            name: "Worker model",
+            modelId: "worker-model",
+            contextTokenBudget: 32000,
+            maxOutputTokens: 2048,
+            timeoutMs: 60000
+          }]
+        }
+      }
+    };
+    assert.equal(resolveActiveModelSettings(settings).model, "main-model");
+    assert.equal(resolveWorkerModelSettings(settings).model, "worker-model");
+    assert.equal(resolveWorkerModelSettings(settings).providerId, "worker-provider");
+  });
+});
 
 
 describe(

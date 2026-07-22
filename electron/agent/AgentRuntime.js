@@ -24,6 +24,10 @@ import {
 } from "../platform/index.js";
 
 import {
+  createDelegationToolDefinition
+} from "../platform/delegationTools.js";
+
+import {
   getRecoveryExecutionOverrides,
   resolveConversationExecutionContext
 } from "../conversation/executionContext.js";
@@ -3152,7 +3156,12 @@ export class AgentRuntime {
         });
       const externalDefinitions = [
         ...mcpDefinitions,
-        ...declarativeHttpToolManager.getToolDefinitions(runSettings)
+        ...declarativeHttpToolManager.getToolDefinitions(runSettings),
+        ...(this.activeRun.platformRunId
+          ? [createDelegationToolDefinition({
+              getPlatformRunId: () => this.activeRun?.platformRunId ?? ""
+            })]
+          : [])
       ];
 
       const approvalController = this.createToolApprovalController(

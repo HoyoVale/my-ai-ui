@@ -15,11 +15,12 @@
     "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec",
     "check": "npm run lint && npm run test && npm run build",
     "test:electron": "electron tests/electron/preload-smoke.cjs",
-    "check:full": "npm run check && npm run test:e2e:platform-crash && npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash && npm run test:benchmark && npm run test:electron && npm run test:e2e:electron-runtime-crash && npm run test:e2e",
+    "check:full": "npm run check && npm run test:e2e:platform-crash && npm run test:e2e:worktree-crash && npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash && npm run test:benchmark && npm run test:electron && npm run test:e2e:electron-runtime-crash && npm run test:e2e",
     "test:electron:ci": "electron --no-sandbox tests/electron/preload-smoke.cjs",
     "test:e2e": "node tests/e2e/conversation-flow.cjs && node tests/e2e/tool-approval-write-flow.cjs",
     "test:e2e:runtime-crash": "node tests/e2e/tool-runtime-crash-recovery.mjs",
     "test:e2e:platform-crash": "node tests/e2e/platform-kernel-crash-recovery.mjs",
+    "test:e2e:worktree-crash": "node tests/e2e/worktree-runtime-crash-recovery.mjs",
     "test:e2e:runtime-write-crash": "node tests/e2e/tool-runtime-write-crash-matrix.mjs",
     "test:benchmark": "node tests/performance/tool-runtime-benchmark.mjs",
     "test:soak": "node tests/performance/tool-runtime-soak.mjs",
@@ -45,6 +46,9 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "zod": "^4.4.3"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.11"
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",

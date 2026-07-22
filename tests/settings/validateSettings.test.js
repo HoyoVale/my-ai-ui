@@ -299,6 +299,60 @@ describe(
         );
       }
     );
+
+    it("keeps an independent Worker assignment and clamps its concurrency", () => {
+      const settings = sanitizeSettings({
+        model: {
+          activeProvider: "main",
+          runtimeAssignments: {
+            worker: {
+              providerId: "worker",
+              modelConfigId: "worker-model"
+            },
+            maxConcurrency: 99
+          },
+          providers: {
+            main: {
+              id: "main",
+              configured: true,
+              type: "openai-compatible",
+              name: "Main",
+              baseURL: "https://main.invalid/v1",
+              activeModelId: "main-model",
+              models: [{
+                id: "main-model",
+                name: "Main",
+                modelId: "main",
+                contextTokenBudget: 64000,
+                maxOutputTokens: 4096,
+                timeoutMs: 60000
+              }]
+            },
+            worker: {
+              id: "worker",
+              configured: true,
+              type: "openai-compatible",
+              name: "Worker",
+              baseURL: "https://worker.invalid/v1",
+              activeModelId: "worker-model",
+              models: [{
+                id: "worker-model",
+                name: "Worker",
+                modelId: "worker",
+                contextTokenBudget: 32000,
+                maxOutputTokens: 2048,
+                timeoutMs: 60000
+              }]
+            }
+          }
+        }
+      });
+      assert.deepEqual(settings.model.runtimeAssignments.worker, {
+        providerId: "worker",
+        modelConfigId: "worker-model"
+      });
+      assert.equal(settings.model.runtimeAssignments.maxConcurrency, 4);
+    });
   }
 );
 

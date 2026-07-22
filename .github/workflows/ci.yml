@@ -34,6 +34,9 @@ jobs:
       - name: Lint, unit tests and build
         run: npm run check
 
+      - name: Platform and Worktree crash recovery
+        run: npm run test:e2e:platform-crash && npm run test:e2e:worktree-crash
+
       - name: Tool Runtime crash recovery matrix
         run: npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash
 
