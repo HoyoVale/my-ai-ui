@@ -16,9 +16,28 @@ import {
   platformKernel
 } from "./index.js";
 
+const acceptanceCriterionSchema = z.union([
+  z.string().min(1).max(500),
+  z.object({
+    id: z.string().min(1).max(80),
+    text: z.string().min(1).max(500),
+    verificationKind: z.string().min(1).max(80).optional()
+  })
+]);
+
+const resourceLockSchema = z.union([
+  z.string().min(1).max(500),
+  z.object({
+    key: z.string().min(1).max(500),
+    mode: z.enum(["shared", "exclusive"]).default("exclusive")
+  })
+]);
+
 const taskSchema = z.object({
   id: z.string().min(1).max(80),
   title: z.string().min(1).max(300),
+  objective: z.string().min(1).max(2000).optional(),
+  parentTaskId: z.string().min(1).max(80).optional(),
   role: z.enum([
     "planner",
     "explorer",
@@ -27,9 +46,19 @@ const taskSchema = z.object({
     "reviewer"
   ]).default("implementer"),
   dependencies: z.array(z.string().min(1).max(80)).max(12).default([]),
-  instructions: z.string().max(4000).optional(),
+  instructions: z.string().max(6000).optional(),
+  acceptanceCriteria: z.array(acceptanceCriterionSchema).max(16).default([]),
+  requiredCapabilities: z.array(z.string().min(1).max(120)).max(32).default([]),
+  workspaceScope: z.object({
+    kind: z.string().min(1).max(40).optional(),
+    path: z.string().max(1000).optional(),
+    writable: z.boolean().optional()
+  }).optional(),
+  resourceLocks: z.array(resourceLockSchema).max(16).default([]),
+  priority: z.number().int().min(0).max(100).optional(),
   maxAttempts: z.number().int().min(1).max(3).optional()
 });
+
 
 export function createDelegationToolDefinition({
   getPlatformRunId
@@ -38,7 +67,7 @@ export function createDelegationToolDefinition({
     name: "delegate_tasks",
     title: "Delegate tasks to Worker agents",
     description:
-      "Delegate independent, bounded Coding tasks to isolated Worker agents. Use this only when two or more tasks can be separated safely, or when an independent explorer/tester/reviewer materially improves the result. Dependencies must refer to earlier task ids in this same call. Workers cannot create child agents. Wait for the structured handoffs before integrating their conclusions.",
+      "Delegate bounded Coding tasks to isolated Worker agents. The complete task batch is validated atomically as a DAG. Declare acceptanceCriteria, requiredCapabilities and resourceLocks whenever the task writes files or uses a shared resource. Workers cannot create child agents; every Worker Handoff is independently evaluated before it becomes integration-eligible.",
     source: "builtin.platform.multi-agent",
     toolsets: ["agent.internal"],
     sideEffect: "write",

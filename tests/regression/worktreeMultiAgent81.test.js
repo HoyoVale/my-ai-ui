@@ -27,7 +27,7 @@ test("81 delegates bounded tasks through a real Supervisor", () => {
   assert.match(supervisor, /Promise\.all/u);
   assert.match(supervisor, /getMaxConcurrency/u);
   assert.match(supervisor, /recordAgentHandoff/u);
-  assert.match(supervisor, /READ_ONLY_ROLES/u);
+  assert.match(supervisor, /isReadOnlySupervisorRole/u);
 });
 
 test("main and Worker model routing are independently configurable", () => {

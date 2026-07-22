@@ -324,12 +324,28 @@ export class WorktreeRuntime {
       ]);
     }
     const commit = git(record.path, ["rev-parse", "HEAD"]).stdout;
+    const changed = commit !== record.baselineCommit;
     record.checkpointCommit = commit;
     record.updatedAt = this.now();
     this.save();
+    const agent = this.platformKernel.getRun(record.platformRunId)
+      ?.agentRuns?.[record.agentRunId];
+    if (
+      record.writable &&
+      agent?.kind !== "evaluator" &&
+      typeof this.platformKernel.recordTaskCheckpoint === "function"
+    ) {
+      this.platformKernel.recordTaskCheckpoint(record.platformRunId, record.taskId, {
+        agentRunId: record.agentRunId,
+        commit,
+        baselineCommit: record.baselineCommit,
+        changed,
+        recordedAt: this.now()
+      });
+    }
     return {
       ok: true,
-      changed: commit !== record.baselineCommit,
+      changed,
       commit,
       worktree: clone(record)
     };

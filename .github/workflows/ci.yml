@@ -37,6 +37,9 @@ jobs:
       - name: Goal Runtime crash recovery
         run: npm run test:e2e:goal-crash
 
+      - name: Multi-Agent Supervisor crash recovery
+        run: npm run test:e2e:supervisor-crash
+
       - name: Platform and Worktree crash recovery
         run: npm run test:e2e:platform-crash && npm run test:e2e:worktree-crash
 

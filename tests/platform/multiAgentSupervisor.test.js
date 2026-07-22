@@ -102,15 +102,27 @@ describe("Multi-Agent Supervisor", () => {
     assert.equal(latest.tasks.alpha.status, "completed");
     assert.equal(latest.tasks.beta.status, "completed");
     assert.equal(latest.tasks.verify.status, "completed");
-    assert.equal(Object.values(latest.agentRuns).length, 3);
-    for (const agent of Object.values(latest.agentRuns)) {
+    const agentRuns = Object.values(latest.agentRuns);
+    const workers = agentRuns.filter((agent) => agent.kind === "worker");
+    const evaluators = agentRuns.filter((agent) => agent.kind === "evaluator");
+    assert.equal(workers.length, 3);
+    assert.equal(evaluators.length, 3);
+    for (const agent of workers) {
       assert.deepEqual(agent.modelSelection, {
         providerId: "worker-provider",
         modelConfigId: "worker-model"
       });
+      assert.equal(agent.handoff?.version, 2);
+      assert.match(agent.handoff?.fingerprint ?? "", /^[a-f0-9]{64}$/u);
+    }
+    for (const agent of evaluators) {
+      assert.equal(agent.role, "evaluator");
       assert.equal(Boolean(agent.handoff), true);
     }
     assert.equal(latest.artifacts.length, 3);
+    assert.equal(latest.tasks.alpha.evaluation.approved, true);
+    assert.equal(latest.tasks.beta.evaluation.approved, true);
+    assert.equal(latest.tasks.verify.evaluation.approved, true);
     assert.equal(fs.existsSync(path.join(root, "alpha.txt")), false);
   });
 
@@ -260,7 +272,99 @@ describe("Multi-Agent Supervisor", () => {
 
     assert.equal(result.completed, false);
     assert.deepEqual(calls, ["first"]);
-    assert.equal(kernel.getRun(run.id).tasks.first.status, "completed");
-    assert.equal(kernel.getRun(run.id).tasks.second.status, "ready");
+    assert.equal(kernel.getRun(run.id).tasks.first.status, "continuable");
+    assert.equal(kernel.getRun(run.id).tasks.first.evaluation.status, "pending");
+    assert.equal(kernel.getRun(run.id).tasks.second.status, "pending");
   });
+
+  it("requires acceptance evidence before deterministic evaluation can complete a task", async () => {
+    const root = repository();
+    const platformDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-acceptance-platform-"));
+    const worktreeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-acceptance-worktrees-"));
+    const kernel = new PlatformKernel({ getStorageDirectory: () => platformDirectory });
+    const run = kernel.ensureRun({
+      conversationId: "conversation",
+      goalId: "goal",
+      objective: "evidence gate",
+      workspaceId: "workspace",
+      mode: "coding"
+    }).run;
+    const supervisor = new MultiAgentSupervisor({
+      platformKernel: kernel,
+      worktreeRuntime: new WorktreeRuntime({
+        getStorageDirectory: () => worktreeDirectory,
+        platformKernel: kernel
+      }),
+      workerRuntime: {
+        resolveModel: () => ({ providerId: "p", modelConfigId: "m" }),
+        async execute() {
+          return {
+            ok: true,
+            summary: "claimed completion",
+            acceptanceClaims: [{
+              criterionId: "criterion",
+              passed: true,
+              evidence: []
+            }]
+          };
+        }
+      },
+      getWorkspaceRoot: () => root
+    });
+    supervisor.addTasks(run.id, [{
+      id: "guarded",
+      title: "Guarded",
+      role: "tester",
+      maxAttempts: 1,
+      acceptanceCriteria: [{ id: "criterion", text: "Attach evidence" }]
+    }]);
+
+    const result = await supervisor.run(run.id);
+    assert.equal(result.completed, false);
+    const task = kernel.getRun(run.id).tasks.guarded;
+    assert.equal(task.status, "continuable");
+    assert.equal(task.evaluation.approved, false);
+    assert.equal(task.integrationStatus, "blocked");
+    assert.equal(task.evaluation.findings[0], "acceptance-criterion-unverified:criterion");
+  });
+
+  it("prevents two Workers from holding the same task and resource leases", () => {
+    const root = repository();
+    const platformDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-lease-platform-"));
+    const worktreeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-lease-worktrees-"));
+    const kernel = new PlatformKernel({ getStorageDirectory: () => platformDirectory });
+    const run = kernel.ensureRun({
+      conversationId: "conversation",
+      goalId: "goal",
+      objective: "lease collision",
+      workspaceId: "workspace",
+      mode: "coding"
+    }).run;
+    const supervisor = new MultiAgentSupervisor({
+      platformKernel: kernel,
+      worktreeRuntime: new WorktreeRuntime({
+        getStorageDirectory: () => worktreeDirectory,
+        platformKernel: kernel
+      }),
+      workerRuntime: {
+        resolveModel: () => ({ providerId: "p", modelConfigId: "m" }),
+        async execute() { return { ok: true }; }
+      },
+      getWorkspaceRoot: () => root
+    });
+    supervisor.addTasks(run.id, [{
+      id: "leased",
+      title: "Leased",
+      resourceLocks: [{ key: "shared-config", mode: "exclusive" }]
+    }]);
+    const latest = kernel.getRun(run.id);
+    const first = supervisor.acquireTaskLeases(latest, latest.tasks.leased, "worker-a");
+    const second = supervisor.acquireTaskLeases(latest, latest.tasks.leased, "worker-b");
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, false);
+    assert.equal(second.code, "resource-lease-conflict");
+    supervisor.releaseTaskLeases(first.leases, "test-complete");
+    assert.equal(kernel.getSnapshot().activeLeases.length, 0);
+  });
+
 });

@@ -33,6 +33,13 @@ const ROLE_INSTRUCTIONS = Object.freeze({
     '{"approved":boolean,"summary":"结论","findings":["问题"],"evidence":["证据"]}',
     "存在未解决风险、越界修改或证据不足时 approved 必须为 false。"
   ].join("\n"),
+  evaluator: [
+    "你是独立 Task Evaluator，只验收当前 Worker Handoff 与隔离提交，不修改文件。",
+    "逐条检查 acceptance criteria；没有可核验证据不得通过。",
+    "最终回复必须只包含一个 JSON 对象：",
+    '{"approved":boolean,"summary":"结论","findings":["问题"],"evidence":["证据"],"criteria":[{"criterionId":"id","passed":boolean,"evidence":["证据"],"note":"说明"}]}',
+    "任一标准缺失、证据不足、范围越界或存在 unresolved 时 approved 必须为 false。"
+  ].join("\n"),
   integrator: "仅按给定提交进行集成，禁止擅自覆盖冲突。",
   replanner: "独立分析已分类失败，只提出受约束的修复任务图，不修改文件。"
 });
@@ -110,7 +117,12 @@ export class ModelWorkerRuntime {
       workspaceId: worktree.id,
       mode: "coding",
       segmentId: `worker-${agentRun.attempt}`,
-      resultStoreDirectory: this.getResultDirectory(run.id, agentRun.id)
+      resultStoreDirectory: this.getResultDirectory(run.id, agentRun.id),
+      capabilityRequest: {
+        requiredCapabilities: Array.isArray(task.requiredCapabilities)
+          ? task.requiredCapabilities
+          : []
+      }
     });
 
     let reportedTokens = 0;
@@ -132,6 +144,17 @@ export class ModelWorkerRuntime {
     };
 
     try {
+      if (toolSession.capabilityResolution?.satisfied === false) {
+        return {
+          ok: false,
+          status: "failed",
+          summary: "Worker 所需能力不可用。",
+          error: "worker-capability-unavailable",
+          unresolved: toolSession.capabilityResolution.missingRequired,
+          records: [],
+          usage: { totalTokens: 0, steps: 0, reported: true }
+        };
+      }
       const result = await generateText({
         model: runtime.model,
         system: [
@@ -143,6 +166,16 @@ export class ModelWorkerRuntime {
         prompt: [
           `Goal: ${run.objective}`,
           `Task: ${task.title}`,
+          task.objective ? `Objective: ${task.objective}` : "",
+          Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0
+            ? `Acceptance criteria: ${JSON.stringify(task.acceptanceCriteria)}`
+            : "",
+          Array.isArray(task.requiredCapabilities) && task.requiredCapabilities.length > 0
+            ? `Capability boundary: ${task.requiredCapabilities.join(", ")}`
+            : "",
+          task.workspaceScope
+            ? `Workspace scope: ${JSON.stringify(task.workspaceScope)}`
+            : "",
           task.instructions ? `Instructions: ${task.instructions}` : ""
         ].filter(Boolean).join("\n\n"),
         tools: toolSession.tools,

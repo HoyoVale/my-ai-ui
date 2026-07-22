@@ -120,7 +120,9 @@ export function ConversationPlatformDock({
   const agents = Object.values(run.agentRuns ?? {});
   const runningTasks = tasks.filter((task) => ["ready", "running"].includes(task.status)).length;
   const waitingReview = tasks.filter((task) =>
-    task.role === "reviewer" && ["pending", "ready", "running", "review"].includes(task.status)
+    task.status === "review" || (
+      task.role === "reviewer" && ["pending", "ready", "running"].includes(task.status)
+    )
   ).length;
   const blocked = tasks.filter((task) => ["blocked", "failed", "continuable"].includes(task.status)).length;
   const runningJobs = jobs.filter((job) => ["queued", "running"].includes(job.status)).length;
@@ -226,12 +228,21 @@ export function ConversationPlatformDock({
               <section>
                 <header><strong>Agents / Tasks</strong><span>{agents.length} / {tasks.length}</span></header>
                 {[...tasks].sort((a, b) => a.createdAt - b.createdAt).map((task) => {
-                  const agent = [...agents].reverse().find((item) => item.taskId === task.id);
+                  const taskAgents = agents.filter((item) => item.taskId === task.id);
+                  const worker = [...taskAgents].reverse().find((item) => item.kind !== "evaluator");
+                  const evaluator = [...taskAgents].reverse().find((item) => item.kind === "evaluator");
+                  const evaluation = task.evaluation?.approved === true
+                    ? "验收通过"
+                    : task.evaluation?.status === "rejected"
+                      ? "验收未通过"
+                      : task.status === "review" ? "等待验收" : "未验收";
                   return (
                     <article key={task.id}>
                       <div>
                         <strong>{task.title}</strong>
-                        <small>{task.role} · {statusLabel(task.status)} · {agent?.modelSelection?.providerId ?? "—"}/{agent?.modelSelection?.modelConfigId ?? "—"}</small>
+                        <small>{task.role} · {statusLabel(task.status)} · {evaluation}</small>
+                        <small>Worker：{worker?.modelSelection?.providerId ?? "—"}/{worker?.modelSelection?.modelConfigId ?? "—"} · Evaluator：{evaluator?.modelSelection?.providerId ?? "—"}/{evaluator?.modelSelection?.modelConfigId ?? "—"}</small>
+                        {task.resourceLocks?.length > 0 && <small>资源锁：{task.resourceLocks.map((item) => item.key).join("、")}</small>}
                         <code>{task.id}</code>
                       </div>
                     </article>

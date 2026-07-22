@@ -90,9 +90,15 @@ export class IntegrationCoordinator {
     return run.artifacts
       .filter((artifact) => {
         const agent = run.agentRuns[artifact.agentRunId];
+        const task = run.tasks[artifact.taskId];
         return artifact.kind === "git-commit" &&
           artifact.changed === true &&
-          agent?.role === "implementer";
+          agent?.role === "implementer" &&
+          agent.status === "completed" &&
+          task?.evaluation?.approved === true &&
+          task?.evaluation?.workerAgentRunId === agent.id &&
+          task?.evaluation?.handoffFingerprint === agent.handoff?.fingerprint &&
+          task?.integrationStatus === "eligible";
       })
       .sort((left, right) => {
         const leftTask = run.tasks[left.taskId];

@@ -7,6 +7,16 @@ import {
 } from "./canonical.js";
 
 import {
+  fingerprintTaskGraph,
+  normalizeStoredTask,
+  validateTaskGraph
+} from "./TaskGraphContract.js";
+
+import {
+  normalizeStructuredHandoff
+} from "./StructuredHandoff.js";
+
+import {
   CompletionAuthority
 } from "./CompletionAuthority.js";
 
@@ -89,7 +99,7 @@ function text(value, maxLength = 500) {
 
 function createEmptyState() {
   return {
-    version: 3,
+    version: 4,
     lastSequence: 0,
     lastEventHash: "",
     runs: {},
@@ -161,30 +171,6 @@ function taskDependenciesSettled(run, task) {
   return task.dependencies.every((dependencyId) =>
     run.tasks[dependencyId]?.status === "completed"
   );
-}
-
-function detectCycle(tasks, candidate) {
-  const graph = {
-    ...tasks,
-    [candidate.id]: candidate
-  };
-  const visiting = new Set();
-  const visited = new Set();
-
-  const visit = (id) => {
-    if (visiting.has(id)) return true;
-    if (visited.has(id)) return false;
-    visiting.add(id);
-    const task = graph[id];
-    for (const dependencyId of task?.dependencies ?? []) {
-      if (graph[dependencyId] && visit(dependencyId)) return true;
-    }
-    visiting.delete(id);
-    visited.add(id);
-    return false;
-  };
-
-  return Object.keys(graph).some(visit);
 }
 
 function summarizeRun(run) {
@@ -305,6 +291,7 @@ export class PlatformKernel {
       }
     }
     for (const run of Object.values(this.state.runs)) {
+      run.version = Math.max(2, Number(run.version) || 1);
       run.artifacts = Array.isArray(run.artifacts) ? run.artifacts : [];
       run.evidence = Array.isArray(run.evidence) ? run.evidence : [];
       run.reviews = Array.isArray(run.reviews) ? run.reviews : [];
@@ -315,8 +302,22 @@ export class PlatformKernel {
         ? run.integration
         : null;
       run.logs = Array.isArray(run.logs) ? run.logs : [];
+      run.taskGraphRevision = Math.max(0, Number(run.taskGraphRevision) || 0);
+      run.taskGraphFingerprint = text(run.taskGraphFingerprint, 128);
+      run.tasks = run.tasks && typeof run.tasks === "object" ? run.tasks : {};
+      for (const [taskId, task] of Object.entries(run.tasks)) {
+        run.tasks[taskId] = normalizeStoredTask({ ...task, id: taskId });
+      }
+      run.taskGraphFingerprint = fingerprintTaskGraph(run.tasks);
+      run.agentRuns = run.agentRuns && typeof run.agentRuns === "object"
+        ? run.agentRuns
+        : {};
+      for (const agent of Object.values(run.agentRuns)) {
+        agent.kind = text(agent.kind, 40) || "worker";
+        agent.leaseIds = Array.isArray(agent.leaseIds) ? agent.leaseIds : [];
+      }
     }
-    this.state.version = 3;
+    this.state.version = 4;
     this.state.jobs = this.state.jobs && typeof this.state.jobs === "object"
       ? this.state.jobs
       : {};
@@ -349,10 +350,21 @@ export class PlatformKernel {
           run.updatedAt = event.timestamp;
         }
         break;
+      case "TASK_GRAPH_ADDED":
+        if (run) {
+          for (const task of payload.tasks ?? []) {
+            run.tasks[task.id] = clone(task);
+          }
+          run.taskGraphRevision += 1;
+          run.taskGraphFingerprint = text(payload.fingerprint, 128);
+          run.updatedAt = event.timestamp;
+        }
+        break;
       case "TASK_ADDED":
         if (run) {
           run.tasks[payload.task.id] = clone(payload.task);
           run.taskGraphRevision += 1;
+          run.taskGraphFingerprint = fingerprintTaskGraph(run.tasks);
           run.updatedAt = event.timestamp;
         }
         break;
@@ -375,11 +387,14 @@ export class PlatformKernel {
         if (run) {
           run.agentRuns[payload.agentRun.id] = clone(payload.agentRun);
           if (run.tasks[payload.agentRun.taskId]) {
-            run.tasks[payload.agentRun.taskId].attemptCount =
-              Math.max(
-                Number(run.tasks[payload.agentRun.taskId].attemptCount) || 0,
+            const task = run.tasks[payload.agentRun.taskId];
+            if (payload.agentRun.kind !== "evaluator") {
+              task.attemptCount = Math.max(
+                Number(task.attemptCount) || 0,
                 Number(payload.agentRun.attempt) || 1
               );
+              task.assignedAgentId = payload.agentRun.id;
+            }
           }
           run.updatedAt = event.timestamp;
         }
@@ -392,6 +407,10 @@ export class PlatformKernel {
           agent.stopReason = text(payload.stopReason, 240);
           agent.error = text(payload.error, 500);
           agent.endedAt = event.timestamp;
+          const task = run.tasks[agent.taskId];
+          if (task?.assignedAgentId === agent.id) {
+            task.assignedAgentId = null;
+          }
           run.updatedAt = event.timestamp;
         }
         break;
@@ -401,9 +420,46 @@ export class PlatformKernel {
           run.updatedAt = event.timestamp;
         }
         break;
+      case "TASK_CHECKPOINT_RECORDED":
+        if (run?.tasks[payload.taskId]) {
+          run.tasks[payload.taskId].checkpoint = clone(payload.checkpoint);
+          run.updatedAt = event.timestamp;
+        }
+        break;
       case "AGENT_HANDOFF_RECORDED":
         if (run?.agentRuns[payload.agentRunId]) {
-          run.agentRuns[payload.agentRunId].handoff = clone(payload.handoff);
+          const agent = run.agentRuns[payload.agentRunId];
+          agent.handoff = clone(payload.handoff);
+          const task = run.tasks[agent.taskId];
+          if (task && payload.handoff?.version >= 2) {
+            task.checkpoint = {
+              commit: payload.handoff.outputCommit ?? null,
+              baselineCommit: payload.handoff.baselineCommit ?? null,
+              changed: payload.handoff.changed === true,
+              fingerprint: payload.handoff.fingerprint ?? null,
+              recordedAt: payload.handoff.recordedAt ?? event.timestamp
+            };
+            task.receipts = Array.isArray(payload.handoff.receipts)
+              ? [...payload.handoff.receipts]
+              : [];
+          }
+          run.updatedAt = event.timestamp;
+        }
+        break;
+      case "TASK_EVALUATION_RECORDED":
+        if (run?.tasks[payload.taskId]) {
+          const task = run.tasks[payload.taskId];
+          task.evaluation = clone(payload.evaluation);
+          task.evaluationHistory = Array.isArray(task.evaluationHistory)
+            ? task.evaluationHistory
+            : [];
+          task.evaluationHistory.push(clone(payload.evaluation));
+          if (task.evaluationHistory.length > 20) {
+            task.evaluationHistory.splice(0, task.evaluationHistory.length - 20);
+          }
+          task.integrationStatus = payload.evaluation.approved === true
+            ? "eligible"
+            : "blocked";
           run.updatedAt = event.timestamp;
         }
         break;
@@ -749,7 +805,7 @@ export class PlatformKernel {
 
     const timestamp = this.now();
     const run = {
-      version: 1,
+      version: 2,
       id: this.createId(),
       conversationId: normalizedConversationId,
       goalId: normalizedGoalId,
@@ -760,6 +816,7 @@ export class PlatformKernel {
       status: "active",
       statusReason: "",
       taskGraphRevision: 0,
+      taskGraphFingerprint: "",
       criteria: normalizeCriteria(criteria),
       tasks: {},
       agentRuns: {},
@@ -778,61 +835,113 @@ export class PlatformKernel {
     return { ok: true, created: true, run: clone(run) };
   }
 
-  addTask(platformRunId, {
-    taskId,
-    title,
-    dependencies = [],
-    role = "implementer",
-    instructions = "",
-    maxAttempts = 2
-  } = {}) {
+  addTaskGraph(platformRunId, tasks = []) {
     const run = this.ensureLoaded().runs[text(platformRunId, 120)];
     if (!run) return { ok: false, code: "platform-run-not-found" };
 
-    const id = text(taskId, 120) || this.createId();
-    if (run.tasks[id]) {
-      return { ok: true, created: false, task: clone(run.tasks[id]) };
+    const requested = Array.isArray(tasks) ? tasks : [];
+    const existing = requested
+      .map((task) => text(task?.taskId ?? task?.id, 120))
+      .filter((id) => id && run.tasks[id]);
+    if (existing.length === requested.length && requested.length > 0) {
+      return {
+        ok: true,
+        created: false,
+        tasks: existing.map((id) => clone(run.tasks[id]))
+      };
     }
-    const normalizedDependencies = [...new Set(
-      (Array.isArray(dependencies) ? dependencies : [])
-        .map((value) => text(value, 120))
-        .filter(Boolean)
-    )];
-    if (normalizedDependencies.some((dependencyId) => !run.tasks[dependencyId])) {
-      return { ok: false, code: "task-dependency-not-found" };
+    if (existing.length > 0) {
+      return {
+        ok: false,
+        code: "task-graph-partial-duplicate",
+        taskIds: existing
+      };
     }
 
+    const validated = validateTaskGraph(run.tasks, requested, {
+      createId: this.createId
+    });
+    if (!validated.ok) return validated;
+
     const timestamp = this.now();
-    const task = {
-      version: 1,
-      id,
-      title: text(title, 500) || "未命名任务",
-      role: text(role, 80) || "implementer",
-      instructions: text(instructions, 4000),
-      dependencies: normalizedDependencies,
+    const normalizedTasks = validated.tasks.map((definition) => normalizeStoredTask({
+      ...definition,
+      version: 2,
       attemptCount: 0,
-      maxAttempts: Math.max(1, Math.min(5, Math.round(Number(maxAttempts) || 2))),
-      status: normalizedDependencies.length === 0 ||
-        normalizedDependencies.every((dependencyId) =>
-          run.tasks[dependencyId]?.status === "completed"
-        )
+      status: definition.dependencies.every((dependencyId) =>
+        run.tasks[dependencyId]?.status === "completed" ||
+        validated.tasks.find((task) => task.id === dependencyId)?.status === "completed"
+      )
         ? "ready"
         : "pending",
       statusReason: "",
+      assignedAgentId: null,
+      checkpoint: null,
+      receipts: [],
+      evaluation: {
+        status: "pending",
+        attempt: 0,
+        approved: false,
+        evaluatorAgentRunId: null,
+        summary: "",
+        findings: [],
+        recordedAt: null
+      },
+      evaluationHistory: [],
+      integrationStatus: "pending",
       createdAt: timestamp,
       updatedAt: timestamp,
       startedAt: null,
       endedAt: null
-    };
-    if (detectCycle(run.tasks, task)) {
-      return { ok: false, code: "task-graph-cycle" };
+    }));
+
+    // Candidate dependencies may point to another task in the same atomic batch.
+    const candidateIds = new Set(normalizedTasks.map((task) => task.id));
+    for (const task of normalizedTasks) {
+      task.status = task.dependencies.length === 0 || task.dependencies.every((dependencyId) =>
+        run.tasks[dependencyId]?.status === "completed" ||
+        (!candidateIds.has(dependencyId) && run.tasks[dependencyId]?.status === "completed")
+      )
+        ? "ready"
+        : "pending";
     }
 
     this.invalidateCompletionState(run.id, "task-graph-changed", {
       invalidateEvidence: true
     });
-    this.commit("TASK_ADDED", { runId: run.id, task });
-    return { ok: true, created: true, task: clone(task) };
+    const fingerprint = fingerprintTaskGraph([
+      ...Object.values(run.tasks),
+      ...normalizedTasks
+    ]);
+    this.commit("TASK_GRAPH_ADDED", {
+      runId: run.id,
+      tasks: normalizedTasks,
+      fingerprint
+    });
+    return {
+      ok: true,
+      created: true,
+      tasks: normalizedTasks.map((task) => clone(task)),
+      fingerprint
+    };
+  }
+
+  addTask(platformRunId, task = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    if (!run) return { ok: false, code: "platform-run-not-found" };
+    const id = text(task?.taskId ?? task?.id, 120);
+    if (id && run.tasks[id]) {
+      return { ok: true, created: false, task: clone(run.tasks[id]) };
+    }
+    const result = this.addTaskGraph(platformRunId, [task]);
+    return result.ok
+      ? {
+          ok: true,
+          created: result.created,
+          task: clone(result.tasks[0]),
+          fingerprint: result.fingerprint
+        }
+      : result;
   }
 
   setTaskStatus(platformRunId, taskId, status, reason = "") {
@@ -969,21 +1078,51 @@ export class PlatformKernel {
     agentRunId,
     taskId,
     role = "implementer",
+    kind = "worker",
     workspaceResource = "",
+    leaseIds: providedLeaseIds = [],
     modelSelection = null
   } = {}) {
     const run = this.ensureLoaded().runs[text(platformRunId, 120)];
     const task = run?.tasks[text(taskId, 120)];
     if (!task) return { ok: false, code: "platform-task-not-found" };
     const id = text(agentRunId, 120) || this.createId();
+    const normalizedKind = kind === "evaluator" ? "evaluator" : "worker";
 
     if (run.agentRuns[id]) {
       return { ok: true, created: false, agentRun: clone(run.agentRuns[id]) };
     }
-    const taskStart = this.setTaskStatus(run.id, task.id, "running", "agent-started");
-    if (!taskStart.ok) return taskStart;
+
+    if (normalizedKind === "evaluator") {
+      if (task.status !== "review") {
+        return {
+          ok: false,
+          code: "platform-task-not-in-review",
+          status: task.status
+        };
+      }
+    } else {
+      const taskStart = this.setTaskStatus(run.id, task.id, "running", "agent-started");
+      if (!taskStart.ok) return taskStart;
+    }
 
     const leaseIds = [];
+    for (const leaseId of Array.isArray(providedLeaseIds) ? providedLeaseIds : []) {
+      const lease = this.state.leases[text(leaseId, 120)];
+      if (
+        !lease ||
+        lease.status !== "active" ||
+        lease.platformRunId !== run.id ||
+        lease.agentRunId !== id
+      ) {
+        if (normalizedKind !== "evaluator" && task.status === "running") {
+          this.setTaskStatus(run.id, task.id, "blocked", "worker-lease-invalid");
+        }
+        return { ok: false, code: "worker-lease-invalid", leaseId };
+      }
+      leaseIds.push(lease.id);
+    }
+
     if (text(workspaceResource, 500)) {
       const lease = this.acquireLease({
         platformRunId: run.id,
@@ -992,20 +1131,26 @@ export class PlatformKernel {
         mode: run.mode === "coding" ? "exclusive" : "shared"
       });
       if (!lease.ok) {
-        this.setTaskStatus(run.id, task.id, "blocked", lease.code);
+        if (normalizedKind !== "evaluator") {
+          this.setTaskStatus(run.id, task.id, "blocked", lease.code);
+        }
+        for (const leaseId of leaseIds) this.releaseLease(leaseId, "agent-start-failed");
         return lease;
       }
       leaseIds.push(lease.lease.id);
     }
 
     const timestamp = this.now();
-    task.attemptCount = Math.max(0, Number(task.attemptCount) || 0) + 1;
+    const attempt = normalizedKind === "evaluator"
+      ? Math.max(1, (task.evaluationHistory?.length ?? 0) + 1)
+      : Math.max(0, Number(task.attemptCount) || 0) + 1;
     const agentRun = {
-      version: 1,
+      version: 2,
       id,
       taskId: task.id,
       role: text(role, 80) || "implementer",
-      attempt: task.attemptCount,
+      kind: normalizedKind,
+      attempt,
       modelSelection: modelSelection && typeof modelSelection === "object"
         ? {
             providerId: text(modelSelection.providerId, 80),
@@ -1038,31 +1183,98 @@ export class PlatformKernel {
     return { ok: true, agentRun: clone(run.agentRuns[agent.id]) };
   }
 
+  recordTaskCheckpoint(platformRunId, taskId, checkpoint = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    const task = run?.tasks[text(taskId, 120)];
+    if (!task) return { ok: false, code: "platform-task-not-found" };
+    const normalized = {
+      version: 1,
+      agentRunId: text(checkpoint.agentRunId, 120) || null,
+      commit: text(checkpoint.commit, 120) || null,
+      baselineCommit: text(checkpoint.baselineCommit, 120) || null,
+      changed: checkpoint.changed === true,
+      fingerprint: sha256({
+        taskId: task.id,
+        agentRunId: text(checkpoint.agentRunId, 120) || null,
+        commit: text(checkpoint.commit, 120) || null,
+        baselineCommit: text(checkpoint.baselineCommit, 120) || null,
+        changed: checkpoint.changed === true
+      }),
+      recordedAt: Math.max(0, Number(checkpoint.recordedAt) || this.now())
+    };
+    this.commit("TASK_CHECKPOINT_RECORDED", {
+      runId: run.id,
+      taskId: task.id,
+      checkpoint: normalized
+    });
+    return { ok: true, checkpoint: clone(normalized) };
+  }
+
   recordAgentHandoff(platformRunId, agentRunId, handoff = {}) {
     const run = this.ensureLoaded().runs[text(platformRunId, 120)];
     const agent = run?.agentRuns[text(agentRunId, 120)];
     if (!agent) return { ok: false, code: "platform-agent-run-not-found" };
-    const normalized = {
-      version: 1,
-      inputRevision: Math.max(0, Number(handoff.inputRevision) || run.taskGraphRevision),
-      outputCommit: text(handoff.outputCommit, 120) || null,
-      summary: text(handoff.summary, 2000),
-      evidence: (Array.isArray(handoff.evidence) ? handoff.evidence : [])
-        .slice(0, 40)
-        .map((item) => text(item, 500))
-        .filter(Boolean),
-      unresolved: (Array.isArray(handoff.unresolved) ? handoff.unresolved : [])
-        .slice(0, 20)
-        .map((item) => text(item, 500))
-        .filter(Boolean),
-      recordedAt: this.now()
-    };
+    const normalized = Number(handoff?.version) >= 2
+      ? normalizeStructuredHandoff(handoff)
+      : {
+          version: 1,
+          inputRevision: Math.max(0, Number(handoff.inputRevision) || run.taskGraphRevision),
+          outputCommit: text(handoff.outputCommit, 120) || null,
+          summary: text(handoff.summary, 2000),
+          evidence: (Array.isArray(handoff.evidence) ? handoff.evidence : [])
+            .slice(0, 40)
+            .map((item) => text(item, 500))
+            .filter(Boolean),
+          unresolved: (Array.isArray(handoff.unresolved) ? handoff.unresolved : [])
+            .slice(0, 20)
+            .map((item) => text(item, 500))
+            .filter(Boolean),
+          recordedAt: this.now()
+        };
     this.commit("AGENT_HANDOFF_RECORDED", {
       runId: run.id,
       agentRunId: agent.id,
       handoff: normalized
     });
     return { ok: true, handoff: clone(normalized) };
+  }
+
+  recordTaskEvaluation(platformRunId, taskId, evaluation = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    const task = run?.tasks[text(taskId, 120)];
+    if (!task) return { ok: false, code: "platform-task-not-found" };
+    const normalized = {
+      version: 1,
+      status: evaluation.approved === true ? "approved" : "rejected",
+      attempt: Math.max(1, Math.round(Number(evaluation.attempt) || 1)),
+      approved: evaluation.approved === true,
+      evaluatorAgentRunId: text(evaluation.evaluatorAgentRunId, 120) || null,
+      workerAgentRunId: text(evaluation.workerAgentRunId, 120) || null,
+      handoffFingerprint: text(evaluation.handoffFingerprint, 128),
+      taskGraphRevision: Math.max(0, Number(evaluation.taskGraphRevision) || run.taskGraphRevision),
+      summary: text(evaluation.summary, 2000),
+      findings: (Array.isArray(evaluation.findings) ? evaluation.findings : [])
+        .map((item) => text(item, 500)).filter(Boolean).slice(0, 40),
+      evidence: (Array.isArray(evaluation.evidence) ? evaluation.evidence : [])
+        .map((item) => text(item, 500)).filter(Boolean).slice(0, 60),
+      criteria: (Array.isArray(evaluation.criteria) ? evaluation.criteria : [])
+        .map((item) => ({
+          criterionId: text(item?.criterionId ?? item?.id, 120),
+          passed: item?.passed === true,
+          evidence: (Array.isArray(item?.evidence) ? item.evidence : [])
+            .map((value) => text(value, 500)).filter(Boolean).slice(0, 20),
+          note: text(item?.note ?? item?.summary, 500)
+        }))
+        .filter((item) => item.criterionId)
+        .slice(0, 32),
+      recordedAt: Math.max(0, Number(evaluation.recordedAt) || this.now())
+    };
+    this.commit("TASK_EVALUATION_RECORDED", {
+      runId: run.id,
+      taskId: task.id,
+      evaluation: normalized
+    });
+    return { ok: true, evaluation: clone(normalized) };
   }
 
   recordArtifact(platformRunId, artifact = {}) {
@@ -1506,7 +1718,14 @@ export class PlatformKernel {
     }));
     const changedWorkerArtifacts = run.artifacts.filter((artifact) => {
       const owner = run.agentRuns[artifact.agentRunId];
-      return artifact.kind === "git-commit" && artifact.changed === true && owner?.role === "implementer";
+      const task = run.tasks[artifact.taskId];
+      return artifact.kind === "git-commit" &&
+        artifact.changed === true &&
+        owner?.role === "implementer" &&
+        owner.status === "completed" &&
+        task?.evaluation?.approved === true &&
+        task.evaluation.workerAgentRunId === owner.id &&
+        task.evaluation.handoffFingerprint === owner.handoff?.fingerprint;
     });
     const integrationHash = changedWorkerArtifacts.length > 0
       ? run.integration?.digest
@@ -1530,12 +1749,32 @@ export class PlatformKernel {
       artifactManifestHash: sha256(artifacts),
       taskGraphHash: sha256({
         revision: run.taskGraphRevision,
+        fingerprint: run.taskGraphFingerprint,
         tasks: Object.values(run.tasks).map((task) => ({
+          schemaVersion: task.schemaVersion ?? task.version ?? 1,
           id: task.id,
+          parentTaskId: task.parentTaskId ?? null,
+          objective: task.objective ?? task.title,
           role: task.role,
           dependencies: task.dependencies,
+          acceptanceCriteria: task.acceptanceCriteria ?? [],
+          requiredCapabilities: task.requiredCapabilities ?? [],
+          workspaceScope: task.workspaceScope ?? null,
+          resourceLocks: task.resourceLocks ?? [],
+          priority: task.priority ?? 50,
           status: task.status,
-          attemptCount: task.attemptCount
+          attemptCount: task.attemptCount,
+          checkpointFingerprint: task.checkpoint?.fingerprint ?? null,
+          evaluation: task.evaluation
+            ? {
+                approved: task.evaluation.approved === true,
+                evaluatorAgentRunId: task.evaluation.evaluatorAgentRunId ?? null,
+                workerAgentRunId: task.evaluation.workerAgentRunId ?? null,
+                handoffFingerprint: task.evaluation.handoffFingerprint ?? null,
+                recordedAt: task.evaluation.recordedAt ?? null
+              }
+            : null,
+          integrationStatus: task.integrationStatus ?? "pending"
         }))
       }),
       reviewHash: sha256(latestReview),
@@ -1601,9 +1840,28 @@ export class PlatformKernel {
       return artifact.kind === "git-commit" &&
         artifact.changed === true &&
         owner?.role === "implementer" &&
+        owner.status === "completed" &&
         owner.id !== agent.id;
     });
     if (changedWorkerArtifacts.length > 0) {
+      const unevaluatedTaskIds = [...new Set(changedWorkerArtifacts
+        .filter((artifact) => {
+          const task = run.tasks[artifact.taskId];
+          const worker = run.agentRuns[artifact.agentRunId];
+          return !task ||
+            task.evaluation?.approved !== true ||
+            task.integrationStatus !== "eligible" ||
+            task.evaluation?.workerAgentRunId !== worker?.id ||
+            task.evaluation?.handoffFingerprint !== worker?.handoff?.fingerprint;
+        })
+        .map((artifact) => artifact.taskId))];
+      if (unevaluatedTaskIds.length > 0) {
+        return {
+          ok: false,
+          code: "platform-task-evaluation-required",
+          taskIds: unevaluatedTaskIds
+        };
+      }
       if (
         !["integrated", "published"].includes(run.integration?.status) ||
         !run.integration.commit ||
@@ -1803,15 +2061,34 @@ export class PlatformKernel {
         recoveredThisRun = true;
       }
       for (const task of Object.values(run.tasks)) {
-        if (task.status !== "running") continue;
-        this.setTaskStatus(
-          run.id,
-          task.id,
-          "continuable",
-          "orphaned-running-task"
-        );
-        recoveredTaskIds.push(task.id);
-        recoveredThisRun = true;
+        if (task.status === "running") {
+          this.setTaskStatus(
+            run.id,
+            task.id,
+            "continuable",
+            "orphaned-running-task"
+          );
+          recoveredTaskIds.push(task.id);
+          recoveredThisRun = true;
+          continue;
+        }
+        if (task.status === "review") {
+          const evaluatorRunning = Object.values(run.agentRuns).some((agent) =>
+            agent.taskId === task.id &&
+            agent.kind === "evaluator" &&
+            agent.status === "running"
+          );
+          if (!evaluatorRunning) {
+            this.setTaskStatus(
+              run.id,
+              task.id,
+              "continuable",
+              "orphaned-review-task"
+            );
+            recoveredTaskIds.push(task.id);
+            recoveredThisRun = true;
+          }
+        }
       }
       for (const lease of Object.values(this.state.leases)) {
         if (

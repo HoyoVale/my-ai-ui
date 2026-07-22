@@ -25,6 +25,10 @@ import {
 } from "./MultiAgentSupervisor.js";
 
 import {
+  IndependentTaskEvaluator
+} from "./IndependentTaskEvaluator.js";
+
+import {
   IntegrationCoordinator
 } from "./IntegrationCoordinator.js";
 
@@ -99,16 +103,26 @@ export const modelWorkerRuntime = new ModelWorkerRuntime({
   )
 });
 
+function resolveWorkspaceRoot(run) {
+  const workspace = getWorkspaceById(run?.workspaceId, getSettings());
+  return workspace && !workspace.missing
+    ? workspace.canonicalPath || workspace.rootPath
+    : "";
+}
+
+export const independentTaskEvaluator = new IndependentTaskEvaluator({
+  platformKernel,
+  worktreeRuntime,
+  evaluatorRuntime: modelWorkerRuntime,
+  getWorkspaceRoot: resolveWorkspaceRoot
+});
+
 export const multiAgentSupervisor = new MultiAgentSupervisor({
   platformKernel,
   worktreeRuntime,
   workerRuntime: modelWorkerRuntime,
-  getWorkspaceRoot: (run) => {
-    const workspace = getWorkspaceById(run?.workspaceId, getSettings());
-    return workspace && !workspace.missing
-      ? workspace.canonicalPath || workspace.rootPath
-      : "";
-  },
+  taskEvaluator: independentTaskEvaluator,
+  getWorkspaceRoot: resolveWorkspaceRoot,
   maxConcurrency: WORKER_RUNTIME_DEFAULTS.maxConcurrency,
   getMaxConcurrency: () =>
     getSettings().model?.runtimeAssignments?.maxConcurrency ??
@@ -119,12 +133,7 @@ export const integrationCoordinator = new IntegrationCoordinator({
   platformKernel,
   worktreeRuntime,
   reviewerRuntime: modelWorkerRuntime,
-  getWorkspaceRoot: (run) => {
-    const workspace = getWorkspaceById(run?.workspaceId, getSettings());
-    return workspace && !workspace.missing
-      ? workspace.canonicalPath || workspace.rootPath
-      : "";
-  }
+  getWorkspaceRoot: resolveWorkspaceRoot
 });
 
 export const independentReplanner = new IndependentReplanner({

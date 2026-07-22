@@ -1,6 +1,6 @@
 # Agent Runtime 稳定化路线图
 
-> 基线：`my-ai-ui(88)`
+> 当前实施基线：`my-ai-ui(89)`
 
 > 目标：先稳定 Goal Runtime，再稳定 Multi-Agent Supervisor，最后建立可恢复的 Long-running Agent；完成三层后再接入 Playwright Electron 视觉能力和 Chat/Coding 能力分层。
 
@@ -155,6 +155,22 @@ IntegrationDecision
 - Supervisor 重启后 Task Graph 状态一致；
 - 事件日志可回答“谁、何时、为什么执行了什么”。
 
+#### 2.8.1 本阶段实现状态
+
+本补丁已完成：
+
+- Task Graph Schema v2 与批次原子 DAG 校验；
+- Task、资源与 Workspace Scope 租约，包含续租心跳和冲突回滚；
+- Worker Structured Handoff v2、内容指纹、Goal/Task Graph 修订绑定；
+- 独立 Evaluator AgentRun，生产环境使用模型验收，测试环境提供确定性验收器；
+- 未验收、验收失败或 Handoff 不完整的任务不能进入 Integration；
+- Worker 失败时保留有变更的 Worktree/Checkpoint；
+- `running`、`review` 与 Evaluator 中断场景的重启恢复；
+- 任务图、租约、Handoff、独立验收与崩溃恢复测试；
+- CI 增加 Multi-Agent Supervisor crash recovery 步骤。
+
+仍留给 Phase 3 处理：持久化 Scheduler、跨时间唤醒、退避队列、Approval Inbox 与长期保留策略。
+
 ### Phase 3：Long-running Agent 1.0
 
 目标：将一次对话 Run 升级为可排队、可暂停、可唤醒、跨应用重启继续的长期作业。
@@ -294,12 +310,12 @@ Playwright 必须服从：
 
 ## 6. 下一阶段建议
 
-完成本 Goal Runtime 补丁并在本机 Electron E2E 通过后，下一步只做 Multi-Agent Supervisor 稳定化，不继续增加新工具。优先顺序：
+Goal Runtime 与 Multi-Agent Supervisor 的核心稳定化已经完成。下一步只做 Long-running Agent 1.0，不继续增加 Playwright、MCP 或新工具。优先顺序：
 
-1. Task Graph Schema；
-2. Supervisor 状态机；
-3. Worker Lease；
-4. 结构化 Handoff；
-5. 独立 Evaluator；
-6. Integration Decision；
-7. 崩溃恢复与并发 Soak。
+1. Persistent Job Queue 与 Wake Policy；
+2. Job/Run 单实例 Lease；
+3. Retry Backoff 与失败分类；
+4. Waiting Input / Approval / External 状态；
+5. 系统休眠、网络中断与应用重启恢复；
+6. Notification Center 与 Approval Inbox；
+7. Retention、Cleanup 与长时间 Soak。

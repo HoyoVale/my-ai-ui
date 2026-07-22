@@ -270,6 +270,78 @@ describe("Platform Kernel", () => {
     }).ok, false);
   });
 
+  it("refuses Goal completion when a changed Worker artifact bypassed task evaluation", () => {
+    const directory = temporaryDirectory();
+    const { kernel } = createHarness(directory);
+    const run = kernel.ensureRun({
+      conversationId: "conversation-evaluation-gate",
+      goalId: "goal-evaluation-gate",
+      objective: "require task evaluation",
+      workspaceId: "workspace",
+      mode: "coding"
+    }).run;
+    kernel.addTask(run.id, {
+      taskId: "worker-task",
+      title: "Worker task",
+      role: "implementer"
+    });
+    kernel.beginAgentRun({
+      platformRunId: run.id,
+      agentRunId: "worker-agent",
+      taskId: "worker-task",
+      role: "implementer",
+      kind: "worker"
+    });
+    kernel.recordAgentHandoff(run.id, "worker-agent", {
+      inputRevision: 1,
+      outputCommit: "worker-commit",
+      summary: "claimed completion",
+      evidence: ["claim"],
+      unresolved: []
+    });
+    kernel.recordArtifact(run.id, {
+      taskId: "worker-task",
+      agentRunId: "worker-agent",
+      kind: "git-commit",
+      commit: "worker-commit",
+      changed: true,
+      digest: "worker-digest",
+      summary: "changed output"
+    });
+    kernel.finishAgentRun(run.id, "worker-agent", {
+      status: "completed",
+      outcome: "claimed",
+      taskStatus: "completed"
+    });
+    kernel.addTask(run.id, {
+      taskId: "verifier-task",
+      title: "Verifier",
+      role: "reviewer",
+      dependencies: ["worker-task"]
+    });
+    kernel.beginAgentRun({
+      platformRunId: run.id,
+      agentRunId: "verifier-agent",
+      taskId: "verifier-task",
+      role: "reviewer"
+    });
+
+    const rejected = kernel.authorizeCompletion({
+      platformRunId: run.id,
+      agentRunId: "verifier-agent",
+      verification: {
+        version: 1,
+        status: "verified",
+        verified: true,
+        checks: []
+      }
+    });
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.code, "platform-task-evaluation-required");
+    assert.deepEqual(rejected.taskIds, ["worker-task"]);
+  });
+
+
   it("replays Journal after a corrupt snapshot and repairs a truncated tail", () => {
     const directory = temporaryDirectory();
     const first = createHarness(directory);
