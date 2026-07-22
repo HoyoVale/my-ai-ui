@@ -105,17 +105,32 @@ export class IntegrationCoordinator {
       });
   }
 
-  async integrateAndReview(platformRunId) {
+  async integrateAndReview(
+    platformRunId,
+    {
+      signal = null,
+      onUsage = null
+    } = {}
+  ) {
     if (this.running.has(platformRunId)) {
       return this.running.get(platformRunId);
     }
-    const execution = this.execute(platformRunId)
+    const execution = this.execute(
+      platformRunId,
+      { signal, onUsage }
+    )
       .finally(() => this.running.delete(platformRunId));
     this.running.set(platformRunId, execution);
     return execution;
   }
 
-  async execute(platformRunId) {
+  async execute(
+    platformRunId,
+    {
+      signal = null,
+      onUsage = null
+    } = {}
+  ) {
     let run = this.platformKernel.getRun(platformRunId);
     if (!run) return { ok: false, code: "platform-run-not-found" };
     const artifacts = this.candidates(run);
@@ -302,6 +317,12 @@ export class IntegrationCoordinator {
     });
 
     run = this.platformKernel.getRun(run.id);
+    if (signal?.aborted) {
+      return {
+        ok: false,
+        code: "integration-review-cancelled"
+      };
+    }
     const reviewTaskId = `review-${suffix}${retryTag}`;
     const reviewTask = this.platformKernel.addTask(run.id, {
       taskId: reviewTaskId,
@@ -361,7 +382,8 @@ export class IntegrationCoordinator {
         task: this.platformKernel.getRun(run.id).tasks[reviewTaskId],
         agentRun: this.platformKernel.getRun(run.id).agentRuns[reviewerAgentId],
         worktree: reviewTree.worktree,
-        signal: new AbortController().signal
+        signal: signal ?? new AbortController().signal,
+        onUsage
       });
     } catch (error) {
       rawReview = {
@@ -369,6 +391,15 @@ export class IntegrationCoordinator {
         summary: "",
         error: error instanceof Error ? error.message : String(error)
       };
+    }
+    if (
+      typeof onUsage === "function" &&
+      rawReview?.usage?.reported !== true
+    ) {
+      onUsage({
+        tokens: Math.max(0, Number(rawReview?.usage?.totalTokens) || 0),
+        steps: Math.max(1, Number(rawReview?.usage?.steps) || 0)
+      });
     }
     let decision = normalizeReviewDecision(rawReview);
     const reviewCheckpoint = this.worktreeRuntime.checkpoint(

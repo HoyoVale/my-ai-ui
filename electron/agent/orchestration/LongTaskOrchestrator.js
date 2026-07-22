@@ -111,6 +111,17 @@ function planState(plan = []) {
   };
 }
 
+function awaitsOnlyManualConfirmation(verification) {
+  const missing = (Array.isArray(verification?.checks)
+    ? verification.checks
+    : [])
+    .filter((item) => item?.passed !== true);
+
+  return missing.length > 0 && missing.every(
+    (item) => item?.verificationKind === "manual"
+  );
+}
+
 export class LongTaskOrchestrator {
   constructor({
     goal = null,
@@ -280,7 +291,9 @@ export class LongTaskOrchestrator {
     let decision = "stop";
     let finalStopReason = stopReason;
 
-    if (currentPlanState.needsInput) {
+    if (awaitsOnlyManualConfirmation(verification)) {
+      finalStopReason = RUN_STOP_REASONS.NEEDS_INPUT;
+    } else if (currentPlanState.needsInput) {
       finalStopReason = RUN_STOP_REASONS.NEEDS_INPUT;
     } else if (currentPlanState.blocked && !currentPlanState.unfinished) {
       finalStopReason = RUN_STOP_REASONS.BLOCKED;

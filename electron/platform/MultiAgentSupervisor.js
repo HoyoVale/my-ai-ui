@@ -4,6 +4,11 @@ import {
   sha256
 } from "./canonical.js";
 
+import {
+  WORKER_RUNTIME_DEFAULTS,
+  WORKER_RUNTIME_LIMITS
+} from "../../src/shared/runtimeDefaults.js";
+
 const ROLES = new Set([
   "planner",
   "explorer",
@@ -38,7 +43,8 @@ function normalizeResult(result) {
     records: Array.isArray(source.records) ? source.records : [],
     usage: {
       totalTokens: Math.max(0, Number(source.usage?.totalTokens) || 0),
-      steps: Math.max(0, Number(source.usage?.steps) || 0)
+      steps: Math.max(0, Number(source.usage?.steps) || 0),
+      reported: source.usage?.reported === true
     }
   };
 }
@@ -49,7 +55,7 @@ export class MultiAgentSupervisor {
     worktreeRuntime,
     workerRuntime,
     getWorkspaceRoot,
-    maxConcurrency = 2,
+    maxConcurrency = WORKER_RUNTIME_DEFAULTS.maxConcurrency,
     getMaxConcurrency = null,
     createId = () => crypto.randomUUID()
   } = {}) {
@@ -64,7 +70,13 @@ export class MultiAgentSupervisor {
     this.getWorkspaceRoot = typeof getWorkspaceRoot === "function"
       ? getWorkspaceRoot
       : () => "";
-    this.maxConcurrency = Math.max(1, Math.min(4, Number(maxConcurrency) || 2));
+    this.maxConcurrency = Math.max(
+      WORKER_RUNTIME_LIMITS.maxConcurrency.min,
+      Math.min(
+        WORKER_RUNTIME_LIMITS.maxConcurrency.max,
+        Number(maxConcurrency) || WORKER_RUNTIME_DEFAULTS.maxConcurrency
+      )
+    );
     this.getMaxConcurrency = typeof getMaxConcurrency === "function"
       ? getMaxConcurrency
       : null;
@@ -114,7 +126,14 @@ export class MultiAgentSupervisor {
     return { ok: true };
   }
 
-  async executeTask(platformRunId, taskId, { signal = null } = {}) {
+  async executeTask(
+    platformRunId,
+    taskId,
+    {
+      signal = null,
+      onUsage = null
+    } = {}
+  ) {
     const run = this.platformKernel.getRun(platformRunId);
     const task = run?.tasks?.[taskId];
     if (!task || task.status !== "ready") {
@@ -175,7 +194,8 @@ export class MultiAgentSupervisor {
         task,
         agentRun: this.platformKernel.getRun(run.id).agentRuns[agentRunId],
         worktree,
-        signal: controller.signal
+        signal: controller.signal,
+        onUsage
       }));
     } catch (error) {
       normalized = normalizeResult({
@@ -186,6 +206,16 @@ export class MultiAgentSupervisor {
     } finally {
       signal?.removeEventListener?.("abort", forwardAbort);
       this.controllers.delete(agentRunId);
+    }
+
+    if (
+      typeof onUsage === "function" &&
+      normalized.usage.reported !== true
+    ) {
+      onUsage({
+        tokens: normalized.usage.totalTokens,
+        steps: normalized.usage.steps || 1
+      });
     }
 
     const checkpoint = this.worktreeRuntime.checkpoint(
@@ -275,17 +305,34 @@ export class MultiAgentSupervisor {
     };
   }
 
-  async run(platformRunId, { taskIds = null, signal = null } = {}) {
+  async run(
+    platformRunId,
+    {
+      taskIds = null,
+      signal = null,
+      onUsage = null
+    } = {}
+  ) {
     if (this.running.has(platformRunId)) {
       return this.running.get(platformRunId);
     }
-    const execution = this.runLoop(platformRunId, taskIds, signal)
+    const execution = this.runLoop(
+      platformRunId,
+      taskIds,
+      signal,
+      onUsage
+    )
       .finally(() => this.running.delete(platformRunId));
     this.running.set(platformRunId, execution);
     return execution;
   }
 
-  async runLoop(platformRunId, taskIds = null, signal = null) {
+  async runLoop(
+    platformRunId,
+    taskIds = null,
+    signal = null,
+    onUsage = null
+  ) {
     const outcomes = [];
     const scopedTaskIds = Array.isArray(taskIds) && taskIds.length > 0
       ? new Set(taskIds.map((value) => String(value)))
@@ -302,12 +349,19 @@ export class MultiAgentSupervisor {
         ? this.getMaxConcurrency()
         : this.maxConcurrency;
       const concurrency = Math.max(
-        1,
-        Math.min(4, Number(configuredConcurrency) || this.maxConcurrency)
+        WORKER_RUNTIME_LIMITS.maxConcurrency.min,
+        Math.min(
+          WORKER_RUNTIME_LIMITS.maxConcurrency.max,
+          Number(configuredConcurrency) || this.maxConcurrency
+        )
       );
       const batch = ready.slice(0, concurrency);
       const results = await Promise.all(
-        batch.map((task) => this.executeTask(platformRunId, task.id, { signal }))
+        batch.map((task) => this.executeTask(
+          platformRunId,
+          task.id,
+          { signal, onUsage }
+        ))
       );
       outcomes.push(...results);
     }

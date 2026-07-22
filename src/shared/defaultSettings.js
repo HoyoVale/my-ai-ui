@@ -1,3 +1,7 @@
+import {
+  WORKER_RUNTIME_DEFAULTS
+} from "./runtimeDefaults.js";
+
 const MODEL_DEFAULTS = {
   apiMode: "auto",
   contextTokenBudget: 64000,
@@ -391,10 +395,10 @@ export const FALLBACK_SETTINGS = {
     providers: {},
     runtimeAssignments: {
       worker: null,
-      maxConcurrency: 2,
-      tokenBudget: 400000,
-      stepBudget: 40,
-      timeBudgetMinutes: 30
+      maxConcurrency: WORKER_RUNTIME_DEFAULTS.maxConcurrency,
+      tokenBudget: WORKER_RUNTIME_DEFAULTS.tokenBudget,
+      stepBudget: WORKER_RUNTIME_DEFAULTS.stepBudget,
+      timeBudgetMinutes: WORKER_RUNTIME_DEFAULTS.timeBudgetMinutes
     }
   }
 };

@@ -197,6 +197,61 @@ describe("conversation Goal", () => {
     assert.equal(progress.goal.verificationHistory.length, 1);
   });
 
+  it("keeps Goal identity and objective evidence when the user confirms a manual criterion", () => {
+    const manager = createManager();
+    const conversation = manager.create();
+    const created = manager.setGoal({
+      conversationId: conversation.id,
+      objective: "交付可验证界面",
+      criteria: [
+        { id: "tests", text: "npm test 全部通过", verificationKind: "test" },
+        { id: "visual", text: "用户确认界面可用", verificationKind: "manual" }
+      ]
+    });
+    manager.linkGoalPlatformRun({
+      conversationId: conversation.id,
+      goalId: created.goal.id,
+      platformRunId: "platform-run"
+    });
+    const verified = manager.recordGoalVerification({
+      conversationId: conversation.id,
+      goalId: created.goal.id,
+      verification: {
+        version: 2,
+        status: "incomplete",
+        verified: false,
+        checks: [{
+          id: "criterion:tests",
+          criterionId: "tests",
+          verificationKind: "test",
+          passed: true,
+          detail: "测试通过",
+          evidence: ["test-receipt"]
+        }]
+      }
+    }).goal;
+
+    const confirmed = manager.setGoal({
+      conversationId: conversation.id,
+      objective: verified.objective,
+      status: verified.status,
+      autoContinue: verified.autoContinue,
+      criteria: verified.criteria.map((criterion) =>
+        criterion.id === "visual"
+          ? { ...criterion, manualSatisfied: true }
+          : criterion
+      )
+    }).goal;
+
+    assert.equal(confirmed.id, created.goal.id);
+    assert.equal(confirmed.revision, created.goal.revision);
+    assert.equal(confirmed.platformRunId, "platform-run");
+    assert.deepEqual(confirmed.criteria[0].evidence, ["test-receipt"]);
+    assert.equal(confirmed.criteria[1].status, "passed");
+    assert.deepEqual(confirmed.criteria[1].evidence, ["user-confirmed"]);
+    assert.equal(confirmed.lastVerification, null);
+  });
+
   it("reserves completion for the verifier and deduplicates criterion ids", () => {
     const manager = createManager();
     const conversation = manager.create();

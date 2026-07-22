@@ -48,6 +48,10 @@ import {
   getWorkspaceById
 } from "../workspace/workspaceRegistry.js";
 
+import {
+  WORKER_RUNTIME_DEFAULTS
+} from "../../src/shared/runtimeDefaults.js";
+
 function broadcastPlatformState(state) {
   for (const window of BrowserWindow.getAllWindows()) {
     if (
@@ -105,9 +109,10 @@ export const multiAgentSupervisor = new MultiAgentSupervisor({
       ? workspace.canonicalPath || workspace.rootPath
       : "";
   },
-  maxConcurrency: 2,
+  maxConcurrency: WORKER_RUNTIME_DEFAULTS.maxConcurrency,
   getMaxConcurrency: () =>
-    getSettings().model?.runtimeAssignments?.maxConcurrency ?? 2
+    getSettings().model?.runtimeAssignments?.maxConcurrency ??
+      WORKER_RUNTIME_DEFAULTS.maxConcurrency
 });
 
 export const integrationCoordinator = new IntegrationCoordinator({
@@ -177,14 +182,10 @@ platformJobScheduler.register("delegation-workflow", async ({
   });
   const execution = await multiAgentSupervisor.run(job.platformRunId, {
     taskIds,
-    signal
+    signal,
+    onUsage: (usage) => consume(usage)
   });
-  const usage = execution.outcomes.reduce((total, outcome) => ({
-    tokens: total.tokens + (Number(outcome.result?.usage?.totalTokens) || 0),
-    steps: total.steps + (Number(outcome.result?.usage?.steps) || 1)
-  }), { tokens: 0, steps: 0 });
-  const budget = consume(usage);
-  if (!budget.ok || signal.aborted) {
+  if (signal.aborted) {
     return { ok: false, code: "platform-job-budget-or-cancelled" };
   }
   if (!execution.completed) {
@@ -195,8 +196,17 @@ platformJobScheduler.register("delegation-workflow", async ({
     };
   }
   log("Worker 已完成，进入集成与独立审查。", { source: "integration" });
-  consume({ steps: 1 });
-  const integration = await integrationCoordinator.integrateAndReview(job.platformRunId);
+  const integrationStep = consume({ steps: 1 });
+  if (!integrationStep.ok || signal.aborted) {
+    return { ok: false, code: "platform-job-budget-or-cancelled" };
+  }
+  const integration = await integrationCoordinator.integrateAndReview(
+    job.platformRunId,
+    {
+      signal,
+      onUsage: (usage) => consume(usage)
+    }
+  );
   return {
     ok: integration.ok === true,
     code: integration.ok === true ? null : integration.code ?? "integration-review-failed",

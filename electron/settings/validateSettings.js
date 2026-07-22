@@ -1,6 +1,11 @@
 import path from "node:path";
 
 import {
+  WORKER_RUNTIME_DEFAULTS,
+  WORKER_RUNTIME_LIMITS
+} from "../../src/shared/runtimeDefaults.js";
+
+import {
   cloneDefaultSettings
 } from "./defaultSettings.js";
 
@@ -942,27 +947,31 @@ function sanitizeModelSettings(
       ),
       maxConcurrency: integerValue(
         sourceModel.runtimeAssignments?.maxConcurrency,
-        defaults.runtimeAssignments?.maxConcurrency ?? 2,
-        1,
-        4
+        defaults.runtimeAssignments?.maxConcurrency ??
+          WORKER_RUNTIME_DEFAULTS.maxConcurrency,
+        WORKER_RUNTIME_LIMITS.maxConcurrency.min,
+        WORKER_RUNTIME_LIMITS.maxConcurrency.max
       ),
       tokenBudget: integerValue(
         sourceModel.runtimeAssignments?.tokenBudget,
-        defaults.runtimeAssignments?.tokenBudget ?? 400000,
-        10000,
-        2000000
+        defaults.runtimeAssignments?.tokenBudget ??
+          WORKER_RUNTIME_DEFAULTS.tokenBudget,
+        WORKER_RUNTIME_LIMITS.tokenBudget.min,
+        WORKER_RUNTIME_LIMITS.tokenBudget.max
       ),
       stepBudget: integerValue(
         sourceModel.runtimeAssignments?.stepBudget,
-        defaults.runtimeAssignments?.stepBudget ?? 40,
-        4,
-        200
+        defaults.runtimeAssignments?.stepBudget ??
+          WORKER_RUNTIME_DEFAULTS.stepBudget,
+        WORKER_RUNTIME_LIMITS.stepBudget.min,
+        WORKER_RUNTIME_LIMITS.stepBudget.max
       ),
       timeBudgetMinutes: integerValue(
         sourceModel.runtimeAssignments?.timeBudgetMinutes,
-        defaults.runtimeAssignments?.timeBudgetMinutes ?? 30,
-        1,
-        240
+        defaults.runtimeAssignments?.timeBudgetMinutes ??
+          WORKER_RUNTIME_DEFAULTS.timeBudgetMinutes,
+        WORKER_RUNTIME_LIMITS.timeBudgetMinutes.min,
+        WORKER_RUNTIME_LIMITS.timeBudgetMinutes.max
       )
     }
   };

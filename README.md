@@ -1,6 +1,6 @@
 # Electron Desktop Agent
 
-当前版本已经完成第一阶段基础 Agent 通信：
+当前版本已经完成本地桌面 Agent 主链路与 Coding 多 Agent 工程闭环：
 
 ```text
 Input Window
@@ -94,10 +94,10 @@ Setting 中保存的密钥优先于 `.env`。
 内置 Provider：
 
 ```text
-DeepSeek            原生 DeepSeek Chat API
-OpenAI              OpenAI-compatible Chat Completions
+DeepSeek            官方 DeepSeek Provider
+OpenAI              官方 OpenAI Provider（Responses / Chat）
 Anthropic           原生 Messages API
-Ollama              本地 OpenAI-compatible API
+Ollama              本地原生 Ollama API
 OpenAI-compatible   LM Studio、LiteLLM 与自建网关
 ```
 
@@ -114,8 +114,12 @@ Provider SDK、运行时解析和扩展步骤见 [`docs/MODEL_PROVIDERS.md`](doc
 ```text
 electron/agent/
 ├─ AgentRuntime.js
+├─ RunEngine.js
+├─ RunStateMachine.js
+├─ GoalCompletionVerifier.js
+├─ orchestration/
+├─ providers/
 ├─ agentErrors.js
-├─ credentialStore.js
 └─ modelFactory.js
 ```
 
@@ -290,14 +294,22 @@ GitHub Actions：
 .github/workflows/ci.yml
 ```
 
-会在 Windows 和 Ubuntu 上执行：
+会在 Windows 和 Ubuntu 上分别执行核心检查、Electron smoke、崩溃恢复和完整 Playwright E2E：
 
 ```powershell
 npm ci
 npm run check
+npm run test:e2e:platform-crash
+npm run test:e2e:worktree-crash
+npm run test:e2e:runtime-crash
+npm run test:e2e:runtime-write-crash
+npm run test:benchmark
+npm run test:electron
+npm run test:e2e:electron-runtime-crash
+npm run test:e2e
 ```
 
-当前自动化测试重点覆盖纯逻辑、持久化和通信契约。真实 Electron 窗口点击、拖动和视觉布局的 Playwright E2E 测试应作为下一层测试继续加入。
+Linux 的 Electron 测试通过 `xvfb-run` 启动真实窗口；Windows 使用原生桌面会话。E2E 覆盖输入、会话、模型、Goal、工具审批、流式回复和关键布局断言。视觉质量与截图语义验收仍属于后续 Visual Verification 范围。
 
 ## 独立会话窗口
 

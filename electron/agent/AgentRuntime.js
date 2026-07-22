@@ -98,7 +98,7 @@ import {
 
 import {
   createAgentToolSession
-} from "../tools/index.js";
+} from "../tools/createAgentToolSession.js";
 
 import {
   ToolApprovalController

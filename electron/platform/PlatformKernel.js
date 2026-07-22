@@ -114,8 +114,7 @@ function normalizeCriteria(criteria = []) {
       return {
         id,
         text: criterionText,
-        verificationKind: text(source?.verificationKind, 40) || "manual",
-        manualSatisfied: source?.manualSatisfied === true
+        verificationKind: text(source?.verificationKind, 40) || "manual"
       };
     })
     .filter(Boolean)

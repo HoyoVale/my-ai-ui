@@ -736,8 +736,7 @@ export class ConversationManager {
     const existing = conversation.goal;
     const criterionIdentity = (items) => JSON.stringify((items ?? []).map((item) => ({
       text: item.text,
-      verificationKind: item.verificationKind,
-      manualSatisfied: item.manualSatisfied === true
+      verificationKind: item.verificationKind
     })));
     const sameCriteria = Boolean(existing) &&
       criterionIdentity(existing.criteria) === criterionIdentity(normalizedCriteria);
@@ -758,10 +757,14 @@ export class ConversationManager {
               : existing.criteria?.[index]?.status ?? "pending",
           detail: !item.manualSatisfied && item.verificationKind === "manual"
             ? ""
-            : existing.criteria?.[index]?.detail ?? "",
+            : item.manualSatisfied && item.verificationKind === "manual"
+              ? `完成标准“${item.text}”已由用户确认。`
+              : existing.criteria?.[index]?.detail ?? "",
           evidence: !item.manualSatisfied && item.verificationKind === "manual"
             ? []
-            : existing.criteria?.[index]?.evidence ?? [],
+            : item.manualSatisfied && item.verificationKind === "manual"
+              ? ["user-confirmed"]
+              : existing.criteria?.[index]?.evidence ?? [],
           verifiedAt: item.manualSatisfied
             ? existing.criteria?.[index]?.verifiedAt ?? timestamp
             : item.verificationKind === "manual"
@@ -769,6 +772,11 @@ export class ConversationManager {
               : existing.criteria?.[index]?.verifiedAt ?? null
         }))
       : normalizedCriteria;
+    const manualStateChanged = keepIdentity && normalizedCriteria.some(
+      (item, index) =>
+        item.manualSatisfied !==
+          (existing.criteria?.[index]?.manualSatisfied === true)
+    );
 
     conversation.goal = {
       version: 3,
@@ -787,7 +795,10 @@ export class ConversationManager {
       createdAt: keepIdentity ? existing.createdAt : timestamp,
       updatedAt: timestamp,
       completedAt: null,
-      lastVerification: keepIdentity ? existing.lastVerification ?? null : null,
+      lastVerification:
+        keepIdentity && !manualStateChanged
+          ? existing.lastVerification ?? null
+          : null,
       verificationHistory: keepIdentity ? existing.verificationHistory ?? [] : []
     };
     conversation.updatedAt = timestamp;

@@ -45,6 +45,44 @@ function temporaryDirectory() {
 }
 
 describe("Platform Kernel", () => {
+  it("treats manual confirmation as evidence state instead of a Goal specification change", () => {
+    const value = createHarness(temporaryDirectory());
+    const run = value.kernel.ensureRun({
+      conversationId: "conversation",
+      goalId: "goal",
+      goalRevision: 1,
+      objective: "manual verification",
+      criteria: [
+        { id: "tests", text: "tests pass", verificationKind: "test" },
+        { id: "visual", text: "looks correct", verificationKind: "manual", manualSatisfied: false }
+      ],
+      mode: "coding"
+    }).run;
+    const artifact = value.kernel.recordArtifact(run.id, {
+      kind: "tool-receipt",
+      receiptIds: ["tests-pass"],
+      digest: "tests-pass"
+    }).artifact;
+    assert.equal(value.kernel.bindEvidence(run.id, {
+      criterionId: "tests",
+      artifactId: artifact.id
+    }).ok, true);
+
+    const reused = value.kernel.ensureRun({
+      conversationId: "conversation",
+      goalId: "goal",
+      goalRevision: 1,
+      objective: "manual verification",
+      criteria: [
+        { id: "tests", text: "tests pass", verificationKind: "test" },
+        { id: "visual", text: "looks correct", verificationKind: "manual", manualSatisfied: true }
+      ],
+      mode: "coding"
+    }).run;
+
+    assert.equal(reused.id, run.id);
+    assert.equal(reused.evidence.filter((item) => item.status === "valid").length, 1);
+  });
   it("enforces task dependencies and promotes ready tasks", () => {
     const directory = temporaryDirectory();
     const { kernel } = createHarness(directory);

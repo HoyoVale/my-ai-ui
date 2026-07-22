@@ -981,7 +981,7 @@ async function main() {
     const manualCriterionButton =
       goalPanel
         .locator(
-          ".conversation-goal-criterion-actions button"
+          '[data-testid="conversation-goal-manual-toggle"]'
         )
         .filter({
           hasText: "确认完成"
@@ -1001,7 +1001,7 @@ async function main() {
             ".conversation-goal-panel__footer"
           );
           const manualButton = panel.querySelector(
-            ".conversation-goal-criterion-actions button"
+            '[data-testid="conversation-goal-manual-toggle"]'
           );
           const buttonRect =
             manualButton
@@ -1042,12 +1042,12 @@ async function main() {
       );
 
     assert.ok(
-      goalLayout.buttonWidth >= 44,
-      "Goal 人工确认按钮不应被状态圆点样式压成竖排"
+      goalLayout.buttonWidth >= 56,
+      `Goal 人工确认按钮不应被状态圆点样式压成竖排：${JSON.stringify(goalLayout)}`
     );
     assert.ok(
-      goalLayout.buttonHeight < 32,
-      "Goal 人工确认按钮应保持单行高度"
+      goalLayout.buttonHeight <= 30,
+      `Goal 人工确认按钮应保持单行高度：${JSON.stringify(goalLayout)}`
     );
     assert.equal(
       goalLayout.buttonWhiteSpace,

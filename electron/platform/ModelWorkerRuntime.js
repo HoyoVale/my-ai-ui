@@ -15,7 +15,12 @@ import {
 
 import {
   createAgentToolSession
-} from "../tools/index.js";
+} from "../tools/createAgentToolSession.js";
+
+import {
+  WORKER_RUNTIME_DEFAULTS,
+  WORKER_RUNTIME_LIMITS
+} from "../../src/shared/runtimeDefaults.js";
 
 const ROLE_INSTRUCTIONS = Object.freeze({
   planner: "只分析目标并给出可执行的任务分解，不修改文件。",
@@ -63,7 +68,7 @@ export class ModelWorkerRuntime {
   constructor({
     getSettings,
     getResultDirectory,
-    maxSteps = 8
+    maxSteps = WORKER_RUNTIME_DEFAULTS.maxStepsPerAgent
   } = {}) {
     if (typeof getSettings !== "function") {
       throw new TypeError("ModelWorkerRuntime requires getSettings().");
@@ -72,7 +77,13 @@ export class ModelWorkerRuntime {
     this.getResultDirectory = typeof getResultDirectory === "function"
       ? getResultDirectory
       : () => "";
-    this.maxSteps = Math.max(1, Math.min(24, Number(maxSteps) || 8));
+    this.maxSteps = Math.max(
+      WORKER_RUNTIME_LIMITS.maxStepsPerAgent.min,
+      Math.min(
+        WORKER_RUNTIME_LIMITS.maxStepsPerAgent.max,
+        Number(maxSteps) || WORKER_RUNTIME_DEFAULTS.maxStepsPerAgent
+      )
+    );
   }
 
   resolveModel() {
@@ -84,7 +95,8 @@ export class ModelWorkerRuntime {
     task,
     agentRun,
     worktree,
-    signal
+    signal,
+    onUsage = null
   } = {}) {
     const settings = workerSettings(this.getSettings(), worktree.path);
     const modelSettings = resolveWorkerModelSettings(settings.model);
@@ -100,6 +112,24 @@ export class ModelWorkerRuntime {
       segmentId: `worker-${agentRun.attempt}`,
       resultStoreDirectory: this.getResultDirectory(run.id, agentRun.id)
     });
+
+    let reportedTokens = 0;
+    let reportedSteps = 0;
+    const reportUsage = (usage = {}, steps = 0) => {
+      const inputTokens = Math.max(0, Number(usage?.inputTokens) || 0);
+      const outputTokens = Math.max(0, Number(usage?.outputTokens) || 0);
+      const totalTokens = Math.max(
+        0,
+        Number(usage?.totalTokens) || inputTokens + outputTokens
+      );
+      const normalizedSteps = Math.max(0, Number(steps) || 0);
+      reportedTokens += totalTokens;
+      reportedSteps += normalizedSteps;
+      onUsage?.({
+        tokens: totalTokens,
+        steps: normalizedSteps
+      });
+    };
 
     try {
       const result = await generateText({
@@ -122,9 +152,21 @@ export class ModelWorkerRuntime {
         maxOutputTokens: modelSettings.maxOutputTokens,
         temperature: modelSettings.temperature,
         maxRetries: modelSettings.maxRetries,
-        timeout: { totalMs: modelSettings.timeoutMs }
+        timeout: { totalMs: modelSettings.timeoutMs },
+        onStepFinish: (step) => {
+          reportUsage(step?.usage, 1);
+        }
       });
       const records = toolSession.getRecords();
+      const inputTokens = Number(result.usage?.inputTokens) || 0;
+      const outputTokens = Number(result.usage?.outputTokens) || 0;
+      const totalTokens = Number(result.usage?.totalTokens) ||
+        inputTokens + outputTokens;
+      const totalSteps = Array.isArray(result.steps) ? result.steps.length : 0;
+      reportUsage(
+        { totalTokens: Math.max(0, totalTokens - reportedTokens) },
+        Math.max(0, totalSteps - reportedSteps)
+      );
       return {
         ok: true,
         status: "completed",
@@ -133,12 +175,11 @@ export class ModelWorkerRuntime {
         unresolved: [],
         finishReason: result.finishReason,
         usage: {
-          inputTokens: Number(result.usage?.inputTokens) || 0,
-          outputTokens: Number(result.usage?.outputTokens) || 0,
-          totalTokens: Number(result.usage?.totalTokens) ||
-            (Number(result.usage?.inputTokens) || 0) +
-            (Number(result.usage?.outputTokens) || 0),
-          steps: Array.isArray(result.steps) ? result.steps.length : 0
+          inputTokens,
+          outputTokens,
+          totalTokens,
+          steps: totalSteps,
+          reported: typeof onUsage === "function"
         },
         records,
         model: {

@@ -3,6 +3,10 @@ import {
 } from "zod";
 
 import {
+  WORKER_RUNTIME_DEFAULTS
+} from "../../src/shared/runtimeDefaults.js";
+
+import {
   getSettings
 } from "../settings/settingsStore.js";
 
@@ -69,9 +73,12 @@ export function createDelegationToolDefinition({
         payload: { taskIds: requestedIds },
         maxAttempts: 3,
         budget: {
-          tokenLimit: assignments.tokenBudget ?? 400000,
-          stepLimit: assignments.stepBudget ?? Math.max(16, requestedIds.length * 10),
-          timeLimitMs: (assignments.timeBudgetMinutes ?? 30) * 60 * 1000
+          tokenLimit: assignments.tokenBudget ?? WORKER_RUNTIME_DEFAULTS.tokenBudget,
+          stepLimit: assignments.stepBudget ?? WORKER_RUNTIME_DEFAULTS.stepBudget,
+          timeLimitMs: (
+            assignments.timeBudgetMinutes ??
+            WORKER_RUNTIME_DEFAULTS.timeBudgetMinutes
+          ) * 60 * 1000
         }
       });
       if (!queued.ok) return queued;

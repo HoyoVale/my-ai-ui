@@ -155,4 +155,112 @@ describe("Multi-Agent Supervisor", () => {
     assert.equal(calls, 2);
     assert.equal(kernel.getRun(run.id).tasks.retry.attemptCount, 2);
   });
+
+  it("reports Worker usage at each completed task instead of after the whole workflow", async () => {
+    const root = repository();
+    const platformDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "xixi-usage-platform-")
+    );
+    const worktreeDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "xixi-usage-worktrees-")
+    );
+    const kernel = new PlatformKernel({
+      getStorageDirectory: () => platformDirectory
+    });
+    const run = kernel.ensureRun({
+      conversationId: "conversation",
+      goalId: "goal",
+      objective: "meter workers",
+      workspaceId: "workspace",
+      mode: "coding"
+    }).run;
+    const supervisor = new MultiAgentSupervisor({
+      platformKernel: kernel,
+      worktreeRuntime: new WorktreeRuntime({
+        getStorageDirectory: () => worktreeDirectory,
+        platformKernel: kernel
+      }),
+      workerRuntime: {
+        resolveModel: () => ({ providerId: "p", modelConfigId: "m" }),
+        async execute({ task }) {
+          return {
+            ok: true,
+            summary: task.id,
+            usage: { totalTokens: 7, steps: 2 }
+          };
+        }
+      },
+      getWorkspaceRoot: () => root
+    });
+    supervisor.addTasks(run.id, [
+      { id: "one", title: "One", role: "tester" },
+      { id: "two", title: "Two", role: "tester" }
+    ]);
+    const usage = [];
+    const result = await supervisor.run(run.id, {
+      onUsage: (entry) => usage.push(entry)
+    });
+
+    assert.equal(result.completed, true);
+    assert.deepEqual(usage, [
+      { tokens: 7, steps: 2 },
+      { tokens: 7, steps: 2 }
+    ]);
+  });
+
+  it("stops before a dependent Worker when incremental usage exhausts the budget", async () => {
+    const root = repository();
+    const platformDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "xixi-budget-platform-")
+    );
+    const worktreeDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "xixi-budget-worktrees-")
+    );
+    const kernel = new PlatformKernel({
+      getStorageDirectory: () => platformDirectory
+    });
+    const run = kernel.ensureRun({
+      conversationId: "conversation",
+      goalId: "goal",
+      objective: "stop on budget",
+      workspaceId: "workspace",
+      mode: "coding"
+    }).run;
+    const calls = [];
+    const supervisor = new MultiAgentSupervisor({
+      platformKernel: kernel,
+      worktreeRuntime: new WorktreeRuntime({
+        getStorageDirectory: () => worktreeDirectory,
+        platformKernel: kernel
+      }),
+      workerRuntime: {
+        resolveModel: () => ({ providerId: "p", modelConfigId: "m" }),
+        async execute({ task }) {
+          calls.push(task.id);
+          return {
+            ok: true,
+            summary: task.id,
+            usage: { totalTokens: 10, steps: 1 }
+          };
+        }
+      },
+      getWorkspaceRoot: () => root,
+      maxConcurrency: 1
+    });
+    supervisor.addTasks(run.id, [
+      { id: "first", title: "First", role: "tester" },
+      { id: "second", title: "Second", role: "tester", dependencies: ["first"] }
+    ]);
+    const controller = new AbortController();
+
+    const result = await supervisor.run(run.id, {
+      signal: controller.signal,
+      onUsage: () => controller.abort("budget-exceeded:tokens")
+    });
+
+    assert.equal(result.completed, false);
+    assert.deepEqual(calls, ["first"]);
+    assert.equal(kernel.getRun(run.id).tasks.first.status, "completed");
+    assert.equal(kernel.getRun(run.id).tasks.second.status, "ready");
+  });
 });

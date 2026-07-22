@@ -2377,8 +2377,10 @@
 .conversation-goal-criterion-actions {
   min-width: max-content;
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   align-items: flex-end;
+  justify-self: end;
   justify-items: end;
   gap: 5px;
 }
@@ -2395,6 +2397,15 @@
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.conversation-goal-criterion-actions button {
+  min-width: 60px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 
 .conversation-goal-criteria-list select {

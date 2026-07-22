@@ -217,6 +217,7 @@ export function ConversationGoalPanel({
                   {criterion.verificationKind === "manual" && goal.status !== "completed" && (
                     <button
                       type="button"
+                      data-testid="conversation-goal-manual-toggle"
                       disabled={busy}
                       onClick={() => toggleManual(criterion)}
                     >

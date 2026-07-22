@@ -51,9 +51,11 @@ describe("Goal UI contract", () => {
     const styles = read("../../src/Conversation/Conversation.css");
 
     assert.match(panel, /conversation-goal-criterion-status/u);
+    assert.match(panel, /conversation-goal-manual-toggle/u);
     assert.match(panel, /conversation-goal-actions conversation-goal-panel__footer/u);
     assert.match(styles, /\.conversation-goal-criterion-actions\s*\{[\s\S]*?min-width:\s*max-content/u);
     assert.match(styles, /\.conversation-goal-criteria-list button,[\s\S]*?white-space:\s*nowrap/u);
+    assert.match(styles, /\.conversation-goal-criterion-actions button\s*\{[\s\S]*?min-width:\s*60px/u);
     assert.match(styles, /\.conversation-goal-panel__footer\s*\{[\s\S]*?border-top:/u);
     assert.doesNotMatch(styles, /\.conversation-goal-criteria-list\s*>\s*div\s*>\s*span\s*\{/u);
   });

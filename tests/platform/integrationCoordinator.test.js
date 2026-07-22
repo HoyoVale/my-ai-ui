@@ -33,7 +33,8 @@ function repository() {
 function harness({
   reviewApproved = true,
   conflict = false,
-  changeDuringReview = false
+  changeDuringReview = false,
+  onReviewExecute = null
 } = {}) {
   const root = repository();
   const platformDirectory = fs.mkdtempSync(
@@ -78,7 +79,8 @@ function harness({
   });
   const reviewerRuntime = {
     resolveModel: () => ({ providerId: "reviewer", modelConfigId: "review-model" }),
-    async execute() {
+    async execute(input) {
+      onReviewExecute?.(input);
       if (changeDuringReview) {
         fs.writeFileSync(path.join(root, "concurrent.txt"), "user change\n");
       }
@@ -149,6 +151,36 @@ describe("Integration Coordinator", () => {
     });
     assert.equal(completion.ok, true);
     assert.equal(completion.permit.payload.integrationHash, result.integration.digest);
+  });
+
+  it("forwards cancellation and usage accounting through independent review", async () => {
+    let reviewInput = null;
+    const value = harness({
+      onReviewExecute: (input) => {
+        reviewInput = input;
+      }
+    });
+    value.supervisor.addTasks(value.platformRunId, [
+      { id: "alpha", title: "Alpha", role: "implementer" }
+    ]);
+    await value.supervisor.run(value.platformRunId, {
+      taskIds: ["alpha"]
+    });
+    const controller = new AbortController();
+    const usage = [];
+
+    const result = await value.coordinator.integrateAndReview(
+      value.platformRunId,
+      {
+        signal: controller.signal,
+        onUsage: (entry) => usage.push(entry)
+      }
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(reviewInput.signal, controller.signal);
+    assert.equal(typeof reviewInput.onUsage, "function");
+    assert.deepEqual(usage, [{ tokens: 0, steps: 1 }]);
   });
 
   it("stops on a Git conflict without changing the user's worktree", async () => {

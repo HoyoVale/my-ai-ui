@@ -4,6 +4,11 @@ import {
 } from "react";
 
 import {
+  WORKER_RUNTIME_DEFAULTS,
+  WORKER_RUNTIME_LIMITS
+} from "../../shared/runtimeDefaults.js";
+
+import {
   ActionButton,
   Select,
   SettingRow,
@@ -280,9 +285,9 @@ function RuntimeAssignments({
       </SettingRow>
       <SettingRow title="Worker 并发数">
         <Slider
-          value={modelSettings.runtimeAssignments?.maxConcurrency ?? 2}
-          min={1}
-          max={4}
+          value={modelSettings.runtimeAssignments?.maxConcurrency ?? WORKER_RUNTIME_DEFAULTS.maxConcurrency}
+          min={WORKER_RUNTIME_LIMITS.maxConcurrency.min}
+          max={WORKER_RUNTIME_LIMITS.maxConcurrency.max}
           step={1}
           unit=" 个"
           onChange={(maxConcurrency) => onUpdate({
@@ -293,12 +298,12 @@ function RuntimeAssignments({
           })}
         />
       </SettingRow>
-      <SettingRow title="单次任务 Token 预算">
+      <SettingRow title="一次多 Agent 运行 Token 预算">
         <Slider
-          value={modelSettings.runtimeAssignments?.tokenBudget ?? 400000}
-          min={10000}
-          max={2000000}
-          step={10000}
+          value={modelSettings.runtimeAssignments?.tokenBudget ?? WORKER_RUNTIME_DEFAULTS.tokenBudget}
+          min={WORKER_RUNTIME_LIMITS.tokenBudget.min}
+          max={WORKER_RUNTIME_LIMITS.tokenBudget.max}
+          step={WORKER_RUNTIME_LIMITS.tokenBudget.step}
           unit=" tokens"
           onChange={(tokenBudget) => onUpdate({
             runtimeAssignments: {
@@ -308,12 +313,12 @@ function RuntimeAssignments({
           })}
         />
       </SettingRow>
-      <SettingRow title="单次任务步骤预算">
+      <SettingRow title="一次多 Agent 运行步骤预算">
         <Slider
-          value={modelSettings.runtimeAssignments?.stepBudget ?? 40}
-          min={4}
-          max={200}
-          step={4}
+          value={modelSettings.runtimeAssignments?.stepBudget ?? WORKER_RUNTIME_DEFAULTS.stepBudget}
+          min={WORKER_RUNTIME_LIMITS.stepBudget.min}
+          max={WORKER_RUNTIME_LIMITS.stepBudget.max}
+          step={WORKER_RUNTIME_LIMITS.stepBudget.step}
           unit=" 步"
           onChange={(stepBudget) => onUpdate({
             runtimeAssignments: {
@@ -323,12 +328,12 @@ function RuntimeAssignments({
           })}
         />
       </SettingRow>
-      <SettingRow title="单次任务时间预算">
+      <SettingRow title="一次多 Agent 运行时间预算">
         <Slider
-          value={modelSettings.runtimeAssignments?.timeBudgetMinutes ?? 30}
-          min={1}
-          max={240}
-          step={1}
+          value={modelSettings.runtimeAssignments?.timeBudgetMinutes ?? WORKER_RUNTIME_DEFAULTS.timeBudgetMinutes}
+          min={WORKER_RUNTIME_LIMITS.timeBudgetMinutes.min}
+          max={WORKER_RUNTIME_LIMITS.timeBudgetMinutes.max}
+          step={WORKER_RUNTIME_LIMITS.timeBudgetMinutes.step}
           unit=" 分钟"
           onChange={(timeBudgetMinutes) => onUpdate({
             runtimeAssignments: {

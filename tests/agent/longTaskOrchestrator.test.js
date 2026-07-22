@@ -302,6 +302,37 @@ describe("LongTaskOrchestrator", () => {
     assert.equal(outcome.snapshot.goal.status, "needs_input");
   });
 
+  it("stops immediately when only a manual Goal confirmation remains", () => {
+    const orchestrator = new LongTaskOrchestrator({
+      goal: {
+        criteria: [{
+          id: "visual",
+          text: "用户确认视觉效果正确",
+          verificationKind: "manual",
+          manualSatisfied: false
+        }]
+      },
+      goalId: "goal",
+      taskId: "task",
+      runId: "run",
+      objective: "等待用户验收"
+    });
+    orchestrator.beginSegment({
+      plan: [{ id: "work", status: "completed" }]
+    });
+
+    const result = orchestrator.completeSegment({
+      stopReason: RUN_STOP_REASONS.COMPLETED,
+      plan: [{ id: "work", status: "completed" }],
+      completionContext: { mode: "chat" }
+    });
+
+    assert.equal(result.decision, "stop");
+    assert.equal(result.stopReason, RUN_STOP_REASONS.NEEDS_INPUT);
+    assert.equal(result.snapshot.task.status, "needs_input");
+    assert.equal(result.noProgressSegments, 1);
+  });
+
   it("keeps an absolute total segment bound", () => {
     const orchestrator = new LongTaskOrchestrator({
       taskId: "task",
