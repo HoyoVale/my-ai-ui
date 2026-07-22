@@ -140,6 +140,20 @@ export function ConversationIcon({
       </>
     ),
 
+    terminal: (
+      <>
+        <rect x="3.5" y="5" width="17" height="14" rx="2.2" />
+        <path d="m7 9 3 3-3 3M12.5 15h4" />
+      </>
+    ),
+
+    file: (
+      <>
+        <path d="M6 3.5h8l4 4V20H6Z" />
+        <path d="M14 3.5V8h4M9 12h6M9 15h6" />
+      </>
+    ),
+
     activity: (
       <>
         <path d="M5 7.5h14M5 12h14M5 16.5h9" />

@@ -17,15 +17,19 @@ import {
 } from "./DeveloperActivityPanel.jsx";
 
 import {
-  panelTimelineEvents
+  panelTimelineEvents,
+  planStatusMark
 } from "./taskPanelModel.js";
+
+import {
+  createUserTaskViewModel
+} from "./userTaskViewModel.js";
 
 import {
   createActivitySnapshot,
   createTaskSnapshot,
   formatTaskDuration,
-  groupToolActivityEvents,
-  stopReasonLabel
+  groupToolActivityEvents
 } from "../utils/taskActivity.js";
 
 export function ConversationTaskPanel({
@@ -46,6 +50,10 @@ export function ConversationTaskPanel({
       }),
     [conversation, liveActivity, targetMessageId]
   );
+
+  const taskView = createUserTaskViewModel(snapshot, {
+    live: snapshot.running
+  });
 
   const [selectedToolId, setSelectedToolId] = useState(null);
   const [developerDetails, setDeveloperDetails] = useState(null);
@@ -128,7 +136,7 @@ export function ConversationTaskPanel({
     >
       <header className="conversation-activity-panel__header">
         <div>
-          <strong>活动</strong>
+          <strong>任务详情</strong>
           {snapshot.durationMs > 0 && (
             <span>· {formatTaskDuration(snapshot.durationMs)}</span>
           )}
@@ -147,7 +155,7 @@ export function ConversationTaskPanel({
 
       <div className="conversation-task-panel__scroll conversation-activity-panel__scroll">
         <section className="conversation-activity-section">
-          <h2>思考</h2>
+          <h2>进度</h2>
 
           <div className="conversation-activity-timeline">
             {events.map((event) => (
@@ -171,18 +179,8 @@ export function ConversationTaskPanel({
                 />
               </span>
               <div>
-                <strong>
-                  {snapshot.running
-                    ? "正在思考"
-                    : snapshot.interrupted
-                      ? "上次执行被中断"
-                      : snapshot.durationMs > 0
-                        ? `思考了 ${formatTaskDuration(snapshot.durationMs)}`
-                        : stopReasonLabel(snapshot.stopReason)}
-                </strong>
-                {snapshot.failed && (
-                  <small>{stopReasonLabel(snapshot.stopReason)}</small>
-                )}
+                <strong>{taskView.label}</strong>
+                {taskView.detail && <small>{taskView.detail}</small>}
               </div>
             </div>
           </div>

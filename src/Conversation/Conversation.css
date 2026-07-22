@@ -8,5 +8,6 @@
 @import "./styles/approval.css";
 @import "./styles/responsive.css";
 @import "./styles/diff-command.css";
+@import "./styles/tool-cards.css";
 
 /* Conversation styles are split by UI responsibility. Keep import order stable. */

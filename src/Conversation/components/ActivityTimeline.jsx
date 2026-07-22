@@ -7,22 +7,16 @@ import {
 } from "./MarkdownContent.jsx";
 
 import {
-  FileDiffPreview
-} from "./FileDiff.jsx";
+  ToolActivityCard
+} from "./ToolActivityCard.jsx";
 
 import {
-  ToolCommandPreview
-} from "./CommandOutput.jsx";
-
-import {
-  hasCommandPreview
-} from "./commandOutputModel.js";
+  createUserTaskViewModel
+} from "./userTaskViewModel.js";
 
 import {
   createActivitySnapshot,
   describeToolBatch,
-  formatTaskDuration,
-  getToolTitle,
   groupToolActivityEvents,
   isActivityEventVisible,
   stopReasonLabel
@@ -34,10 +28,7 @@ function visibleTimelineEvents(snapshot, developerMode = false) {
       return false;
     }
 
-    if ([
-      "batch",
-      "plan"
-    ].includes(event.type)) {
+    if (["batch", "plan"].includes(event.type)) {
       return false;
     }
 
@@ -50,14 +41,22 @@ function visibleTimelineEvents(snapshot, developerMode = false) {
   });
 }
 
-function timelineTitle(snapshot, live, stopping) {
-  if (live) {
-    return stopping ? "正在停止…" : "思考中";
-  }
+function TaskStateMark({ state }) {
+  const icon = state === "failed"
+    ? "warning"
+    : state === "cancelled"
+      ? "minus"
+      : state === "completed"
+        ? "check"
+        : null;
 
-  return snapshot.durationMs > 0
-    ? `思考了 ${formatTaskDuration(snapshot.durationMs)}`
-    : "思考过程";
+  return (
+    <span className={`conversation-task-state-mark is-${state}`}>
+      {icon
+        ? <ConversationIcon name={icon} size={12} />
+        : <span />}
+    </span>
+  );
 }
 
 function ThinkingTimeline({
@@ -71,12 +70,12 @@ function ThinkingTimeline({
   const events = groupToolActivityEvents(
     visibleTimelineEvents(snapshot, developerMode)
   );
+  const view = createUserTaskViewModel(snapshot, {
+    live,
+    stopping
+  });
 
-  if (
-    !live &&
-    events.length === 0 &&
-    !String(liveText).trim()
-  ) {
+  if (!live && events.length === 0 && !String(liveText).trim()) {
     return null;
   }
 
@@ -94,19 +93,23 @@ function ThinkingTimeline({
       data-testid="conversation-thinking-timeline"
       data-message-id={snapshot.messageId}
       data-run-id={snapshot.runId}
+      data-task-state={view.state}
     >
       <summary>
-        <span>{timelineTitle(snapshot, live, stopping)}</span>
+        <TaskStateMark state={view.state} />
+        <span className="conversation-thinking-timeline__summary-copy">
+          <strong>{view.label}</strong>
+          {view.detail && <small>{view.detail}</small>}
+        </span>
         <ConversationIcon name="chevron" size={13} />
       </summary>
 
       <div className="conversation-thinking-timeline__content">
-        {events.length === 0 &&
-        !String(liveText).trim() ? (
+        {events.length === 0 && !String(liveText).trim() ? (
           <div className="conversation-thinking-timeline__pending">
             <span />
             <strong>
-              {stopping ? "正在保存当前执行记录" : "正在准备下一步"}
+              {stopping ? "正在保存当前进度" : "正在准备下一步"}
             </strong>
           </div>
         ) : (
@@ -116,6 +119,7 @@ function ThinkingTimeline({
                 event={event}
                 key={event.id}
                 onOpenTaskPanel={onOpenTaskPanel}
+                developerMode={developerMode}
               />
             ))}
             {String(liveText).trim() && (
@@ -123,20 +127,32 @@ function ThinkingTimeline({
                 className="conversation-thinking-event conversation-thinking-event--commentary is-streaming"
                 data-testid="conversation-live-step-text"
               >
-                <MarkdownContent
-                  content={liveText}
-                  compact
-                />
+                <MarkdownContent content={liveText} compact />
               </div>
             )}
           </>
+        )}
+
+        {developerMode && onOpenTaskPanel && (
+          <button
+            type="button"
+            className="conversation-thinking-timeline__panel-link"
+            onClick={onOpenTaskPanel}
+          >
+            查看开发者详情
+            <ConversationIcon name="chevronRight" size={12} />
+          </button>
         )}
       </div>
     </details>
   );
 }
 
-function TimelineEvent({ event, onOpenTaskPanel }) {
+function TimelineEvent({
+  event,
+  onOpenTaskPanel,
+  developerMode = false
+}) {
   if (event.type === "commentary") {
     return (
       <div
@@ -153,26 +169,32 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
     const detail = skill.missingRequired?.length
       ? `缺少 ${skill.missingRequired.length} 项能力`
       : skill.selectedToolNames?.length
-        ? `映射 ${skill.selectedToolNames.length} 个工具`
+        ? `使用 ${skill.selectedToolNames.length} 个工具`
         : `v${skill.version || ""}`;
+
     return (
       <button
         type="button"
         className={`conversation-thinking-event conversation-thinking-event--skill is-${event.status ?? "running"}`}
-        onClick={onOpenTaskPanel}
+        onClick={developerMode ? onOpenTaskPanel : undefined}
       >
         <ConversationIcon name="activity" size={16} />
-        <strong>{event.title || `Skill · ${skill.name ?? skill.id}`}</strong>
-        <small>{detail}</small>
+        <span>
+          <strong>{event.title || `Skill · ${skill.name ?? skill.id}`}</strong>
+          <small>{detail}</small>
+        </span>
       </button>
     );
   }
 
   if (event.type === "tool_batch") {
+    const expanded = ["running", "queued", "error", "attention"].includes(event.status);
+
     return (
       <details
         className={`conversation-thinking-tool-batch is-${event.status}`}
         data-batch-id={event.batchId || undefined}
+        open={expanded || undefined}
       >
         <summary>
           <ConversationIcon name="tool" size={16} />
@@ -185,6 +207,7 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
               event={toolEvent}
               key={toolEvent.id}
               onOpenTaskPanel={onOpenTaskPanel}
+              developerMode={developerMode}
             />
           ))}
         </div>
@@ -193,52 +216,12 @@ function TimelineEvent({ event, onOpenTaskPanel }) {
   }
 
   if (event.type === "tool") {
-    const tool = event.tool;
-    const changePreview = tool?.result?.changePreview;
-    const hasInlineDetails = Boolean(changePreview?.diff) || hasCommandPreview(tool);
-
-    if (hasInlineDetails) {
-      return (
-        <details
-          className={`conversation-thinking-tool is-${tool?.status ?? event.status}`}
-          data-batch-id={event.batchId || tool?.batchId || undefined}
-          data-testid="conversation-thinking-tool"
-        >
-          <summary>
-            <ConversationIcon name="tool" size={16} />
-            <strong>{getToolTitle(tool)}</strong>
-            <ConversationIcon name="chevron" size={13} />
-          </summary>
-          <div className="conversation-thinking-tool__body">
-            <ToolCommandPreview tool={tool} compact defaultOpen />
-            <FileDiffPreview
-              change={changePreview?.diff ? {
-                id: tool.id,
-                paths: changePreview.paths?.length
-                  ? changePreview.paths
-                  : changePreview.path ? [changePreview.path] : [],
-                diff: changePreview.diff,
-                truncated: changePreview.truncated
-              } : null}
-              compact
-              defaultOpen
-            />
-            <button type="button" onClick={onOpenTaskPanel}>查看工具详情</button>
-          </div>
-        </details>
-      );
-    }
-
     return (
-      <button
-        type="button"
-        className={`conversation-thinking-event conversation-thinking-event--tool is-${tool?.status ?? event.status}`}
-        data-batch-id={event.batchId || tool?.batchId || undefined}
-        onClick={onOpenTaskPanel}
-      >
-        <ConversationIcon name="tool" size={16} />
-        <strong>{getToolTitle(tool)}</strong>
-      </button>
+      <ToolActivityCard
+        tool={event.tool}
+        compact
+        developerMode={developerMode}
+      />
     );
   }
 
@@ -268,21 +251,13 @@ export function LiveAgentActivity({
   developerMode,
   onOpenTaskPanel
 }) {
-  const snapshot =
-    createActivitySnapshot(
-      activity,
-      {
-        live: true
-      }
-    );
-  const finalCandidateText =
-    activity.liveStepRole === "final_candidate"
-      ? String(activity.liveStepText ?? "")
-      : "";
-  const displayedFinalText =
-    String(activity.finalText ?? "").trim()
-      ? String(activity.finalText ?? "")
-      : finalCandidateText;
+  const snapshot = createActivitySnapshot(activity, { live: true });
+  const finalCandidateText = activity.liveStepRole === "final_candidate"
+    ? String(activity.liveStepText ?? "")
+    : "";
+  const displayedFinalText = String(activity.finalText ?? "").trim()
+    ? String(activity.finalText ?? "")
+    : finalCandidateText;
 
   return (
     <article
@@ -300,25 +275,16 @@ export function LiveAgentActivity({
                 ? ""
                 : activity.liveStepText ?? ""
             }
-            stopping={
-              ["stopping", "cancelling"].includes(
-                activity.state
-              )
-            }
-            onOpenTaskPanel={
-              onOpenTaskPanel
-            }
+            stopping={["stopping", "cancelling"].includes(activity.state)}
+            onOpenTaskPanel={onOpenTaskPanel}
             developerMode={developerMode}
           />
 
           {String(displayedFinalText).trim() && (
             <div className="conversation-message__body conversation-message__body--live">
-              <MarkdownContent
-                content={displayedFinalText}
-              />
+              <MarkdownContent content={displayedFinalText} />
             </div>
           )}
-
         </div>
       </div>
     </article>
@@ -330,13 +296,9 @@ export function AssistantActivity({
   developerMode,
   onOpenTaskPanel
 }) {
-  const snapshot =
-    createActivitySnapshot(
-      message
-    );
-  if (
-    visibleTimelineEvents(snapshot, developerMode).length === 0
-  ) {
+  const snapshot = createActivitySnapshot(message);
+
+  if (visibleTimelineEvents(snapshot, developerMode).length === 0) {
     return null;
   }
 
@@ -348,11 +310,8 @@ export function AssistantActivity({
       <ThinkingTimeline
         snapshot={snapshot}
         developerMode={developerMode}
-        onOpenTaskPanel={
-          onOpenTaskPanel
-        }
+        onOpenTaskPanel={onOpenTaskPanel}
       />
     </div>
   );
 }
-

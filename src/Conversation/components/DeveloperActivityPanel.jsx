@@ -231,7 +231,7 @@ function ToolDetails({ toolCall }) {
             {toolCall.result.summary}
           </p>
         )}
-        <ToolCommandPreview tool={toolCall} defaultOpen />
+        <ToolCommandPreview tool={toolCall} defaultOpen showMetadata />
         {toolCall.result?.changePreview && (
           <FileDiffPreview
             change={{

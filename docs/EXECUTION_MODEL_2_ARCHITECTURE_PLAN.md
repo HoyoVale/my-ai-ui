@@ -1061,3 +1061,34 @@ Authority remains unchanged:
 - ordinary Conversation routing remains in Shadow Mode.
 
 The next step is Phase F: UI and interaction. The normal UI should show the current task and resumability without exposing internal terminology, while developer diagnostics may display Thread/Run lineage and Platform child Threads.
+
+---
+
+## Implementation status update — Phase F (107)
+
+Phase F has been implemented as **Minimal User UI & Developer Diagnostics**.
+
+Implemented:
+
+- a bounded `UserTaskViewModel` for natural-language task state;
+- one shared `ToolActivityCard` for the message timeline and task details panel;
+- Codex-style command cards with expandable terminal output;
+- compact file-change cards with line totals and expandable unified diffs;
+- bounded generic tool replies in the ordinary timeline;
+- a single collapsed final `文件改动` card;
+- automatic expansion for running, failed, and attention-required tool work;
+- dedicated `tool-cards.css` presentation layer;
+- developer-only command metadata and raw runtime diagnostics.
+
+Intentionally not exposed in normal mode:
+
+- Thread and Run identities;
+- Run lineage and Execution Items;
+- Routing Decisions and Shadow mismatch;
+- Provider Continuation;
+- Supervisor, Worker, Reviewer, and Integration Threads;
+- Task Graph revision, Lease, Journal, Receipt, and Completion Permit internals.
+
+Runtime authority remains unchanged. Phase F only changes projection and presentation. Legacy routing still executes in Shadow Mode, Steering remains inactive, Conversation Store remains v23, and Platform snapshot remains v6.
+
+The next planned phase is Phase G: Shadow Rollout and authority cutover. It should use collected routing decisions and mismatch evidence before enabling the new Router, rather than adding more ordinary-user UI controls.

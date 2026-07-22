@@ -18,10 +18,21 @@ export function readConversationShellSource() {
   ]);
 }
 
+export function readConversationMessageChromeSource() {
+  return join([
+    "components/MessageList.jsx",
+    "components/ActivityTimeline.jsx",
+    "components/MessagePrimitives.jsx"
+  ]);
+}
+
 export function readConversationMessageSource() {
   return join([
     "components/MessageList.jsx",
     "components/ActivityTimeline.jsx",
+    "components/ToolActivityCard.jsx",
+    "components/toolActivityModel.js",
+    "components/userTaskViewModel.js",
     "components/MessagePrimitives.jsx"
   ]);
 }
@@ -30,6 +41,9 @@ export function readConversationTaskPanelSource() {
   return join([
     "components/TaskPanel.jsx",
     "components/TaskActivityTimeline.jsx",
+    "components/ToolActivityCard.jsx",
+    "components/toolActivityModel.js",
+    "components/userTaskViewModel.js",
     "components/DeveloperActivityPanel.jsx",
     "components/taskPanelModel.js"
   ]);
@@ -47,6 +61,7 @@ export function readConversationStyles() {
     "styles/platform.css",
     "styles/approval.css",
     "styles/responsive.css",
-    "styles/diff-command.css"
+    "styles/diff-command.css",
+    "styles/tool-cards.css"
   ]);
 }

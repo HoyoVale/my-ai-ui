@@ -1,3 +1,7 @@
+import {
+  ConversationIcon
+} from "./Icon.jsx";
+
 function cleanDiffPath(value = "") {
   return String(value)
     .replace(/^(?:a|b)\//u, "")
@@ -183,7 +187,15 @@ function DiffFile({ file, index }) {
   );
 }
 
-export function FileDiffPreview({ change, defaultOpen = false, compact = false }) {
+export function FileDiffPreview({
+  change,
+  defaultOpen = false,
+  compact = false,
+  label = "",
+  description = "",
+  status = "complete",
+  statusLabel = ""
+}) {
   if (!change?.diff) return null;
   const paths = Array.isArray(change.paths) ? change.paths : [];
   const files = parseUnifiedDiff(change.diff, paths);
@@ -191,27 +203,39 @@ export function FileDiffPreview({ change, defaultOpen = false, compact = false }
   const title = files.length === 1
     ? files[0].path
     : `${files.length || paths.length || 1} 个文件`;
+  const heading = label || title;
+  const subtitle = description || (label ? title : "");
 
   return (
     <details
-      className={`conversation-file-diff${compact ? " is-compact" : ""}`}
+      className={`conversation-file-diff is-${status}${compact ? " is-compact" : ""}`}
       open={defaultOpen || undefined}
       data-testid="conversation-file-diff"
+      data-tool-kind="diff"
     >
       <summary>
-        <span className="conversation-file-diff__chevron" aria-hidden="true">›</span>
-        <strong title={title}>{title}</strong>
+        <span className="conversation-file-diff__icon">
+          <ConversationIcon name="file" size={16} />
+        </span>
+        <span className="conversation-file-diff__summary-copy">
+          <strong title={heading}>{heading}</strong>
+          {subtitle && <small title={subtitle}>{subtitle}</small>}
+        </span>
         <span className="conversation-file-diff__summary-stats">
           <b className="is-add">+{stats.added}</b>
           <b className="is-remove">−{stats.removed}</b>
         </span>
+        {statusLabel && (
+          <small className="conversation-file-diff__status-label">{statusLabel}</small>
+        )}
+        <ConversationIcon name="chevron" size={13} />
       </summary>
       <div className="conversation-file-diff__body">
         {files.map((file, index) => (
           <DiffFile key={`${file.path}:${index}`} file={file} index={index} />
         ))}
       </div>
-      {change.truncated && <small>Diff 预览已截断，完整结果仍保存在工具 Receipt 中。</small>}
+      {change.truncated && <small>Diff 预览已截断，当前仅显示部分内容。</small>}
     </details>
   );
 }
@@ -286,20 +310,24 @@ export function FinalDiffSummary({ summary }) {
   if (!files.length) return null;
   const totals = summary?.totals ?? {};
   return (
-    <section
+    <details
       className="conversation-final-diff"
       data-testid="conversation-final-diff"
     >
-      <header>
-        <div>
-          <strong>本次改动</strong>
-          <span>{files.length} 个文件</span>
-        </div>
-        <div className="conversation-final-diff__totals">
+      <summary>
+        <span className="conversation-final-diff__icon">
+          <ConversationIcon name="file" size={16} />
+        </span>
+        <span className="conversation-final-diff__copy">
+          <strong>文件改动</strong>
+          <small>{files.length} 个文件</small>
+        </span>
+        <span className="conversation-final-diff__totals">
           <b className="is-add">+{Number(totals.added) || 0}</b>
           <b className="is-remove">−{Number(totals.removed) || 0}</b>
-        </div>
-      </header>
+        </span>
+        <ConversationIcon name="chevron" size={13} />
+      </summary>
       <div className="conversation-final-diff__files">
         {files.map((file, index) => (
           <FinalDiffFile
@@ -316,6 +344,6 @@ export function FinalDiffSummary({ summary }) {
           {Number(totals.binaryFiles) > 0 ? `${totals.binaryFiles} 个二进制文件` : ""}
         </small>
       )}
-    </section>
+    </details>
   );
 }

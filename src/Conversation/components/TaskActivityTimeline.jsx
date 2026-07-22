@@ -7,17 +7,11 @@ import {
 } from "./MarkdownContent.jsx";
 
 import {
-  FileDiffPreview
-} from "./FileDiff.jsx";
-
-import {
-  ToolCommandPreview
-} from "./CommandOutput.jsx";
+  ToolActivityCard
+} from "./ToolActivityCard.jsx";
 
 import {
   describeToolBatch,
-  describeToolTarget,
-  getToolTitle,
   stopReasonLabel
 } from "../utils/taskActivity.js";
 
@@ -83,8 +77,6 @@ export function ActivityTimelineEvent({ event }) {
 
   if (event.type === "tool") {
     const tool = event.tool;
-    const target = describeToolTarget(tool);
-    const summary = tool?.result?.summary;
 
     return (
       <div
@@ -95,22 +87,7 @@ export function ActivityTimelineEvent({ event }) {
           <ConversationIcon name="tool" size={15} />
         </span>
         <div className="conversation-activity-timeline__copy">
-          <strong>{getToolTitle(tool)}</strong>
-          {(summary || target) && (
-            <small>{summary || target}</small>
-          )}
-          <ToolCommandPreview tool={tool} compact />
-          <FileDiffPreview
-            change={tool?.result?.changePreview ? {
-              id: tool.id,
-              paths: tool.result.changePreview.paths?.length
-                ? tool.result.changePreview.paths
-                : tool.result.changePreview.path ? [tool.result.changePreview.path] : [],
-              diff: tool.result.changePreview.diff,
-              truncated: tool.result.changePreview.truncated
-            } : null}
-            compact
-          />
+          <ToolActivityCard tool={tool} compact />
         </div>
       </div>
     );

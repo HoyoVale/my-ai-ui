@@ -22,7 +22,7 @@ describe("ChatGPT-inspired activity panel", () => {
     const source = readConversationTaskPanelSource();
 
     assert.match(source, /conversation-activity-timeline/u);
-    assert.match(source, />思考</u);
+    assert.match(source, />进度</u);
     assert.doesNotMatch(source, /conversation-task-tabs/u);
     assert.doesNotMatch(source, /conversation-task-overview/u);
   });

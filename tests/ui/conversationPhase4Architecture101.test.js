@@ -55,7 +55,8 @@ test("Phase 4 keeps Conversation CSS in an ordered responsibility manifest", () 
     "platform.css",
     "approval.css",
     "responsive.css",
-    "diff-command.css"
+    "diff-command.css",
+    "tool-cards.css"
   ];
 
   let cursor = -1;
@@ -76,7 +77,10 @@ test("Phase 4 child modules never import their facade", () => {
     "src/Conversation/components/MessagePrimitives.jsx",
     "src/Conversation/components/TaskActivityTimeline.jsx",
     "src/Conversation/components/DeveloperActivityPanel.jsx",
-    "src/Conversation/components/taskPanelModel.js"
+    "src/Conversation/components/taskPanelModel.js",
+    "src/Conversation/components/ToolActivityCard.jsx",
+    "src/Conversation/components/toolActivityModel.js",
+    "src/Conversation/components/userTaskViewModel.js"
   ]) {
     const source = read(file);
     assert.doesNotMatch(source, /from\s+["'][^"']*(?:Conversation|MessageList|TaskPanel)\.jsx["']/u);
