@@ -143,6 +143,30 @@ describe("Platform Kernel", () => {
     assert.equal(second.kernel.getSnapshot().activeLeases.length, 0);
   });
 
+  it("invalidates a running integration after restart", () => {
+    const directory = temporaryDirectory();
+    const first = createHarness(directory);
+    const run = first.kernel.ensureRun({
+      conversationId: "conversation-integration",
+      goalId: "goal-integration",
+      objective: "recover integration",
+      mode: "coding"
+    }).run;
+    first.kernel.recordIntegration(run.id, {
+      status: "running",
+      taskId: "integration-task",
+      agentRunId: "integrator",
+      baselineCommit: "baseline",
+      inputCommits: ["worker"]
+    });
+
+    const second = createHarness(directory);
+    second.kernel.recoverInterruptedRuns();
+    const recovered = second.kernel.getRun(run.id).integration;
+    assert.equal(recovered.status, "failed");
+    assert.equal(recovered.error, "application-restart");
+  });
+
   it("issues a bound completion permit only after verified settled work", () => {
     const directory = temporaryDirectory();
     const { kernel, authority } = createHarness(directory);

@@ -133,6 +133,20 @@ function summarizeRun(run) {
         agents.filter((agent) => agent.status === status).length
       ])
     ),
+    integration: run.integration
+      ? {
+          status: run.integration.status,
+          commit: run.integration.commit ?? null,
+          conflictCount: run.integration.conflicts?.length ?? 0
+        }
+      : null,
+    review: run.reviews?.at(-1)
+      ? {
+          status: run.reviews.at(-1).status,
+          approved: run.reviews.at(-1).approved === true,
+          integrationCommit: run.reviews.at(-1).integrationCommit ?? null
+        }
+      : null,
     completionFingerprint: run.completionPermit?.fingerprint ?? null,
     createdAt: run.createdAt,
     updatedAt: run.updatedAt
@@ -196,6 +210,14 @@ export class PlatformKernel {
       if (event.sequence > this.state.lastSequence) {
         this.applyEvent(event);
       }
+    }
+    for (const run of Object.values(this.state.runs)) {
+      run.artifacts = Array.isArray(run.artifacts) ? run.artifacts : [];
+      run.evidence = Array.isArray(run.evidence) ? run.evidence : [];
+      run.reviews = Array.isArray(run.reviews) ? run.reviews : [];
+      run.integration = run.integration && typeof run.integration === "object"
+        ? run.integration
+        : null;
     }
     return this.state;
   }
@@ -277,6 +299,19 @@ export class PlatformKernel {
       case "ARTIFACT_RECORDED":
         if (run) {
           run.artifacts.push(clone(payload.artifact));
+          run.updatedAt = event.timestamp;
+        }
+        break;
+      case "INTEGRATION_RECORDED":
+        if (run) {
+          run.integration = clone(payload.integration);
+          run.updatedAt = event.timestamp;
+        }
+        break;
+      case "REVIEW_RECORDED":
+        if (run) {
+          run.reviews = Array.isArray(run.reviews) ? run.reviews : [];
+          run.reviews.push(clone(payload.review));
           run.updatedAt = event.timestamp;
         }
         break;
@@ -381,6 +416,7 @@ export class PlatformKernel {
       artifacts: [],
       evidence: [],
       reviews: [],
+      integration: null,
       completionPermit: null,
       createdAt: timestamp,
       updatedAt: timestamp
@@ -423,7 +459,12 @@ export class PlatformKernel {
       dependencies: normalizedDependencies,
       attemptCount: 0,
       maxAttempts: Math.max(1, Math.min(5, Math.round(Number(maxAttempts) || 2))),
-      status: normalizedDependencies.length === 0 ? "ready" : "pending",
+      status: normalizedDependencies.length === 0 ||
+        normalizedDependencies.every((dependencyId) =>
+          run.tasks[dependencyId]?.status === "completed"
+        )
+        ? "ready"
+        : "pending",
       statusReason: "",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -680,10 +721,97 @@ export class PlatformKernel {
       commit: text(artifact.commit, 120) || null,
       digest: text(artifact.digest, 160) || null,
       summary: text(artifact.summary, 1000),
+      changed: artifact.changed === true,
+      inputCommits: (Array.isArray(artifact.inputCommits)
+        ? artifact.inputCommits
+        : [])
+        .slice(0, 40)
+        .map((value) => text(value, 120))
+        .filter(Boolean),
       createdAt: this.now()
     };
     this.commit("ARTIFACT_RECORDED", { runId: run.id, artifact: normalized });
     return { ok: true, artifact: clone(normalized) };
+  }
+
+  recordIntegration(platformRunId, integration = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    if (!run) return { ok: false, code: "platform-run-not-found" };
+    const allowed = new Set([
+      "pending",
+      "running",
+      "integrated",
+      "published",
+      "conflicted",
+      "failed",
+      "not-required"
+    ]);
+    const status = allowed.has(integration.status)
+      ? integration.status
+      : "failed";
+    const normalized = {
+      version: 1,
+      status,
+      taskId: text(integration.taskId, 120) || null,
+      agentRunId: text(integration.agentRunId, 120) || null,
+      worktreeId: text(integration.worktreeId, 120) || null,
+      baselineCommit: text(integration.baselineCommit, 120) || null,
+      commit: text(integration.commit, 120) || null,
+      artifactIds: (Array.isArray(integration.artifactIds)
+        ? integration.artifactIds
+        : [])
+        .slice(0, 80)
+        .map((value) => text(value, 120))
+        .filter(Boolean),
+      inputCommits: (Array.isArray(integration.inputCommits)
+        ? integration.inputCommits
+        : [])
+        .slice(0, 80)
+        .map((value) => text(value, 120))
+        .filter(Boolean),
+      conflicts: (Array.isArray(integration.conflicts)
+        ? integration.conflicts
+        : [])
+        .slice(0, 100)
+        .map((value) => text(value, 500))
+        .filter(Boolean),
+      error: text(integration.error, 2000),
+      digest: text(integration.digest, 160) || null,
+      recordedAt: this.now()
+    };
+    this.commit("INTEGRATION_RECORDED", {
+      runId: run.id,
+      integration: normalized
+    });
+    return { ok: true, integration: clone(normalized) };
+  }
+
+  recordReview(platformRunId, review = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    if (!run) return { ok: false, code: "platform-run-not-found" };
+    const normalized = {
+      version: 1,
+      id: text(review.id, 120) || this.createId(),
+      taskId: text(review.taskId, 120) || null,
+      agentRunId: text(review.agentRunId, 120) || null,
+      integrationCommit: text(review.integrationCommit, 120) || null,
+      integrationDigest: text(review.integrationDigest, 160) || null,
+      status: review.approved === true ? "approved" : "rejected",
+      approved: review.approved === true,
+      summary: text(review.summary, 2000),
+      findings: (Array.isArray(review.findings) ? review.findings : [])
+        .slice(0, 80)
+        .map((value) => text(value, 1000))
+        .filter(Boolean),
+      evidence: (Array.isArray(review.evidence) ? review.evidence : [])
+        .slice(0, 80)
+        .map((value) => text(value, 1000))
+        .filter(Boolean),
+      reviewerVersion: Math.max(1, Number(review.reviewerVersion) || 1),
+      recordedAt: this.now()
+    };
+    this.commit("REVIEW_RECORDED", { runId: run.id, review: normalized });
+    return { ok: true, review: clone(normalized) };
   }
 
   finishAgentRun(platformRunId, agentRunId, {
@@ -738,6 +866,51 @@ export class PlatformKernel {
       return { ok: false, code: "platform-completion-agent-invalid" };
     }
 
+    const changedWorkerArtifacts = run.artifacts.filter((artifact) => {
+      const owner = run.agentRuns[artifact.agentRunId];
+      return artifact.kind === "git-commit" &&
+        artifact.changed === true &&
+        owner?.role === "implementer" &&
+        owner.id !== agent.id;
+    });
+    if (changedWorkerArtifacts.length > 0) {
+      if (
+        !["integrated", "published"].includes(run.integration?.status) ||
+        !run.integration.commit ||
+        !run.integration.digest
+      ) {
+        return {
+          ok: false,
+          code: "platform-integration-required",
+          artifactIds: changedWorkerArtifacts.map((item) => item.id)
+        };
+      }
+      const review = [...run.reviews].reverse().find((item) =>
+        item.approved === true &&
+        item.integrationCommit === run.integration.commit &&
+        item.integrationDigest === run.integration.digest
+      );
+      const reviewer = review
+        ? run.agentRuns[review.agentRunId]
+        : null;
+      if (
+        !review ||
+        reviewer?.role !== "reviewer" ||
+        changedWorkerArtifacts.some((item) => item.agentRunId === review.agentRunId)
+      ) {
+        return {
+          ok: false,
+          code: "platform-independent-review-required"
+        };
+      }
+      if (run.integration.status !== "published") {
+        return {
+          ok: false,
+          code: "platform-integration-publication-required"
+        };
+      }
+    }
+
     if (agent.status === "running") {
       this.finishAgentRun(run.id, agent.id, {
         status: "completed",
@@ -764,17 +937,19 @@ export class PlatformKernel {
       checks: verification.checks ?? [],
       checkedAt: verification.checkedAt ?? 0
     });
-    const integrationHash = sha256({
-      scope: "platform-kernel-runtime-result",
-      runId: run.id,
-      workspaceId: run.workspaceId,
-      records: (Array.isArray(records) ? records : []).map((record) => ({
-        id: record?.id ?? "",
-        name: record?.name ?? "",
-        status: record?.status ?? "",
-        resultHash: sha256(record?.result ?? record?.output ?? null)
-      }))
-    });
+    const integrationHash = changedWorkerArtifacts.length > 0
+      ? run.integration.digest
+      : sha256({
+          scope: "platform-kernel-runtime-result",
+          runId: run.id,
+          workspaceId: run.workspaceId,
+          records: (Array.isArray(records) ? records : []).map((record) => ({
+            id: record?.id ?? "",
+            name: record?.name ?? "",
+            status: record?.status ?? "",
+            resultHash: sha256(record?.result ?? record?.output ?? null)
+          }))
+        });
     const permit = this.completionAuthority.issue({
       goalId: run.goalId,
       goalRevision: run.goalRevision,
@@ -881,6 +1056,13 @@ export class PlatformKernel {
       if (run.status === "active" && recoveredThisRun) {
         this.setRunStatus(run.id, "continuable", "application-restart");
         recoveredRunIds.push(run.id);
+      }
+      if (run.integration?.status === "running") {
+        this.recordIntegration(run.id, {
+          ...run.integration,
+          status: "failed",
+          error: "application-restart"
+        });
       }
     }
 

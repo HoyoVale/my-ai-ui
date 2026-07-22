@@ -205,6 +205,7 @@ export class MultiAgentSupervisor {
         agentRunId,
         kind: "git-commit",
         commit: checkpoint.commit,
+        changed: checkpoint.changed === true,
         digest: sha256({
           commit: checkpoint.commit,
           baseline: worktree.baselineCommit
@@ -245,22 +246,28 @@ export class MultiAgentSupervisor {
     };
   }
 
-  async run(platformRunId) {
+  async run(platformRunId, { taskIds = null } = {}) {
     if (this.running.has(platformRunId)) {
       return this.running.get(platformRunId);
     }
-    const execution = this.runLoop(platformRunId)
+    const execution = this.runLoop(platformRunId, taskIds)
       .finally(() => this.running.delete(platformRunId));
     this.running.set(platformRunId, execution);
     return execution;
   }
 
-  async runLoop(platformRunId) {
+  async runLoop(platformRunId, taskIds = null) {
     const outcomes = [];
+    const scopedTaskIds = Array.isArray(taskIds) && taskIds.length > 0
+      ? new Set(taskIds.map((value) => String(value)))
+      : null;
     while (!this.paused.has(platformRunId)) {
       const run = this.platformKernel.getRun(platformRunId);
       if (!run || ["cancelled", "completed"].includes(run.status)) break;
-      const ready = Object.values(run.tasks).filter((task) => task.status === "ready");
+      const ready = Object.values(run.tasks).filter((task) =>
+        task.status === "ready" &&
+        (!scopedTaskIds || scopedTaskIds.has(task.id))
+      );
       if (ready.length === 0) break;
       const configuredConcurrency = this.getMaxConcurrency
         ? this.getMaxConcurrency()
@@ -277,7 +284,8 @@ export class MultiAgentSupervisor {
     }
 
     const finalRun = this.platformKernel.getRun(platformRunId);
-    const tasks = Object.values(finalRun?.tasks ?? {});
+    const tasks = Object.values(finalRun?.tasks ?? {})
+      .filter((task) => !scopedTaskIds || scopedTaskIds.has(task.id));
     const completed = tasks.length > 0 && tasks.every((task) => task.status === "completed");
     const blocked = tasks.filter((task) => ["blocked", "failed", "continuable"].includes(task.status));
     if (!completed && blocked.length > 0 && finalRun?.status === "active") {

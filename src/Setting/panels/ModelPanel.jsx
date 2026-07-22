@@ -16,6 +16,10 @@ import {
 } from "../hooks/useModelCredentials.js";
 
 import {
+  useConversations
+} from "../hooks/useConversations.js";
+
+import {
   MODEL_PROVIDER_TEMPLATES
 } from "../../shared/defaultSettings.js";
 
@@ -178,6 +182,9 @@ function decodeSelection(value) {
 
 function RuntimeAssignments({
   modelSettings,
+  currentModelSelection,
+  currentConversationId,
+  onSelectCurrentModel,
   onUpdate
 }) {
   const options = Object.values(modelSettings.providers ?? {})
@@ -186,18 +193,33 @@ function RuntimeAssignments({
       label: `${item.name} · ${model.name || model.modelId}`
     })));
   const activeProvider = modelSettings.providers?.[modelSettings.activeProvider];
-  const mainValue = activeProvider
+  const defaultValue = activeProvider
     ? encodeSelection(
         activeProvider.id,
         activeProvider.activeModelId ?? activeProvider.models?.[0]?.id
       )
     : "";
+  const selectedCurrentValue = currentModelSelection
+    ? encodeSelection(
+        currentModelSelection.providerId,
+        currentModelSelection.modelConfigId
+      )
+    : "";
+  const mainValue = options.some((item) => item.value === selectedCurrentValue)
+    ? selectedCurrentValue
+    : defaultValue;
   const workerSelection = modelSettings.runtimeAssignments?.worker;
   const workerValue = workerSelection
     ? encodeSelection(workerSelection.providerId, workerSelection.modelConfigId)
-    : mainValue;
+    : defaultValue;
 
   const selectMain = (value) => {
+    const selection = decodeSelection(value);
+    if (!selection) return;
+    onSelectCurrentModel?.(selection);
+  };
+
+  const selectDefault = (value) => {
     const selection = decodeSelection(value);
     if (!selection) return;
     const selectedProvider = modelSettings.providers[selection.providerId];
@@ -237,6 +259,15 @@ function RuntimeAssignments({
           value={mainValue}
           options={options}
           onChange={selectMain}
+          disabled={!currentConversationId}
+        />
+      </SettingRow>
+      <SettingRow title="新会话默认模型">
+        <Select
+          testId="default-model-assignment"
+          value={defaultValue}
+          options={options}
+          onChange={selectDefault}
         />
       </SettingRow>
       <SettingRow title="Worker 模型">
@@ -575,6 +606,11 @@ export function ModelPanel({
   onUpdate
 }) {
   const modelSettings = settings.model;
+  const conversations = useConversations();
+  const currentModelSelection =
+    conversations.state.currentModelSelection ??
+    conversations.state.currentConversation?.modelSelection ??
+    null;
   const providers =
     modelSettings.providers ?? {};
   const providerId =
@@ -590,6 +626,14 @@ export function ModelPanel({
     ) ?? provider?.models?.[0] ?? null,
     [provider]
   );
+  const currentProvider = currentModelSelection
+    ? providers[currentModelSelection.providerId]
+    : provider;
+  const currentModel = currentProvider?.models?.find((item) =>
+    item.id === currentModelSelection?.modelConfigId
+  ) ?? currentProvider?.models?.find((item) =>
+    item.id === currentProvider.activeModelId
+  ) ?? currentProvider?.models?.[0] ?? null;
 
   const availableTemplateIds =
     Object.keys(MODEL_PROVIDER_TEMPLATES)
@@ -649,6 +693,16 @@ export function ModelPanel({
         }
       }
     });
+  };
+
+  const selectCurrentModel = (selection) => {
+    if (!selection?.providerId || !selection?.modelConfigId) {
+      return;
+    }
+    void conversations.setModel(
+      selection.providerId,
+      selection.modelConfigId
+    );
   };
 
   const updateActiveModel = (patch) => {
@@ -766,6 +820,9 @@ export function ModelPanel({
     <div className="model-panel">
       <RuntimeAssignments
         modelSettings={modelSettings}
+        currentModelSelection={currentModelSelection}
+        currentConversationId={conversations.state.currentConversationId}
+        onSelectCurrentModel={selectCurrentModel}
         onUpdate={onUpdate}
       />
 
@@ -784,8 +841,13 @@ export function ModelPanel({
       <div className="model-runtime-summary">
         <div>
           <span className="model-eyebrow">Active runtime</span>
-          <strong>{provider.name} · {activeModel.name}</strong>
-          <small>{providerSdkLabel(provider)} · {activeModel.modelId}</small>
+          <strong>
+            {currentProvider?.name ?? "未配置"} · {currentModel?.name ?? "未配置"}
+          </strong>
+          <small>
+            {currentProvider ? providerSdkLabel(currentProvider) : ""}
+            {currentModel ? ` · ${currentModel.modelId}` : ""}
+          </small>
         </div>
 
         <div className="model-runtime-summary__actions">

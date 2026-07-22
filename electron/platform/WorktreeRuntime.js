@@ -191,7 +191,8 @@ export class WorktreeRuntime {
     taskId,
     workspaceRoot,
     role = "implementer",
-    writable = true
+    writable = true,
+    baselineCommit = null
   } = {}) {
     const repository = this.inspectRepository(workspaceRoot);
     if (!repository.ok) return repository;
@@ -205,7 +206,22 @@ export class WorktreeRuntime {
       return { ok: false, code: "worktree-path-outside-storage" };
     }
 
-    const baseline = this.createBaselineSnapshot(repository);
+    const requestedBaseline = text(baselineCommit, 120);
+    if (requestedBaseline) {
+      const verifiedBaseline = git(repository.repositoryRoot, [
+        "cat-file", "-e", `${requestedBaseline}^{commit}`
+      ], { allowFailure: true });
+      if (!verifiedBaseline.ok) {
+        return { ok: false, code: "worktree-baseline-commit-invalid" };
+      }
+    }
+    const baseline = requestedBaseline
+      ? {
+          commit: requestedBaseline,
+          kind: "specified-commit",
+          capturedDirtyState: false
+        }
+      : this.createBaselineSnapshot(repository);
     const branch = `xixi/${runPart}/${agentPart}-${id.slice(0, 8)}`;
     const timestamp = this.now();
     const record = {
@@ -316,6 +332,200 @@ export class WorktreeRuntime {
       changed: commit !== record.baselineCommit,
       commit,
       worktree: clone(record)
+    };
+  }
+
+  integrateCommits(worktreeId, commits = [], message = "Integrate Worker changes") {
+    const record = this.ensureLoaded().worktrees[text(worktreeId, 120)];
+    if (!record || record.status !== "active") {
+      return { ok: false, code: "worktree-not-active" };
+    }
+    if (!record.writable) {
+      return { ok: false, code: "worktree-read-only" };
+    }
+
+    const requested = [...new Set(
+      (Array.isArray(commits) ? commits : [])
+        .map((value) => text(value, 120))
+        .filter(Boolean)
+    )];
+    if (requested.length === 0) {
+      return { ok: false, code: "integration-commits-empty" };
+    }
+
+    const startCommit = git(record.path, ["rev-parse", "HEAD"]).stdout;
+    const applied = [];
+    for (const commit of requested) {
+      const verified = git(record.repositoryRoot, [
+        "cat-file", "-e", `${commit}^{commit}`
+      ], { allowFailure: true });
+      if (!verified.ok) {
+        git(record.path, ["reset", "--hard", startCommit], { allowFailure: true });
+        return {
+          ok: false,
+          code: "integration-commit-invalid",
+          commit,
+          applied
+        };
+      }
+
+      const picked = git(record.path, [
+        "cherry-pick", "--no-commit", commit
+      ], { allowFailure: true });
+      if (!picked.ok) {
+        const conflicts = git(record.path, [
+          "diff", "--name-only", "--diff-filter=U", "--"
+        ], { allowFailure: true }).stdout
+          .split(/\r?\n/u)
+          .map((value) => value.trim())
+          .filter(Boolean);
+        git(record.path, ["cherry-pick", "--abort"], { allowFailure: true });
+        git(record.path, ["reset", "--hard", startCommit], { allowFailure: true });
+        return {
+          ok: false,
+          code: conflicts.length > 0
+            ? "integration-conflict"
+            : "integration-cherry-pick-failed",
+          commit,
+          applied,
+          conflicts,
+          error: text(picked.stderr || picked.stdout, 2000)
+        };
+      }
+      applied.push(commit);
+    }
+
+    const status = git(record.path, ["status", "--porcelain=v1", "-z"]);
+    if (status.stdout) {
+      git(record.path, [
+        "-c", "user.name=Xixi Integrator",
+        "-c", "user.email=xixi-integrator@local.invalid",
+        "commit", "--no-gpg-sign", "-m",
+        text(message, 160) || "Integrate Worker changes"
+      ]);
+    }
+    const commit = git(record.path, ["rev-parse", "HEAD"]).stdout;
+    record.checkpointCommit = commit;
+    record.updatedAt = this.now();
+    this.save();
+    return {
+      ok: true,
+      changed: commit !== startCommit,
+      baselineCommit: startCommit,
+      commit,
+      applied,
+      worktree: clone(record)
+    };
+  }
+
+  publishIntegration({
+    workspaceRoot,
+    baselineCommit,
+    integrationCommit
+  } = {}) {
+    const repository = this.inspectRepository(workspaceRoot);
+    if (!repository.ok) return repository;
+    const baseline = text(baselineCommit, 120);
+    const integrated = text(integrationCommit, 120);
+    for (const commit of [baseline, integrated]) {
+      const verified = git(repository.repositoryRoot, [
+        "cat-file", "-e", `${commit}^{commit}`
+      ], { allowFailure: true });
+      if (!verified.ok) {
+        return { ok: false, code: "integration-publication-commit-invalid" };
+      }
+    }
+
+    const currentSnapshot = this.createBaselineSnapshot(repository);
+    const baselineTree = git(repository.repositoryRoot, [
+      "rev-parse", `${baseline}^{tree}`
+    ]).stdout;
+    const currentTree = git(repository.repositoryRoot, [
+      "rev-parse", `${currentSnapshot.commit}^{tree}`
+    ]).stdout;
+    if (currentTree !== baselineTree) {
+      return {
+        ok: false,
+        code: "integration-target-changed",
+        baselineTree,
+        currentTree
+      };
+    }
+
+    const branchBefore = git(repository.repositoryRoot, [
+      "branch", "--show-current"
+    ], { allowFailure: true }).stdout;
+    const indexBefore = git(repository.repositoryRoot, [
+      "diff", "--cached", "--binary", "--"
+    ]).stdout;
+    const patch = git(repository.repositoryRoot, [
+      "diff", "--binary", baseline, integrated, "--"
+    ]).stdout;
+    if (patch) {
+      const patchInput = `${patch}\n`;
+      const checked = git(repository.repositoryRoot, [
+        "apply", "--check", "--binary", "--whitespace=nowarn", "-"
+      ], { input: patchInput, allowFailure: true });
+      if (!checked.ok) {
+        return {
+          ok: false,
+          code: "integration-publication-check-failed",
+          error: text(checked.stderr || checked.stdout, 2000)
+        };
+      }
+      const applied = git(repository.repositoryRoot, [
+        "apply", "--binary", "--whitespace=nowarn", "-"
+      ], { input: patchInput, allowFailure: true });
+      if (!applied.ok) {
+        return {
+          ok: false,
+          code: "integration-publication-failed",
+          error: text(applied.stderr || applied.stdout, 2000)
+        };
+      }
+    }
+
+    const publishedRepository = this.inspectRepository(repository.repositoryRoot);
+    const publishedSnapshot = this.createBaselineSnapshot(publishedRepository);
+    const publishedTree = git(repository.repositoryRoot, [
+      "rev-parse", `${publishedSnapshot.commit}^{tree}`
+    ]).stdout;
+    const integrationTree = git(repository.repositoryRoot, [
+      "rev-parse", `${integrated}^{tree}`
+    ]).stdout;
+    const branchAfter = git(repository.repositoryRoot, [
+      "branch", "--show-current"
+    ], { allowFailure: true }).stdout;
+    const indexAfter = git(repository.repositoryRoot, [
+      "diff", "--cached", "--binary", "--"
+    ]).stdout;
+    if (
+      publishedTree !== integrationTree ||
+      branchAfter !== branchBefore ||
+      indexAfter !== indexBefore
+    ) {
+      const rollback = patch
+        ? git(repository.repositoryRoot, [
+            "apply", "--reverse", "--binary", "--whitespace=nowarn", "-"
+          ], { input: `${patch}\n`, allowFailure: true })
+        : { ok: true };
+      return {
+        ok: false,
+        code: "integration-publication-verification-failed",
+        publishedTree,
+        integrationTree,
+        branchPreserved: branchAfter === branchBefore,
+        indexPreserved: indexAfter === indexBefore,
+        rollbackSucceeded: rollback.ok === true
+      };
+    }
+    return {
+      ok: true,
+      changed: Boolean(patch),
+      commit: integrated,
+      tree: integrationTree,
+      branchPreserved: true,
+      indexPreserved: true
     };
   }
 

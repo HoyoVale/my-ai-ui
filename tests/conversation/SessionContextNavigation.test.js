@@ -103,6 +103,32 @@ function createManager() {
   });
 }
 
+function createMutableSettingsManager() {
+  let settings = structuredClone(MODEL_SETTINGS);
+  let timestamp = 2000;
+  let sequence = 0;
+  const manager = new ConversationManager({
+    store: new MemoryStore(),
+    now: () => ++timestamp,
+    createId: () => `mutable-conversation-${++sequence}`,
+    getSettings: () => ({
+      conversation: {
+        maxConversations: 100,
+        contextTurns: 8,
+        autoTitle: true,
+        saveAbortedReplies: true
+      },
+      model: settings
+    })
+  });
+  return {
+    manager,
+    setModelSettings(next) {
+      settings = structuredClone(next);
+    }
+  };
+}
+
 describe("session mode, workspace and model navigation", () => {
   it("reuses the latest Chat session for a workspace and creates only when absent", () => {
     const manager = createManager();
@@ -199,6 +225,37 @@ describe("session mode, workspace and model navigation", () => {
       manager.list({ mode: "chat", workspaceId: "workspace-a" }).length,
       1
     );
+  });
+
+  it("reconciles every conversation when a configured model changes or is removed", () => {
+    const value = createMutableSettingsManager();
+    const conversation = value.manager.create({
+      modelSelection: {
+        providerId: "provider-a",
+        modelConfigId: "model-b"
+      }
+    });
+    assert.equal(conversation.modelSnapshot.modelName, "Model B");
+
+    const renamed = structuredClone(MODEL_SETTINGS);
+    renamed.providers["provider-a"].models[1].name = "Model B renamed";
+    value.setModelSettings(renamed);
+    value.manager.reconcileSettings();
+    assert.equal(
+      value.manager.getState().currentModel.modelName,
+      "Model B renamed"
+    );
+
+    const removed = structuredClone(MODEL_SETTINGS);
+    removed.providers["provider-a"].models = [
+      removed.providers["provider-a"].models[0]
+    ];
+    value.setModelSettings(removed);
+    value.manager.reconcileSettings();
+    assert.deepEqual(value.manager.getState().currentModelSelection, {
+      providerId: "provider-a",
+      modelConfigId: "model-a"
+    });
   });
   it("encodes custom model ids without colon collisions and puts the active model first", () => {
     const value = encodeModelOptionValue("provider:custom", "model:qwen:7b");

@@ -25,6 +25,10 @@ import {
 } from "./MultiAgentSupervisor.js";
 
 import {
+  IntegrationCoordinator
+} from "./IntegrationCoordinator.js";
+
+import {
   getSettings
 } from "../settings/settingsStore.js";
 
@@ -90,4 +94,16 @@ export const multiAgentSupervisor = new MultiAgentSupervisor({
   maxConcurrency: 2,
   getMaxConcurrency: () =>
     getSettings().model?.runtimeAssignments?.maxConcurrency ?? 2
+});
+
+export const integrationCoordinator = new IntegrationCoordinator({
+  platformKernel,
+  worktreeRuntime,
+  reviewerRuntime: modelWorkerRuntime,
+  getWorkspaceRoot: (run) => {
+    const workspace = getWorkspaceById(run?.workspaceId, getSettings());
+    return workspace && !workspace.missing
+      ? workspace.canonicalPath || workspace.rootPath
+      : "";
+  }
 });

@@ -3,6 +3,7 @@ import {
 } from "zod";
 
 import {
+  integrationCoordinator,
   multiAgentSupervisor,
   platformKernel
 } from "./index.js";
@@ -57,7 +58,12 @@ export function createDelegationToolDefinition({
         };
       }
       const requestedIds = input.tasks.map((task) => task.id);
-      const execution = await multiAgentSupervisor.run(platformRunId);
+      const execution = await multiAgentSupervisor.run(platformRunId, {
+        taskIds: requestedIds
+      });
+      const integration = execution.completed
+        ? await integrationCoordinator.integrateAndReview(platformRunId)
+        : null;
       const latest = platformKernel.getRun(platformRunId);
       const tasks = requestedIds.map((id) => latest.tasks[id]).filter(Boolean);
       const agentRuns = Object.values(latest.agentRuns)
@@ -74,7 +80,8 @@ export function createDelegationToolDefinition({
           unresolved: agent.handoff?.unresolved ?? []
         }));
       return {
-        ok: tasks.every((task) => task.status === "completed"),
+        ok: tasks.every((task) => task.status === "completed") &&
+          (integration?.ok ?? true),
         tasks: tasks.map((task) => ({
           id: task.id,
           status: task.status,
@@ -82,6 +89,17 @@ export function createDelegationToolDefinition({
           statusReason: task.statusReason
         })),
         agentRuns,
+        integration: integration
+          ? {
+              required: integration.required === true,
+              status: integration.integration?.status ?? null,
+              commit: integration.integration?.commit ?? null,
+              conflicts: integration.integration?.conflicts ?? [],
+              reviewApproved: integration.review?.approved === true,
+              reviewSummary: integration.review?.summary ?? "",
+              code: integration.code ?? null
+            }
+          : null,
         blockedTaskIds: execution.blockedTaskIds
           .filter((id) => requestedIds.includes(id))
       };

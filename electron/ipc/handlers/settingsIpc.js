@@ -112,8 +112,8 @@ export function registerSettingsIpc() {
         );
 
       if (
-        normalizedPatch
-          ?.conversation
+        normalizedPatch?.conversation ||
+        normalizedPatch?.model
       ) {
         conversationManager
           .reconcileSettings();

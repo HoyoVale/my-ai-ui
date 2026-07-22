@@ -126,4 +126,45 @@ describe("Worktree Runtime", () => {
     assert.equal(Boolean(record.checkpointCommit), true);
     assert.equal(git(root, "show", `${record.checkpointCommit}:recovered.txt`), "keep me");
   });
+
+  it("publishes an integrated tree without changing the user branch or staged index", () => {
+    const root = repository();
+    const storage = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-publish-worktrees-"));
+    const platformStorage = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-publish-platform-"));
+    const kernel = new PlatformKernel({ getStorageDirectory: () => platformStorage });
+    const run = kernel.ensureRun({
+      conversationId: "conversation",
+      goalId: "goal",
+      objective: "publish reviewed integration",
+      mode: "coding"
+    }).run;
+    fs.writeFileSync(path.join(root, "tracked.txt"), "user staged\n");
+    git(root, "add", "tracked.txt");
+    fs.writeFileSync(path.join(root, "local.txt"), "user untracked\n");
+    const branchBefore = git(root, "branch", "--show-current");
+    const indexBefore = git(root, "diff", "--cached", "--binary");
+    const runtime = new WorktreeRuntime({
+      getStorageDirectory: () => storage,
+      platformKernel: kernel
+    });
+    const created = runtime.create({
+      platformRunId: run.id,
+      agentRunId: "integrator",
+      taskId: "integration",
+      workspaceRoot: root,
+      role: "integrator"
+    });
+    fs.writeFileSync(path.join(created.worktree.path, "worker.txt"), "reviewed\n");
+    const checkpoint = runtime.checkpoint(created.worktree.id, "reviewed integration");
+    const published = runtime.publishIntegration({
+      workspaceRoot: root,
+      baselineCommit: created.worktree.baselineCommit,
+      integrationCommit: checkpoint.commit
+    });
+    assert.equal(published.ok, true);
+    assert.equal(fs.readFileSync(path.join(root, "worker.txt"), "utf8"), "reviewed\n");
+    assert.equal(fs.readFileSync(path.join(root, "local.txt"), "utf8"), "user untracked\n");
+    assert.equal(git(root, "branch", "--show-current"), branchBefore);
+    assert.equal(git(root, "diff", "--cached", "--binary"), indexBefore);
+  });
 });

@@ -24,6 +24,10 @@ import {
   removeWorkspace
 } from "../../workspace/workspaceRegistry.js";
 
+import {
+  conversationManager
+} from "../../conversation/index.js";
+
 function commitSettings(settings) {
   applySettingsToOpenWindows(settings);
   broadcastSettings(settings);
@@ -54,6 +58,7 @@ export function registerWorkspaceIpc() {
 
       if (result.ok && result.settings) {
         commitSettings(result.settings);
+        conversationManager.reconcileSettings();
       }
 
       return {
@@ -78,6 +83,7 @@ export function registerWorkspaceIpc() {
 
       if (result.ok && result.settings) {
         commitSettings(result.settings);
+        conversationManager.reconcileSettings();
       }
 
       return {

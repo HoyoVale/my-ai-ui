@@ -2045,7 +2045,20 @@ export class ConversationManager {
   }
 
   reconcileSettings() {
-    this.ensureLoaded();
+    const data = this.ensureLoaded();
+    const modelSettings = this.getSettings().model;
+
+    for (const conversation of data.conversations) {
+      const requestedBinding = resolveModelBinding(
+        modelSettings,
+        conversation.modelSelection
+      );
+      const binding = requestedBinding.selection
+        ? requestedBinding
+        : resolveModelBinding(modelSettings, null);
+      conversation.modelSelection = binding.selection;
+      conversation.modelSnapshot = binding.snapshot;
+    }
     this.prune();
     this.commit();
 

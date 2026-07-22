@@ -22,7 +22,12 @@ const ROLE_INSTRUCTIONS = Object.freeze({
   explorer: "只读探索代码，定位相关文件、约束和风险，不修改文件。",
   implementer: "在隔离 worktree 中完成指定实现，并运行与改动相关的验证。",
   tester: "验证指定提交，记录真实命令、结果和失败原因；不要修复实现。",
-  reviewer: "独立审查最终 diff、范围、风险与验收覆盖；不要修改实现。",
+  reviewer: [
+    "独立审查最终 diff、范围、风险与验收覆盖；不要修改实现。",
+    "最终回复必须只包含一个 JSON 对象：",
+    '{"approved":boolean,"summary":"结论","findings":["问题"],"evidence":["证据"]}',
+    "存在未解决风险、越界修改或证据不足时 approved 必须为 false。"
+  ].join("\n"),
   integrator: "仅按给定提交进行集成，禁止擅自覆盖冲突。"
 });
 
