@@ -59,7 +59,7 @@ describe("Plan Core 2.0 persistence", () => {
 
     const message = data.conversations[0].messages[0];
     assert.equal(data.version, 19);
-    assert.equal(message.planState.schemaVersion, 2);
+    assert.equal(message.planState.schemaVersion, 3);
     assert.deepEqual(message.planState.rootItems, message.plan);
     assert.deepEqual(message.planState.subplans, []);
   });

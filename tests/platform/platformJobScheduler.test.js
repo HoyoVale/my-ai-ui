@@ -73,7 +73,8 @@ describe("Platform Job Scheduler", () => {
     const flaky = scheduler.enqueue(run.id, {
       type: "flaky",
       title: "Retry me",
-      maxAttempts: 2
+      maxAttempts: 2,
+      retryPolicy: { enabled: false }
     }).job;
     const failed = await scheduler.wait(flaky.id, { timeoutMs: 2000 });
     assert.equal(failed.ok, false);

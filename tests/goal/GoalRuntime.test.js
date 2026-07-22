@@ -6,6 +6,7 @@ import {
 import assert from "node:assert/strict";
 
 import {
+  applyGoalPlanState,
   applyGoalVerification,
   beginGoalRun,
   completeGoal,
@@ -13,7 +14,9 @@ import {
   GOAL_PHASES,
   heartbeatGoal,
   recordGoalCheckpoint,
+  recordGoalWorkingState,
   recoverInterruptedGoal,
+  replanGoal,
   sanitizeGoal,
   transitionGoal,
   upsertGoal
@@ -41,7 +44,7 @@ describe("GoalRuntime", () => {
   it("creates a versioned lifecycle object with progress and audit history", () => {
     const goal = createGoal();
 
-    assert.equal(goal.version, 4);
+    assert.equal(goal.version, 5);
     assert.equal(goal.phase, GOAL_PHASES.IDLE);
     assert.equal(goal.runtimeRevision, 1);
     assert.equal(goal.runtime.attempt, 0);
@@ -52,6 +55,59 @@ describe("GoalRuntime", () => {
       updatedAt: 100
     });
     assert.equal(goal.eventHistory.at(-1).type, "goal_created");
+  });
+
+  it("keeps the Goal-owned root plan stable while resuming blocked work", () => {
+    let goal = createGoal();
+    const rootPlanId = goal.planAuthority.rootPlanId;
+    goal = applyGoalPlanState(goal, {
+      schemaVersion: 3,
+      rootPlanId,
+      rootItems: [
+        { id: "inspect", title: "Inspect", status: "completed" },
+        { id: "implement", title: "Implement", status: "blocked", reason: "Restarted" },
+        { id: "verify", title: "Verify", status: "pending" }
+      ]
+    }, { runId: "run-1", now: 110 }).goal;
+
+    const resumed = applyGoalPlanState(goal, {
+      ...goal.planAuthority.state,
+      rootPlanId,
+      rootItems: [
+        { id: "inspect", title: "Inspect", status: "completed" },
+        { id: "implement", title: "Implement", status: "in_progress" },
+        { id: "verify", title: "Verify", status: "pending" }
+      ]
+    }, { runId: "run-2", now: 120 });
+
+    assert.equal(resumed.ok, true);
+    assert.equal(resumed.goal.planAuthority.rootPlanId, rootPlanId);
+    assert.equal(resumed.goal.workingState.activeStepId, "implement");
+    assert.deepEqual(resumed.goal.workingState.completedStepIds, ["inspect"]);
+  });
+
+  it("does not erase Working State when an older checkpoint has no workingState payload", () => {
+    let goal = createGoal();
+    goal = recordGoalWorkingState(goal, {
+      modifiedFiles: ["src/scene.js"],
+      fileFingerprints: [{ path: "src/scene.js", hash: "hash-1", updatedAt: 105 }],
+      unresolvedProblems: ["Camera angle still needs verification"]
+    }, { now: 105 }).goal;
+
+    goal = recordGoalCheckpoint(goal, {
+      id: "legacy-checkpoint",
+      runId: "run-legacy",
+      taskId: "task-legacy",
+      phase: "executing",
+      resumable: true,
+      updatedAt: 110
+    }, { now: 110 }).goal;
+
+    assert.deepEqual(goal.workingState.modifiedFiles, ["src/scene.js"]);
+    assert.equal(goal.workingState.fileFingerprints[0].hash, "hash-1");
+    assert.deepEqual(goal.workingState.unresolvedProblems, [
+      "Camera angle still needs verification"
+    ]);
   });
 
   it("tracks run start, execution, evaluation, replanning and checkpoint state", () => {
@@ -334,11 +390,108 @@ describe("GoalRuntime", () => {
       }
     });
 
-    assert.equal(goal.version, 4);
+    assert.equal(goal.version, 5);
     assert.equal(goal.phase, GOAL_PHASES.WAITING);
     assert.equal(goal.waiting.kind, "user_paused");
     assert.equal(goal.criteria[0].status, "passed");
     assert.deepEqual(goal.criteria[0].evidence, ["receipt:test"]);
     assert.equal(goal.progress.passed, 1);
   });
+
+  it("persists a stable root plan and structured working state", () => {
+    let goal = createGoal();
+    const rootPlanId = goal.planAuthority.rootPlanId;
+
+    goal = applyGoalPlanState(goal, {
+      schemaVersion: 3,
+      rootPlanId,
+      authorityRevision: 1,
+      rootItems: [
+        { id: "inspect", title: "Inspect", status: "completed" },
+        { id: "implement", title: "Implement", status: "in_progress" }
+      ]
+    }, { runId: "run-1", now: 110 }).goal;
+
+    goal = recordGoalWorkingState(goal, {
+      lastUserInstruction: "Fix the camera",
+      modifiedFiles: ["src/camera.js"],
+      fileFingerprints: [{ path: "src/camera.js", hash: "abc", updatedAt: 111 }],
+      latestTestResult: "2 tests passed",
+      nextRecommendedAction: "Verify the camera",
+      lastRunId: "run-1"
+    }, { now: 112 }).goal;
+
+    assert.equal(goal.planAuthority.rootPlanId, rootPlanId);
+    assert.deepEqual(goal.workingState.completedStepIds, ["inspect"]);
+    assert.equal(goal.workingState.activeStepId, "implement");
+    assert.deepEqual(goal.workingState.modifiedFiles, ["src/camera.js"]);
+    assert.equal(goal.workingState.latestTestResult, "2 tests passed");
+  });
+
+  it("requires the dedicated replan interface and never regresses completed roots", () => {
+    let goal = createGoal();
+    const rootPlanId = goal.planAuthority.rootPlanId;
+    goal = applyGoalPlanState(goal, {
+      schemaVersion: 3,
+      rootPlanId,
+      authorityRevision: 1,
+      rootItems: [
+        { id: "inspect", title: "Inspect", status: "completed" },
+        { id: "implement", title: "Implement", status: "in_progress" }
+      ]
+    }, { now: 110 }).goal;
+
+    const regression = applyGoalPlanState(goal, {
+      schemaVersion: 3,
+      rootPlanId,
+      authorityRevision: 2,
+      rootItems: [
+        { id: "inspect", title: "Inspect", status: "pending" },
+        { id: "implement", title: "Implement", status: "in_progress" }
+      ]
+    }, { now: 120 });
+    assert.equal(regression.ok, false);
+    assert.equal(regression.code, "goal-plan-completed-step-regression");
+
+    const replanned = replanGoal(goal, {
+      reason: "Visual verification exposed a missing camera phase",
+      failedAssumption: "The first camera implementation was sufficient",
+      runId: "run-2",
+      planState: {
+        schemaVersion: 3,
+        rootPlanId,
+        authorityRevision: 2,
+        replanRevision: 1,
+        rootItems: [
+          { id: "inspect", title: "Inspect", status: "completed" },
+          { id: "camera", title: "Fix camera", status: "in_progress" }
+        ]
+      }
+    }, { now: 130 });
+
+    assert.equal(replanned.ok, true);
+    assert.equal(replanned.goal.planAuthority.rootPlanId, rootPlanId);
+    assert.equal(
+      replanned.goal.planAuthority.state.rootItems.find((item) => item.id === "inspect").status,
+      "completed"
+    );
+    assert.equal(replanned.goal.planAuthority.replanRevision, 1);
+  });
+
+  it("marks recoverable tool failures as resumable Goal waits", () => {
+    let goal = createGoal();
+    goal = beginGoalRun(goal, { runId: "run-recoverable", now: 110 }).goal;
+    const finished = finishGoalRun(goal, {
+      runId: "run-recoverable",
+      outcome: "failed",
+      stopReason: "tool_error",
+      error: "TEXT_NOT_FOUND",
+      recoverable: true,
+      now: 120
+    });
+
+    assert.equal(finished.goal.waiting.kind, "recoverable_error");
+    assert.equal(finished.goal.runtime.resumable, true);
+  });
+
 });

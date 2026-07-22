@@ -55,7 +55,12 @@ const AGENT_STATUSES = new Set([
 
 const JOB_STATUSES = new Set([
   "queued",
+  "scheduled",
   "running",
+  "waiting_input",
+  "waiting_approval",
+  "waiting_external",
+  "retry_scheduled",
   "paused",
   "completed",
   "failed",
@@ -63,11 +68,16 @@ const JOB_STATUSES = new Set([
 ]);
 
 const JOB_TRANSITIONS = Object.freeze({
-  queued: new Set(["running", "paused", "cancelled"]),
-  running: new Set(["queued", "paused", "completed", "failed", "cancelled"]),
-  paused: new Set(["queued", "cancelled"]),
+  queued: new Set(["scheduled", "running", "waiting_input", "waiting_approval", "waiting_external", "paused", "cancelled"]),
+  scheduled: new Set(["queued", "paused", "cancelled"]),
+  running: new Set(["queued", "scheduled", "waiting_input", "waiting_approval", "waiting_external", "retry_scheduled", "paused", "completed", "failed", "cancelled"]),
+  waiting_input: new Set(["queued", "paused", "cancelled"]),
+  waiting_approval: new Set(["queued", "failed", "paused", "cancelled"]),
+  waiting_external: new Set(["queued", "scheduled", "paused", "cancelled"]),
+  retry_scheduled: new Set(["queued", "paused", "failed", "cancelled"]),
+  paused: new Set(["queued", "scheduled", "waiting_input", "waiting_approval", "waiting_external", "retry_scheduled", "cancelled"]),
   completed: new Set(),
-  failed: new Set(["queued", "cancelled"]),
+  failed: new Set(["queued", "retry_scheduled", "cancelled"]),
   cancelled: new Set()
 });
 
@@ -99,11 +109,20 @@ function text(value, maxLength = 500) {
 
 function createEmptyState() {
   return {
-    version: 4,
+    version: 5,
     lastSequence: 0,
     lastEventHash: "",
     runs: {},
     jobs: {},
+    approvals: {},
+    notifications: {},
+    lifecycle: {
+      online: true,
+      suspended: false,
+      onBattery: false,
+      lastChangedAt: 0,
+      lastResumeAt: 0
+    },
     leases: {},
     updatedAt: 0
   };
@@ -147,6 +166,41 @@ function normalizeBudget(budget = {}) {
   };
 }
 
+function normalizeRetryPolicy(policy = {}) {
+  return {
+    enabled: policy.enabled !== false,
+    strategy: policy.strategy === "fixed" ? "fixed" : "exponential",
+    baseDelayMs: Math.max(250, Math.min(24 * 60 * 60 * 1000, nonNegative(policy.baseDelayMs, 2_000))),
+    maxDelayMs: Math.max(1_000, Math.min(7 * 24 * 60 * 60 * 1000, nonNegative(policy.maxDelayMs, 5 * 60 * 1000))),
+    jitterRatio: Math.max(0, Math.min(0.5, Number(policy.jitterRatio) || 0)),
+    retryableCodes: (Array.isArray(policy.retryableCodes) ? policy.retryableCodes : [])
+      .map((value) => text(value, 160)).filter(Boolean).slice(0, 40),
+    nonRetryableCodes: (Array.isArray(policy.nonRetryableCodes) ? policy.nonRetryableCodes : [])
+      .map((value) => text(value, 160)).filter(Boolean).slice(0, 40),
+    lastDelayMs: nonNegative(policy.lastDelayMs, 0),
+    scheduledAt: nonNegative(policy.scheduledAt, 0) || null,
+    lastErrorCode: text(policy.lastErrorCode, 160)
+  };
+}
+
+function normalizeWake(wake = {}) {
+  const allowed = new Set(["immediate", "at", "network_online", "app_resume", "approval", "input", "external"]);
+  return {
+    policy: allowed.has(wake.policy) ? wake.policy : "immediate",
+    at: nonNegative(wake.at, 0) || null,
+    conditionKey: text(wake.conditionKey, 240),
+    lastWakeAt: nonNegative(wake.lastWakeAt, 0) || null,
+    wakeCount: nonNegative(wake.wakeCount, 0)
+  };
+}
+
+function normalizeJobRequirements(requirements = {}) {
+  return {
+    network: requirements.network === true,
+    acPower: requirements.acPower === true
+  };
+}
+
 function summarizeJob(job) {
   return {
     id: job.id,
@@ -154,10 +208,20 @@ function summarizeJob(job) {
     type: job.type,
     title: job.title,
     status: job.status,
+    statusReason: job.statusReason,
+    waitingReason: job.waitingReason,
     attempt: job.attempt,
     maxAttempts: job.maxAttempts,
     priority: job.priority,
     budget: clone(job.budget),
+    wake: clone(job.wake),
+    retryPolicy: clone(job.retryPolicy),
+    requirements: clone(job.requirements),
+    approvalRequestId: job.approvalRequestId ?? null,
+    inputRequest: job.inputRequest ? clone(job.inputRequest) : null,
+    externalSignal: job.externalSignal ? clone(job.externalSignal) : null,
+    checkpoint: job.checkpoint ? clone(job.checkpoint) : null,
+    receiptCount: job.receipts?.length ?? 0,
     resultSummary: job.resultSummary,
     error: job.error,
     createdAt: job.createdAt,
@@ -317,12 +381,37 @@ export class PlatformKernel {
         agent.leaseIds = Array.isArray(agent.leaseIds) ? agent.leaseIds : [];
       }
     }
-    this.state.version = 4;
+    this.state.version = 5;
     this.state.jobs = this.state.jobs && typeof this.state.jobs === "object"
       ? this.state.jobs
       : {};
+    this.state.approvals = this.state.approvals && typeof this.state.approvals === "object"
+      ? this.state.approvals
+      : {};
+    this.state.notifications = this.state.notifications && typeof this.state.notifications === "object"
+      ? this.state.notifications
+      : {};
+    this.state.lifecycle = this.state.lifecycle && typeof this.state.lifecycle === "object"
+      ? {
+          online: this.state.lifecycle.online !== false,
+          suspended: this.state.lifecycle.suspended === true,
+          onBattery: this.state.lifecycle.onBattery === true,
+          lastChangedAt: nonNegative(this.state.lifecycle.lastChangedAt, 0),
+          lastResumeAt: nonNegative(this.state.lifecycle.lastResumeAt, 0)
+        }
+      : createEmptyState().lifecycle;
     for (const job of Object.values(this.state.jobs)) {
+      job.version = Math.max(2, Number(job.version) || 1);
       job.budget = normalizeBudget(job.budget);
+      job.retryPolicy = normalizeRetryPolicy(job.retryPolicy);
+      job.wake = normalizeWake(job.wake);
+      job.requirements = normalizeJobRequirements(job.requirements);
+      job.waitingReason = text(job.waitingReason, 1000);
+      job.approvalRequestId = text(job.approvalRequestId, 120) || null;
+      job.inputRequest = job.inputRequest && typeof job.inputRequest === "object" ? clone(job.inputRequest) : null;
+      job.externalSignal = job.externalSignal && typeof job.externalSignal === "object" ? clone(job.externalSignal) : null;
+      job.checkpoint = job.checkpoint && typeof job.checkpoint === "object" ? clone(job.checkpoint) : null;
+      job.receipts = Array.isArray(job.receipts) ? job.receipts : [];
       job.logs = Array.isArray(job.logs) ? job.logs : [];
     }
     return this.state;
@@ -528,6 +617,7 @@ export class PlatformKernel {
           job.statusReason = text(payload.reason, 500);
           job.resultSummary = text(payload.resultSummary, 2000);
           job.error = text(payload.error, 2000);
+          job.waitingReason = text(payload.waitingReason ?? job.waitingReason, 1000);
           job.updatedAt = event.timestamp;
           if (payload.status === "running") {
             job.startedAt = event.timestamp;
@@ -550,6 +640,89 @@ export class PlatformKernel {
           });
           job.updatedAt = event.timestamp;
         }
+        break;
+      case "JOB_WAKE_UPDATED":
+        if (state.jobs[payload.jobId]) {
+          const job = state.jobs[payload.jobId];
+          job.wake = normalizeWake(payload.wake);
+          job.retryPolicy = normalizeRetryPolicy(payload.retryPolicy ?? job.retryPolicy);
+          job.waitingReason = text(payload.waitingReason, 1000);
+          job.updatedAt = event.timestamp;
+        }
+        break;
+      case "JOB_INPUT_REQUESTED":
+        if (state.jobs[payload.jobId]) {
+          state.jobs[payload.jobId].inputRequest = clone(payload.inputRequest);
+          state.jobs[payload.jobId].updatedAt = event.timestamp;
+        }
+        break;
+      case "JOB_INPUT_PROVIDED":
+        if (state.jobs[payload.jobId]) {
+          const job = state.jobs[payload.jobId];
+          job.inputRequest = { ...clone(job.inputRequest ?? {}), status: "provided", value: clone(payload.value), providedAt: event.timestamp };
+          job.updatedAt = event.timestamp;
+        }
+        break;
+      case "JOB_EXTERNAL_SIGNALLED":
+        if (state.jobs[payload.jobId]) {
+          state.jobs[payload.jobId].externalSignal = clone(payload.signal);
+          state.jobs[payload.jobId].updatedAt = event.timestamp;
+        }
+        break;
+      case "JOB_CHECKPOINT_RECORDED":
+        if (state.jobs[payload.jobId]) {
+          state.jobs[payload.jobId].checkpoint = clone(payload.checkpoint);
+          state.jobs[payload.jobId].updatedAt = event.timestamp;
+        }
+        break;
+      case "JOB_RECEIPT_RECORDED":
+        if (state.jobs[payload.jobId]) {
+          const job = state.jobs[payload.jobId];
+          job.receipts = Array.isArray(job.receipts) ? job.receipts : [];
+          if (!job.receipts.some((item) => item.key === payload.receipt.key)) {
+            job.receipts.push(clone(payload.receipt));
+            if (job.receipts.length > 200) job.receipts.splice(0, job.receipts.length - 200);
+          }
+          job.updatedAt = event.timestamp;
+        }
+        break;
+      case "APPROVAL_REQUESTED":
+        state.approvals[payload.approval.id] = clone(payload.approval);
+        if (state.jobs[payload.approval.jobId]) {
+          state.jobs[payload.approval.jobId].approvalRequestId = payload.approval.id;
+          state.jobs[payload.approval.jobId].updatedAt = event.timestamp;
+        }
+        break;
+      case "APPROVAL_RESOLVED":
+        if (state.approvals[payload.approvalId]) {
+          const approval = state.approvals[payload.approvalId];
+          approval.status = payload.decision === "approved" ? "approved" : "rejected";
+          approval.decision = payload.decision;
+          approval.note = text(payload.note, 1000);
+          approval.resolvedAt = event.timestamp;
+        }
+        break;
+      case "NOTIFICATION_CREATED":
+        state.notifications[payload.notification.id] = clone(payload.notification);
+        break;
+      case "NOTIFICATION_READ":
+        if (state.notifications[payload.notificationId]) {
+          state.notifications[payload.notificationId].readAt = event.timestamp;
+        }
+        break;
+      case "NOTIFICATION_CLEARED":
+        if (state.notifications[payload.notificationId]) {
+          state.notifications[payload.notificationId].clearedAt = event.timestamp;
+        }
+        break;
+      case "LIFECYCLE_CHANGED":
+        state.lifecycle = { ...state.lifecycle, ...clone(payload.lifecycle), lastChangedAt: event.timestamp };
+        if (payload.lifecycle?.suspended === false) state.lifecycle.lastResumeAt = event.timestamp;
+        break;
+      case "LONG_RUNNING_STATE_PRUNED":
+        for (const jobId of payload.jobIds ?? []) delete state.jobs[jobId];
+        for (const approvalId of payload.approvalIds ?? []) delete state.approvals[approvalId];
+        for (const notificationId of payload.notificationIds ?? []) delete state.notifications[notificationId];
         break;
       case "INTEGRATION_RECORDED":
         if (run) {
@@ -663,7 +836,7 @@ export class PlatformKernel {
     );
     if (existing) return { ok: true, created: false, failure: clone(existing) };
     const normalized = {
-      version: 1,
+      version: 2,
       id: this.createId(),
       fingerprint,
       type: text(failure.type, 80) || "implementation",
@@ -1362,26 +1535,52 @@ export class PlatformKernel {
     payload = {},
     priority = 0,
     maxAttempts = 2,
-    budget = {}
+    budget = {},
+    scheduleAt = null,
+    wake = {},
+    retryPolicy = {},
+    requirements = {},
+    idempotencyKey = ""
   } = {}) {
     const run = this.ensureLoaded().runs[text(platformRunId, 120)];
     if (!run) return { ok: false, code: "platform-run-not-found" };
     const normalizedType = text(type, 120);
     if (!normalizedType) return { ok: false, code: "platform-job-type-invalid" };
+    const normalizedIdempotencyKey = text(idempotencyKey, 240);
+    if (normalizedIdempotencyKey) {
+      const existing = Object.values(this.ensureLoaded().jobs).find((item) =>
+        item.platformRunId === run.id && item.idempotencyKey === normalizedIdempotencyKey
+      );
+      if (existing) return { ok: true, created: false, job: clone(existing) };
+    }
     const timestamp = this.now();
     const job = {
-      version: 1,
+      version: 2,
       id: this.createId(),
       platformRunId: run.id,
       type: normalizedType,
       title: text(title, 500) || normalizedType,
       payload: payload && typeof payload === "object" ? clone(payload) : {},
-      status: "queued",
+      status: nonNegative(scheduleAt, 0) > timestamp ? "scheduled" : "queued",
       statusReason: "",
+      waitingReason: "",
       priority: Math.max(-100, Math.min(100, Math.round(Number(priority) || 0))),
       attempt: 0,
       maxAttempts: Math.max(1, Math.min(10, Math.round(Number(maxAttempts) || 2))),
       budget: normalizeBudget(budget),
+      retryPolicy: normalizeRetryPolicy(retryPolicy),
+      wake: normalizeWake({
+        ...wake,
+        policy: nonNegative(scheduleAt, 0) > timestamp ? "at" : wake.policy,
+        at: nonNegative(scheduleAt, 0) > timestamp ? nonNegative(scheduleAt, 0) : wake.at
+      }),
+      requirements: normalizeJobRequirements(requirements),
+      idempotencyKey: normalizedIdempotencyKey,
+      approvalRequestId: null,
+      inputRequest: null,
+      externalSignal: null,
+      checkpoint: null,
+      receipts: [],
       resultSummary: "",
       error: "",
       logs: [],
@@ -1402,7 +1601,8 @@ export class PlatformKernel {
   setJobStatus(jobId, status, {
     reason = "",
     resultSummary = "",
-    error = ""
+    error = "",
+    waitingReason = ""
   } = {}) {
     const job = this.ensureLoaded().jobs[text(jobId, 120)];
     if (!job) return { ok: false, code: "platform-job-not-found" };
@@ -1425,7 +1625,8 @@ export class PlatformKernel {
       status,
       reason,
       resultSummary,
-      error
+      error,
+      waitingReason
     });
     return { ok: true, changed: true, job: clone(this.state.jobs[job.id]) };
   }
@@ -1453,6 +1654,304 @@ export class PlatformKernel {
     return { ok: exceeded.length === 0, exceeded, job: clone(current) };
   }
 
+  recordJobCheckpoint(jobId, checkpoint = {}) {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    const normalized = {
+      version: 1,
+      cursor: text(checkpoint.cursor, 240),
+      summary: text(checkpoint.summary, 2000),
+      data: checkpoint.data && typeof checkpoint.data === "object" ? clone(checkpoint.data) : null,
+      attempt: job.attempt,
+      recordedAt: this.now()
+    };
+    normalized.fingerprint = sha256({
+      jobId: job.id,
+      cursor: normalized.cursor,
+      summary: normalized.summary,
+      data: normalized.data,
+      attempt: normalized.attempt
+    });
+    this.commit("JOB_CHECKPOINT_RECORDED", { jobId: job.id, checkpoint: normalized });
+    return { ok: true, checkpoint: clone(normalized) };
+  }
+
+  recordJobReceipt(jobId, receipt = {}) {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    const key = text(receipt.key, 240);
+    if (!key) return { ok: false, code: "platform-job-receipt-key-invalid" };
+    const existing = job.receipts?.find((item) => item.key === key);
+    if (existing) return { ok: true, created: false, receipt: clone(existing) };
+    const normalized = {
+      version: 1,
+      id: this.createId(),
+      key,
+      kind: text(receipt.kind, 80) || "side-effect",
+      outcome: text(receipt.outcome, 80) || "completed",
+      digest: text(receipt.digest, 160) || sha256(receipt.data ?? receipt.summary ?? key),
+      summary: text(receipt.summary, 1000),
+      data: receipt.data && typeof receipt.data === "object" ? clone(receipt.data) : null,
+      attempt: job.attempt,
+      recordedAt: this.now()
+    };
+    this.commit("JOB_RECEIPT_RECORDED", { jobId: job.id, receipt: normalized });
+    return { ok: true, created: true, receipt: clone(normalized) };
+  }
+
+  updateJobWake(jobId, wake = {}, { waitingReason = "", retryPolicy = null } = {}) {
+    const job = this.ensureLoaded().jobs[text(jobId, 120)];
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    this.commit("JOB_WAKE_UPDATED", {
+      jobId: job.id,
+      wake: normalizeWake({ ...job.wake, ...wake }),
+      retryPolicy: retryPolicy ? normalizeRetryPolicy({ ...job.retryPolicy, ...retryPolicy }) : job.retryPolicy,
+      waitingReason
+    });
+    return { ok: true, job: clone(this.state.jobs[job.id]) };
+  }
+
+  scheduleJob(jobId, wakeAt, { reason = "scheduled" } = {}) {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    const at = Math.max(this.now(), nonNegative(wakeAt, this.now()));
+    const changed = this.setJobStatus(job.id, job.status === "failed" ? "retry_scheduled" : "scheduled", {
+      reason,
+      waitingReason: `等待至 ${new Date(at).toISOString()}`
+    });
+    if (!changed.ok) return changed;
+    return this.updateJobWake(job.id, { policy: "at", at }, { waitingReason: changed.job.waitingReason });
+  }
+
+  waitForJob(jobId, kind, details = {}) {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    const statuses = {
+      input: "waiting_input",
+      approval: "waiting_approval",
+      external: "waiting_external",
+      network: "waiting_external"
+    };
+    const status = statuses[kind];
+    if (!status) return { ok: false, code: "platform-job-wait-kind-invalid" };
+    const reason = text(details.reason ?? details.summary ?? details.prompt ?? kind, 1000);
+    const changed = this.setJobStatus(job.id, status, {
+      reason: `waiting-${kind}`,
+      waitingReason: reason
+    });
+    if (!changed.ok) return changed;
+    const wake = kind === "network"
+      ? { policy: "network_online", conditionKey: "network" }
+      : { policy: kind === "approval" ? "approval" : kind === "input" ? "input" : "external", conditionKey: details.conditionKey };
+    this.updateJobWake(job.id, wake, { waitingReason: reason });
+    if (kind === "input") {
+      const inputRequest = {
+        id: this.createId(),
+        prompt: text(details.prompt ?? reason, 2000),
+        schema: details.schema && typeof details.schema === "object" ? clone(details.schema) : null,
+        status: "pending",
+        requestedAt: this.now()
+      };
+      this.commit("JOB_INPUT_REQUESTED", { jobId: job.id, inputRequest });
+    }
+    return { ok: true, job: this.getJob(job.id) };
+  }
+
+  requestJobApproval(jobId, request = {}) {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    const existing = Object.values(this.ensureLoaded().approvals).find((item) =>
+      item.jobId === job.id && item.status === "pending"
+    );
+    if (existing) {
+      return { ok: true, created: false, approval: clone(existing), job: clone(job) };
+    }
+    if (!JOB_TRANSITIONS[job.status]?.has("waiting_approval")) {
+      return {
+        ok: false,
+        code: "platform-job-approval-transition-invalid",
+        from: job.status
+      };
+    }
+    const approval = {
+      version: 1,
+      id: this.createId(),
+      jobId: job.id,
+      platformRunId: job.platformRunId,
+      action: text(request.action, 160) || "high-impact-action",
+      risk: new Set(["low", "medium", "high", "critical"]).has(request.risk) ? request.risk : "high",
+      title: text(request.title, 500) || `需要批准：${job.title}`,
+      summary: text(request.summary, 2000),
+      details: request.details && typeof request.details === "object" ? clone(request.details) : null,
+      status: "pending",
+      decision: null,
+      note: "",
+      requestedAt: this.now(),
+      resolvedAt: null
+    };
+    this.commit("APPROVAL_REQUESTED", { approval });
+    this.waitForJob(job.id, "approval", { reason: approval.summary || approval.title });
+    return { ok: true, created: true, approval: clone(approval), job: this.getJob(job.id) };
+  }
+
+  resolveJobApproval(approvalId, decision, { note = "" } = {}) {
+    const approval = this.ensureLoaded().approvals[text(approvalId, 120)];
+    if (!approval) return { ok: false, code: "platform-approval-not-found" };
+    if (approval.status !== "pending") return { ok: false, code: "platform-approval-already-resolved" };
+    const normalized = decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "";
+    if (!normalized) return { ok: false, code: "platform-approval-decision-invalid" };
+    this.commit("APPROVAL_RESOLVED", { approvalId: approval.id, decision: normalized, note });
+    const job = this.getJob(approval.jobId);
+    if (job?.status === "waiting_approval") {
+      this.setJobStatus(job.id, normalized === "approved" ? "queued" : "failed", {
+        reason: normalized === "approved" ? "approval-granted" : "approval-rejected",
+        error: normalized === "rejected" ? "user-rejected-approval" : "",
+        waitingReason: ""
+      });
+      if (normalized === "approved") this.updateJobWake(job.id, { policy: "immediate", at: null }, { waitingReason: "" });
+    }
+    return { ok: true, approval: clone(this.state.approvals[approval.id]), job: this.getJob(approval.jobId) };
+  }
+
+  provideJobInput(jobId, value) {
+    const job = this.getJob(jobId);
+    if (!job || job.status !== "waiting_input") return { ok: false, code: "platform-job-not-waiting-input" };
+    this.commit("JOB_INPUT_PROVIDED", { jobId: job.id, value: value && typeof value === "object" ? clone(value) : String(value ?? "") });
+    this.setJobStatus(job.id, "queued", { reason: "input-provided", waitingReason: "" });
+    this.updateJobWake(job.id, { policy: "immediate", at: null }, { waitingReason: "" });
+    return { ok: true, job: this.getJob(job.id) };
+  }
+
+  signalExternal(jobId, signal = {}) {
+    const job = this.getJob(jobId);
+    if (!job || job.status !== "waiting_external") return { ok: false, code: "platform-job-not-waiting-external" };
+    const normalized = {
+      key: text(signal.key, 240) || job.wake?.conditionKey || "external",
+      payload: signal.payload && typeof signal.payload === "object" ? clone(signal.payload) : null,
+      receivedAt: this.now()
+    };
+    this.commit("JOB_EXTERNAL_SIGNALLED", { jobId: job.id, signal: normalized });
+    this.setJobStatus(job.id, "queued", { reason: "external-signal", waitingReason: "" });
+    this.updateJobWake(job.id, { policy: "immediate", at: null }, { waitingReason: "" });
+    return { ok: true, job: this.getJob(job.id) };
+  }
+
+  promoteDueJobs({ now = this.now(), online = this.ensureLoaded().lifecycle.online } = {}) {
+    const promotedJobIds = [];
+    for (const job of this.listJobs()) {
+      if (["scheduled", "retry_scheduled"].includes(job.status) && (!job.wake?.at || job.wake.at <= now)) {
+        this.setJobStatus(job.id, "queued", { reason: "wake-time-reached", waitingReason: "" });
+        this.updateJobWake(job.id, { policy: "immediate", at: null, lastWakeAt: now, wakeCount: (job.wake?.wakeCount ?? 0) + 1 }, { waitingReason: "" });
+        promotedJobIds.push(job.id);
+      } else if (job.status === "waiting_external" && job.wake?.policy === "network_online" && online) {
+        this.setJobStatus(job.id, "queued", { reason: "network-restored", waitingReason: "" });
+        this.updateJobWake(job.id, { policy: "immediate", at: null, lastWakeAt: now, wakeCount: (job.wake?.wakeCount ?? 0) + 1 }, { waitingReason: "" });
+        promotedJobIds.push(job.id);
+      }
+    }
+    return { ok: true, promotedJobIds };
+  }
+
+  createNotification(notification = {}) {
+    const item = {
+      version: 1,
+      id: this.createId(),
+      platformRunId: text(notification.platformRunId, 120) || null,
+      jobId: text(notification.jobId, 120) || null,
+      kind: text(notification.kind, 80) || "info",
+      level: new Set(["info", "success", "warning", "error", "action"]).has(notification.level) ? notification.level : "info",
+      title: text(notification.title, 500) || "Agent 通知",
+      body: text(notification.body, 2000),
+      action: notification.action && typeof notification.action === "object" ? clone(notification.action) : null,
+      createdAt: this.now(),
+      readAt: null,
+      clearedAt: null
+    };
+    this.commit("NOTIFICATION_CREATED", { notification: item });
+    return { ok: true, notification: clone(item) };
+  }
+
+  markNotificationRead(notificationId) {
+    const item = this.ensureLoaded().notifications[text(notificationId, 120)];
+    if (!item) return { ok: false, code: "platform-notification-not-found" };
+    this.commit("NOTIFICATION_READ", { notificationId: item.id });
+    return { ok: true, notification: clone(this.state.notifications[item.id]) };
+  }
+
+  clearNotification(notificationId) {
+    const item = this.ensureLoaded().notifications[text(notificationId, 120)];
+    if (!item) return { ok: false, code: "platform-notification-not-found" };
+    this.commit("NOTIFICATION_CLEARED", { notificationId: item.id });
+    return { ok: true };
+  }
+
+  listApprovals({ platformRunId = "", status = "" } = {}) {
+    const runId = text(platformRunId, 120);
+    return Object.values(this.ensureLoaded().approvals)
+      .filter((item) => !runId || item.platformRunId === runId)
+      .filter((item) => !status || item.status === status)
+      .sort((a, b) => b.requestedAt - a.requestedAt)
+      .map(clone);
+  }
+
+  listNotifications({ platformRunId = "", unreadOnly = false } = {}) {
+    const runId = text(platformRunId, 120);
+    return Object.values(this.ensureLoaded().notifications)
+      .filter((item) => !item.clearedAt)
+      .filter((item) => !runId || item.platformRunId === runId)
+      .filter((item) => !unreadOnly || !item.readAt)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 200)
+      .map(clone);
+  }
+
+  setLifecycleState(update = {}) {
+    const current = this.ensureLoaded().lifecycle;
+    const lifecycle = {
+      online: update.online === undefined ? current.online : update.online !== false,
+      suspended: update.suspended === undefined ? current.suspended : update.suspended === true,
+      onBattery: update.onBattery === undefined ? current.onBattery : update.onBattery === true
+    };
+    this.commit("LIFECYCLE_CHANGED", { lifecycle });
+    return { ok: true, lifecycle: clone(this.state.lifecycle) };
+  }
+
+  getLifecycleState() {
+    return clone(this.ensureLoaded().lifecycle);
+  }
+
+  pruneLongRunningState({ completedBefore = 0, notificationsBefore = 0 } = {}) {
+    const state = this.ensureLoaded();
+    const removableJobs = Object.values(state.jobs).filter((job) =>
+      ["completed", "failed", "cancelled"].includes(job.status) &&
+      completedBefore > 0 &&
+      (job.endedAt ?? job.updatedAt) < completedBefore
+    );
+    const removableJobIds = new Set(removableJobs.map((item) => item.id));
+    const removableApprovals = Object.values(state.approvals).filter((item) =>
+      removableJobIds.has(item.jobId) && item.status !== "pending"
+    );
+    const removableNotifications = Object.values(state.notifications).filter((item) =>
+      notificationsBefore > 0 &&
+      item.createdAt < notificationsBefore &&
+      (item.readAt || item.clearedAt)
+    );
+    const payload = {
+      jobIds: [...removableJobIds],
+      approvalIds: removableApprovals.map((item) => item.id),
+      notificationIds: removableNotifications.map((item) => item.id)
+    };
+    if (payload.jobIds.length || payload.approvalIds.length || payload.notificationIds.length) {
+      this.commit("LONG_RUNNING_STATE_PRUNED", payload);
+    }
+    return {
+      ok: true,
+      removedJobIds: payload.jobIds,
+      removedApprovalIds: payload.approvalIds,
+      removedNotificationIds: payload.notificationIds
+    };
+  }
+
   getJob(jobId) {
     const job = this.ensureLoaded().jobs[text(jobId, 120)];
     return job ? clone(job) : null;
@@ -1476,17 +1975,29 @@ export class PlatformKernel {
     const recoveredJobIds = [];
     for (const job of this.listJobs()) {
       if (job.status !== "running") continue;
-      this.setJobStatus(job.id, "queued", {
-        reason: "application-restart"
+      const nextStatus = job.attempt < job.maxAttempts ? "retry_scheduled" : "failed";
+      this.setJobStatus(job.id, nextStatus, {
+        reason: "application-restart",
+        error: nextStatus === "failed" ? "application-restart-attempt-limit" : "",
+        waitingReason: nextStatus === "retry_scheduled" ? "应用重启后等待安全续跑。" : ""
       });
+      if (nextStatus === "retry_scheduled") {
+        this.updateJobWake(job.id, { policy: "at", at: this.now() }, {
+          waitingReason: "应用重启后等待安全续跑。",
+          retryPolicy: { ...job.retryPolicy, scheduledAt: this.now(), lastErrorCode: "application-restart" }
+        });
+      }
       recoveredJobIds.push(job.id);
       this.appendRunLog(job.platformRunId, {
         jobId: job.id,
         level: "warn",
         source: "recovery",
-        message: "应用重启后已将中断任务放回队列。"
+        message: nextStatus === "retry_scheduled"
+          ? "应用重启后已将中断任务放入安全续跑队列。"
+          : "应用重启时任务已达到最大尝试次数。"
       });
     }
+    this.promoteDueJobs();
     return { ok: true, recoveredJobIds };
   }
 
@@ -2211,6 +2722,9 @@ export class PlatformKernel {
       jobs: Object.values(state.jobs)
         .sort((left, right) => right.updatedAt - left.updatedAt)
         .map(summarizeJob),
+      approvals: this.listApprovals(),
+      notifications: this.listNotifications(),
+      lifecycle: clone(state.lifecycle),
       activeLeases,
       recovery: {
         loaded: this.journal.loadReport?.loaded ?? 0,

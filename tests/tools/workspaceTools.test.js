@@ -427,3 +427,47 @@ describe(
     );
   }
 );
+
+describe("continuity read cache", () => {
+  it("reuses an unchanged file read and invalidates the cache after a write", async () => {
+    const cacheDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "xixi-continuity-read-cache-")
+    );
+    try {
+      const definitions = createWorkspaceToolDefinitions({
+        roots: [root],
+        continuityReadCacheDirectory: cacheDirectory
+      });
+      const read = definitions.find((tool) => tool.name === "read_text_file");
+      const first = await read.execute({
+        path: "src/hello.js",
+        startLine: 1
+      });
+      const second = await read.execute({
+        path: "src/hello.js",
+        startLine: 1
+      });
+
+      assert.equal(first.cacheReused, false);
+      assert.equal(second.cacheReused, true);
+      assert.equal(second.sha256, first.sha256);
+
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      fs.writeFileSync(
+        path.join(root, "src", "hello.js"),
+        "export const hello = 'changed';\n",
+        "utf8"
+      );
+      const third = await read.execute({
+        path: "src/hello.js",
+        startLine: 1
+      });
+
+      assert.equal(third.cacheReused, false);
+      assert.notEqual(third.sha256, first.sha256);
+      assert.match(third.content, /changed/u);
+    } finally {
+      fs.rmSync(cacheDirectory, { recursive: true, force: true });
+    }
+  });
+});

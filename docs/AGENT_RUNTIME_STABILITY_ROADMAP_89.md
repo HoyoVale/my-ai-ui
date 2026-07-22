@@ -233,6 +233,23 @@ Goal 与 Job 分离：
 - 取消后不会被 Scheduler 再次唤醒；
 - 日志和 Checkpoint 有清理策略。
 
+#### 2.12.1 本阶段实现状态
+
+本补丁已完成：
+
+- Job Schema v2 与完整长期状态机；
+- Persistent Job Queue、指定时间唤醒和独占 Run Lease；
+- 固定/指数退避、最大延迟、错误白名单/黑名单与尝试上限；
+- Checkpoint、幂等 Side-effect Receipt 与跨重启恢复；
+- Approval Inbox、输入等待和外部信号等待；
+- Electron 休眠/恢复、网络变化与电源状态适配；
+- 持久化通知中心与尽力投递的原生通知；
+- Journal 一致的完成 Job、已解决 Approval 与通知清理策略；
+- Conversation Platform Dock 的长期任务、Inbox 和通知 UI；
+- 真实双进程崩溃恢复 E2E 与 CI 步骤。
+
+至此，Goal Runtime、Multi-Agent Supervisor 与 Long-running Agent 三层基础均已完成 1.0。下一步应进行整体验收、Soak 和 Electron 视觉测试，再接入 Playwright Electron Capability。
+
 ## 3. Playwright Electron 的接入时机
 
 在 Phase 1–3 稳定后再加入视觉能力：

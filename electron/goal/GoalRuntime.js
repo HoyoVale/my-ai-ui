@@ -1,8 +1,16 @@
 import crypto from "node:crypto";
 
-const GOAL_SCHEMA_VERSION = 4;
+import {
+  compactPlanState,
+  normalizePlanState
+} from "../agent/planState.js";
+
+const GOAL_SCHEMA_VERSION = 5;
 const GOAL_EVENT_HISTORY_LIMIT = 48;
 const GOAL_VERIFICATION_HISTORY_LIMIT = 12;
+const GOAL_WORKING_FILE_LIMIT = 80;
+const GOAL_WORKING_PROBLEM_LIMIT = 24;
+const GOAL_WORKING_FAILURE_LIMIT = 24;
 
 export const GOAL_STATUSES = Object.freeze({
   ACTIVE: "active",
@@ -323,6 +331,208 @@ function sanitizeGoalProgress(source, criteria, updatedAt) {
   };
 }
 
+function sanitizeStringList(source, limit, maxLength = 500) {
+  return [...new Set(
+    (Array.isArray(source) ? source : [])
+      .map((item) => stringValue(item, "", maxLength).trim())
+      .filter(Boolean)
+  )].slice(-limit);
+}
+
+function sanitizeWorkingFailure(source) {
+  if (!source || typeof source !== "object") return null;
+  const code = stringValue(source.code, "", 120).trim();
+  const message = stringValue(source.message, "", 500).trim();
+  if (!code && !message) return null;
+  return {
+    code,
+    message,
+    toolName: stringValue(source.toolName, "", 120).trim(),
+    recoverable: source.recoverable !== false,
+    at: timestampValue(source.at, 0)
+  };
+}
+
+function sanitizeFileFingerprint(source) {
+  if (!source || typeof source !== "object") return null;
+  const path = stringValue(source.path, "", 500).trim();
+  if (!path) return null;
+  return {
+    path,
+    hash: stringValue(source.hash, "", 160).trim(),
+    updatedAt: timestampValue(source.updatedAt, 0)
+  };
+}
+
+export function sanitizeGoalWorkingState(source, {
+  objective = "",
+  updatedAt = 0
+} = {}) {
+  const input = source && typeof source === "object" ? source : {};
+  const fingerprints = new Map();
+  for (const item of Array.isArray(input.fileFingerprints) ? input.fileFingerprints : []) {
+    const normalized = sanitizeFileFingerprint(item);
+    if (normalized) fingerprints.set(normalized.path, normalized);
+  }
+
+  return {
+    version: 1,
+    revision: Math.max(0, boundedInteger(input.revision, 0, 1_000_000)),
+    objective: stringValue(input.objective, objective, 4000).trim() || objective,
+    lastUserInstruction: stringValue(input.lastUserInstruction, "", 2000).trim(),
+    activeStepId: nullableStringValue(input.activeStepId, 80),
+    completedStepIds: sanitizeStringList(input.completedStepIds, 80, 80),
+    modifiedFiles: sanitizeStringList(input.modifiedFiles, GOAL_WORKING_FILE_LIMIT, 500),
+    fileFingerprints: [...fingerprints.values()].slice(-GOAL_WORKING_FILE_LIMIT),
+    latestBuildResult: stringValue(input.latestBuildResult, "", 1000).trim(),
+    latestTestResult: stringValue(input.latestTestResult, "", 1000).trim(),
+    latestVisualFeedback: stringValue(input.latestVisualFeedback, "", 1000).trim(),
+    recentToolFailures: (Array.isArray(input.recentToolFailures)
+      ? input.recentToolFailures
+      : [])
+      .map(sanitizeWorkingFailure)
+      .filter(Boolean)
+      .slice(-GOAL_WORKING_FAILURE_LIMIT),
+    resolvedProblems: sanitizeStringList(
+      input.resolvedProblems,
+      GOAL_WORKING_PROBLEM_LIMIT,
+      500
+    ),
+    unresolvedProblems: sanitizeStringList(
+      input.unresolvedProblems,
+      GOAL_WORKING_PROBLEM_LIMIT,
+      500
+    ),
+    lastCheckpointId: nullableStringValue(input.lastCheckpointId, 160),
+    lastRunId: nullableStringValue(input.lastRunId, 120),
+    lastRunSummary: stringValue(input.lastRunSummary, "", 1200).trim(),
+    nextRecommendedAction: stringValue(input.nextRecommendedAction, "", 800).trim(),
+    updatedAt: timestampValue(input.updatedAt, updatedAt)
+  };
+}
+
+function authoritativePlanItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item?.status !== "superseded");
+}
+
+function allowedGoalPlanProgress(previous, next) {
+  if (previous === next) return true;
+  if (previous === "pending") {
+    return [
+      "in_progress",
+      "completed",
+      "blocked",
+      "needs_input",
+      "skipped",
+      "cancelled"
+    ].includes(next);
+  }
+  if (previous === "in_progress") {
+    return [
+      "completed",
+      "blocked",
+      "needs_input",
+      "skipped",
+      "cancelled"
+    ].includes(next);
+  }
+  if (["blocked", "needs_input"].includes(previous)) {
+    return [
+      "pending",
+      "in_progress",
+      "completed",
+      "blocked",
+      "needs_input",
+      "skipped",
+      "cancelled"
+    ].includes(next);
+  }
+  return false;
+}
+
+function goalPlanStructuralChanges(previousItems, nextItems) {
+  const previous = authoritativePlanItems(previousItems);
+  const next = authoritativePlanItems(nextItems);
+  const previousById = new Map(previous.map((item) => [item.id, item]));
+  const nextById = new Map(next.map((item) => [item.id, item]));
+  const changes = [];
+
+  for (const item of previous) {
+    const candidate = nextById.get(item.id);
+    if (!candidate) {
+      changes.push({ type: "removed", id: item.id });
+      continue;
+    }
+    if (candidate.title !== item.title) {
+      changes.push({ type: "renamed", id: item.id });
+    }
+    if (!allowedGoalPlanProgress(item.status, candidate.status)) {
+      changes.push({
+        type: "status_regression",
+        id: item.id,
+        from: item.status,
+        to: candidate.status
+      });
+    }
+  }
+
+  for (const item of next) {
+    if (!previousById.has(item.id)) {
+      changes.push({ type: "added", id: item.id });
+    }
+  }
+
+  return changes;
+}
+
+function sanitizeGoalPlanAuthority(source, {
+  goalId,
+  createdAt,
+  updatedAt
+} = {}) {
+  const normalized = normalizePlanState(source?.state ?? source ?? []);
+  const rootPlanId = nullableStringValue(
+    source?.rootPlanId ?? normalized.rootPlanId,
+    160
+  ) ?? `${goalId}:root-plan`;
+  return {
+    version: 1,
+    rootPlanId,
+    revision: Math.max(
+      normalized.authorityRevision,
+      boundedInteger(source?.revision, normalized.authorityRevision, 1_000_000)
+    ),
+    replanRevision: Math.max(
+      normalized.replanRevision,
+      boundedInteger(source?.replanRevision, normalized.replanRevision, 1_000_000)
+    ),
+    createdAt: timestampValue(source?.createdAt, createdAt),
+    updatedAt: timestampValue(source?.updatedAt, updatedAt),
+    state: compactPlanState({
+      ...normalized,
+      rootPlanId
+    }, {
+      maxRootItems: 40,
+      maxSubplans: 24,
+      maxSubplanItems: 40
+    }),
+    lastReplan:
+      source?.lastReplan && typeof source.lastReplan === "object"
+        ? {
+            reason: stringValue(source.lastReplan.reason, "", 500).trim(),
+            failedAssumption: stringValue(
+              source.lastReplan.failedAssumption,
+              "",
+              500
+            ).trim(),
+            runId: nullableStringValue(source.lastReplan.runId, 120),
+            at: timestampValue(source.lastReplan.at, 0)
+          }
+        : normalized.lastReplan
+  };
+}
+
 export function sanitizeGoal(source) {
   if (!source || typeof source !== "object") return null;
 
@@ -389,6 +599,15 @@ export function sanitizeGoal(source) {
     waiting: sanitizeWaiting(source.waiting, phase, status, updatedAt),
     checkpoint: sanitizeGoalCheckpoint(source.checkpoint),
     progress: sanitizeGoalProgress(source.progress, criteria, updatedAt),
+    planAuthority: sanitizeGoalPlanAuthority(source.planAuthority, {
+      goalId: id,
+      createdAt,
+      updatedAt
+    }),
+    workingState: sanitizeGoalWorkingState(source.workingState, {
+      objective,
+      updatedAt
+    }),
     lastTransition: sanitizeGoalTransition(source.lastTransition),
     eventHistory
   };
@@ -565,6 +784,23 @@ export function upsertGoal(existingGoal, {
       : null,
     checkpoint: keepIdentity ? existing.checkpoint : null,
     progress: progressFromCriteria(normalized.criteria, timestamp),
+    planAuthority: keepIdentity
+      ? clone(existing.planAuthority)
+      : sanitizeGoalPlanAuthority(null, {
+          goalId: id,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }),
+    workingState: keepIdentity
+      ? {
+          ...clone(existing.workingState),
+          objective: normalizedObjective,
+          updatedAt: timestamp
+        }
+      : sanitizeGoalWorkingState(null, {
+          objective: normalizedObjective,
+          updatedAt: timestamp
+        }),
     lastTransition: {
       from: keepIdentity ? existing.phase : null,
       to: phase,
@@ -814,6 +1050,36 @@ export function recordGoalCheckpoint(goalSource, checkpointSource, {
   );
   goal.runtime.lastHeartbeatAt = timestamp;
   goal.runtime.resumable = checkpoint.resumable;
+  const hasIncomingWorking =
+    checkpointSource?.workingState &&
+    typeof checkpointSource.workingState === "object";
+  const incomingWorking = hasIncomingWorking
+    ? sanitizeGoalWorkingState(
+        checkpointSource.workingState,
+        {
+          objective: goal.objective,
+          updatedAt: timestamp
+        }
+      )
+    : goal.workingState;
+  goal.workingState = sanitizeGoalWorkingState({
+    ...goal.workingState,
+    ...(hasIncomingWorking ? incomingWorking : {}),
+    revision: Math.max(
+      goal.workingState?.revision ?? 0,
+      incomingWorking.revision ?? 0
+    ) + 1,
+    lastCheckpointId: checkpoint.id,
+    lastRunId: checkpoint.runId ?? goal.runtime.lastRunId,
+    lastRunSummary:
+      incomingWorking.lastRunSummary ||
+      checkpoint.summary ||
+      goal.workingState?.lastRunSummary,
+    updatedAt: timestamp
+  }, {
+    objective: goal.objective,
+    updatedAt: timestamp
+  });
   touch(goal, timestamp);
   if (previousId !== checkpoint.id) {
     appendEvent(goal, {
@@ -887,11 +1153,221 @@ export function applyGoalVerification(goalSource, verification, {
   return { ok: true, goal: sanitizeGoal(goal) };
 }
 
+export function recordGoalWorkingState(goalSource, patch = {}, {
+  now = Date.now()
+} = {}) {
+  const goal = sanitizeGoal(goalSource);
+  if (!goal) return { ok: false, code: "goal-not-found" };
+  if (goal.status === GOAL_STATUSES.COMPLETED) {
+    return { ok: false, code: "goal-completed" };
+  }
+  const timestamp = timestampValue(now, Date.now());
+  const previous = goal.workingState;
+  const mergedFingerprints = new Map(
+    (previous.fileFingerprints ?? []).map((item) => [item.path, item])
+  );
+  for (const item of Array.isArray(patch.fileFingerprints)
+    ? patch.fileFingerprints
+    : []) {
+    const normalized = sanitizeFileFingerprint(item);
+    if (normalized) mergedFingerprints.set(normalized.path, normalized);
+  }
+  const mergedFailures = [
+    ...(previous.recentToolFailures ?? []),
+    ...(Array.isArray(patch.recentToolFailures)
+      ? patch.recentToolFailures
+      : [])
+  ];
+  goal.workingState = sanitizeGoalWorkingState({
+    ...previous,
+    ...patch,
+    revision: (previous.revision ?? 0) + 1,
+    objective: goal.objective,
+    completedStepIds: patch.completedStepIds ?? previous.completedStepIds,
+    modifiedFiles: [
+      ...(previous.modifiedFiles ?? []),
+      ...(Array.isArray(patch.modifiedFiles) ? patch.modifiedFiles : [])
+    ],
+    fileFingerprints: [...mergedFingerprints.values()],
+    recentToolFailures: mergedFailures,
+    resolvedProblems: [
+      ...(previous.resolvedProblems ?? []),
+      ...(Array.isArray(patch.resolvedProblems) ? patch.resolvedProblems : [])
+    ],
+    unresolvedProblems: patch.unresolvedProblems ?? previous.unresolvedProblems,
+    updatedAt: timestamp
+  }, {
+    objective: goal.objective,
+    updatedAt: timestamp
+  });
+  touch(goal, timestamp);
+  appendEvent(goal, {
+    type: "working_state_updated",
+    from: goal.phase,
+    to: goal.phase,
+    reason: stringValue(patch.reason, "working-state-updated", 240),
+    runId: patch.lastRunId ?? goal.runtime.activeRunId ?? goal.runtime.lastRunId,
+    checkpointId: goal.checkpoint?.id,
+    at: timestamp
+  });
+  return { ok: true, changed: true, goal: sanitizeGoal(goal) };
+}
+
+export function applyGoalPlanState(goalSource, planState, {
+  runId = null,
+  authorityAction = "progress",
+  now = Date.now()
+} = {}) {
+  const goal = sanitizeGoal(goalSource);
+  if (!goal) return { ok: false, code: "goal-not-found" };
+  if (goal.status === GOAL_STATUSES.COMPLETED) {
+    return { ok: false, code: "goal-completed" };
+  }
+  const timestamp = timestampValue(now, Date.now());
+  const incoming = normalizePlanState(planState);
+  const existing = normalizePlanState(goal.planAuthority?.state ?? []);
+  const rootPlanId = goal.planAuthority?.rootPlanId ?? `${goal.id}:root-plan`;
+
+  if (
+    existing.rootItems.length > 0 &&
+    incoming.rootPlanId &&
+    incoming.rootPlanId !== rootPlanId
+  ) {
+    return { ok: false, code: "goal-root-plan-id-changed" };
+  }
+
+  if (
+    authorityAction !== "replan" &&
+    existing.rootItems.length > 0 &&
+    incoming.replanRevision > existing.replanRevision
+  ) {
+    return { ok: false, code: "goal-replan-interface-required" };
+  }
+
+  const completedIds = new Set(
+    existing.rootItems
+      .filter((item) => item.status === "completed")
+      .map((item) => item.id)
+  );
+  const nextById = new Map(incoming.rootItems.map((item) => [item.id, item]));
+  for (const completedId of completedIds) {
+    if (nextById.get(completedId)?.status !== "completed") {
+      return {
+        ok: false,
+        code: "goal-plan-completed-step-regression",
+        stepId: completedId
+      };
+    }
+  }
+
+  if (authorityAction !== "replan" && existing.rootItems.length > 0) {
+    const structuralChanges = goalPlanStructuralChanges(
+      existing.rootItems,
+      incoming.rootItems
+    );
+    if (structuralChanges.length > 0) {
+      return {
+        ok: false,
+        code: "goal-plan-replan-required",
+        structuralChanges
+      };
+    }
+  }
+
+  const state = compactPlanState({
+    ...incoming,
+    rootPlanId,
+    authorityRevision: Math.max(
+      existing.authorityRevision,
+      incoming.authorityRevision
+    )
+  }, {
+    maxRootItems: 40,
+    maxSubplans: 24,
+    maxSubplanItems: 40
+  });
+  const active = state.rootItems.find((item) => item.status === "in_progress");
+  const completedStepIds = state.rootItems
+    .filter((item) => item.status === "completed")
+    .map((item) => item.id);
+
+  goal.planAuthority = {
+    version: 1,
+    rootPlanId,
+    revision: Math.max(
+      goal.planAuthority?.revision ?? 0,
+      state.authorityRevision
+    ),
+    replanRevision: state.replanRevision,
+    createdAt: goal.planAuthority?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+    state,
+    lastReplan: state.lastReplan ?? goal.planAuthority?.lastReplan ?? null
+  };
+  goal.workingState = sanitizeGoalWorkingState({
+    ...goal.workingState,
+    revision: (goal.workingState?.revision ?? 0) + 1,
+    activeStepId: active?.id ?? null,
+    completedStepIds,
+    lastRunId: runId ?? goal.runtime.activeRunId ?? goal.runtime.lastRunId,
+    updatedAt: timestamp
+  }, {
+    objective: goal.objective,
+    updatedAt: timestamp
+  });
+  touch(goal, timestamp);
+  appendEvent(goal, {
+    type: authorityAction === "replan" ? "goal_replanned" : "goal_plan_updated",
+    from: goal.phase,
+    to: goal.phase,
+    reason: authorityAction,
+    runId: runId ?? goal.runtime.activeRunId ?? goal.runtime.lastRunId,
+    at: timestamp
+  });
+  return { ok: true, changed: true, goal: sanitizeGoal(goal) };
+}
+
+export function replanGoal(goalSource, {
+  planState,
+  reason = "",
+  failedAssumption = "",
+  runId = null
+} = {}, {
+  now = Date.now()
+} = {}) {
+  const normalizedReason = stringValue(reason, "", 500).trim();
+  const normalizedAssumption = stringValue(
+    failedAssumption,
+    "",
+    500
+  ).trim();
+  if (!normalizedReason) {
+    return { ok: false, code: "goal-replan-reason-required" };
+  }
+  if (!normalizedAssumption) {
+    return { ok: false, code: "goal-replan-assumption-required" };
+  }
+  const incoming = normalizePlanState(planState);
+  const timestamp = timestampValue(now, Date.now());
+  incoming.lastReplan = {
+    reason: normalizedReason,
+    failedAssumption: normalizedAssumption,
+    runId: nullableStringValue(runId, 120),
+    at: timestamp
+  };
+  return applyGoalPlanState(goalSource, incoming, {
+    runId,
+    authorityAction: "replan",
+    now: timestamp
+  });
+}
+
 export function finishGoalRun(goalSource, {
   runId = null,
   outcome = "",
   stopReason = "",
   error = "",
+  recoverable = undefined,
   now = Date.now()
 } = {}) {
   const goal = sanitizeGoal(goalSource);
@@ -928,12 +1404,19 @@ export function finishGoalRun(goalSource, {
       requiredAction: "continue_goal",
       resumable: true
     },
-    failed: {
-      kind: "error",
-      reason: error || stopReason || "run-failed",
-      requiredAction: "review_error",
-      resumable: false
-    },
+    failed: recoverable === true
+      ? {
+          kind: "recoverable_error",
+          reason: error || stopReason || "recoverable-run-failure",
+          requiredAction: "continue_goal",
+          resumable: true
+        }
+      : {
+          kind: "fatal_error",
+          reason: error || stopReason || "run-failed",
+          requiredAction: "review_error",
+          resumable: false
+        },
     interrupted: {
       kind: "recovery",
       reason: stopReason || "run-interrupted",

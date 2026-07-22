@@ -18,7 +18,7 @@ test("83 exposes a durable background scheduler with controls and budgets", () =
   assert.match(scheduler, /resume\(jobId\)/u);
   assert.match(scheduler, /cancel\(jobId\)/u);
   assert.match(scheduler, /retry\(jobId\)/u);
-  assert.match(main, /platformJobScheduler\.recover/u);
+  assert.match(main, /longRunningAgentService\.start/u);
 });
 
 test("83 routes delegated coding work through the background job", () => {

@@ -104,7 +104,8 @@ describe("Verification Loop 3.0", () => {
     }));
     const job = scheduler.enqueue(run.id, {
       type: "verify",
-      title: "Run verification"
+      title: "Run verification",
+      retryPolicy: { enabled: false }
     }).job;
     const result = await scheduler.wait(job.id, { timeoutMs: 2000 });
     assert.equal(result.ok, false);

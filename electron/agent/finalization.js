@@ -1,6 +1,7 @@
 import {
   RUN_STOP_REASONS,
-  isGracefulRunBoundary
+  isGracefulRunBoundary,
+  isRecoverableRunFailure
 } from "./runStopReasons.js";
 
 function text(value, maxLength = 1200) {
@@ -151,7 +152,7 @@ function summarizeRecords(records = []) {
 
   return records
     .filter((record) =>
-      !["update_plan", "update_step_work"].includes(record?.name)
+      !["update_plan", "replan_goal", "update_step_work"].includes(record?.name)
     )
     .slice(-20)
     .map((record, index) => {
@@ -199,7 +200,10 @@ export function createFinalizationInstruction({
   const isContinuationBoundary =
     isGracefulRunBoundary(
       executionStopReason
-    );
+    ) || isRecoverableRunFailure({
+      stopReason: executionStopReason,
+      records
+    });
   const planState =
     getPlanCompletionState(plan);
   const completionNote = planState.hasNeedsInput
@@ -267,7 +271,7 @@ export function createFallbackFinalSummary({
     ? records
         .filter((record) =>
           record?.status === "completed" &&
-          !["update_plan", "update_step_work"].includes(record?.name)
+          !["update_plan", "replan_goal", "update_step_work"].includes(record?.name)
         )
         .map((record) =>
           text(
@@ -314,12 +318,19 @@ export function createFallbackFinalSummary({
     lines.push(...missingEvidence.map((item) => `- ${item}`));
   }
 
+  const isContinuationBoundary =
+    isGracefulRunBoundary(executionStopReason) ||
+    isRecoverableRunFailure({
+      stopReason: executionStopReason,
+      records
+    });
+
   if (
     executionStopReason &&
     executionStopReason !==
       RUN_STOP_REASONS.COMPLETED &&
     !planState.isComplete &&
-    !isGracefulRunBoundary(executionStopReason)
+    !isContinuationBoundary
   ) {
     lines.push(
       `任务未完全结束：${executionStopReason}。`
@@ -327,7 +338,7 @@ export function createFallbackFinalSummary({
   }
 
   if (
-    isGracefulRunBoundary(executionStopReason) &&
+    isContinuationBoundary &&
     (!planState.isComplete || goalVerification?.verified === false)
   ) {
     const nextStep = planState.items.find(

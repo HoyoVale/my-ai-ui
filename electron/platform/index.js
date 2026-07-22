@@ -37,6 +37,15 @@ import {
 } from "./PlatformJobScheduler.js";
 
 import {
+  LongRunningAgentService
+} from "./LongRunningAgentService.js";
+
+import {
+  createElectronLongRunningLifecycleAdapter,
+  deliverNativePlatformNotification
+} from "./ElectronLongRunningAdapter.js";
+
+import {
   classifyPlatformFailure
 } from "./FailureClassifier.js";
 
@@ -147,6 +156,7 @@ export const platformJobScheduler = new PlatformJobScheduler({
   onPause: (job) => multiAgentSupervisor.pause(job.platformRunId),
   onResume: (job) => multiAgentSupervisor.resume(job.platformRunId),
   onCancel: (job) => multiAgentSupervisor.cancel(job.platformRunId),
+  onNotification: deliverNativePlatformNotification,
   onFailure: ({ job, error, result }) => independentReplanner.replan(
     job.platformRunId,
     classifyPlatformFailure({
@@ -158,6 +168,14 @@ export const platformJobScheduler = new PlatformJobScheduler({
       conflicts: result?.integration?.integration?.conflicts
     })
   )
+});
+
+export const longRunningLifecycleAdapter = createElectronLongRunningLifecycleAdapter();
+
+export const longRunningAgentService = new LongRunningAgentService({
+  platformKernel,
+  scheduler: platformJobScheduler,
+  lifecycleAdapter: longRunningLifecycleAdapter
 });
 
 platformJobScheduler.register("delegation-workflow", async ({

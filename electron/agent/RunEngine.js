@@ -6,6 +6,7 @@ import {
 
 import {
   isGracefulRunBoundary,
+  isRecoverableRunFailure,
   RUN_STOP_REASONS
 } from "./runStopReasons.js";
 
@@ -124,7 +125,13 @@ export class RunEngine {
 
     const planState = this.planStateFactory(plan);
     const goalVerified = loopResult.verification?.verified !== false;
-    const outcome = this.gracefulBoundary(executionStopReason)
+    const outcome = (
+      this.gracefulBoundary(executionStopReason) ||
+      isRecoverableRunFailure({
+        stopReason: executionStopReason,
+        records
+      })
+    )
       ? RUN_OUTCOMES.CONTINUABLE
       : goalVerified && finalText &&
           (

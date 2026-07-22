@@ -879,7 +879,8 @@ export class ToolExecutor {
     try {
       release = await this.concurrency.acquire(
         resolveConcurrencyKey(definition, validatedInput.value),
-        scope.signal
+        scope.signal,
+        { exclusive: definition.exclusiveConcurrency === true }
       );
       if (ledgerCall) {
         ledgerCall = await this.executionLedger.markDispatched(

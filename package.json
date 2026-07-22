@@ -11,11 +11,12 @@
     "preview": "vite preview",
     "electron": "electron .",
     "test": "node --test --test-reporter=spec",
+    "test:p0-continuity": "node --test tests/goal/GoalRuntime.test.js tests/agent/checkpointContinuation.test.js tests/agent/continuityPlanAuthority93.test.js tests/agent/runStopReasons.test.js tests/agent/runEngine.integration.test.js tests/agent/finalization.test.js tests/tools/planAuthority93.test.js tests/tools/toolConcurrencyGuard.test.js tests/tools/workspaceTools.test.js",
     "test:watch": "node --test --watch --test-reporter=spec",
     "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec",
     "check": "npm run lint && npm run test && npm run build",
     "test:electron": "electron tests/electron/preload-smoke.cjs",
-    "check:full": "npm run check && npm run test:e2e:goal-crash && npm run test:e2e:supervisor-crash && npm run test:e2e:platform-crash && npm run test:e2e:worktree-crash && npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash && npm run test:benchmark && npm run test:electron && npm run test:e2e:electron-runtime-crash && npm run test:e2e",
+    "check:full": "npm run check && npm run test:e2e:goal-crash && npm run test:e2e:supervisor-crash && npm run test:e2e:long-running-crash && npm run test:e2e:platform-crash && npm run test:e2e:worktree-crash && npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash && npm run test:benchmark && npm run test:electron && npm run test:e2e:electron-runtime-crash && npm run test:e2e",
     "test:electron:ci": "electron --no-sandbox tests/electron/preload-smoke.cjs",
     "test:e2e": "node tests/e2e/conversation-flow.cjs && node tests/e2e/tool-approval-write-flow.cjs",
     "test:e2e:runtime-crash": "node tests/e2e/tool-runtime-crash-recovery.mjs",
@@ -27,7 +28,8 @@
     "test:e2e:electron-runtime-crash": "node tests/e2e/electron-runtime-crash-recovery.cjs",
     "test:e2e:tool-security": "node tests/e2e/tool-approval-write-flow.cjs",
     "test:e2e:goal-crash": "node tests/e2e/goal-runtime-crash-recovery.mjs",
-    "test:e2e:supervisor-crash": "node tests/e2e/multi-agent-supervisor-crash-recovery.mjs"
+    "test:e2e:supervisor-crash": "node tests/e2e/multi-agent-supervisor-crash-recovery.mjs",
+    "test:e2e:long-running-crash": "node tests/e2e/long-running-agent-crash-recovery.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.16",

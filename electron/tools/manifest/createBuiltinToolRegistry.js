@@ -55,6 +55,7 @@ export function registerBuiltinToolDefinitions(
     workspaceSettings = settings.tools?.workspace ?? {},
     includeWorkspaceDefinitions = false,
     includeWorkspaceInfo = includeWorkspaceDefinitions,
+    continuityReadCacheDirectory = "",
     resultStore = null,
     planStore = null
   } = {}
@@ -89,7 +90,10 @@ export function registerBuiltinToolDefinitions(
     )
     .registerMany(
       includeWorkspaceDefinitions
-        ? withPresentation(createWorkspaceToolDefinitions(workspaceSettings))
+        ? withPresentation(createWorkspaceToolDefinitions({
+            ...workspaceSettings,
+            continuityReadCacheDirectory
+          }))
         : [],
       {
         source: "builtin.workspace",

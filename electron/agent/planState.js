@@ -1,4 +1,4 @@
-export const PLAN_SCHEMA_VERSION = 2;
+export const PLAN_SCHEMA_VERSION = 3;
 
 export const PLAN_STATUSES = new Set([
   "pending",
@@ -31,6 +31,25 @@ function text(value, maxLength) {
   return String(value ?? "")
     .trim()
     .slice(0, maxLength);
+}
+
+function timestamp(value, fallback = 0) {
+  const normalized = Number(value);
+  return Number.isFinite(normalized) && normalized >= 0
+    ? Math.round(normalized)
+    : fallback;
+}
+
+function sanitizeReplan(source) {
+  if (!source || typeof source !== "object") return null;
+  const reason = text(source.reason, 500);
+  if (!reason) return null;
+  return {
+    reason,
+    failedAssumption: text(source.failedAssumption, 500),
+    runId: text(source.runId, 120),
+    at: timestamp(source.at, 0)
+  };
 }
 
 export function normalizePlanItems(items) {
@@ -158,11 +177,15 @@ export function normalizePlanState(source) {
     const bounded = boundPlanItems(normalizePlanItems(source));
     return {
       schemaVersion: PLAN_SCHEMA_VERSION,
+      rootPlanId: "",
       revision: 0,
       rootRevision: 0,
+      authorityRevision: 0,
+      replanRevision: 0,
       rootArchivedCount: bounded.archivedCount,
       rootItems: bounded.items,
-      subplans: []
+      subplans: [],
+      lastReplan: null
     };
   }
 
@@ -193,10 +216,22 @@ export function normalizePlanState(source) {
 
   return {
     schemaVersion: PLAN_SCHEMA_VERSION,
+    rootPlanId: text(
+      input.rootPlanId ?? input.root?.id,
+      160
+    ),
     revision: Math.max(0, Math.round(Number(input.revision) || 0)),
     rootRevision: Math.max(
       0,
       Math.round(Number(input.rootRevision ?? input.root?.revision) || 0)
+    ),
+    authorityRevision: Math.max(
+      0,
+      Math.round(Number(input.authorityRevision) || 0)
+    ),
+    replanRevision: Math.max(
+      0,
+      Math.round(Number(input.replanRevision) || 0)
     ),
     rootArchivedCount:
       Math.max(
@@ -206,7 +241,8 @@ export function normalizePlanState(source) {
         )
       ) + boundedRoot.archivedCount,
     rootItems: boundedRoot.items,
-    subplans: [...dedupedSubplans.values()].slice(-MAX_RETAINED_SUBPLANS)
+    subplans: [...dedupedSubplans.values()].slice(-MAX_RETAINED_SUBPLANS),
+    lastReplan: sanitizeReplan(input.lastReplan)
   };
 }
 
@@ -237,8 +273,11 @@ export function compactPlanState(source, {
   const state = normalizePlanState(source);
   return {
     schemaVersion: PLAN_SCHEMA_VERSION,
+    rootPlanId: state.rootPlanId,
     revision: state.revision,
     rootRevision: state.rootRevision,
+    authorityRevision: state.authorityRevision,
+    replanRevision: state.replanRevision,
     rootArchivedCount: state.rootArchivedCount,
     rootItems: state.rootItems.slice(0, maxRootItems),
     subplans: state.subplans.slice(-maxSubplans).map((entry) => ({
@@ -247,7 +286,8 @@ export function compactPlanState(source, {
       archivedCount: entry.archivedCount,
       updatedAt: entry.updatedAt,
       items: entry.items.slice(0, maxSubplanItems)
-    }))
+    })),
+    lastReplan: state.lastReplan
   };
 }
 
@@ -264,6 +304,7 @@ export function interruptPlanState(source, reason) {
     ...state,
     revision: state.revision + 1,
     rootRevision: state.rootRevision + 1,
+    authorityRevision: state.authorityRevision + 1,
     rootItems: mark(state.rootItems),
     subplans: state.subplans.map((entry) => ({
       ...entry,

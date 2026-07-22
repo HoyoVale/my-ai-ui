@@ -130,7 +130,9 @@ import {
 } from "./RunActivityStore.js";
 
 import {
+  classifyLatestToolFailure,
   inferRunStopReason,
+  isRecoverableRunFailure,
   RUN_STOP_REASONS
 } from "./runStopReasons.js";
 
@@ -155,6 +157,7 @@ import {
 
 import {
   createCheckpointContinuationState,
+  isExplicitNewTask,
   resolveCheckpointContinuation
 } from "./checkpointResume.js";
 
@@ -300,6 +303,137 @@ function appendTaskContinuationToContext(
   return context;
 }
 
+
+function classifyWorkingInstruction(message) {
+  const value = String(message ?? "").trim();
+  if (!value) return {};
+  return {
+    ...(/(?:视觉|截图|画面|外观|摄像机|相机|光晕|吸积盘|黑洞|visual|screenshot|camera|render)/iu.test(value)
+      ? { latestVisualFeedback: value.slice(0, 1000) }
+      : {}),
+    ...(/(?:npm\s+(?:run\s+)?test|测试|tests?\s+(?:pass|fail)|test\s+result)/iu.test(value)
+      ? { latestTestResult: value.slice(0, 1000) }
+      : {}),
+    ...(/(?:npm\s+run\s+build|构建|编译|打包|build\s+(?:pass|fail)|build\s+result)/iu.test(value)
+      ? { latestBuildResult: value.slice(0, 1000) }
+      : {})
+  };
+}
+
+function deriveGoalWorkingState(activeRun) {
+  if (!activeRun) return null;
+
+  const planState = activeRun.toolSession?.getPlanState?.() ??
+    activeRun.initialPlanState ??
+    activeRun.initialPlan ??
+    [];
+  const rootItems = Array.isArray(planState)
+    ? planState
+    : Array.isArray(planState?.rootItems)
+      ? planState.rootItems
+      : [];
+  const records = activeRun.toolSession?.getRecords?.() ??
+    activeRun.toolCalls ??
+    [];
+  const modifiedFiles = new Set(
+    activeRun.workingState?.modifiedFiles ?? []
+  );
+  const fingerprints = new Map(
+    (activeRun.workingState?.fileFingerprints ?? [])
+      .map((item) => [item.path, item])
+  );
+  const recentToolFailures = [];
+
+  for (const record of records) {
+    const input = record?.input ?? {};
+    const output = record?.output?.data ?? record?.result?.data ?? {};
+    const toolName = String(record?.name ?? "");
+    const pathValue = String(
+      output?.path ??
+      input?.path ??
+      input?.filePath ??
+      ""
+    ).trim();
+
+    if (
+      record?.status === "completed" &&
+      [
+        "write_text_file",
+        "replace_text_in_file",
+        "apply_patch",
+        "delete_path",
+        "move_path"
+      ].includes(toolName) &&
+      pathValue
+    ) {
+      modifiedFiles.add(pathValue);
+    }
+
+    if (
+      record?.status === "completed" &&
+      ["read_text_file", "inspect_path", "compute_file_hash"].includes(toolName) &&
+      pathValue &&
+      output?.sha256
+    ) {
+      fingerprints.set(pathValue, {
+        path: pathValue,
+        hash: String(output.sha256),
+        updatedAt: Date.now()
+      });
+    }
+
+    const error = record?.result?.error ?? record?.output?.error;
+    if (record?.status === "failed" && error) {
+      recentToolFailures.push({
+        code: String(error.code ?? ""),
+        message: String(error.message ?? ""),
+        toolName,
+        recoverable:
+          classifyLatestToolFailure([record]).recoverable,
+        at: Number(record.endedAt ?? Date.now())
+      });
+    }
+  }
+
+  const activeStep = rootItems.find((item) => item.status === "in_progress");
+  const completedStepIds = rootItems
+    .filter((item) => item.status === "completed")
+    .map((item) => item.id);
+  const unresolvedProblems = rootItems
+    .filter((item) => ["blocked", "needs_input"].includes(item.status))
+    .map((item) => item.reason || item.title)
+    .filter(Boolean);
+
+  return {
+    ...(activeRun.workingState ?? {}),
+    objective: activeRun.objective ?? "",
+    lastUserInstruction: activeRun.continuationInstruction ?? "",
+    activeStepId: activeStep?.id ?? null,
+    completedStepIds,
+    modifiedFiles: [...modifiedFiles],
+    fileFingerprints: [...fingerprints.values()],
+    recentToolFailures: [
+      ...(activeRun.workingState?.recentToolFailures ?? []),
+      ...recentToolFailures
+    ],
+    unresolvedProblems,
+    lastCheckpointId:
+      activeRun.activityStore?.getCheckpoint?.()?.id ??
+      activeRun.workingState?.lastCheckpointId ??
+      null,
+    lastRunId: activeRun.runId,
+    lastRunSummary:
+      activeRun.finalText ||
+      activeRun.publicStatus ||
+      activeRun.workingState?.lastRunSummary ||
+      "",
+    nextRecommendedAction:
+      activeStep?.title ??
+      rootItems.find((item) => item.status === "pending")?.title ??
+      "",
+    updatedAt: Date.now()
+  };
+}
 
 function getTaskResultDirectory(taskId) {
   const safeTaskId = String(taskId ?? "")
@@ -749,6 +883,8 @@ export class AgentRuntime {
       toolRuntime:
         this.activeRun.toolSession
           ?.getRuntimeRecovery?.() ?? null,
+      workingState:
+        deriveGoalWorkingState(this.activeRun),
       ...runtimeCursor
     });
   }
@@ -957,7 +1093,11 @@ export class AgentRuntime {
         runId,
         outcome: state.outcome,
         stopReason: state.executionStopReason,
-        error: state.lastError
+        error: state.lastError,
+        recoverable: isRecoverableRunFailure({
+          stopReason: state.executionStopReason,
+          records: run.toolSession?.getRecords?.() ?? run.toolCalls ?? []
+        })
       });
     }
 
@@ -1331,7 +1471,8 @@ export class AgentRuntime {
       crypto.randomUUID();
 
     const persistentGoal =
-      executionConversation.goal?.status === "active"
+      executionConversation.goal?.status === "active" &&
+      !isExplicitNewTask(message)
         ? executionConversation.goal
         : null;
 
@@ -1370,7 +1511,7 @@ export class AgentRuntime {
         persistentGoal?.id ?? "",
       goalSpec: persistentGoal ? structuredClone(persistentGoal) : null,
       continuationInstruction:
-        continuationState ? runMessage : "",
+        persistentGoal ? runMessage : continuationState ? runMessage : "",
       continuationCount:
         continuationState?.continuationCount ?? 0,
       previousSegmentCount:
@@ -1431,10 +1572,18 @@ export class AgentRuntime {
       approvalController: null,
       activityStore,
       initialPlan:
-        continuationState?.initialPlan ?? [],
+        continuationState?.initialPlan ??
+        persistentGoal?.planAuthority?.state?.rootItems ??
+        [],
       initialPlanState:
         continuationState?.initialPlanState ??
-        continuationState?.initialPlan ?? [],
+        persistentGoal?.planAuthority?.state ??
+        continuationState?.initialPlan ??
+        [],
+      workingState:
+        continuationState?.workingState ??
+        persistentGoal?.workingState ??
+        null,
       resumedFromMessageId:
         continuationState?.resumedFromMessageId ?? "",
       platformRunId: "",
@@ -1483,6 +1632,22 @@ export class AgentRuntime {
       });
       if (!startedGoal.ok && !this.activeRun.platformError) {
         this.activeRun.platformError = startedGoal;
+      }
+      const workingState = conversationManager.recordGoalWorkingState({
+        conversationId: conversation.id,
+        goalId: persistentGoal.id,
+        patch: {
+          lastUserInstruction: runMessage,
+          lastRunId: runId,
+          ...classifyWorkingInstruction(runMessage),
+          reason: continuationState
+            ? "goal-continuation-instruction"
+            : "goal-run-instruction"
+        }
+      });
+      if (workingState?.ok) {
+        this.activeRun.workingState = workingState.goal.workingState;
+        this.activeRun.goalSpec = workingState.goal;
       }
     }
 
@@ -3221,6 +3386,31 @@ export class AgentRuntime {
               change
             );
           }
+
+          if (this.activeRun.persistentGoalId && change?.planState) {
+            const persisted = change.authorityAction === "replan"
+              ? conversationManager.replanGoal({
+                  conversationId,
+                  goalId: this.activeRun.persistentGoalId,
+                  planState: change.planState,
+                  reason: change.reason,
+                  failedAssumption: change.failedAssumption,
+                  runId
+                })
+              : conversationManager.recordGoalPlan({
+                  conversationId,
+                  goalId: this.activeRun.persistentGoalId,
+                  planState: change.planState,
+                  runId,
+                  authorityAction: change.authorityAction ?? "progress"
+                });
+            if (persisted?.ok === false) {
+              console.warn("Goal 顶层计划持久化失败：", persisted);
+            }
+          }
+
+          this.activeRun.workingState =
+            deriveGoalWorkingState(this.activeRun);
           this.persistActiveRunCheckpoint({
             status: "running"
           });

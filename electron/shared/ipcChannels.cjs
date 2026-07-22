@@ -128,6 +128,18 @@ const IPC_CHANNELS =
       CONTROL_JOB:
         "platform-control-job",
 
+      RESOLVE_APPROVAL:
+        "platform-resolve-approval",
+
+      PROVIDE_INPUT:
+        "platform-provide-input",
+
+      SIGNAL_EXTERNAL:
+        "platform-signal-external",
+
+      CONTROL_NOTIFICATION:
+        "platform-control-notification",
+
       VIEW_REQUESTED:
         "platform-view-requested",
 

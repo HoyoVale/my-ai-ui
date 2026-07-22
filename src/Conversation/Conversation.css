@@ -5500,3 +5500,36 @@ button.conversation-thinking-event:focus-visible > strong {
   border-radius: 9px;
   overflow: hidden;
 }
+
+.conversation-platform-dock__input-request {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+}
+
+.conversation-platform-dock__input-request label {
+  grid-column: 1 / -1;
+  color: var(--text-secondary, #777);
+  font-size: 12px;
+}
+
+.conversation-platform-dock__input-request input {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 9px;
+  padding: 7px 9px;
+  background: transparent;
+  color: inherit;
+}
+
+.conversation-platform-dock__input-request button {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.conversation-platform-dock__body article.is-read {
+  opacity: 0.62;
+}

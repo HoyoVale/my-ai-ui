@@ -224,7 +224,7 @@ describe("Plan Core 2.0 root and internal step work", () => {
     ]);
 
     const state = store.getState();
-    assert.equal(state.schemaVersion, 2);
+    assert.equal(state.schemaVersion, 3);
     assert.equal(state.rootItems.length, 1);
     assert.deepEqual(state.subplans, []);
   });
@@ -285,3 +285,4 @@ describe("Plan Core 2.0 root and internal step work", () => {
     );
   });
 });
+

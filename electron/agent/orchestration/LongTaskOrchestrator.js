@@ -1,6 +1,7 @@
 import {
   RUN_STOP_REASONS,
-  isGracefulRunBoundary
+  isGracefulRunBoundary,
+  isRecoverableRunFailure
 } from "../runStopReasons.js";
 
 import {
@@ -57,7 +58,7 @@ function progressSignature(plan = [], records = []) {
   ) {
     if (
       record?.status !== "completed" ||
-      ["update_plan", "update_step_work"].includes(record?.name)
+      ["update_plan", "replan_goal", "update_step_work"].includes(record?.name)
     ) {
       continue;
     }
@@ -339,7 +340,10 @@ export class LongTaskOrchestrator {
       } else {
         decision = "continue";
       }
-    } else if (isGracefulRunBoundary(stopReason)) {
+    } else if (
+      isGracefulRunBoundary(stopReason) ||
+      isRecoverableRunFailure({ stopReason, records })
+    ) {
       decision = "checkpoint";
       finalStopReason = stopReason;
     }

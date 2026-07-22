@@ -1,5 +1,6 @@
 import {
-  isGracefulRunBoundary
+  isGracefulRunBoundary,
+  isRecoverableRunFailure
 } from "./runStopReasons.js";
 
 const NEW_TASK_PATTERNS = [
@@ -65,9 +66,16 @@ export function isResumableCheckpointActivity(
     checkpoint.stopReason || activity.stopReason;
 
   return (
-    isGracefulRunBoundary(stopReason) &&
+    (
+      isGracefulRunBoundary(stopReason) ||
+      isRecoverableRunFailure({
+        stopReason,
+        records: checkpoint.tools ?? activity.tools ?? []
+      })
+    ) &&
     (
       activity.status === "checkpoint_ready" ||
+      activity.status === "failed" ||
       checkpoint.phase === "checkpoint_ready" ||
       checkpoint.resumable === true ||
       activity.resumable === true
@@ -107,23 +115,95 @@ export function findLatestResumableCheckpoint(
   return null;
 }
 
+function findLatestAssistantCheckpoint(conversation) {
+  const messages = Array.isArray(conversation?.messages)
+    ? conversation.messages
+    : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "assistant") continue;
+    if (message?.activity?.checkpoint) {
+      return {
+        messageId: String(message.id ?? ""),
+        activity: message.activity,
+        checkpoint: message.activity.checkpoint
+      };
+    }
+  }
+  return null;
+}
+
+function createGoalContinuation(conversation) {
+  const goal = conversation?.goal;
+  if (!goal || goal.status !== "active") return null;
+
+  const latest = findLatestAssistantCheckpoint(conversation);
+  if (latest && isResumableCheckpointActivity(latest.activity)) {
+    return {
+      ...latest,
+      source: "active_goal"
+    };
+  }
+
+  if (
+    goal.phase === "waiting" &&
+    goal.runtime?.resumable !== true &&
+    ["fatal_error", "blocked"].includes(goal.waiting?.kind)
+  ) {
+    return null;
+  }
+
+  const planState = goal.planAuthority?.state ?? null;
+  return {
+    messageId: String(goal.checkpoint?.messageId ?? ""),
+    source: "active_goal",
+    activity: {
+      status: "checkpoint_ready",
+      resumable: true
+    },
+    checkpoint: {
+      version: 5,
+      goalId: goal.id,
+      taskId: goal.runtime?.taskId ?? "",
+      runId: goal.runtime?.lastRunId ?? "",
+      messageId: goal.checkpoint?.messageId ?? "",
+      objective: goal.objective,
+      mode: conversation.mode ?? "chat",
+      workspaceId: conversation.workspaceId ?? "",
+      workspaceSnapshot: conversation.workspaceSnapshot ?? null,
+      modelSelection: conversation.modelSelection ?? null,
+      modelSnapshot: conversation.modelSnapshot ?? null,
+      planState,
+      plan: planState?.rootItems ?? [],
+      continuationCount: goal.runtime?.continuationCount ?? 0,
+      previousSegmentCount: 0,
+      resumable: true,
+      stopReason: goal.waiting?.reason ?? "active-goal-continuation",
+      workingState: goal.workingState ?? null
+    }
+  };
+}
+
 export function resolveCheckpointContinuation({
   conversation,
   message,
   explicit = false
 } = {}) {
-  if (
-    !explicit &&
-    !isExplicitContinuationMessage(message)
-  ) {
-    return null;
-  }
-
   if (isExplicitNewTask(message)) {
     return null;
   }
 
-  return findLatestResumableCheckpoint(conversation);
+  const explicitContinuation =
+    explicit || isExplicitContinuationMessage(message);
+  const activeGoalContinuation =
+    conversation?.goal?.status === "active";
+
+  if (!explicitContinuation && !activeGoalContinuation) {
+    return null;
+  }
+
+  return findLatestResumableCheckpoint(conversation) ??
+    (activeGoalContinuation ? createGoalContinuation(conversation) : null);
 }
 
 export function createCheckpointContinuationState(
@@ -198,6 +278,10 @@ export function createCheckpointContinuationState(
       currentRunSegments,
     contextCompactionCount: nonNegativeInteger(
       checkpoint.counts?.contextCompactions
-    )
+    ),
+    workingState:
+      checkpoint.workingState && typeof checkpoint.workingState === "object"
+        ? structuredClone(checkpoint.workingState)
+        : null
   };
 }

@@ -76,6 +76,37 @@ const TOOL_ERROR_REASON = Object.freeze({
     RUN_STOP_REASONS.CANCELLED_BY_USER
 });
 
+const RECOVERABLE_TOOL_CODES = new Set([
+  "NOT_FOUND",
+  "TEMPORARY_FAILURE",
+  "TOOL_TIMEOUT",
+  "INVALID_TOOL_ARGUMENTS",
+  "INVALID_ARGUMENTS",
+  "RESULT_TOO_LARGE",
+  "TOOL_RESULT_TOO_LARGE",
+  "REPEATED_TOOL_CALL",
+  "PLAN_STEP_REQUIRED",
+  "PLAN_ROOT_STEP_NOT_FOUND",
+  "PLAN_ROOT_STEP_NOT_ACTIVE",
+  "PLAN_REPLAN_REQUIRED",
+  "PLAN_REPLAN_REASON_REQUIRED",
+  "PLAN_REPLAN_ASSUMPTION_REQUIRED",
+  "TEXT_NOT_FOUND",
+  "SEARCH_PATH_NOT_DIRECTORY",
+  "FILE_TOO_LARGE",
+  "TOOL_CIRCUIT_OPEN"
+]);
+
+const FATAL_TOOL_CODES = new Set([
+  "CANCELLED_BY_USER",
+  "PERMISSION_DENIED",
+  "POLICY_DENIED",
+  "APPROVAL_REQUIRED",
+  "TOOL_EFFECT_UNKNOWN",
+  "TOOL_CONFIRMATION_REQUIRED",
+  "TOOL_RECEIPT_VERIFICATION_FAILED"
+]);
+
 const KNOWN_REASONS = new Set(
   Object.values(RUN_STOP_REASONS)
 );
@@ -154,6 +185,63 @@ export function runStatusFromStopReason(
   }
 
   return "failed";
+}
+
+export function classifyLatestToolFailure(records = []) {
+  const record = [...(Array.isArray(records) ? records : [])]
+    .reverse()
+    .find((item) => {
+      const error = item?.result?.error ?? item?.output?.error;
+      return Boolean(error?.code || item?.status === "failed");
+    });
+  if (!record) {
+    return {
+      found: false,
+      recoverable: false,
+      code: "",
+      message: "",
+      toolName: ""
+    };
+  }
+  const error = record?.result?.error ?? record?.output?.error ?? {};
+  const code = String(error.code ?? "").trim();
+  const category = String(error.category ?? "").trim();
+  const recoverable = error.retryable === true ||
+    RECOVERABLE_TOOL_CODES.has(code) ||
+    [
+      "not_found",
+      "invalid_input",
+      "invalid_output",
+      "timeout",
+      "unavailable",
+      "rate_limited"
+    ].includes(category);
+  return {
+    found: true,
+    recoverable: recoverable && !FATAL_TOOL_CODES.has(code),
+    code,
+    category,
+    message: String(error.message ?? "").trim(),
+    toolName: String(record?.name ?? "").trim()
+  };
+}
+
+export function isRecoverableRunFailure({
+  stopReason,
+  records = []
+} = {}) {
+  const normalized = normalizeRunStopReason(stopReason);
+  if (isGracefulRunBoundary(normalized)) return true;
+  if ([
+    RUN_STOP_REASONS.TOOL_ERROR,
+    RUN_STOP_REASONS.TOOL_TIMEOUT,
+    RUN_STOP_REASONS.INVALID_TOOL_ARGUMENTS,
+    RUN_STOP_REASONS.PLAN_INCOMPLETE
+  ].includes(normalized)) {
+    const failure = classifyLatestToolFailure(records);
+    return failure.found && failure.recoverable;
+  }
+  return false;
 }
 
 export function stopReasonFromToolRecords(

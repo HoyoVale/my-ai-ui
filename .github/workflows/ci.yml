@@ -31,6 +31,9 @@ jobs:
       - name: Install
         run: npm ci --registry=https://registry.npmjs.org/
 
+      - name: Continuity and Plan Authority contract
+        run: npm run test:p0-continuity
+
       - name: Lint, unit tests and build
         run: npm run check
 
@@ -39,6 +42,9 @@ jobs:
 
       - name: Multi-Agent Supervisor crash recovery
         run: npm run test:e2e:supervisor-crash
+
+      - name: Long-running Agent crash recovery
+        run: npm run test:e2e:long-running-crash
 
       - name: Platform and Worktree crash recovery
         run: npm run test:e2e:platform-crash && npm run test:e2e:worktree-crash

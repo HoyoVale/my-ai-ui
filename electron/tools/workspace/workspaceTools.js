@@ -613,6 +613,76 @@ const runtimeReadMetadata = {
   },
   runtimeContract: READ_RUNTIME_CONTRACT
 };
+
+const CONTINUITY_READ_CACHE_VERSION = 1;
+const CONTINUITY_READ_CACHE_MAX_ENTRIES = 256;
+const CONTINUITY_READ_CACHE_MAX_BYTES = 32_000_000;
+
+function stableCacheValue(value) {
+  if (Array.isArray(value)) return value.map(stableCacheValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, stableCacheValue(value[key])])
+    );
+  }
+  return value;
+}
+
+function continuityReadCacheKey(source) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(stableCacheValue(source)))
+    .digest("hex");
+}
+
+async function atomicWriteJson(filePath, value) {
+  const directory = path.dirname(filePath);
+  await fsp.mkdir(directory, { recursive: true });
+  const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fsp.writeFile(temporary, JSON.stringify(value), "utf8");
+  try {
+    await fsp.rename(temporary, filePath);
+  } catch (error) {
+    if (!["EEXIST", "EPERM"].includes(error?.code)) throw error;
+    await fsp.rm(filePath, { force: true });
+    await fsp.rename(temporary, filePath);
+  }
+}
+
+async function pruneContinuityReadCache(directory) {
+  if (!directory) return;
+  let entries;
+  try {
+    entries = await fsp.readdir(directory, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const filePath = path.join(directory, entry.name);
+    try {
+      const stat = await fsp.stat(filePath);
+      files.push({ filePath, size: stat.size, modifiedAt: stat.mtimeMs });
+    } catch {
+      // Ignore a cache entry removed by another run.
+    }
+  }
+  files.sort((left, right) => right.modifiedAt - left.modifiedAt);
+  let totalBytes = 0;
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    totalBytes += file.size;
+    if (
+      index >= CONTINUITY_READ_CACHE_MAX_ENTRIES ||
+      totalBytes > CONTINUITY_READ_CACHE_MAX_BYTES
+    ) {
+      await fsp.rm(file.filePath, { force: true }).catch(() => {});
+    }
+  }
+}
 const directoryEntrySchema = z.object({
   name: z.string(),
   path: z.string(),
@@ -634,6 +704,8 @@ const textReadOutputSchema = z.object({
   hasMoreAfter: z.boolean(),
   nextStartLine: z.number().int().nullable(),
   sizeBytes: z.number().int(),
+  modifiedAt: z.string(),
+  cacheReused: z.boolean(),
   encoding: z.enum(["utf8", "utf16le"]),
   bom: z.boolean(),
   newline: z.enum(NEWLINE_VALUES),
@@ -709,6 +781,99 @@ export function createWorkspaceToolDefinitions(workspaceSettings = {}) {
     ...options,
     workspaceSettings
   });
+
+  const continuityReadCacheDirectory = String(
+    workspaceSettings.continuityReadCacheDirectory ?? ""
+  ).trim();
+
+  async function readTextWithContinuityCache(inputPath, {
+    startLine = 1,
+    endLine,
+    maxBytes,
+    encoding = "auto",
+    includeLineNumbers = false,
+    signal = null
+  } = {}) {
+    const resolved = resolve(inputPath, { allowDirectory: false });
+    const normalizedInput = {
+      path: resolved.path,
+      startLine,
+      endLine: endLine ?? null,
+      maxBytes,
+      encoding,
+      includeLineNumbers
+    };
+    const key = continuityReadCacheKey(normalizedInput);
+    const cachePath = continuityReadCacheDirectory
+      ? path.join(continuityReadCacheDirectory, `${key}.json`)
+      : "";
+
+    if (cachePath) {
+      try {
+        const currentStat = await fsp.stat(resolved.path);
+        const cached = JSON.parse(await fsp.readFile(cachePath, "utf8"));
+        const signature = cached?.signature ?? {};
+        if (
+          cached?.version === CONTINUITY_READ_CACHE_VERSION &&
+          cached?.key === key &&
+          signature.size === currentStat.size &&
+          signature.mtimeMs === currentStat.mtimeMs &&
+          signature.ctimeMs === currentStat.ctimeMs &&
+          cached?.output && typeof cached.output === "object"
+        ) {
+          await fsp.utimes(cachePath, new Date(), new Date()).catch(() => {});
+          return {
+            ...structuredClone(cached.output),
+            cacheReused: true
+          };
+        }
+      } catch {
+        // Missing, stale or damaged cache entries are rebuilt from the file.
+      }
+    }
+
+    const file = await readSafeTextFile(resolved.path, maxBytes, {
+      signal,
+      encoding
+    });
+    const range = textRange(file, {
+      startLine,
+      endLine,
+      maxReadLines: limits.maxReadLines,
+      includeLineNumbers
+    });
+    const output = {
+      root: resolved.root,
+      path: resolved.relativePath,
+      ...range,
+      sizeBytes: file.bytes,
+      modifiedAt: file.stat.mtime.toISOString(),
+      cacheReused: false,
+      encoding: file.encoding,
+      bom: file.bom,
+      newline: file.newline,
+      sha256: file.sha256,
+      includeLineNumbers
+    };
+
+    if (cachePath) {
+      await atomicWriteJson(cachePath, {
+        version: CONTINUITY_READ_CACHE_VERSION,
+        key,
+        sourcePath: resolved.path,
+        signature: {
+          size: file.stat.size,
+          mtimeMs: file.stat.mtimeMs,
+          ctimeMs: file.stat.ctimeMs
+        },
+        output,
+        cachedAt: Date.now()
+      }).catch(() => {});
+      void pruneContinuityReadCache(continuityReadCacheDirectory);
+    }
+
+    return output;
+  }
 
   async function inspectPath(inputPath, context = {}) {
     throwIfAborted(context.abortSignal);
@@ -1026,33 +1191,15 @@ export function createWorkspaceToolDefinitions(workspaceSettings = {}) {
       outputSchema: textReadOutputSchema,
       timeoutMs: 25_000,
       ...runtimeReadMetadata,
-      async execute(input, context = {}) {
-        const maxBytes = input.maxBytes ?? limits.maxTextFileBytes;
-        const encoding = input.encoding ?? "auto";
-        const includeLineNumbers = input.includeLineNumbers ?? false;
-        const resolved = resolve(input.path, { allowDirectory: false });
-        const file = await readSafeTextFile(resolved.path, maxBytes, {
-          signal: context.abortSignal,
-          encoding
-        });
-        const range = textRange(file, {
+      execute(input, context = {}) {
+        return readTextWithContinuityCache(input.path, {
           startLine: input.startLine,
           endLine: input.endLine,
-          maxReadLines: limits.maxReadLines,
-          includeLineNumbers
+          maxBytes: input.maxBytes ?? limits.maxTextFileBytes,
+          encoding: input.encoding ?? "auto",
+          includeLineNumbers: input.includeLineNumbers ?? false,
+          signal: context.abortSignal
         });
-
-        return {
-          root: resolved.root,
-          path: resolved.relativePath,
-          ...range,
-          sizeBytes: file.bytes,
-          encoding: file.encoding,
-          bom: file.bom,
-          newline: file.newline,
-          sha256: file.sha256,
-          includeLineNumbers
-        };
       }
     },
     {
@@ -1130,28 +1277,18 @@ export function createWorkspaceToolDefinitions(workspaceSettings = {}) {
               });
               continue;
             }
-            const file = await readSafeTextFile(resolved.path, maxBytesPerFile, {
-              signal: context.abortSignal,
-              encoding
-            });
-            const range = textRange(file, {
+            const output = await readTextWithContinuityCache(inputPath, {
               startLine: 1,
               endLine: limits.maxReadLines,
-              maxReadLines: limits.maxReadLines,
-              includeLineNumbers
+              maxBytes: maxBytesPerFile,
+              encoding,
+              includeLineNumbers,
+              signal: context.abortSignal
             });
-            totalBytes += file.bytes;
+            totalBytes += output.sizeBytes;
             results.push({
               ok: true,
-              root: resolved.root,
-              path: resolved.relativePath,
-              ...range,
-              sizeBytes: file.bytes,
-              encoding: file.encoding,
-              bom: file.bom,
-              newline: file.newline,
-              sha256: file.sha256,
-              includeLineNumbers
+              ...output
             });
           } catch (error) {
             if (error?.name === "AbortError") throw error;

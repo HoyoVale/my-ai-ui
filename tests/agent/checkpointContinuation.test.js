@@ -139,6 +139,61 @@ describe("segment-boundary task continuation", () => {
     );
   });
 
+  it("defaults ordinary feedback to the active Goal checkpoint", () => {
+    const conversation = resumableConversation("tool_error");
+    conversation.goal = {
+      id: "goal-1",
+      status: "active",
+      phase: "waiting",
+      runtime: { resumable: true },
+      planAuthority: { state: { rootItems: [] } },
+      workingState: {}
+    };
+    conversation.messages.at(-1).activity.checkpoint.tools = [{
+      name: "replace_text_in_file",
+      status: "failed",
+      result: {
+        error: { code: "TEXT_NOT_FOUND", category: "not_found" }
+      }
+    }];
+
+    const continuation = resolveCheckpointContinuation({
+      conversation,
+      message: "摄像机还是太近"
+    });
+
+    assert.equal(continuation.messageId, "assistant-1");
+    assert.equal(continuation.source, undefined);
+  });
+
+  it("does not revive a fatal checkpoint while keeping Goal binding available to AgentRuntime", () => {
+    const conversation = resumableConversation("tool_error");
+    conversation.goal = {
+      id: "goal-1",
+      status: "active",
+      phase: "waiting",
+      waiting: { kind: "fatal_error" },
+      runtime: { resumable: false },
+      planAuthority: { state: { rootItems: [] } },
+      workingState: {}
+    };
+    conversation.messages.at(-1).activity.status = "failed";
+    conversation.messages.at(-1).activity.resumable = false;
+    conversation.messages.at(-1).activity.checkpoint.resumable = false;
+    conversation.messages.at(-1).activity.checkpoint.tools = [{
+      name: "dangerous_tool",
+      status: "failed",
+      result: {
+        error: { code: "PERMISSION_DENIED", category: "policy" }
+      }
+    }];
+
+    assert.equal(resolveCheckpointContinuation({
+      conversation,
+      message: "我已经修复权限设置"
+    }), null);
+  });
+
   it("recognizes a direct reference to the previous recommendation as continuation", () => {
     const continuation = resolveCheckpointContinuation({
       conversation: resumableConversation(),

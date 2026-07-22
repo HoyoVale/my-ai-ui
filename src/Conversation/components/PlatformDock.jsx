@@ -27,7 +27,12 @@ function budgetText(budget = {}) {
 function statusLabel(status) {
   return ({
     queued: "排队中",
+    scheduled: "已计划",
     running: "运行中",
+    waiting_input: "等待输入",
+    waiting_approval: "等待批准",
+    waiting_external: "等待外部条件",
+    retry_scheduled: "等待重试",
     paused: "已暂停",
     completed: "已完成",
     failed: "失败",
@@ -43,6 +48,18 @@ function statusLabel(status) {
   })[status] ?? status ?? "未知";
 }
 
+function wakeText(job) {
+  if (job?.wake?.at) {
+    return `下次唤醒 ${new Date(job.wake.at).toLocaleString()}`;
+  }
+  if (job?.wake?.policy === "network_online") return "网络恢复后唤醒";
+  if (job?.wake?.policy === "app_resume") return "系统恢复后唤醒";
+  if (job?.wake?.policy === "approval") return "批准后唤醒";
+  if (job?.wake?.policy === "input") return "收到输入后唤醒";
+  if (job?.wake?.policy === "external") return "收到外部信号后唤醒";
+  return "";
+}
+
 export function ConversationPlatformDock({
   conversation,
   developerMode = false
@@ -52,6 +69,8 @@ export function ConversationPlatformDock({
   const [expanded, setExpanded] = useState(false);
   const [requestedView, setRequestedView] = useState("run");
   const [busyJobId, setBusyJobId] = useState("");
+  const [busyApprovalId, setBusyApprovalId] = useState("");
+  const [inputValues, setInputValues] = useState({});
   const [error, setError] = useState("");
 
   const refresh = async () => {
@@ -76,7 +95,7 @@ export function ConversationPlatformDock({
   }, []);
 
   useEffect(() => window.api?.onPlatformViewRequested?.((view) => {
-    if (!["agents", "tasks", "worktrees", "run", "review", "artifacts"].includes(view)) {
+    if (!["agents", "tasks", "worktrees", "run", "review", "artifacts", "inbox"].includes(view)) {
       return;
     }
     setRequestedView(view);
@@ -114,6 +133,14 @@ export function ConversationPlatformDock({
     () => (state?.worktrees ?? []).filter((item) => item.platformRunId === runId),
     [runId, state?.worktrees]
   );
+  const approvals = useMemo(
+    () => (state?.approvals ?? []).filter((item) => item.platformRunId === runId),
+    [runId, state?.approvals]
+  );
+  const notifications = useMemo(
+    () => (state?.notifications ?? []).filter((item) => !item.platformRunId || item.platformRunId === runId),
+    [runId, state?.notifications]
+  );
   if (!run) return null;
 
   const tasks = Object.values(run.tasks ?? {});
@@ -125,10 +152,14 @@ export function ConversationPlatformDock({
     )
   ).length;
   const blocked = tasks.filter((task) => ["blocked", "failed", "continuable"].includes(task.status)).length;
-  const runningJobs = jobs.filter((job) => ["queued", "running"].includes(job.status)).length;
+  const runningJobs = jobs.filter((job) => ["queued", "scheduled", "running", "retry_scheduled"].includes(job.status)).length;
+  const waitingJobs = jobs.filter((job) => ["waiting_input", "waiting_approval", "waiting_external"].includes(job.status)).length;
+  const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
   const summary = [
     runningTasks || runningJobs ? `正在运行 ${Math.max(runningTasks, runningJobs)} 个任务` : "当前没有运行中的后台任务",
     waitingReview ? `${waitingReview} 个等待审查` : "",
+    waitingJobs ? `${waitingJobs} 个长期等待` : "",
+    pendingApprovals ? `${pendingApprovals} 个待批准` : "",
     blocked ? `${blocked} 个需要处理` : ""
   ].filter(Boolean).join("，");
 
@@ -142,6 +173,39 @@ export function ConversationPlatformDock({
     } finally {
       setBusyJobId("");
     }
+  };
+
+  const resolveApproval = async (approvalId, decision) => {
+    setBusyApprovalId(approvalId);
+    setError("");
+    try {
+      const result = await window.api?.resolvePlatformApproval?.({ approvalId, decision });
+      if (!result?.ok) setError(result?.code ?? "批准操作失败");
+      await refresh();
+    } finally {
+      setBusyApprovalId("");
+    }
+  };
+
+  const provideInput = async (jobId) => {
+    setBusyJobId(jobId);
+    setError("");
+    try {
+      const result = await window.api?.providePlatformJobInput?.({
+        jobId,
+        value: inputValues[jobId] ?? ""
+      });
+      if (!result?.ok) setError(result?.code ?? "提交失败");
+      else setInputValues((values) => ({ ...values, [jobId]: "" }));
+      await refresh();
+    } finally {
+      setBusyJobId("");
+    }
+  };
+
+  const controlNotification = async (notificationId, action) => {
+    await window.api?.controlPlatformNotification?.({ notificationId, action });
+    await refresh();
   };
 
   return (
@@ -174,7 +238,8 @@ export function ConversationPlatformDock({
               ["agents", "Agents"],
               ["worktrees", "Worktrees"],
               ["review", "审查"],
-              ["artifacts", "Artifacts"]
+              ["artifacts", "Artifacts"],
+              ["inbox", `收件箱 ${pendingApprovals + notifications.filter((item) => !item.readAt).length}`]
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -196,17 +261,73 @@ export function ConversationPlatformDock({
                   <strong>{job.title}</strong>
                   <small>{statusLabel(job.status)} · 尝试 {job.attempt}/{job.maxAttempts}</small>
                   <small>{budgetText(job.budget)}</small>
+                  {wakeText(job) && <small>{wakeText(job)}</small>}
+                  {job.waitingReason && <small>{job.waitingReason}</small>}
+                  {job.checkpoint?.summary && <small>检查点：{job.checkpoint.summary}</small>}
                 </div>
                 <div className="conversation-platform-dock__actions">
-                  {job.status === "running" && <button type="button" disabled={busyJobId === job.id} onClick={() => void control(job.id, "pause")}>暂停</button>}
-                  {job.status === "queued" && <button type="button" disabled={busyJobId === job.id} onClick={() => void control(job.id, "pause")}>暂停</button>}
+                  {["queued", "scheduled", "running", "waiting_input", "waiting_approval", "waiting_external", "retry_scheduled"].includes(job.status) && <button type="button" disabled={busyJobId === job.id} onClick={() => void control(job.id, "pause")}>暂停</button>}
                   {job.status === "paused" && <button type="button" disabled={busyJobId === job.id} onClick={() => void control(job.id, "resume")}>继续</button>}
                   {job.status === "failed" && <button type="button" disabled={busyJobId === job.id || job.attempt >= job.maxAttempts} onClick={() => void control(job.id, "retry")}>重试</button>}
-                  {["queued", "running", "paused"].includes(job.status) && <button type="button" disabled={busyJobId === job.id} onClick={() => void control(job.id, "cancel")}>取消</button>}
+                  {!["completed", "failed", "cancelled"].includes(job.status) && <button type="button" disabled={busyJobId === job.id} onClick={() => void control(job.id, "cancel")}>取消</button>}
                 </div>
+                {job.status === "waiting_input" && (
+                  <div className="conversation-platform-dock__input-request">
+                    <label htmlFor={`job-input-${job.id}`}>{job.inputRequest?.prompt || "请输入继续任务所需的信息"}</label>
+                    <input
+                      id={`job-input-${job.id}`}
+                      value={inputValues[job.id] ?? ""}
+                      onChange={(event) => setInputValues((values) => ({ ...values, [job.id]: event.target.value }))}
+                    />
+                    <button type="button" disabled={busyJobId === job.id || !(inputValues[job.id] ?? "").trim()} onClick={() => void provideInput(job.id)}>提交并继续</button>
+                  </div>
+                )}
               </article>
             ))}
           </section>
+
+          <section>
+            <header><strong>长期运行环境</strong></header>
+            <p>网络：{state?.lifecycle?.online === false ? "离线" : "在线"} · 系统：{state?.lifecycle?.suspended ? "休眠" : "活动"} · 电源：{state?.lifecycle?.onBattery ? "电池" : "交流电"}</p>
+          </section>
+
+          {(requestedView === "inbox" || pendingApprovals > 0) && (
+            <section>
+              <header><strong>Approval Inbox</strong><span>{pendingApprovals}</span></header>
+              {approvals.filter((item) => item.status === "pending").length === 0 ? <p>当前没有待批准操作。</p> : approvals.filter((item) => item.status === "pending").map((approval) => (
+                <article key={approval.id} className="is-waiting_approval">
+                  <div>
+                    <strong>{approval.title}</strong>
+                    <small>{approval.risk} · {approval.action}</small>
+                    <small>{approval.summary}</small>
+                  </div>
+                  <div className="conversation-platform-dock__actions">
+                    <button type="button" disabled={busyApprovalId === approval.id} onClick={() => void resolveApproval(approval.id, "approved")}>批准</button>
+                    <button type="button" disabled={busyApprovalId === approval.id} onClick={() => void resolveApproval(approval.id, "rejected")}>拒绝</button>
+                  </div>
+                </article>
+              ))}
+            </section>
+          )}
+
+          {requestedView === "inbox" && (
+            <section>
+              <header><strong>通知中心</strong><span>{notifications.length}</span></header>
+              {notifications.length === 0 ? <p>当前没有 Agent 通知。</p> : notifications.slice(0, 30).map((notification) => (
+                <article key={notification.id} className={`is-${notification.level}${notification.readAt ? " is-read" : ""}`}>
+                  <div>
+                    <strong>{notification.title}</strong>
+                    <small>{notification.body}</small>
+                    <small>{new Date(notification.createdAt).toLocaleString()}</small>
+                  </div>
+                  <div className="conversation-platform-dock__actions">
+                    {!notification.readAt && <button type="button" onClick={() => void controlNotification(notification.id, "read")}>已读</button>}
+                    <button type="button" onClick={() => void controlNotification(notification.id, "clear")}>清除</button>
+                  </div>
+                </article>
+              ))}
+            </section>
+          )}
 
           <section>
             <header><strong>集成与审查</strong></header>

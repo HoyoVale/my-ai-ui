@@ -127,6 +127,18 @@ const CHANNELS = Object.freeze({
   PLATFORM_CONTROL_JOB:
     "platform-control-job",
 
+  PLATFORM_RESOLVE_APPROVAL:
+    "platform-resolve-approval",
+
+  PLATFORM_PROVIDE_INPUT:
+    "platform-provide-input",
+
+  PLATFORM_SIGNAL_EXTERNAL:
+    "platform-signal-external",
+
+  PLATFORM_CONTROL_NOTIFICATION:
+    "platform-control-notification",
+
   PLATFORM_VIEW_REQUESTED:
     "platform-view-requested",
 
@@ -647,6 +659,48 @@ const api = Object.freeze({
       CHANNELS.PLATFORM_CONTROL_JOB,
       {
         jobId: String(request.jobId ?? ""),
+        action: String(request.action ?? "")
+      }
+    );
+  },
+
+  resolvePlatformApproval: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.PLATFORM_RESOLVE_APPROVAL,
+      {
+        approvalId: String(request.approvalId ?? ""),
+        decision: String(request.decision ?? ""),
+        note: String(request.note ?? "")
+      }
+    );
+  },
+
+  providePlatformJobInput: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.PLATFORM_PROVIDE_INPUT,
+      {
+        jobId: String(request.jobId ?? ""),
+        value: request.value ?? ""
+      }
+    );
+  },
+
+  signalPlatformExternal: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.PLATFORM_SIGNAL_EXTERNAL,
+      {
+        jobId: String(request.jobId ?? ""),
+        key: String(request.key ?? ""),
+        payload: request.payload && typeof request.payload === "object" ? request.payload : null
+      }
+    );
+  },
+
+  controlPlatformNotification: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.PLATFORM_CONTROL_NOTIFICATION,
+      {
+        notificationId: String(request.notificationId ?? ""),
         action: String(request.action ?? "")
       }
     );

@@ -83,7 +83,12 @@ export function createAgentToolSession({
     new RunPlanStore(
       initialPlan,
       {
-        onChange: onPlanChange
+        onChange: onPlanChange,
+        rootPlanId:
+          initialPlan && typeof initialPlan === "object" && !Array.isArray(initialPlan)
+            ? initialPlan.rootPlanId ?? ""
+            : "",
+        runId
       }
     );
   const resultStore =
@@ -137,6 +142,9 @@ export function createAgentToolSession({
     workspaceSettings,
     includeWorkspaceDefinitions: hasWorkspace,
     includeWorkspaceInfo: hasWorkspace,
+    continuityReadCacheDirectory: resultStoreDirectory
+      ? path.join(resultStoreDirectory, "continuity-read-cache")
+      : "",
     resultStore,
     planStore
   });

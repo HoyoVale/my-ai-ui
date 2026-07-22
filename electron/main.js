@@ -36,8 +36,8 @@ import {
 } from "./tools/runtime-state/RuntimeRecoveryManager.js";
 
 import {
+  longRunningAgentService,
   platformKernel,
-  platformJobScheduler,
   worktreeRuntime
 } from "./platform/index.js";
 
@@ -73,7 +73,8 @@ registerIpcHandlers();
 app.whenReady().then(async () => {
   try {
     const platformRecovery = platformKernel.recoverInterruptedRuns();
-    const jobRecovery = platformJobScheduler.recover();
+    const longRunning = longRunningAgentService.start();
+    const jobRecovery = longRunning.recovery;
     const worktreeRecovery = worktreeRuntime.recover();
     if (
       platformRecovery.recoveredRunIds.length > 0 ||
@@ -174,6 +175,8 @@ app.on(
     event.preventDefault();
     persistenceFlushInProgress = true;
     destroyTray();
+
+    longRunningAgentService.stop();
 
     void Promise.all([
       flushAllPersistenceQueues(),

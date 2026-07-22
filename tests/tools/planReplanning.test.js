@@ -13,10 +13,14 @@ describe("Plan replanning foundation", () => {
       { id: "three", title: "Old pending", status: "pending" }
     ]);
 
-    const plan = store.update([
+    const plan = store.replan([
+      { id: "one", title: "Done", status: "completed" },
       { id: "four", title: "New active", status: "in_progress" },
       { id: "five", title: "New pending", status: "pending" }
-    ], { reason: "The runtime layer is the real root cause" });
+    ], {
+      reason: "The runtime layer is the real root cause",
+      failedAssumption: "The old implementation path was sufficient"
+    });
 
     assert.equal(plan.find((item) => item.id === "one").status, "completed");
     assert.equal(plan.find((item) => item.id === "two").status, "superseded");
@@ -45,14 +49,20 @@ describe("Plan replanning foundation", () => {
 it("bounds superseded plan history during repeated replanning", () => {
   const store = new RunPlanStore();
 
-  for (let index = 0; index < 75; index += 1) {
-    store.update([
+  store.update([
+    { id: "step-0", title: "Revision 0", status: "in_progress" }
+  ]);
+  for (let index = 1; index < 75; index += 1) {
+    store.replan([
       {
         id: `step-${index}`,
         title: `Revision ${index}`,
         status: "in_progress"
       }
-    ], { reason: `revision-${index}` });
+    ], {
+      reason: `revision-${index}`,
+      failedAssumption: `assumption-${index - 1}`
+    });
   }
 
   const state = store.getExecutionState();

@@ -41,7 +41,7 @@ function compactToolRecords(
 ) {
   return (Array.isArray(records) ? records : [])
     .filter((record) =>
-      !["update_plan", "update_step_work"].includes(record?.name)
+      !["update_plan", "replan_goal", "update_step_work"].includes(record?.name)
     )
     .slice(-maxRecords)
     .map((record) => ({
@@ -168,6 +168,7 @@ export function createRunCheckpoint({
   previousSegmentCount = 0,
   orchestration = null,
   toolRuntime = null,
+  workingState = null,
   journalSequence = 0,
   journalChecksum = "",
   committedSegmentId = "",
@@ -299,6 +300,10 @@ export function createRunCheckpoint({
       orchestration && typeof orchestration === "object"
         ? structuredClone(orchestration) : null,
     toolRuntime: compactedRuntime,
+    workingState:
+      workingState && typeof workingState === "object"
+        ? structuredClone(workingState)
+        : null,
     journalSequence: Math.max(0, Math.round(Number(journalSequence) || 0)),
     journalChecksum: text(journalChecksum, 128),
     committedSegmentId: text(committedSegmentId, 120),
@@ -376,6 +381,27 @@ export function createCheckpointInstruction(
       : "",
     toolLines.length > 0
       ? "Recent tool results:\n" + toolLines.join("\n")
+      : "",
+    checkpoint.workingState?.lastRunSummary
+      ? `Last run summary: ${text(checkpoint.workingState.lastRunSummary, 800)}`
+      : "",
+    checkpoint.workingState?.nextRecommendedAction
+      ? `Next recommended action: ${text(checkpoint.workingState.nextRecommendedAction, 500)}`
+      : "",
+    checkpoint.workingState?.latestTestResult
+      ? `Latest user-reported test result: ${text(checkpoint.workingState.latestTestResult, 700)}`
+      : "",
+    checkpoint.workingState?.latestBuildResult
+      ? `Latest user-reported build result: ${text(checkpoint.workingState.latestBuildResult, 700)}`
+      : "",
+    checkpoint.workingState?.latestVisualFeedback
+      ? `Latest visual feedback: ${text(checkpoint.workingState.latestVisualFeedback, 700)}`
+      : "",
+    (checkpoint.workingState?.modifiedFiles ?? []).length > 0
+      ? `Files already modified:\n${checkpoint.workingState.modifiedFiles.slice(-20).map((item) => `- ${text(item, 300)}`).join("\n")}`
+      : "",
+    (checkpoint.workingState?.unresolvedProblems ?? []).length > 0
+      ? `Unresolved problems:\n${checkpoint.workingState.unresolvedProblems.slice(-12).map((item) => `- ${text(item, 300)}`).join("\n")}`
       : "",
     checkpoint.toolRuntime?.unresolvedCount > 0
       ? `Unresolved tool effects: ${checkpoint.toolRuntime.unresolvedCount}. Do not repeat them automatically; request reconciliation or user confirmation as indicated by the saved state.`

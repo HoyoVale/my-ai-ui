@@ -87,6 +87,25 @@ describe("persisted run checkpoints", () => {
     assert.equal(checkpoint.publicStatus, "complete");
   });
 
+  it("carries persistent Working State evidence into the resume instruction", () => {
+    const checkpoint = createRunCheckpoint({
+      objective: "Tune the black-hole scene",
+      workingState: {
+        latestTestResult: "npm test passed",
+        latestBuildResult: "npm run build passed",
+        latestVisualFeedback: "Camera is still too close",
+        modifiedFiles: ["src/camera.js"],
+        nextRecommendedAction: "Adjust the camera distance"
+      }
+    });
+    const instruction = createCheckpointInstruction(checkpoint);
+
+    assert.match(instruction, /npm test passed/u);
+    assert.match(instruction, /npm run build passed/u);
+    assert.match(instruction, /Camera is still too close/u);
+    assert.match(instruction, /src\/camera\.js/u);
+  });
+
   it("persists root and internal plan state while exposing only root completion", () => {
     const checkpoint = createRunCheckpoint({
       objective: "Refactor plan storage",
@@ -112,7 +131,7 @@ describe("persisted run checkpoints", () => {
 
     assert.equal(checkpoint.version, 5);
     assert.equal(checkpoint.plan.length, 1);
-    assert.equal(checkpoint.planState.schemaVersion, 2);
+    assert.equal(checkpoint.planState.schemaVersion, 3);
     assert.equal(checkpoint.planState.subplans[0].items[0].id, "detail");
 
     const instruction = createCheckpointInstruction(checkpoint);

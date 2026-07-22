@@ -23,10 +23,115 @@ function reportPlanObserverError(error) {
   );
 }
 
+function planAuthorityError(code, message, details = undefined) {
+  const error = new Error(message);
+  error.code = code;
+  if (details !== undefined) error.details = details;
+  return error;
+}
+
+function authoritativeRootItems(items = []) {
+  return items.filter((item) => item.status !== "superseded");
+}
+
+function allowedProgressTransition(previous, next) {
+  if (previous === next) return true;
+  if (previous === "pending") {
+    return [
+      "in_progress",
+      "completed",
+      "blocked",
+      "needs_input",
+      "skipped",
+      "cancelled"
+    ].includes(next);
+  }
+  if (previous === "in_progress") {
+    return [
+      "completed",
+      "blocked",
+      "needs_input",
+      "skipped",
+      "cancelled"
+    ].includes(next);
+  }
+  if (["blocked", "needs_input"].includes(previous)) {
+    return [
+      "pending",
+      "in_progress",
+      "completed",
+      "blocked",
+      "needs_input",
+      "skipped",
+      "cancelled"
+    ].includes(next);
+  }
+  return false;
+}
+
+function mergeProgressOnly(previousItems, incomingItems) {
+  const previous = authoritativeRootItems(previousItems);
+  const incoming = authoritativeRootItems(incomingItems);
+  const previousById = new Map(previous.map((item) => [item.id, item]));
+  const incomingById = new Map(incoming.map((item) => [item.id, item]));
+  const structuralChanges = [];
+
+  for (const item of previous) {
+    const next = incomingById.get(item.id);
+    if (!next) {
+      structuralChanges.push({ type: "removed", id: item.id });
+      continue;
+    }
+    if (next.title !== item.title) {
+      structuralChanges.push({
+        type: "renamed",
+        id: item.id,
+        from: item.title,
+        to: next.title
+      });
+    }
+    if (!allowedProgressTransition(item.status, next.status)) {
+      structuralChanges.push({
+        type: "status_regression",
+        id: item.id,
+        from: item.status,
+        to: next.status
+      });
+    }
+  }
+
+  for (const item of incoming) {
+    if (!previousById.has(item.id)) {
+      structuralChanges.push({ type: "added", id: item.id });
+    }
+  }
+
+  if (structuralChanges.length > 0) {
+    throw planAuthorityError(
+      "PLAN_REPLAN_REQUIRED",
+      "顶层计划结构由 Goal Runtime 持有。新增、删除、改名或回退步骤必须调用 replan_goal，并说明失败假设与重规划原因。",
+      structuralChanges
+    );
+  }
+
+  const history = previousItems.filter((item) => item.status === "superseded");
+  return [
+    ...incoming.map((item) => ({
+      ...item,
+      reason: item.reason || previousById.get(item.id)?.reason || ""
+    })),
+    ...history
+  ];
+}
+
 export class RunPlanStore {
   constructor(
     initialState = [],
-    { onChange = null } = {}
+    {
+      onChange = null,
+      rootPlanId = "",
+      runId = ""
+    } = {}
   ) {
     const normalized = normalizePlanState(initialState);
     this.rootItems = normalized.rootItems;
@@ -36,6 +141,15 @@ export class RunPlanStore {
     );
     this.revision = normalized.revision;
     this.rootRevision = normalized.rootRevision;
+    this.authorityRevision = normalized.authorityRevision;
+    this.replanRevision = normalized.replanRevision;
+    this.rootPlanId = String(
+      normalized.rootPlanId ||
+      rootPlanId ||
+      (this.rootItems.length > 0 ? `root-plan:${this.rootItems[0].id}` : "")
+    ).slice(0, 160);
+    this.lastReplan = normalized.lastReplan;
+    this.runId = String(runId ?? "").slice(0, 120);
     this.lastChange = null;
     this.onChange = onChange;
   }
@@ -46,6 +160,9 @@ export class RunPlanStore {
     this.lastChange = {
       revision: this.revision,
       rootRevision: this.rootRevision,
+      authorityRevision: this.authorityRevision,
+      replanRevision: this.replanRevision,
+      rootPlanId: this.rootPlanId,
       changedAt: Date.now(),
       ...change,
       plan: roots,
@@ -104,21 +221,91 @@ export class RunPlanStore {
 
   update(items, { reason = "" } = {}) {
     const incoming = normalizePlanItems(items);
-    const merged = mergePlanRevision(
-      this.rootItems,
-      incoming,
-      String(reason ?? "").trim()
-    );
-    validatePlanItems(merged.items, { label: "总计划" });
-    this.rootItems = clone(merged.items);
-    this.rootArchivedCount += merged.archivedCount;
+    validatePlanItems(incoming, { label: "总计划" });
+
+    if (this.rootItems.length === 0) {
+      this.rootItems = clone(incoming);
+      this.rootPlanId = this.rootPlanId ||
+        `root-plan:${incoming[0]?.id ?? Date.now()}`;
+    } else {
+      this.rootItems = clone(
+        mergeProgressOnly(this.rootItems, incoming)
+      );
+    }
+
     this.revision += 1;
     this.rootRevision += 1;
+    this.authorityRevision += 1;
     this.reconcileSubplansWithRoots(String(reason ?? "").trim());
 
     return this.notify({
       scope: "root",
+      authorityAction: this.rootRevision === 1 ? "created" : "progress",
       reason: String(reason ?? "").trim()
+    });
+  }
+
+  replan(items, {
+    reason = "",
+    failedAssumption = ""
+  } = {}) {
+    const normalizedReason = String(reason ?? "").trim();
+    const normalizedAssumption = String(failedAssumption ?? "").trim();
+    if (!normalizedReason) {
+      throw planAuthorityError(
+        "PLAN_REPLAN_REASON_REQUIRED",
+        "重规划必须说明为什么原顶层计划不再适用。"
+      );
+    }
+    if (!normalizedAssumption) {
+      throw planAuthorityError(
+        "PLAN_REPLAN_ASSUMPTION_REQUIRED",
+        "重规划必须指出失效的假设或发生变化的用户约束。"
+      );
+    }
+
+    const incoming = normalizePlanItems(items);
+    const previousById = new Map(
+      authoritativeRootItems(this.rootItems).map((item) => [item.id, item])
+    );
+    const protectedIncoming = incoming.map((item) => {
+      const previous = previousById.get(item.id);
+      if (previous?.status === "completed") {
+        return {
+          ...item,
+          title: previous.title,
+          status: "completed",
+          reason: item.reason || previous.reason
+        };
+      }
+      return item;
+    });
+    const merged = mergePlanRevision(
+      this.rootItems,
+      protectedIncoming,
+      normalizedReason
+    );
+    validatePlanItems(merged.items, { label: "总计划" });
+
+    this.rootItems = clone(merged.items);
+    this.rootArchivedCount += merged.archivedCount;
+    this.revision += 1;
+    this.rootRevision += 1;
+    this.authorityRevision += 1;
+    this.replanRevision += 1;
+    this.lastReplan = {
+      reason: normalizedReason.slice(0, 500),
+      failedAssumption: normalizedAssumption.slice(0, 500),
+      runId: this.runId,
+      at: Date.now()
+    };
+    this.reconcileSubplansWithRoots(normalizedReason);
+
+    return this.notify({
+      scope: "root",
+      authorityAction: "replan",
+      reason: normalizedReason,
+      failedAssumption: this.lastReplan.failedAssumption
     });
   }
 
@@ -182,11 +369,15 @@ export class RunPlanStore {
   getState() {
     return {
       schemaVersion: PLAN_SCHEMA_VERSION,
+      rootPlanId: this.rootPlanId,
       revision: this.revision,
       rootRevision: this.rootRevision,
+      authorityRevision: this.authorityRevision,
+      replanRevision: this.replanRevision,
       rootArchivedCount: this.rootArchivedCount,
       rootItems: this.get(),
-      subplans: [...this.subplans.values()].map((entry) => clone(entry))
+      subplans: [...this.subplans.values()].map((entry) => clone(entry)),
+      lastReplan: this.lastReplan ? clone(this.lastReplan) : null
     };
   }
 
@@ -250,7 +441,7 @@ export class RunPlanStore {
   }
 
   canRunTool(toolName) {
-    if (["update_plan", "update_step_work", "read_tool_result"].includes(toolName)) {
+    if (["update_plan", "replan_goal", "update_step_work", "read_tool_result"].includes(toolName)) {
       return { ok: true, step: this.getExecutionState().active };
     }
 
@@ -293,7 +484,9 @@ export function createAgentToolDefinitions({
       name: "update_plan",
       title: "Update task plan",
       description:
-        "Create and revise the user-visible root task plan for multi-step work. Keep the root plan concise and stable, normally 3-8 outcome-oriented steps. Keep exactly one unfinished root item in_progress. Do not append low-level execution details here; use update_step_work for the internal breakdown of the active root step. Preserve completed root work. When required user input is missing, mark the current root item needs_input. Do not finish while root items remain pending or in_progress.",
+        "Create the user-visible root task plan once, then only advance statuses on the same stable step IDs and titles. Never add, remove, rename, replace, or regress root steps through this tool. Structural changes require replan_goal with an explicit failed assumption and reason. Preserve completed root work. Keep exactly one unfinished root item in_progress.",
+      concurrencyKey: "control:goal-plan",
+      exclusiveConcurrency: true,
       inputSchema: z.object({
         items: z.array(planItemSchema).min(1).max(20),
         reason: z.string()
@@ -336,10 +529,49 @@ export function createAgentToolDefinitions({
       }
     },
     {
+      name: "replan_goal",
+      title: "Replan persistent goal",
+      description:
+        "Request an explicit structural revision of the persistent root plan. Use only when a concrete assumption failed or new evidence makes the current unfinished structure invalid. Preserve completed root steps, explain the failed assumption, and provide a concise replacement plan.",
+      concurrencyKey: "control:goal-plan",
+      exclusiveConcurrency: true,
+      inputSchema: z.object({
+        items: z.array(planItemSchema).min(1).max(20),
+        reason: z.string().min(1).max(500),
+        failedAssumption: z.string().min(1).max(500)
+      }),
+      outputSchema: z.object({
+        items: z.array(z.object({
+          id: z.string(),
+          title: z.string(),
+          status: z.string(),
+          reason: z.string()
+        })),
+        execution: z.object({}).passthrough()
+      }),
+      async execute(input) {
+        if (!planStore) {
+          const error = new Error("当前 Agent Run 没有可用的计划存储。");
+          error.code = "PLAN_STORE_UNAVAILABLE";
+          throw error;
+        }
+        const items = planStore.replan(input.items, {
+          reason: input.reason,
+          failedAssumption: input.failedAssumption
+        });
+        return {
+          items,
+          execution: planStore.getExecutionState()
+        };
+      }
+    },
+    {
       name: "update_step_work",
       title: "Update internal step work",
       description:
         "Create or revise the internal subplan for the currently in_progress root plan step. Use it for detailed execution tasks discovered while working. This subplan is not shown in the normal user plan dock and never determines whether the whole run may finish; only the root plan does. Keep exactly one unfinished sub-item in_progress.",
+      concurrencyKey: "control:goal-plan",
+      exclusiveConcurrency: true,
       inputSchema: z.object({
         rootStepId: z.string().min(1).max(80),
         items: z.array(planItemSchema).min(1).max(20),

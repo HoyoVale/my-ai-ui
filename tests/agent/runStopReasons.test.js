@@ -1,8 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  classifyLatestToolFailure,
   inferRunStopReason,
   isGracefulRunBoundary,
+  isRecoverableRunFailure,
   normalizeRunStopReason,
   RUN_STOP_REASONS,
   runStatusFromStopReason
@@ -53,4 +55,46 @@ describe("run stop reasons", () => {
     assert.equal(inferRunStopReason({ plan: [{ id: "one", title: "Input", status: "needs_input" }] }), RUN_STOP_REASONS.NEEDS_INPUT);
     assert.equal(inferRunStopReason({ plan: [{ id: "one", title: "Blocked", status: "blocked" }] }), RUN_STOP_REASONS.BLOCKED);
   });
+
+  it("distinguishes recoverable tool mistakes from fatal tool failures", () => {
+    const recoverableRecords = [{
+      name: "replace_text_in_file",
+      status: "failed",
+      result: {
+        error: {
+          code: "TEXT_NOT_FOUND",
+          category: "not_found",
+          message: "Old text no longer exists",
+          retryable: false
+        }
+      }
+    }];
+    const fatalRecords = [{
+      name: "write_text_file",
+      status: "failed",
+      result: {
+        error: {
+          code: "PERMISSION_DENIED",
+          category: "permission_denied",
+          message: "Denied",
+          retryable: false
+        }
+      }
+    }];
+
+    assert.equal(classifyLatestToolFailure(recoverableRecords).recoverable, true);
+    assert.equal(isRecoverableRunFailure({
+      stopReason: RUN_STOP_REASONS.TOOL_ERROR,
+      records: recoverableRecords
+    }), true);
+    assert.equal(isRecoverableRunFailure({
+      stopReason: RUN_STOP_REASONS.TOOL_ERROR,
+      records: fatalRecords
+    }), false);
+    assert.equal(isRecoverableRunFailure({
+      stopReason: RUN_STOP_REASONS.TOOL_ERROR,
+      records: []
+    }), false);
+  });
+
 });

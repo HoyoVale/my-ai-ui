@@ -134,6 +134,54 @@ describe("RunEngine integration", () => {
     assert.equal(result.finalText, "已完成检查，下一步继续修改实现。");
   });
 
+  it("keeps a recoverable tool error continuable instead of failing the Goal", async () => {
+    const { engine } = createHarness({ maxSegments: 3 });
+    const plan = [
+      { id: "edit", title: "Apply the remaining edit", status: "in_progress" }
+    ];
+    const records = [{
+      id: "tool-recoverable",
+      name: "replace_text_in_file",
+      status: "failed",
+      result: {
+        error: {
+          code: "TEXT_NOT_FOUND",
+          category: "not_found",
+          message: "The file changed after the last read",
+          retryable: false
+        }
+      }
+    }];
+    let finalText = "";
+
+    const result = await engine.run({
+      segmentCallbacks: {
+        getPlan: () => plan,
+        getRecords: () => records,
+        createCheckpoint: () => ({ taskId: "task-1", plan }),
+        executeSegment: () => ({
+          plan,
+          records,
+          finishReason: "tool-calls",
+          executionStopReason: RUN_STOP_REASONS.TOOL_ERROR,
+          finalText: ""
+        })
+      },
+      getFinalText: () => finalText,
+      setFinalText: (value) => {
+        finalText = value;
+      },
+      runFinalization: async () => {
+        finalText = "已保存当前进展，下一轮将重新读取目标片段后继续修改。";
+      }
+    });
+
+    assert.equal(result.outcome, RUN_OUTCOMES.CONTINUABLE);
+    assert.equal(result.loopResult.decision, "checkpoint");
+    assert.equal(result.executionStopReason, RUN_STOP_REASONS.TOOL_ERROR);
+    assert.match(result.finalText, /继续修改/u);
+  });
+
   it("uses the deterministic fallback when finalization produces no text", async () => {
     const { engine } = createHarness({ maxSegments: 1 });
     const plan = [

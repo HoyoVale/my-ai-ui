@@ -81,6 +81,36 @@ describe("agent finalization phase", () => {
     }
   });
 
+  it("presents a recoverable tool error as a progress handoff", () => {
+    const plan = [{ id: "edit", title: "Retry the edit", status: "in_progress" }];
+    const records = [{
+      name: "replace_text_in_file",
+      status: "failed",
+      result: {
+        error: {
+          code: "TEXT_NOT_FOUND",
+          category: "not_found",
+          message: "The target text changed"
+        }
+      }
+    }];
+    const instruction = createFinalizationInstruction({
+      plan,
+      records,
+      executionStopReason: RUN_STOP_REASONS.TOOL_ERROR
+    });
+    const fallback = createFallbackFinalSummary({
+      plan,
+      records,
+      executionStopReason: RUN_STOP_REASONS.TOOL_ERROR
+    });
+
+    assert.match(instruction, /natural progress handoff/u);
+    assert.doesNotMatch(instruction, /Execution stop reason/u);
+    assert.match(fallback, /下一步建议/u);
+    assert.doesNotMatch(fallback, /tool_error/u);
+  });
+
   it("turns the segment boundary into a natural progress handoff", () => {
     const plan = [
       { id: "one", title: "Inspect", status: "completed" },

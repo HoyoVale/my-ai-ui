@@ -8,6 +8,9 @@ import {
   heartbeatGoal as heartbeatGoalRuntime,
   linkGoalPlatformRun as linkGoalPlatformRunRuntime,
   recordGoalCheckpoint as recordGoalCheckpointRuntime,
+  recordGoalWorkingState as recordGoalWorkingStateRuntime,
+  applyGoalPlanState as applyGoalPlanStateRuntime,
+  replanGoal as replanGoalRuntime,
   recoverInterruptedGoal,
   transitionGoal as transitionGoalRuntime,
   upsertGoal
@@ -878,13 +881,76 @@ export class ConversationManager {
     });
   }
 
+  recordGoalWorkingState({
+    conversationId,
+    goalId,
+    patch = {}
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => recordGoalWorkingStateRuntime(
+        goal,
+        patch,
+        { now: this.now() }
+      )
+    });
+  }
+
+  recordGoalPlan({
+    conversationId,
+    goalId,
+    planState,
+    runId = null,
+    authorityAction = "progress"
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => applyGoalPlanStateRuntime(
+        goal,
+        planState,
+        {
+          runId,
+          authorityAction,
+          now: this.now()
+        }
+      )
+    });
+  }
+
+  replanGoal({
+    conversationId,
+    goalId,
+    planState,
+    reason = "",
+    failedAssumption = "",
+    runId = null
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => replanGoalRuntime(
+        goal,
+        {
+          planState,
+          reason,
+          failedAssumption,
+          runId
+        },
+        { now: this.now() }
+      )
+    });
+  }
+
   finishGoalRun({
     conversationId,
     goalId,
     runId = null,
     outcome = "",
     stopReason = "",
-    error = ""
+    error = "",
+    recoverable = undefined
   } = {}) {
     return this.mutateGoalRuntime({
       conversationId,
@@ -894,6 +960,7 @@ export class ConversationManager {
         outcome,
         stopReason,
         error,
+        recoverable,
         now: this.now()
       })
     });

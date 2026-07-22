@@ -178,17 +178,58 @@ export function assembleAgentContext({
       `${index + 1}. ${criterion.text}${criterion.manualSatisfied ? " [user-confirmed]" : ""}`
     )
     .join("\n");
+  const goalPlanItems = activeGoal?.planAuthority?.state?.rootItems ?? [];
+  const goalPlanLines = goalPlanItems
+    .filter((item) => item.status !== "superseded")
+    .map((item, index) =>
+      `${index + 1}. [${item.status}] ${item.title}${item.reason ? ` — ${item.reason}` : ""}`
+    )
+    .join("\n");
+  const working = activeGoal?.workingState ?? null;
+  const workingLines = working
+    ? [
+        working.lastRunSummary
+          ? `Last run summary: ${working.lastRunSummary}`
+          : "",
+        working.nextRecommendedAction
+          ? `Next recommended action: ${working.nextRecommendedAction}`
+          : "",
+        working.latestTestResult
+          ? `Latest user-reported test result: ${working.latestTestResult}`
+          : "",
+        working.latestBuildResult
+          ? `Latest user-reported build result: ${working.latestBuildResult}`
+          : "",
+        working.latestVisualFeedback
+          ? `Latest visual feedback: ${working.latestVisualFeedback}`
+          : "",
+        (working.modifiedFiles ?? []).length > 0
+          ? `Files already modified:\n${working.modifiedFiles.slice(-20).map((item) => `- ${item}`).join("\n")}`
+          : "",
+        (working.unresolvedProblems ?? []).length > 0
+          ? `Unresolved problems:\n${working.unresolvedProblems.slice(-12).map((item) => `- ${item}`).join("\n")}`
+          : ""
+      ].filter(Boolean).join("\n\n")
+    : "";
   const goalContext = activeGoal
     ? [
         "The user has set a persistent goal for this conversation.",
         `Goal:\n${String(activeGoal.objective ?? "").trim()}`,
         goalCriteria ? `Done when:\n${goalCriteria}` : "Done when: derive concrete checks from the goal and root plan.",
+        goalPlanLines
+          ? `Authoritative root plan (${activeGoal.planAuthority?.rootPlanId ?? "goal-root-plan"}):\n${goalPlanLines}`
+          : "No root plan has been established yet. Create it once with update_plan.",
+        workingLines
+          ? `Persistent working state:\n${workingLines}`
+          : "",
         activeGoal.autoContinue === false
           ? "Automatic continuation is disabled. Complete one execution segment, then save a resumable checkpoint if more work remains."
           : "Automatic continuation is enabled. Continue across execution segments while progress is being made and safety limits permit.",
-        "Treat each new user message as guidance for advancing this goal unless the user explicitly edits, pauses, or clears it.",
+        "Treat each new user message as guidance for advancing this same goal unless the user explicitly edits, pauses, clears it, or explicitly starts a new task.",
+        "The root plan is owned by Goal Runtime. update_plan may only advance statuses on existing IDs and titles. Structural changes require replan_goal with an explicit failed assumption and reason.",
+        "Never regress completed root steps. Do not reread unchanged files already represented by the saved working state unless verification or new evidence requires it.",
         "Keep working through the plan and objective evidence. Do not claim the goal is complete until the runtime completion verifier accepts it."
-      ].join("\n\n")
+      ].filter(Boolean).join("\n\n")
     : "";
 
   const promptSections = [
