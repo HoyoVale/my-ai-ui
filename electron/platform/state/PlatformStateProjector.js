@@ -1,5 +1,12 @@
 import * as internals from "../PlatformKernelInternals.js";
 
+import {
+  attachAgentExecutionThread,
+  finishAgentExecutionThread,
+  sanitizePlatformExecutionBridge,
+  syncPlatformExecutionBridgeStatus
+} from "../../execution-model/PlatformExecutionBridge.js";
+
 export const PlatformStateProjector = {
   ensureLoaded() {
     if (this.state) return this.state;
@@ -47,11 +54,13 @@ export const PlatformStateProjector = {
         ? run.agentRuns
         : {};
       for (const agent of Object.values(run.agentRuns)) {
+        agent.version = Math.max(3, Number(agent.version) || 2);
         agent.kind = internals.text(agent.kind, 40) || "worker";
         agent.leaseIds = Array.isArray(agent.leaseIds) ? agent.leaseIds : [];
       }
+      run.executionBridge = sanitizePlatformExecutionBridge(run.executionBridge, run);
     }
-    this.state.version = 5;
+    this.state.version = 6;
     this.state.jobs = this.state.jobs && typeof this.state.jobs === "object"
       ? this.state.jobs
       : {};
@@ -101,6 +110,11 @@ export const PlatformStateProjector = {
           run.status = payload.status;
           run.statusReason = internals.text(payload.reason);
           run.updatedAt = event.timestamp;
+          run.executionBridge = syncPlatformExecutionBridgeStatus(
+            run.executionBridge,
+            run,
+            event.timestamp
+          );
         }
         break;
       case "RUN_CRITERIA_UPDATED":
@@ -145,6 +159,12 @@ export const PlatformStateProjector = {
       case "AGENT_RUN_STARTED":
         if (run) {
           run.agentRuns[payload.agentRun.id] = internals.clone(payload.agentRun);
+          run.executionBridge = attachAgentExecutionThread(
+            run.executionBridge,
+            run,
+            run.agentRuns[payload.agentRun.id],
+            event.timestamp
+          );
           if (run.tasks[payload.agentRun.taskId]) {
             const task = run.tasks[payload.agentRun.taskId];
             if (payload.agentRun.kind !== "evaluator") {
@@ -166,6 +186,12 @@ export const PlatformStateProjector = {
           agent.stopReason = internals.text(payload.stopReason, 240);
           agent.error = internals.text(payload.error, 500);
           agent.endedAt = event.timestamp;
+          run.executionBridge = finishAgentExecutionThread(
+            run.executionBridge,
+            run,
+            agent,
+            event.timestamp
+          );
           const task = run.tasks[agent.taskId];
           if (task?.assignedAgentId === agent.id) {
             task.assignedAgentId = null;

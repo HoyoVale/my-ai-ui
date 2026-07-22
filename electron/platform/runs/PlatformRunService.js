@@ -1,5 +1,9 @@
 import * as internals from "../PlatformKernelInternals.js";
 
+import {
+  createPlatformExecutionBridge
+} from "../../execution-model/PlatformExecutionBridge.js";
+
 export const PlatformRunService = {
   invalidateCompletionState(platformRunId, reason, {
     invalidateEvidence = true
@@ -182,9 +186,10 @@ export const PlatformRunService = {
     }
   
     const timestamp = this.now();
+    const runId = this.createId();
     const run = {
-      version: 2,
-      id: this.createId(),
+      version: 3,
+      id: runId,
       conversationId: normalizedConversationId,
       goalId: normalizedGoalId,
       goalRevision: revision,
@@ -206,6 +211,15 @@ export const PlatformRunService = {
       integration: null,
       completionPermit: null,
       logs: [],
+      executionBridge: createPlatformExecutionBridge({
+        platformRunId: runId,
+        conversationId: normalizedConversationId,
+        goalId: normalizedGoalId,
+        workspaceId: internals.text(workspaceId, 120),
+        objective: internals.text(objective, 4000),
+        status: "active",
+        now: timestamp
+      }),
       createdAt: timestamp,
       updatedAt: timestamp
     };

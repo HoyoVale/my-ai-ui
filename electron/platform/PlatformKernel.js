@@ -10,6 +10,7 @@ import { PlatformTaskService } from "./tasks/PlatformTaskService.js";
 import { PlatformLeaseService } from "./leases/PlatformLeaseService.js";
 import { PlatformLongRunningService } from "./jobs/PlatformLongRunningService.js";
 import { PlatformCompletionService } from "./completion/PlatformCompletionService.js";
+import { PlatformExecutionBridgeService } from "./bridge/PlatformExecutionBridgeService.js";
 
 export class PlatformKernel {
   constructor({
@@ -283,6 +284,18 @@ export class PlatformKernel {
 
   getRun(...args) {
     return PlatformRunService.getRun.apply(this, args);
+  }
+
+  getExecutionBridge(...args) {
+    return PlatformExecutionBridgeService.getExecutionBridge.apply(this, args);
+  }
+
+  getAgentExecutionThread(...args) {
+    return PlatformExecutionBridgeService.getAgentExecutionThread.apply(this, args);
+  }
+
+  validateExecutionBridge(...args) {
+    return PlatformExecutionBridgeService.validateExecutionBridge.apply(this, args);
   }
 
   getSnapshot(...args) {

@@ -1,5 +1,9 @@
 import * as internals from "../PlatformKernelInternals.js";
 
+import {
+  createAgentExecutionBinding
+} from "../../execution-model/PlatformExecutionBridge.js";
+
 export const PlatformTaskService = {
   addTaskGraph(platformRunId, tasks = []) {
     const run = this.ensureLoaded().runs[internals.text(platformRunId, 120)];
@@ -228,12 +232,29 @@ export const PlatformTaskService = {
     const attempt = normalizedKind === "evaluator"
       ? Math.max(1, (task.evaluationHistory?.length ?? 0) + 1)
       : Math.max(0, Number(task.attemptCount) || 0) + 1;
-    const agentRun = {
-      version: 2,
+    const provisionalAgentRun = {
       id,
       taskId: task.id,
       role: internals.text(role, 80) || "implementer",
       kind: normalizedKind,
+      status: "running",
+      startedAt: timestamp
+    };
+    const executionBinding = createAgentExecutionBinding({
+      platformRun: run,
+      agentRun: provisionalAgentRun,
+      now: timestamp
+    });
+    const agentRun = {
+      version: 3,
+      id,
+      taskId: task.id,
+      role: internals.text(role, 80) || "implementer",
+      kind: normalizedKind,
+      executionThreadId: executionBinding?.threadId ?? null,
+      executionRunId: executionBinding?.executionRunId ?? null,
+      parentExecutionThreadId: executionBinding?.childThread?.parentThreadId ?? null,
+      executionKind: executionBinding?.kind ?? normalizedKind,
       attempt,
       modelSelection: modelSelection && typeof modelSelection === "object"
         ? {

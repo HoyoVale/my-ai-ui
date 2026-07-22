@@ -94,7 +94,7 @@ export function text(value, maxLength = 500) {
 
 export function createEmptyState() {
   return {
-    version: 5,
+    version: 6,
     lastSequence: 0,
     lastEventHash: "",
     runs: {},
@@ -245,6 +245,14 @@ export function summarizeRun(run) {
         agents.filter((agent) => agent.status === status).length
       ])
     ),
+    executionBridge: run.executionBridge
+      ? {
+          supervisorThreadId: run.executionBridge.supervisorThreadId ?? null,
+          supervisorStatus: run.executionBridge.supervisorThread?.status ?? null,
+          childThreadCount: Object.keys(run.executionBridge.childThreads ?? {}).length,
+          bindingCount: Object.keys(run.executionBridge.agentRunBindings ?? {}).length
+        }
+      : null,
     integration: run.integration
       ? {
           status: run.integration.status,

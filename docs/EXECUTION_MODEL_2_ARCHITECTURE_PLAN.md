@@ -1032,3 +1032,32 @@ Production routing remains Shadow Mode:
 - the UI still reads the compatibility active Thread projection.
 
 The next step is Phase E: Platform Bridge. Worker, Reviewer, Supervisor and Integration executions should receive explicit child Thread identities without replacing Platform Task Graph or Completion Authority.
+
+---
+
+## Implementation status update — Phase E (106)
+
+Phase E has been implemented on the `my-ai-ui(105)` baseline.
+
+Implemented:
+
+- Platform snapshot state v6;
+- deterministic Supervisor Thread per Platform Run;
+- one explicit child Thread and Execution Run per AgentRun;
+- Worker, Evaluator, Integrator, and Reviewer Thread kinds;
+- AgentRun-to-Thread bindings persisted through the Platform Journal and snapshot;
+- migration of legacy Platform Runs with AgentRuns but no bridge;
+- crash recovery synchronization to `continuable` child Threads;
+- bounded Artifact, Evidence, Review, Integration, and Completion trace projection;
+- read-only `getExecutionBridge`, `getAgentExecutionThread`, and `validateExecutionBridge` APIs.
+
+Authority remains unchanged:
+
+- Task Graph and PlatformTaskService own Task state;
+- AgentRun owns Platform execution state;
+- Evidence and Review remain Platform records;
+- CompletionAuthority remains the only Completion Permit issuer;
+- child Threads do not directly mutate Goal or Platform terminal state;
+- ordinary Conversation routing remains in Shadow Mode.
+
+The next step is Phase F: UI and interaction. The normal UI should show the current task and resumability without exposing internal terminology, while developer diagnostics may display Thread/Run lineage and Platform child Threads.

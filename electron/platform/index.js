@@ -245,3 +245,5 @@ platformJobScheduler.register("delegation-workflow", async ({
     integration
   };
 });
+
+export * from "./bridge/PlatformExecutionBridgeService.js";

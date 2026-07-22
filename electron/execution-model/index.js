@@ -11,3 +11,5 @@ export * from "./ExecutionThreadRouter.js";
 export * from "./ThreadRoutingDecisionStore.js";
 export * from "./SteeringQueue.js";
 export * from "./ExecutionPersistence.js";
+
+export * from "./PlatformExecutionBridge.js";
