@@ -381,6 +381,7 @@ export const FALLBACK_SETTINGS = {
       git_inspect: true,
       run_workspace_command: true,
       update_plan: true,
+      replan_goal: true,
       update_step_work: true,
       read_tool_result: true
     }

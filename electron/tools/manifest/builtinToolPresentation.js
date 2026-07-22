@@ -185,7 +185,12 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
   update_plan: {
     toolset: "agent.internal",
     title: "更新总计划",
-    description: "创建或更新面向用户展示的根任务计划。"
+    description: "创建根任务计划或推进现有稳定步骤状态；不能修改顶层结构。"
+  },
+  replan_goal: {
+    toolset: "agent.internal",
+    title: "重规划目标",
+    description: "在明确说明失败假设和原因后调整未完成的顶层计划结构，并保留已完成步骤与根计划身份。"
   },
   update_step_work: {
     toolset: "agent.internal",

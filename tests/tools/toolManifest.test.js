@@ -60,18 +60,23 @@ describe("Tool Manifest API", () => {
     });
 
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.tools.length, 31);
-    assert.equal(new Set(manifest.tools.map((tool) => tool.id)).size, 31);
-    assert.equal(new Set(manifest.tools.map((tool) => tool.name)).size, 31);
+    assert.equal(manifest.tools.length, 32);
+    assert.equal(new Set(manifest.tools.map((tool) => tool.id)).size, 32);
+    assert.equal(new Set(manifest.tools.map((tool) => tool.name)).size, 32);
     assert.match(manifest.revision, /^[a-f0-9]{20}$/u);
     assert.equal(manifest.manifestHash, manifest.revision);
     assert.equal(Number.isInteger(manifest.manifestRevision), true);
     assert.equal(manifest.manifestRevision >= 1, true);
     assert.equal(manifest.capabilityResolution.taxonomyVersion, 1);
     assert.equal(manifest.capabilitySummary.registered > 0, true);
-    assert.equal(manifest.sourceSummary.builtin, 31);
+    assert.equal(manifest.sourceSummary.builtin, 32);
     assert.equal(manifest.sourceSummary.mcp, 0);
     assert.equal(manifest.sourceSummary.custom, 0);
+
+    const replanGoal = manifest.tools.find((tool) => tool.name === "replan_goal");
+    assert.equal(replanGoal?.toolsets?.includes("agent.internal"), true);
+    assert.equal(replanGoal?.capabilities?.includes("agent.plan"), true);
+    assert.equal(replanGoal?.displayTitle, "重规划目标");
 
     for (const tool of manifest.tools) {
       assert.equal(typeof tool.displayTitle, "string");
