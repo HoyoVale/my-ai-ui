@@ -36,13 +36,17 @@ describe("Goal UI contract", () => {
 
   it("waits for a committed model and selects it explicitly in E2E", () => {
     const topbar = read("../../src/Setting/components/Topbar.jsx");
+    const panel = read("../../src/Setting/panels/ModelPanel.jsx");
     const e2e = read("../e2e/conversation-flow.cjs");
 
     assert.match(topbar, /data-testid="setting-save-status"/u);
     assert.match(topbar, /data-status=\{status\}/u);
+    assert.match(panel, /setConversationModel\?\.\(\{[\s\S]*?conversationId:[\s\S]*?providerId:[\s\S]*?modelConfigId:/u);
+    assert.doesNotMatch(panel, /conversations\.setModel/u);
     assert.match(e2e, /setting-save-status[^\n]*data-status="saved"/u);
     assert.match(e2e, /main-model-assignment[\s\S]*?Ollama · E2E Model/u);
     assert.match(e2e, /waitForConversationModel[\s\S]*?e2e-model/u);
+    assert.match(e2e, /pageerror[\s\S]*?settingRendererErrors/u);
     assert.match(e2e, /modelSnapshot[\s\S]*?modelId[\s\S]*?e2e-model/u);
   });
 

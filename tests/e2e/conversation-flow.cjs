@@ -200,16 +200,24 @@ async function waitForAttribute(
 async function waitForConversationModel(
   page,
   expectedModelId,
-  timeoutMs = 15000
+  timeoutMs = 15000,
+  rendererErrors = []
 ) {
   const deadline =
     Date.now() +
     timeoutMs;
+  let lastModelId = null;
 
   while (
     Date.now() <
     deadline
   ) {
+    if (rendererErrors.length > 0) {
+      throw new Error(
+        `Renderer failed while selecting ${expectedModelId}: ${rendererErrors.join(" | ")}`
+      );
+    }
+
     const state =
       await page.evaluate(
         async () => window.api
@@ -221,6 +229,8 @@ async function waitForConversationModel(
         ?.modelId ??
       state?.currentModel
         ?.modelId;
+    lastModelId =
+      modelId ?? null;
 
     if (modelId === expectedModelId) {
       return state;
@@ -230,7 +240,7 @@ async function waitForConversationModel(
   }
 
   throw new Error(
-    `Conversation model did not become ${expectedModelId}.`
+    `Conversation model did not become ${expectedModelId}. Last model: ${lastModelId ?? "none"}.`
   );
 }
 
@@ -1354,6 +1364,18 @@ async function main() {
         electronApp,
         "/setting"
       );
+    const settingRendererErrors = [];
+
+    setting.on(
+      "pageerror",
+      (error) => {
+        settingRendererErrors.push(
+          error instanceof Error
+            ? error.message
+            : String(error)
+        );
+      }
+    );
 
     await setting
       .locator(
@@ -1781,7 +1803,9 @@ async function main() {
 
     await waitForConversationModel(
       pet,
-      "e2e-model"
+      "e2e-model",
+      15000,
+      settingRendererErrors
     );
 
     const createdWithE2EModel =

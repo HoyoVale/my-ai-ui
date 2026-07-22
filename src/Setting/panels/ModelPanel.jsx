@@ -749,10 +749,14 @@ export function ModelPanel({
     if (!selection?.providerId || !selection?.modelConfigId) {
       return;
     }
-    void conversations.setModel(
-      selection.providerId,
-      selection.modelConfigId
-    );
+    void window.api?.setConversationModel?.({
+      conversationId:
+        conversations.state.currentConversationId,
+      providerId:
+        selection.providerId,
+      modelConfigId:
+        selection.modelConfigId
+    });
   };
 
   const updateActiveModel = (patch) => {
