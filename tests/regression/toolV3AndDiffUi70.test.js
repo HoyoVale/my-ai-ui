@@ -1,3 +1,7 @@
+import {
+  readConversationStyles
+} from "../helpers/conversationUiSource.js";
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { describe, it } from "node:test";
@@ -35,7 +39,7 @@ describe("Tool V3 and Diff UI contract", () => {
 
   it("renders structured Diff rows with two line-number columns", () => {
     const source = fs.readFileSync("src/Conversation/components/FileDiff.jsx", "utf8");
-    const css = fs.readFileSync("src/Conversation/Conversation.css", "utf8");
+    const css = readConversationStyles();
     assert.match(source, /parseUnifiedDiff/u);
     assert.match(source, /oldNumber/u);
     assert.match(source, /newNumber/u);

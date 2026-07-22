@@ -1,19 +1,18 @@
+import {
+  readConversationShellSource,
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const conversation = fs.readFileSync(
-  new URL("../../src/Conversation/Conversation.jsx", import.meta.url),
-  "utf8"
-);
+const conversation = readConversationShellSource();
 const topbar = fs.readFileSync(
   new URL("../../src/Conversation/components/Topbar.jsx", import.meta.url),
   "utf8"
 );
-const taskPanel = fs.readFileSync(
-  new URL("../../src/Conversation/components/TaskPanel.jsx", import.meta.url),
-  "utf8"
-);
+const taskPanel = readConversationTaskPanelSource();
 const toolPanel = fs.readFileSync(
   new URL("../../src/Setting/panels/ToolPanel.jsx", import.meta.url),
   "utf8"

@@ -1,4 +1,8 @@
 import {
+  readConversationStyles
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -52,9 +56,7 @@ describe(
       "keeps assistant replies unwrapped while user messages use the compact bubble class",
       () => {
         const source =
-          read(
-            "../../src/Conversation/Conversation.css"
-          );
+          readConversationStyles();
 
         assert.match(
           source,

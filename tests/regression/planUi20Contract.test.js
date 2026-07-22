@@ -1,4 +1,9 @@
 import {
+  readConversationTaskPanelSource,
+  readConversationStyles
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -32,9 +37,7 @@ describe("Plan UI 2.0", () => {
   });
 
   it("renders internal subplans only inside developer diagnostics", () => {
-    const taskPanel = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const taskPanel = readConversationTaskPanelSource();
 
     assert.match(taskPanel, /DeveloperPlanInspector/u);
     assert.match(taskPanel, /conversation-developer-subplans/u);
@@ -42,9 +45,7 @@ describe("Plan UI 2.0", () => {
   });
 
   it("provides reduced-motion-safe status transitions", () => {
-    const css = read(
-      "../../src/Conversation/Conversation.css"
-    );
+    const css = readConversationStyles();
 
     assert.match(css, /conversation-plan-step-in/u);
     assert.match(css, /conversation-plan-check-in/u);

@@ -1,4 +1,8 @@
 import {
+  readConversationShellSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -105,9 +109,7 @@ describe(
           "../../electron/tools/createAgentToolSession.js"
         );
         const runtime = readAgentRuntimeSource();
-        const conversation = read(
-          "../../src/Conversation/Conversation.jsx"
-        );
+        const conversation = readConversationShellSource();
 
         assert.match(session, /ToolResultStore/u);
         assert.match(runtime, /createCheckpointContinuationState/u);

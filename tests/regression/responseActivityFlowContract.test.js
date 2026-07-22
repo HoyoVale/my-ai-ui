@@ -1,4 +1,8 @@
 import {
+  readConversationMessageSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -116,9 +120,7 @@ describe("structured Response activity flow", () => {
     const presentation = read(
       "../../src/Response/utils/responsePresentation.js"
     );
-    const conversation = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
+    const conversation = readConversationMessageSource();
 
     assert.match(runtime, /inferLiveStepRole/u);
     assert.match(runtime, /liveStepRole/u);

@@ -1,3 +1,10 @@
+import {
+  readConversationShellSource,
+  readConversationMessageSource,
+  readConversationTaskPanelSource,
+  readConversationStyles
+} from "../helpers/conversationUiSource.js";
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -119,7 +126,7 @@ test("slash command registry combines real app commands and compatible Skills", 
 test("Conversation creates sessions from workspace groups and clamps long titles", () => {
   const sidebar = read("../../src/Conversation/components/Sidebar.jsx");
   const topbar = read("../../src/Conversation/components/Topbar.jsx");
-  const css = read("../../src/Conversation/Conversation.css");
+  const css = readConversationStyles();
 
   assert.match(sidebar, /conversation-workspace-group__create/u);
   assert.match(sidebar, /onCreate\?\.\(\{/u);
@@ -129,9 +136,9 @@ test("Conversation creates sessions from workspace groups and clamps long titles
 });
 
 test("obsolete Recovery Center UI is removed and file diffs are visible", () => {
-  const conversation = read("../../src/Conversation/Conversation.jsx");
-  const taskPanel = read("../../src/Conversation/components/TaskPanel.jsx");
-  const messageList = read("../../src/Conversation/components/MessageList.jsx");
+  const conversation = readConversationShellSource();
+  const taskPanel = readConversationTaskPanelSource();
+  const messageList = readConversationMessageSource();
 
   assert.doesNotMatch(conversation, /ConversationRecoveryPanel/u);
   assert.match(taskPanel, /FileDiffPreview/u);

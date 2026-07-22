@@ -1,4 +1,11 @@
 import {
+  readConversationShellSource,
+  readConversationMessageSource,
+  readConversationTaskPanelSource,
+  readConversationStyles
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -15,12 +22,8 @@ function read(relativePath) {
 
 describe("compact plan dock", () => {
   it("renders the live plan as a bottom dock outside the message stream", () => {
-    const conversation = read(
-      "../../src/Conversation/Conversation.jsx"
-    );
-    const messageList = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
+    const conversation = readConversationShellSource();
+    const messageList = readConversationMessageSource();
     const dock = read(
       "../../src/Conversation/components/PlanDock.jsx"
     );
@@ -37,9 +40,7 @@ describe("compact plan dock", () => {
     const source = read(
       "../../src/Conversation/components/PlanDock.jsx"
     );
-    const css = read(
-      "../../src/Conversation/Conversation.css"
-    );
+    const css = readConversationStyles();
 
     assert.match(source, /is-\$\{item\.status\}/u);
     assert.match(source, /status === "completed"/u);
@@ -52,12 +53,8 @@ describe("compact plan dock", () => {
   });
 
   it("uses Tool manifest visibility instead of a duplicated tool-name filter", () => {
-    const messageList = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
-    const taskPanel = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const messageList = readConversationMessageSource();
+    const taskPanel = readConversationTaskPanelSource();
 
     assert.match(messageList, /isActivityEventVisible/u);
     assert.match(taskPanel, /isActivityEventVisible/u);

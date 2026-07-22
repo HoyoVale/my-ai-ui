@@ -1,0 +1,840 @@
+/* Tool Runtime 1.3: ChatGPT-style activity timeline */
+.conversation-thinking-timeline {
+  width: 100%;
+  margin: 0 0 18px;
+  color: var(--conversation-soft);
+}
+
+.conversation-thinking-timeline > summary {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  list-style: none;
+  color: var(--conversation-soft);
+  font-size: 0.98em;
+  font-weight: 520;
+  cursor: pointer;
+  user-select: none;
+}
+
+.conversation-thinking-timeline > summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-thinking-timeline > summary svg {
+  opacity: 0.72;
+  transition: transform 180ms ease;
+}
+
+.conversation-thinking-timeline[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.conversation-thinking-timeline.is-live > summary {
+  color: var(--conversation-text);
+}
+
+.conversation-thinking-timeline__content {
+  display: grid;
+  gap: 14px;
+  padding: 12px 0 2px;
+}
+
+.conversation-thinking-event {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--conversation-soft);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+button.conversation-thinking-event {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+button.conversation-thinking-event:hover strong,
+button.conversation-thinking-event:focus-visible strong {
+  color: var(--conversation-text);
+}
+
+.conversation-thinking-event > svg {
+  margin-top: 2px;
+  color: var(--conversation-faint);
+}
+
+.conversation-thinking-event > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.conversation-thinking-event strong {
+  overflow: hidden;
+  color: var(--conversation-soft);
+  font-size: 0.94em;
+  font-weight: 520;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 140ms ease;
+}
+
+.conversation-thinking-event small {
+  overflow: hidden;
+  color: var(--conversation-faint);
+  font-size: 0.78em;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-thinking-event em {
+  padding-top: 1px;
+  color: var(--conversation-faint);
+  font-size: 0.74em;
+  font-style: normal;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.conversation-thinking-event--summary {
+  color: var(--conversation-soft);
+}
+
+.conversation-thinking-event--summary .markdown-content {
+  font-size: 0.94em;
+  line-height: inherit;
+}
+
+.conversation-thinking-event--tool.is-running > svg,
+.conversation-thinking-event--tool.is-queued > svg {
+  color: var(--accent-color);
+  animation: conversation-thinking-pulse 1.45s ease-in-out infinite;
+}
+
+.conversation-thinking-event--tool.is-failed > svg,
+.conversation-thinking-timeline.is-error > summary {
+  color: var(--conversation-danger);
+}
+
+.conversation-thinking-event--tool.is-cancelled > svg,
+.conversation-thinking-timeline.is-aborted > summary {
+  color: var(--conversation-faint);
+}
+
+.conversation-thinking-event--status {
+  color: var(--conversation-faint);
+  font-size: 0.84em;
+}
+.conversation-thinking-tool-batch {
+  min-width: 0;
+  color: var(--conversation-soft);
+}
+
+.conversation-thinking-tool-batch > summary {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.conversation-thinking-tool-batch > summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-thinking-tool-batch > summary > svg:first-child {
+  color: var(--conversation-faint);
+}
+
+.conversation-thinking-tool-batch > summary > strong {
+  overflow: hidden;
+  font-size: 0.94em;
+  font-weight: 520;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-thinking-tool-batch > summary > svg:last-child {
+  opacity: 0.68;
+  transition: transform 160ms ease;
+}
+
+.conversation-thinking-tool-batch[open] > summary > svg:last-child {
+  transform: rotate(180deg);
+}
+
+.conversation-thinking-tool-batch__items {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0 2px 28px;
+}
+
+.conversation-thinking-tool-batch.is-running > summary > svg:first-child,
+.conversation-thinking-tool-batch.is-queued > summary > svg:first-child {
+  color: var(--accent-color);
+}
+
+.conversation-thinking-tool-batch.is-error > summary {
+  color: var(--conversation-danger);
+}
+
+.conversation-thinking-timeline__panel-link {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  color: var(--conversation-faint);
+  background: transparent;
+  font: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.conversation-thinking-timeline__panel-link:hover,
+.conversation-thinking-timeline__panel-link:focus-visible {
+  color: var(--conversation-text);
+}
+
+.conversation-thinking-timeline__pending {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--conversation-faint);
+}
+
+.conversation-thinking-timeline__pending > span {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  animation: conversation-thinking-pulse 1.35s ease-in-out infinite;
+}
+
+.conversation-thinking-timeline__pending strong {
+  font-size: 0.86em;
+  font-weight: 500;
+}
+
+@keyframes conversation-thinking-pulse {
+  0%, 100% {
+    opacity: 0.38;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.reduce-motion .conversation-thinking-event--tool.is-running > svg,
+.reduce-motion .conversation-thinking-event--tool.is-queued > svg,
+.reduce-motion .conversation-thinking-timeline__pending > span {
+  animation: none;
+}
+
+.conversation-task-tool-result-summary {
+  margin: 6px 0 0;
+  color: var(--conversation-soft);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.conversation-task-tool-result-note {
+  display: inline-flex;
+  margin-top: 6px;
+  color: var(--conversation-faint);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+/* ============================================================
+   Tool UX 1.3 — compact thinking and activity panel
+   ============================================================ */
+
+.conversation-thinking-timeline__content {
+  gap: 4px;
+  padding-top: 12px;
+}
+
+button.conversation-thinking-event {
+  min-height: 34px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  padding: 5px 0;
+}
+
+button.conversation-thinking-event > strong {
+  overflow: hidden;
+  color: var(--conversation-soft);
+  font-size: 0.94em;
+  font-weight: 560;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.conversation-thinking-event:hover > strong,
+button.conversation-thinking-event:focus-visible > strong {
+  color: var(--conversation-text);
+}
+
+.conversation-thinking-timeline__panel-link,
+.conversation-thinking-event small,
+.conversation-thinking-event em {
+  display: none;
+}
+
+.conversation-activity-panel {
+  background: var(--conversation-surface);
+}
+
+.conversation-activity-panel__header {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px 0 20px;
+  border-bottom: 1px solid var(--conversation-border);
+}
+
+.conversation-activity-panel__header > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.conversation-activity-panel__header strong {
+  color: var(--conversation-text);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.conversation-activity-panel__header span {
+  color: var(--conversation-soft);
+  font-size: 15px;
+}
+
+.conversation-activity-panel__scroll {
+  padding: 22px 20px 44px;
+}
+
+.conversation-activity-section + .conversation-activity-section {
+  margin-top: 32px;
+}
+
+.conversation-activity-section > h2,
+.conversation-activity-section__header h2 {
+  margin: 0;
+  color: var(--conversation-soft);
+  font-size: 14px;
+  font-weight: 580;
+}
+
+.conversation-activity-section__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.conversation-activity-section__header span {
+  color: var(--conversation-faint);
+  font-size: 10px;
+}
+
+.conversation-activity-timeline {
+  position: relative;
+  display: grid;
+  gap: 0;
+  margin-top: 14px;
+}
+
+.conversation-activity-timeline__event,
+.conversation-activity-timeline__end {
+  position: relative;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding-bottom: 20px;
+}
+
+.conversation-activity-timeline__event::after,
+.conversation-activity-timeline__end::after {
+  content: "";
+  position: absolute;
+  top: 24px;
+  bottom: 0;
+  left: 11px;
+  width: 1px;
+  background: var(--conversation-border);
+}
+
+.conversation-activity-timeline__end::after {
+  display: none;
+}
+
+.conversation-activity-timeline__event > span,
+.conversation-activity-timeline__end > span {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--conversation-soft);
+  background: var(--conversation-surface);
+}
+
+.conversation-activity-timeline__event > strong,
+.conversation-activity-timeline__end strong {
+  padding-top: 2px;
+  color: var(--conversation-text);
+  font-size: 13px;
+  font-weight: 580;
+  line-height: 1.5;
+}
+
+.conversation-activity-timeline__end > div {
+  display: grid;
+  gap: 3px;
+}
+
+.conversation-activity-timeline__end small {
+  color: var(--conversation-faint);
+  font-size: 10px;
+}
+
+.conversation-activity-plan {
+  display: grid;
+  gap: 2px;
+}
+
+.conversation-activity-plan__row {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.conversation-activity-plan__row > span {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--conversation-border-strong);
+  border-radius: 50%;
+  color: var(--conversation-faint);
+  font-size: 9px;
+}
+
+.conversation-activity-plan__row > strong {
+  color: var(--conversation-soft);
+  font-size: 12px;
+  font-weight: 540;
+  line-height: 1.45;
+}
+
+.conversation-activity-plan__row.is-completed {
+  opacity: 0.58;
+}
+
+.conversation-activity-plan__row.is-in_progress > span {
+  border-color: var(--conversation-accent);
+  box-shadow: inset 0 0 0 4px var(--conversation-accent);
+}
+
+.conversation-activity-developer {
+  padding-top: 24px;
+  border-top: 1px solid var(--conversation-border);
+}
+
+.conversation-developer-tool-list {
+  overflow: hidden;
+  border: 1px solid var(--conversation-border);
+  border-radius: 12px;
+}
+
+.conversation-developer-tool-list > button {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversation-developer-tool-list > button + button {
+  border-top: 1px solid var(--conversation-border);
+}
+
+.conversation-developer-tool-list > button:hover,
+.conversation-developer-tool-list > button.is-selected {
+  background: var(--conversation-hover);
+}
+
+.conversation-developer-tool-list > button > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.conversation-developer-tool-list strong {
+  overflow: hidden;
+  color: var(--conversation-text);
+  font-size: 11px;
+  font-weight: 580;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-developer-tool-list small {
+  overflow: hidden;
+  color: var(--conversation-faint);
+  font: 9px/1.4 "SFMono-Regular", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-developer-tool-list em {
+  color: var(--conversation-faint);
+  font-size: 9px;
+  font-style: normal;
+}
+
+/* ============================================================
+   Tool UX 1.4 — run-isolated public commentary and batches
+   ============================================================ */
+
+.conversation-thinking-event--commentary {
+  padding: 4px 0 7px;
+  color: var(--conversation-soft);
+}
+
+.conversation-thinking-event--commentary .markdown-content {
+  color: inherit;
+  font-size: 0.95em;
+  line-height: 1.62;
+}
+
+.conversation-thinking-event--commentary .markdown-content > :first-child {
+  margin-top: 0;
+}
+
+.conversation-thinking-event--commentary .markdown-content > :last-child {
+  margin-bottom: 0;
+}
+
+.conversation-thinking-event--commentary.is-before_tools {
+  color: var(--conversation-text);
+}
+
+.conversation-thinking-event--commentary.is-after_tools {
+  padding-bottom: 10px;
+}
+
+.conversation-activity-panel__scroll {
+  padding: 24px 22px 46px;
+}
+
+.conversation-activity-timeline {
+  margin-top: 18px;
+}
+
+.conversation-activity-timeline__event,
+.conversation-activity-timeline__end {
+  min-height: 54px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 18px;
+}
+
+.conversation-activity-timeline__event::after,
+.conversation-activity-timeline__end::after {
+  top: 22px;
+  left: 10px;
+}
+
+.conversation-activity-timeline__event > span,
+.conversation-activity-timeline__end > span {
+  width: 22px;
+  height: 22px;
+}
+
+.conversation-activity-timeline__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding-top: 1px;
+}
+
+.conversation-activity-timeline__copy > strong {
+  color: var(--conversation-text);
+  font-size: 13px;
+  font-weight: 590;
+  line-height: 1.5;
+}
+
+.conversation-activity-timeline__copy > small {
+  overflow: hidden;
+  color: var(--conversation-faint);
+  font-size: 10.5px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-activity-timeline__event.is-commentary {
+  min-height: 62px;
+}
+
+.conversation-activity-timeline__event.is-commentary > span {
+  color: var(--conversation-faint);
+}
+
+.conversation-activity-timeline__event.is-commentary .markdown-content {
+  color: var(--conversation-soft);
+  font-size: 12.5px;
+  line-height: 1.62;
+}
+
+.conversation-activity-timeline__event.is-commentary .markdown-content > :first-child {
+  margin-top: 0;
+}
+
+.conversation-activity-timeline__event.is-commentary .markdown-content > :last-child {
+  margin-bottom: 0;
+}
+
+.conversation-activity-timeline__event.is-tool.is-running > span,
+.conversation-activity-timeline__event.is-tool.is-queued > span {
+  color: var(--conversation-accent);
+}
+
+.conversation-activity-timeline__event.is-tool.is-failed > span,
+.conversation-activity-timeline__event.is-status > span {
+  color: var(--conversation-danger);
+}
+
+.conversation-activity-tool-batch {
+  margin: 0 0 18px;
+}
+
+.conversation-activity-tool-batch > summary {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.conversation-activity-tool-batch > summary::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-activity-tool-batch > summary > span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--conversation-faint);
+  border: 1px solid var(--conversation-border);
+  border-radius: 50%;
+}
+
+.conversation-activity-tool-batch > summary > strong {
+  color: var(--conversation-text);
+  font-size: 13px;
+  font-weight: 590;
+}
+
+.conversation-activity-tool-batch > summary > svg {
+  color: var(--conversation-faint);
+  transition: transform 160ms ease;
+}
+
+.conversation-activity-tool-batch[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.conversation-activity-tool-batch__items {
+  display: grid;
+  padding: 12px 0 0 34px;
+}
+
+.conversation-activity-tool-batch__items .conversation-activity-timeline__event {
+  min-height: 44px;
+  padding-bottom: 10px;
+}
+
+.conversation-activity-tool-batch__items .conversation-activity-timeline__event::after {
+  display: none;
+}
+
+.conversation-activity-tool-batch.is-running > summary > span,
+.conversation-activity-tool-batch.is-queued > summary > span {
+  color: var(--conversation-accent);
+}
+
+.conversation-activity-tool-batch.is-error > summary > span {
+  color: var(--conversation-danger);
+}
+.conversation-activity-identifiers {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+.conversation-activity-identifiers > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.conversation-activity-identifiers dt {
+  color: var(--conversation-faint);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.conversation-activity-identifiers dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--conversation-soft);
+  font: 9px/1.5 "SFMono-Regular", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Tool UX 1.4.1 — live activity stream
+   ============================================================ */
+
+.conversation-message--live {
+  min-height: 1px;
+}
+
+.conversation-message--live .conversation-thinking-timeline {
+  margin-bottom: 12px;
+}
+
+.conversation-thinking-event--commentary.is-streaming {
+  color: var(--conversation-text);
+}
+
+.conversation-thinking-event--commentary.is-streaming::after {
+  width: 0.34em;
+  height: 1em;
+  display: inline-block;
+  margin-left: 0.22em;
+  vertical-align: -0.12em;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  content: "";
+  animation: conversation-live-caret 1s steps(1, end) infinite;
+}
+
+.conversation-message__body--live {
+  margin-top: 18px;
+}
+
+@keyframes conversation-live-caret {
+  0%, 48% {
+    opacity: 0.5;
+  }
+
+  49%, 100% {
+    opacity: 0;
+  }
+}
+
+.reduce-motion .conversation-thinking-event--commentary.is-streaming::after {
+  animation: none;
+}
+
+.conversation-return-to-current {
+  position: sticky;
+  bottom: 18px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  margin: 0 auto 10px;
+  padding: 8px 13px;
+  border: 1px solid var(--conversation-border-strong);
+  border-radius: 999px;
+  color: var(--conversation-text);
+  background: color-mix(in srgb, var(--conversation-surface) 92%, transparent);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.14);
+  backdrop-filter: blur(12px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  animation: conversation-message-in 160ms ease both;
+}
+
+.conversation-return-to-current svg {
+  transform: rotate(90deg);
+}
+
+.conversation-activity-plan__row > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.conversation-activity-plan__row > div > strong {
+  color: var(--conversation-soft);
+  font-size: 12px;
+  font-weight: 540;
+  line-height: 1.45;
+}
+
+.conversation-activity-plan__row > div > small {
+  color: var(--conversation-faint);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.conversation-activity-plan__row.is-skipped,
+.conversation-activity-plan__row.is-cancelled,
+.conversation-activity-plan__row.is-superseded {
+  opacity: 0.55;
+}
+
+

@@ -1,4 +1,8 @@
 import {
+  readConversationMessageSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -19,9 +23,7 @@ function read(relativePath) {
 
 describe("live Tool activity rendering", () => {
   it("tracks live event revisions instead of waiting for a persisted message", () => {
-    const source = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
+    const source = readConversationMessageSource();
 
     assert.match(source, /liveRevision/u);
     assert.match(source, /liveActivity\?\.activity\?\.events/u);
@@ -30,9 +32,7 @@ describe("live Tool activity rendering", () => {
   });
 
   it("follows the live run only while the reader remains near the bottom", () => {
-    const source = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
+    const source = readConversationMessageSource();
 
     assert.match(source, /followLiveRef/u);
     assert.match(source, /remaining < 140/u);

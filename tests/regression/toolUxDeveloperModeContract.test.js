@@ -1,4 +1,9 @@
 import {
+  readConversationMessageSource,
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -94,12 +99,8 @@ describe(
     it(
       "renders one activity event stream in the thinking timeline and task panel",
       () => {
-        const list = read(
-          "../../src/Conversation/components/MessageList.jsx"
-        );
-        const panel = read(
-          "../../src/Conversation/components/TaskPanel.jsx"
-        );
+        const list = readConversationMessageSource();
+        const panel = readConversationTaskPanelSource();
         const activity = read(
           "../../src/Conversation/utils/taskActivity.js"
         );

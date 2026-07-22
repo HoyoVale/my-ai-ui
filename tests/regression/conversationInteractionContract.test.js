@@ -1,4 +1,9 @@
 import {
+  readConversationMessageSource,
+  readConversationStyles
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -25,9 +30,7 @@ describe(
       "shows user timestamps and keeps context controls on assistant messages",
       () => {
         const source =
-          read(
-            "../../src/Conversation/components/MessageList.jsx"
-          );
+          readConversationMessageSource();
 
         assert.match(
           source,
@@ -52,9 +55,7 @@ describe(
       "hides message actions until hover or keyboard focus",
       () => {
         const source =
-          read(
-            "../../src/Conversation/Conversation.css"
-          );
+          readConversationStyles();
 
         assert.match(
           source,
@@ -100,9 +101,7 @@ describe(
       "left-aligns assistant message actions",
       () => {
         const source =
-          read(
-            "../../src/Conversation/Conversation.css"
-          );
+          readConversationStyles();
 
         assert.match(
           source,

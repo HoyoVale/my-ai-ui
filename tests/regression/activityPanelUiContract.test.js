@@ -1,4 +1,8 @@
 import {
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -15,9 +19,7 @@ function read(relativePath) {
 
 describe("ChatGPT-inspired activity panel", () => {
   it("uses one activity timeline instead of plan and activity tabs", () => {
-    const source = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const source = readConversationTaskPanelSource();
 
     assert.match(source, /conversation-activity-timeline/u);
     assert.match(source, />思考</u);
@@ -26,9 +28,7 @@ describe("ChatGPT-inspired activity panel", () => {
   });
 
   it("keeps raw tool details inside developer mode", () => {
-    const source = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const source = readConversationTaskPanelSource();
 
     assert.match(source, /developerMode &&/u);
     assert.match(source, /<DeveloperActivity/u);

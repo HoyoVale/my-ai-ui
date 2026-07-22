@@ -1,3 +1,8 @@
+import {
+  readConversationMessageSource,
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
 import { it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,8 +16,8 @@ function source(path) {
 }
 
 it("95 embeds local diffs and command output in the tool timeline, then shows one final diff", () => {
-  const messageList = source("src/Conversation/components/MessageList.jsx");
-  const taskPanel = source("src/Conversation/components/TaskPanel.jsx");
+  const messageList = readConversationMessageSource();
+  const taskPanel = readConversationTaskPanelSource();
   assert.match(messageList, /ToolCommandPreview/u);
   assert.match(messageList, /FileDiffPreview/u);
   assert.match(messageList, /FinalDiffSummary/u);

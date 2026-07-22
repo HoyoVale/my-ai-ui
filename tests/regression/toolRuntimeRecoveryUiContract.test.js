@@ -1,3 +1,7 @@
+import {
+  readConversationShellSource
+} from "../helpers/conversationUiSource.js";
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -28,10 +32,7 @@ test("Runtime recovery evidence remains internal while the obsolete global UI is
   assert.equal(snapshot.runtimeRecovery.needsConfirmation, 1);
   assert.equal(snapshot.runtimeDiagnostics.calls[0].idempotencyKey, "private-key");
 
-  const conversation = fs.readFileSync(
-    new URL("../../src/Conversation/Conversation.jsx", import.meta.url),
-    "utf8"
-  );
+  const conversation = readConversationShellSource();
   const topbar = fs.readFileSync(
     new URL("../../src/Conversation/components/Topbar.jsx", import.meta.url),
     "utf8"

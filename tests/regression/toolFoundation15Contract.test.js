@@ -1,3 +1,7 @@
+import {
+  readConversationMessageSource
+} from "../helpers/conversationUiSource.js";
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,10 +15,7 @@ const main = fs.readFileSync(
   new URL("../../electron/main.js", import.meta.url),
   "utf8"
 );
-const messages = fs.readFileSync(
-  new URL("../../src/Conversation/components/MessageList.jsx", import.meta.url),
-  "utf8"
-);
+const messages = readConversationMessageSource();
 
 describe("Tool Foundation 1.5 contract", () => {
   it("persists one assistant run placeholder and compact checkpoints", () => {

@@ -1,4 +1,9 @@
 import {
+  readConversationMessageSource,
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -15,12 +20,8 @@ function read(relativePath) {
 
 describe("shared task activity event source", () => {
   it("drives both the thinking timeline and task panel from activity events", () => {
-    const list = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
-    const panel = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const list = readConversationMessageSource();
+    const panel = readConversationTaskPanelSource();
     const model = read(
       "../../src/Conversation/utils/taskActivity.js"
     );
@@ -34,9 +35,7 @@ describe("shared task activity event source", () => {
   });
 
   it("keeps raw tool data behind the developer task panel", () => {
-    const panel = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const panel = readConversationTaskPanelSource();
 
     assert.match(panel, /developerMode/u);
     assert.match(panel, /title="Result"/u);

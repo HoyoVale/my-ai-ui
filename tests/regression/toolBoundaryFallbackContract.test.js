@@ -1,3 +1,8 @@
+import {
+  readConversationMessageSource,
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -26,8 +31,8 @@ describe("Tool Runtime boundary fallback contract", () => {
   });
 
   it("hides developer-only tools from the normal timeline", () => {
-    const messageList = read("../../src/Conversation/components/MessageList.jsx");
-    const taskPanel = read("../../src/Conversation/components/TaskPanel.jsx");
+    const messageList = readConversationMessageSource();
+    const taskPanel = readConversationTaskPanelSource();
 
     assert.match(messageList, /isActivityEventVisible/u);
     assert.match(taskPanel, /isActivityEventVisible/u);

@@ -1,4 +1,8 @@
 import {
+  readConversationMessageSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -15,9 +19,7 @@ function read(relativePath) {
 
 describe("compact thinking activity", () => {
   it("removes redundant descriptions and task links from chat", () => {
-    const source = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
+    const source = readConversationMessageSource();
 
     assert.doesNotMatch(source, /查看完整任务/u);
     assert.doesNotMatch(source, /resultSummary/u);
@@ -26,9 +28,7 @@ describe("compact thinking activity", () => {
   });
 
   it("does not expose retired question or reasoning events in the normal timeline", () => {
-    const source = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
+    const source = readConversationMessageSource();
 
     assert.doesNotMatch(source, /PendingQuestionCard|reasoningSummary|reasoningText/u);
     assert.match(source, /event\.type === "batch"|event\.type === "plan"/u);

@@ -1,3 +1,7 @@
+import {
+  readConversationShellSource
+} from "../helpers/conversationUiSource.js";
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -76,7 +80,7 @@ describe("Tool UI cleanup phase 1", () => {
   it("removes the obsolete activity level and diagnostic cards from Tool settings", () => {
     const panel = read("../../src/Setting/panels/ToolPanel.jsx");
     const defaults = read("../../src/shared/defaultSettings.js");
-    const conversation = read("../../src/Conversation/Conversation.jsx");
+    const conversation = readConversationShellSource();
 
     assert.doesNotMatch(panel, /活动显示|展示层级|当前模型|固定安全边界/u);
     assert.doesNotMatch(defaults, /detailLevel/u);

@@ -1,4 +1,8 @@
 import {
+  readConversationShellSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -55,9 +59,7 @@ describe(
         const sidebar = read(
           "../../src/Conversation/components/Sidebar.jsx"
         );
-        const conversation = read(
-          "../../src/Conversation/Conversation.jsx"
-        );
+        const conversation = readConversationShellSource();
 
         assert.match(sidebar, /conversation-mode-tabs/u);
         assert.match(sidebar, /conversation-workspace-group__toggle/u);

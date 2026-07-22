@@ -1,3 +1,8 @@
+import {
+  readConversationMessageSource,
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -32,7 +37,7 @@ describe("Tool Runtime cleanup contract", () => {
   it("does not persist or render raw model reasoning", () => {
     const runtime = read("../../electron/agent/AgentRuntime.js");
     const schema = read("../../electron/conversation/conversationSchema.js");
-    const panel = read("../../src/Conversation/components/TaskPanel.jsx");
+    const panel = readConversationTaskPanelSource();
 
     assert.doesNotMatch(runtime, /reasoningText|reasoningSummary/u);
     assert.doesNotMatch(schema, /reasoningSummary/u);
@@ -40,11 +45,10 @@ describe("Tool Runtime cleanup contract", () => {
   });
 
   it("lets the Tool manifest alone control normal activity visibility", () => {
-    for (const file of [
-      "../../src/Conversation/components/MessageList.jsx",
-      "../../src/Conversation/components/TaskPanel.jsx"
+    for (const source of [
+      readConversationMessageSource(),
+      readConversationTaskPanelSource()
     ]) {
-      const source = read(file);
       assert.match(source, /isActivityEventVisible/u);
       assert.doesNotMatch(source, /\[\s*"update_plan"|developerToolNames|hiddenToolNames/u);
     }

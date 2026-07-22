@@ -1,4 +1,8 @@
 import {
+  readConversationMessageSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -36,9 +40,7 @@ describe("multi-step assistant streaming", () => {
   });
 
   it("renders the current model step while tools are still running", () => {
-    const source = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
+    const source = readConversationMessageSource();
 
     assert.match(source, /liveStepText/u);
     assert.match(source, /conversation-live-step-text/u);

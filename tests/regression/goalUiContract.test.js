@@ -1,4 +1,8 @@
 import {
+  readConversationStyles
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -63,7 +67,7 @@ describe("Goal UI contract", () => {
 
   it("keeps criterion actions readable and the Goal footer outside the scroll region", () => {
     const panel = read("../../src/Conversation/components/GoalPanel.jsx");
-    const styles = read("../../src/Conversation/Conversation.css");
+    const styles = readConversationStyles();
 
     assert.match(panel, /conversation-goal-criterion-status/u);
     assert.match(panel, /conversation-goal-manual-toggle/u);

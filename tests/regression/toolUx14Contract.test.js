@@ -1,4 +1,9 @@
 import {
+  readConversationMessageSource,
+  readConversationTaskPanelSource
+} from "../helpers/conversationUiSource.js";
+
+import {
   describe,
   it
 } from "node:test";
@@ -18,9 +23,7 @@ describe("Tool UX 1.4 contract", () => {
     const model = read(
       "../../src/Conversation/utils/taskActivity.js"
     );
-    const panel = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const panel = readConversationTaskPanelSource();
 
     assert.match(model, /return source \? \[source\] : \[\]/u);
     assert.match(model, /messageId:/u);
@@ -30,12 +33,8 @@ describe("Tool UX 1.4 contract", () => {
   });
 
   it("renders public commentary in chat and the activity timeline", () => {
-    const list = read(
-      "../../src/Conversation/components/MessageList.jsx"
-    );
-    const panel = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const list = readConversationMessageSource();
+    const panel = readConversationTaskPanelSource();
 
     assert.match(list, /event\.type === "commentary"/u);
     assert.match(list, /conversation-thinking-event--commentary/u);
@@ -50,9 +49,7 @@ describe("Tool UX 1.4 contract", () => {
     const defaults = read(
       "../../src/shared/defaultSettings.js"
     );
-    const panel = read(
-      "../../src/Conversation/components/TaskPanel.jsx"
-    );
+    const panel = readConversationTaskPanelSource();
 
     assert.doesNotMatch(settings, /展示层级|活动显示|当前模型|固定安全边界/u);
     assert.doesNotMatch(defaults, /detailLevel|display:/u);

@@ -1,3 +1,7 @@
+import {
+  readConversationShellSource
+} from "../helpers/conversationUiSource.js";
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
@@ -7,7 +11,7 @@ function read(relativePath) {
 }
 
 test("Conversation exposes a reviewable Tool Approval flow", () => {
-  const conversation = read("../../src/Conversation/Conversation.jsx");
+  const conversation = readConversationShellSource();
   const panel = read("../../src/Conversation/components/ToolApprovalPanel.jsx");
   const preload = read("../../electron/preload/preload.cjs");
   const agentIpc = read("../../electron/ipc/handlers/agentIpc.js");
