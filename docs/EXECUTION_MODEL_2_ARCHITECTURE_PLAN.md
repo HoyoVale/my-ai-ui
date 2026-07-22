@@ -1002,3 +1002,33 @@ Production authority remains unchanged:
 - Conversation Store remains version 22.
 
 The next implementation step is Phase D: durable Thread/Run lineage, routing decision persistence, provider continuation metadata, migration, and crash recovery.
+
+---
+
+## Implementation status update — Phase D (105)
+
+Phase D has been implemented on the `my-ai-ui(104)` baseline.
+
+Implemented:
+
+- Conversation Store v23;
+- `executionThreads[]` and `activeExecutionThreadId` as durable Thread authority;
+- compatibility `executionThread` projection;
+- bounded Run lineage inside Thread v2;
+- legacy `lastRunId` migration;
+- fork and regeneration lineage fields;
+- optional Provider Continuation metadata;
+- bounded persistent Routing Decisions;
+- startup hydration of Routing Decision diagnostics;
+- recovery of every interrupted Thread to a continuable checkpoint;
+- recovery from a valid `.tmp` Conversation snapshot after an interrupted atomic replacement.
+
+Production routing remains Shadow Mode:
+
+- legacy routing still executes;
+- Steering Queue remains inactive;
+- Fork remains modeled but not applied;
+- Provider Continuation is persisted but not sent to providers;
+- the UI still reads the compatibility active Thread projection.
+
+The next step is Phase E: Platform Bridge. Worker, Reviewer, Supervisor and Integration executions should receive explicit child Thread identities without replacing Platform Task Graph or Completion Authority.

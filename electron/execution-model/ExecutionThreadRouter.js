@@ -25,7 +25,10 @@ function text(value, maxLength = 160) {
 }
 
 function currentThread(conversation) {
-  const source = conversation?.executionThread;
+  const activeId = text(conversation?.activeExecutionThreadId);
+  const source = (Array.isArray(conversation?.executionThreads)
+    ? conversation.executionThreads.find((thread) => text(thread?.id) === activeId)
+    : null) || conversation?.executionThread;
   if (!source || typeof source !== "object") return null;
   const id = text(source.id);
   if (!id) return null;

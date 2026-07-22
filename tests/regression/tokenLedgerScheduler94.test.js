@@ -20,7 +20,7 @@ test("94 persists Token Ledger usage across Agent, Conversation and Goal boundar
   assert.match(runtime, /recordProviderUsage\(/u);
   assert.match(runtime, /recordTool\(record\)/u);
   assert.match(runtime, /setToolDefinitions\(toolSession\.definitions\)/u);
-  assert.match(schema, /const STORE_VERSION = 22/u);
+  assert.match(schema, /const STORE_VERSION = 23/u);
   assert.match(schema, /sanitizeTokenLedgerSnapshot/u);
   assert.match(goal, /const GOAL_SCHEMA_VERSION = 6/u);
   assert.match(goal, /recordGoalTokenUsage/u);

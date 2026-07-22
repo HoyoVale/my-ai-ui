@@ -445,7 +445,7 @@ test("phase B remains a read-only projection layer", () => {
     read("electron/conversation/ConversationManager.js"),
     read("electron/platform/PlatformKernel.js")
   ].join("\n");
-  assert.match(conversationSchema, /const STORE_VERSION = 22;/u);
+  assert.match(conversationSchema, /const STORE_VERSION = 23;/u);
   assert.doesNotMatch(runtimeSources, /ExecutionItemProjector|RunProjection/u);
   assert.doesNotMatch(
     read("electron/execution-model/ExecutionItemProjector.js"),

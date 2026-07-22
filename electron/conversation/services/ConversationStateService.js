@@ -1,7 +1,12 @@
 import { normalizeSessionMode, resolveModelBinding } from "../sessionContext.js";
 import { createSkillSnapshots } from "../../skills/skillSnapshot.js";
 import { recoverInterruptedGoal } from "../../goal/GoalRuntime.js";
-import { recoverInterruptedExecutionThread } from "../../agent/ExecutionThread.js";
+import {
+  recoverExecutionThreadCollection
+} from "../../execution-model/ExecutionPersistence.js";
+import {
+  threadRoutingDecisionStore
+} from "../../execution-model/ThreadRoutingDecisionStore.js";
 import * as internals from "../ConversationManagerInternals.js";
 
 export const ConversationStateService = {
@@ -13,6 +18,9 @@ export const ConversationStateService = {
       const timestamp = this.now();
       let recovered = false;
       for (const conversation of this.data.conversations) {
+        for (const decision of conversation.routingDecisions ?? []) {
+          threadRoutingDecisionStore.record(decision);
+        }
         const result = recoverInterruptedGoal(
           conversation.goal,
           { now: timestamp }
@@ -25,12 +33,19 @@ export const ConversationStateService = {
           );
           recovered = true;
         }
-        const threadRecovery = recoverInterruptedExecutionThread(
-          conversation.executionThread,
+        const threadRecovery = recoverExecutionThreadCollection(
+          conversation,
           { now: timestamp }
         );
         if (threadRecovery.changed) {
-          conversation.executionThread = threadRecovery.thread;
+          conversation.activeExecutionThreadId =
+            threadRecovery.activeExecutionThreadId;
+          conversation.executionThreads =
+            threadRecovery.executionThreads;
+          conversation.executionThread =
+            threadRecovery.executionThread;
+          conversation.routingDecisions =
+            threadRecovery.routingDecisions;
           conversation.updatedAt = Math.max(
             conversation.updatedAt,
             timestamp
@@ -298,7 +313,10 @@ export const ConversationStateService = {
       skillSnapshots: normalizedSkillSnapshots,
       skillRoutingMode: skillRoutingMode === "auto" ? "auto" : "manual",
       goal: null,
+      activeExecutionThreadId: null,
+      executionThreads: [],
       executionThread: null,
+      routingDecisions: [],
       title:
         String(title)
           .trim()
@@ -470,6 +488,26 @@ export const ConversationStateService = {
   
     conversation.modelSelection = binding.selection;
     conversation.modelSnapshot = binding.snapshot;
+    conversation.executionThreads = (conversation.executionThreads ?? [])
+      .map((thread) => {
+        const continuation = thread.providerContinuation;
+        if (
+          !continuation ||
+          (continuation.providerId === binding.selection.providerId &&
+            continuation.modelConfigId === binding.selection.modelConfigId)
+        ) {
+          return thread;
+        }
+        return {
+          ...thread,
+          providerContinuation: null,
+          revision: Math.max(1, Number(thread.revision) || 1) + 1,
+          updatedAt: this.now()
+        };
+      });
+    conversation.executionThread = conversation.executionThreads.find(
+      (thread) => thread.id === conversation.activeExecutionThreadId
+    ) ?? conversation.executionThread ?? null;
     conversation.updatedAt = this.now();
     this.commit();
   

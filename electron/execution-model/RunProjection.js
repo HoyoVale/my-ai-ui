@@ -229,7 +229,7 @@ export function projectConversationRuns({
     ? conversation.messages
     : [];
   const conversationThreadId = text(
-    threadId || conversation.executionThread?.id,
+    threadId || conversation.activeExecutionThreadId || conversation.executionThread?.id,
     160
   );
   const runs = [];

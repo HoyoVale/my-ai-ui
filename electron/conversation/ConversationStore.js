@@ -80,31 +80,34 @@ export class ConversationStore {
 
     const filePath =
       this.getPath();
+    const temporaryPath =
+      `${filePath}.tmp`;
+
+    const readData = (candidatePath) => {
+      const text = this.fileSystem.readFileSync(candidatePath, "utf8");
+      return sanitizeConversationData(JSON.parse(text));
+    };
 
     try {
-      const text =
-        this.fileSystem
-          .readFileSync(
-            filePath,
-            "utf8"
-          );
-
-      this.cache =
-        sanitizeConversationData(
-          JSON.parse(text)
-        );
-    } catch (error) {
-      if (
-        error?.code !== "ENOENT"
-      ) {
+      this.cache = readData(filePath);
+    } catch (primaryError) {
+      try {
+        this.cache = readData(temporaryPath);
         console.warn(
-          "读取会话文件失败，将创建新文件：",
-          error
+          "检测到未完成的会话文件替换，已从临时文件恢复。"
         );
+      } catch (temporaryError) {
+        if (
+          primaryError?.code !== "ENOENT" ||
+          temporaryError?.code !== "ENOENT"
+        ) {
+          console.warn(
+            "读取会话文件失败，将创建新文件：",
+            primaryError
+          );
+        }
+        this.cache = createEmptyConversationData();
       }
-
-      this.cache =
-        createEmptyConversationData();
     }
 
     this.scheduleWrite(

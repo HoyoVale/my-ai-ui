@@ -142,6 +142,22 @@ export class ConversationManager {
     return ConversationExecutionService.finishExecutionThread.apply(this, args);
   }
 
+  listExecutionThreads(...args) {
+    return ConversationExecutionService.listExecutionThreads.apply(this, args);
+  }
+
+  selectExecutionThread(...args) {
+    return ConversationExecutionService.selectExecutionThread.apply(this, args);
+  }
+
+  recordProviderContinuation(...args) {
+    return ConversationExecutionService.recordProviderContinuation.apply(this, args);
+  }
+
+  recordThreadRoutingDecision(...args) {
+    return ConversationExecutionService.recordThreadRoutingDecision.apply(this, args);
+  }
+
   setGoal(...args) {
     return ConversationExecutionService.setGoal.apply(this, args);
   }

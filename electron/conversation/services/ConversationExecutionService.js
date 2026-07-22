@@ -5,7 +5,19 @@ import {
   recordGoalWorkingState as recordGoalWorkingStateRuntime, recordGoalTokenUsage as recordGoalTokenUsageRuntime,
   applyGoalPlanState as applyGoalPlanStateRuntime, replanGoal as replanGoalRuntime, transitionGoal as transitionGoalRuntime, upsertGoal
 } from "../../goal/GoalRuntime.js";
-import { beginExecutionThreadRun, createExecutionThread, finishExecutionThreadRun, recordExecutionThreadCheckpoint, sanitizeExecutionThread } from "../../agent/ExecutionThread.js";
+import {
+  beginExecutionThreadRun,
+  createExecutionThread,
+  finishExecutionThreadRun,
+  recordExecutionThreadCheckpoint,
+  setExecutionThreadProviderContinuation
+} from "../../agent/ExecutionThread.js";
+import {
+  appendPersistedRoutingDecision,
+  applyExecutionThreadCollection,
+  findExecutionThread,
+  sanitizeExecutionThreadCollection
+} from "../../execution-model/ExecutionPersistence.js";
 import * as internals from "../ConversationManagerInternals.js";
 
 export const ConversationExecutionService = {
@@ -20,18 +32,26 @@ export const ConversationExecutionService = {
     workspaceId = "",
     planState = [],
     workingState = null,
-    runId = ""
+    runId = "",
+    relation = "",
+    previousRunId = "",
+    retryOfRunId = "",
+    regeneratedFromRunId = "",
+    userMessageId = "",
+    forkedFromThreadId = "",
+    forkedFromRunId = ""
   } = {}) {
     const conversation = this.findMutableConversation(
       conversationId || this.ensureLoaded().currentConversationId
     );
     if (!conversation) return { ok: false, code: "conversation-not-found" };
     const timestamp = this.now();
-    const existing = sanitizeExecutionThread(conversation.executionThread);
-    const base = existing?.id === String(threadId ?? "")
+    const requestedThreadId = String(threadId ?? "").trim();
+    const existing = findExecutionThread(conversation, requestedThreadId);
+    const base = existing?.id === requestedThreadId
       ? existing
       : createExecutionThread({
-          id: threadId || this.createId(),
+          id: requestedThreadId || this.createId(),
           taskId: taskId || this.createId(),
           goalId,
           platformRunId,
@@ -41,6 +61,9 @@ export const ConversationExecutionService = {
           planState,
           workingState,
           runId,
+          userMessageId,
+          forkedFromThreadId,
+          forkedFromRunId,
           now: timestamp
         });
     const thread = beginExecutionThreadRun(base, {
@@ -50,10 +73,18 @@ export const ConversationExecutionService = {
       objective,
       planState,
       workingState,
+      relation,
+      previousRunId,
+      retryOfRunId,
+      regeneratedFromRunId,
+      userMessageId,
       now: timestamp
     });
     if (!thread) return { ok: false, code: "execution-thread-invalid" };
-    conversation.executionThread = thread;
+    applyExecutionThreadCollection(conversation, {
+      thread,
+      activeThreadId: thread.id
+    });
     conversation.updatedAt = timestamp;
     this.commit();
     return { ok: true, thread: internals.clone(thread) };
@@ -68,7 +99,7 @@ export const ConversationExecutionService = {
     runId = ""
   } = {}) {
     const conversation = this.findMutableConversation(conversationId);
-    const current = sanitizeExecutionThread(conversation?.executionThread);
+    const current = findExecutionThread(conversation, threadId);
     if (!conversation || !current) return { ok: false, code: "execution-thread-not-found" };
     if (threadId && current.id !== threadId) return { ok: false, code: "execution-thread-changed" };
     const thread = recordExecutionThreadCheckpoint(current, {
@@ -78,7 +109,10 @@ export const ConversationExecutionService = {
       runId,
       now: this.now()
     });
-    conversation.executionThread = thread;
+    applyExecutionThreadCollection(conversation, {
+      thread,
+      activeThreadId: conversation.activeExecutionThreadId || thread.id
+    });
     conversation.updatedAt = thread.updatedAt;
     this.commit();
     return { ok: true, thread: internals.clone(thread) };
@@ -96,7 +130,7 @@ export const ConversationExecutionService = {
     resumable = false
   } = {}) {
     const conversation = this.findMutableConversation(conversationId);
-    const current = sanitizeExecutionThread(conversation?.executionThread);
+    const current = findExecutionThread(conversation, threadId);
     if (!conversation || !current) return { ok: false, code: "execution-thread-not-found" };
     if (threadId && current.id !== threadId) return { ok: false, code: "execution-thread-changed" };
     const thread = finishExecutionThreadRun(current, {
@@ -109,10 +143,77 @@ export const ConversationExecutionService = {
       resumable,
       now: this.now()
     });
-    conversation.executionThread = thread;
+    applyExecutionThreadCollection(conversation, {
+      thread,
+      activeThreadId: conversation.activeExecutionThreadId || thread.id
+    });
     conversation.updatedAt = thread.updatedAt;
     this.commit();
     return { ok: true, thread: internals.clone(thread) };
+  },
+
+  listExecutionThreads({ conversationId } = {}) {
+    const conversation = this.getConversation(
+      conversationId || this.ensureLoaded().currentConversationId
+    );
+    if (!conversation) return [];
+    return sanitizeExecutionThreadCollection(conversation)
+      .executionThreads
+      .map((thread) => internals.clone(thread));
+  },
+
+  selectExecutionThread({ conversationId, threadId } = {}) {
+    const conversation = this.findMutableConversation(conversationId);
+    const thread = findExecutionThread(conversation, threadId);
+    if (!conversation || !thread) {
+      return { ok: false, code: "execution-thread-not-found" };
+    }
+    applyExecutionThreadCollection(conversation, {
+      activeThreadId: thread.id
+    });
+    conversation.updatedAt = this.now();
+    this.commit();
+    return { ok: true, thread: internals.clone(thread) };
+  },
+
+  recordProviderContinuation({
+    conversationId,
+    threadId,
+    continuation = null
+  } = {}) {
+    const conversation = this.findMutableConversation(conversationId);
+    const current = findExecutionThread(conversation, threadId);
+    if (!conversation || !current) {
+      return { ok: false, code: "execution-thread-not-found" };
+    }
+    const thread = setExecutionThreadProviderContinuation(
+      current,
+      continuation,
+      { now: this.now() }
+    );
+    if (!thread) {
+      return { ok: false, code: "provider-continuation-invalid" };
+    }
+    applyExecutionThreadCollection(conversation, {
+      thread,
+      activeThreadId: conversation.activeExecutionThreadId || thread.id
+    });
+    conversation.updatedAt = thread.updatedAt;
+    this.commit();
+    return { ok: true, thread: internals.clone(thread) };
+  },
+
+  recordThreadRoutingDecision({
+    conversationId,
+    decision
+  } = {}) {
+    const conversation = this.findMutableConversation(conversationId);
+    if (!conversation) return { ok: false, code: "conversation-not-found" };
+    const recorded = appendPersistedRoutingDecision(conversation, decision);
+    if (!recorded) return { ok: false, code: "routing-decision-invalid" };
+    conversation.updatedAt = Math.max(conversation.updatedAt, recorded.createdAt, this.now());
+    this.commit();
+    return { ok: true, decision: recorded };
   },
 
   setGoal({

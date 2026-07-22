@@ -341,13 +341,11 @@ describe("ThreadRoutingDecision", () => {
 });
 
 describe("Phase A architecture boundary", () => {
-  it("keeps the original Thread and Conversation authorities independent from the new model", () => {
-    const authoritySources = [
-      read("electron/agent/ExecutionThread.js"),
-      read("electron/conversation/ConversationManager.js"),
-      read("electron/conversation/services/ConversationExecutionService.js")
-    ].join("\n");
-    assert.doesNotMatch(authoritySources, /execution-model/u);
+  it("keeps Phase A independent until the planned Phase D persistence bridge", () => {
+    const threadSource = read("electron/agent/ExecutionThread.js");
+    const conversationFacade = read("electron/conversation/ConversationManager.js");
+    assert.match(threadSource, /RunIdentityContract/u);
+    assert.doesNotMatch(conversationFacade, /ExecutionItemProjector|RunProjection/u);
   });
 
   it("keeps Phase A modules independent from Agent and Conversation facades", () => {

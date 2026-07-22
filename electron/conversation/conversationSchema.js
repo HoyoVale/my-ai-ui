@@ -22,15 +22,15 @@ import {
 } from "../agent/TokenLedger.js";
 
 import {
-  sanitizeExecutionThread
-} from "../agent/ExecutionThread.js";
+  sanitizeExecutionThreadCollection
+} from "../execution-model/ExecutionPersistence.js";
 
 import {
   createSkillSnapshot,
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
-const STORE_VERSION = 22;
+const STORE_VERSION = 23;
 
 
 function sanitizeDiffSummary(source) {
@@ -789,7 +789,7 @@ export function sanitizeConversation(
     source.modelSnapshot
   );
   const goal = sanitizeGoal(source.goal);
-  const executionThread = sanitizeExecutionThread(source.executionThread);
+  const executionPersistence = sanitizeExecutionThreadCollection(source);
 
   return {
     id,
@@ -816,7 +816,10 @@ export function sanitizeConversation(
         : null,
 
     goal,
-    executionThread,
+    activeExecutionThreadId: executionPersistence.activeExecutionThreadId,
+    executionThreads: executionPersistence.executionThreads,
+    executionThread: executionPersistence.executionThread,
+    routingDecisions: executionPersistence.routingDecisions,
 
     title:
       stringValue(

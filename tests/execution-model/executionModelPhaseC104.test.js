@@ -270,5 +270,5 @@ test("phase C is integrated in shadow mode without changing production routing",
   assert.match(runtime, /threadRoutingDecisionStore\.snapshot/u);
   assert.match(ipc, /threadCommand/u);
   assert.doesNotMatch(preparation, /steeringQueue\.enqueue/u);
-  assert.match(schema, /const STORE_VERSION = 22;/u);
+  assert.match(schema, /const STORE_VERSION = 23;/u);
 });
