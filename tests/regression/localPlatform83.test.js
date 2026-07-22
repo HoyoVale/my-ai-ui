@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const source = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 test("83 exposes a durable background scheduler with controls and budgets", () => {
-  const kernel = source("electron/platform/PlatformKernel.js");
+  const kernel = source("electron/platform/jobs/PlatformLongRunningService.js");
   const scheduler = source("electron/platform/PlatformJobScheduler.js");
   const main = source("electron/main.js");
   assert.match(kernel, /JOB_ENQUEUED/u);

@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 test("84 keeps failure classification, independent replanning and evidence-bound completion wired", () => {
-  const kernel = read("electron/platform/PlatformKernel.js");
+  const kernel = read("electron/platform/state/PlatformStateProjector.js") + read("electron/platform/completion/PlatformCompletionService.js");
   const scheduler = read("electron/platform/PlatformJobScheduler.js");
   const platform = read("electron/platform/index.js");
   const dock = read("src/Conversation/components/PlatformDock.jsx");

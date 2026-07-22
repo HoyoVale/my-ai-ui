@@ -13,7 +13,7 @@ function read(relativePath) {
 test("Platform Kernel is wired into Goal execution and startup recovery", () => {
   const runtime = readAgentRuntimeSource();
   const main = read("../../electron/main.js");
-  const manager = read("../../electron/conversation/ConversationManager.js");
+  const manager = read("../../electron/conversation/services/ConversationExecutionService.js");
   assert.match(runtime, /platformKernel\.prepareExecution/u);
   assert.match(runtime, /platformKernel\.authorizeCompletion/u);
   assert.match(main, /platformKernel\.recoverInterruptedRuns/u);

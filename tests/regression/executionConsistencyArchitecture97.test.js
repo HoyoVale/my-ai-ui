@@ -10,7 +10,7 @@ const facade = readAgentRuntimeSource("facade");
 const preparation = readAgentRuntimeSource("preparation");
 const finalization = readAgentRuntimeSource("finalization");
 const persistence = readAgentRuntimeSource("persistence");
-const manager = fs.readFileSync(new URL("../../electron/conversation/ConversationManager.js", import.meta.url), "utf8");
+const manager = fs.readFileSync(new URL("../../electron/conversation/services/ConversationExecutionService.js", import.meta.url), "utf8");
 
 it("routes execution consistency through extracted core boundaries", () => {
   assert.match(facade, /agentRunPreparation/u);

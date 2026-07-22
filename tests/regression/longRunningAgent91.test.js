@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const source = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 test("91 provides the full durable Long-running Agent state machine", () => {
-  const kernel = source("electron/platform/PlatformKernel.js");
+  const kernel = source("electron/platform/PlatformKernelInternals.js") + source("electron/platform/jobs/PlatformLongRunningService.js");
   const scheduler = source("electron/platform/PlatformJobScheduler.js");
   for (const state of [
     "scheduled",

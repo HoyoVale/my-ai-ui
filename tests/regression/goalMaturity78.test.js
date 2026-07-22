@@ -13,7 +13,7 @@ function read(relativePath) {
 test("Goal Runtime persists criteria, completion authority and bounded evidence history", () => {
   const schema = read("../../electron/conversation/conversationSchema.js");
   const goalRuntime = read("../../electron/goal/GoalRuntime.js");
-  const manager = read("../../electron/conversation/ConversationManager.js");
+  const manager = read("../../electron/conversation/services/ConversationExecutionService.js");
   assert.match(schema, /const STORE_VERSION = 22/u);
   assert.match(schema, /sanitizeGoal/u);
   assert.match(goalRuntime, /GOAL_SCHEMA_VERSION = 6/u);
