@@ -37,6 +37,7 @@ import {
 
 import {
   platformKernel,
+  platformJobScheduler,
   worktreeRuntime
 } from "./platform/index.js";
 
@@ -72,14 +73,16 @@ registerIpcHandlers();
 app.whenReady().then(async () => {
   try {
     const platformRecovery = platformKernel.recoverInterruptedRuns();
+    const jobRecovery = platformJobScheduler.recover();
     const worktreeRecovery = worktreeRuntime.recover();
     if (
       platformRecovery.recoveredRunIds.length > 0 ||
-      platformRecovery.expiredLeaseIds.length > 0
+      platformRecovery.expiredLeaseIds.length > 0 ||
+      jobRecovery.recoveredJobIds.length > 0
     ) {
       console.info(
         "Platform Kernel recovered interrupted work:",
-        platformRecovery
+        { ...platformRecovery, recoveredJobIds: jobRecovery.recoveredJobIds }
       );
     }
     if (worktreeRecovery.recoveredWorktreeIds.length > 0) {

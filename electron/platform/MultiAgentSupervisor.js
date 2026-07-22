@@ -33,7 +33,11 @@ function normalizeResult(result) {
       .slice(0, 20)
       .map((item) => String(item).slice(0, 500)),
     error: String(source.error ?? "").slice(0, 1000),
-    records: Array.isArray(source.records) ? source.records : []
+    records: Array.isArray(source.records) ? source.records : [],
+    usage: {
+      totalTokens: Math.max(0, Number(source.usage?.totalTokens) || 0),
+      steps: Math.max(0, Number(source.usage?.steps) || 0)
+    }
   };
 }
 
@@ -108,7 +112,7 @@ export class MultiAgentSupervisor {
     return { ok: true };
   }
 
-  async executeTask(platformRunId, taskId) {
+  async executeTask(platformRunId, taskId, { signal = null } = {}) {
     const run = this.platformKernel.getRun(platformRunId);
     const task = run?.tasks?.[taskId];
     if (!task || task.status !== "ready") {
@@ -154,6 +158,9 @@ export class MultiAgentSupervisor {
     const worktree = worktreeResult.worktree;
     this.platformKernel.attachAgentWorktree(run.id, agentRunId, worktree.id);
     const controller = new AbortController();
+    const forwardAbort = () => controller.abort(signal?.reason ?? "job-aborted");
+    if (signal?.aborted) forwardAbort();
+    else signal?.addEventListener?.("abort", forwardAbort, { once: true });
     this.controllers.set(agentRunId, {
       platformRunId: run.id,
       controller
@@ -175,6 +182,7 @@ export class MultiAgentSupervisor {
         error: error instanceof Error ? error.message : String(error)
       });
     } finally {
+      signal?.removeEventListener?.("abort", forwardAbort);
       this.controllers.delete(agentRunId);
     }
 
@@ -214,8 +222,8 @@ export class MultiAgentSupervisor {
       });
     }
 
-    const cancelled = controller.signal.aborted ||
-      this.platformKernel.getRun(run.id)?.status === "cancelled";
+    const cancelled = this.platformKernel.getRun(run.id)?.status === "cancelled" ||
+      controller.signal.reason === "supervisor-cancelled";
     this.worktreeRuntime.release(worktree.id, {
       reason: cancelled
         ? "worker-cancelled"
@@ -246,22 +254,22 @@ export class MultiAgentSupervisor {
     };
   }
 
-  async run(platformRunId, { taskIds = null } = {}) {
+  async run(platformRunId, { taskIds = null, signal = null } = {}) {
     if (this.running.has(platformRunId)) {
       return this.running.get(platformRunId);
     }
-    const execution = this.runLoop(platformRunId, taskIds)
+    const execution = this.runLoop(platformRunId, taskIds, signal)
       .finally(() => this.running.delete(platformRunId));
     this.running.set(platformRunId, execution);
     return execution;
   }
 
-  async runLoop(platformRunId, taskIds = null) {
+  async runLoop(platformRunId, taskIds = null, signal = null) {
     const outcomes = [];
     const scopedTaskIds = Array.isArray(taskIds) && taskIds.length > 0
       ? new Set(taskIds.map((value) => String(value)))
       : null;
-    while (!this.paused.has(platformRunId)) {
+    while (!this.paused.has(platformRunId) && !signal?.aborted) {
       const run = this.platformKernel.getRun(platformRunId);
       if (!run || ["cancelled", "completed"].includes(run.status)) break;
       const ready = Object.values(run.tasks).filter((task) =>
@@ -278,7 +286,7 @@ export class MultiAgentSupervisor {
       );
       const batch = ready.slice(0, concurrency);
       const results = await Promise.all(
-        batch.map((task) => this.executeTask(platformRunId, task.id))
+        batch.map((task) => this.executeTask(platformRunId, task.id, { signal }))
       );
       outcomes.push(...results);
     }

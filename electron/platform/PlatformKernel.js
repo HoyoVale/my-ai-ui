@@ -43,6 +43,24 @@ const AGENT_STATUSES = new Set([
   "interrupted"
 ]);
 
+const JOB_STATUSES = new Set([
+  "queued",
+  "running",
+  "paused",
+  "completed",
+  "failed",
+  "cancelled"
+]);
+
+const JOB_TRANSITIONS = Object.freeze({
+  queued: new Set(["running", "paused", "cancelled"]),
+  running: new Set(["queued", "paused", "completed", "failed", "cancelled"]),
+  paused: new Set(["queued", "cancelled"]),
+  completed: new Set(),
+  failed: new Set(["queued", "cancelled"]),
+  cancelled: new Set()
+});
+
 const TASK_TRANSITIONS = Object.freeze({
   pending: new Set(["ready", "blocked", "cancelled"]),
   ready: new Set(["running", "blocked", "cancelled"]),
@@ -71,12 +89,49 @@ function text(value, maxLength = 500) {
 
 function createEmptyState() {
   return {
-    version: 1,
+    version: 2,
     lastSequence: 0,
     lastEventHash: "",
     runs: {},
+    jobs: {},
     leases: {},
     updatedAt: 0
+  };
+}
+
+function nonNegative(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.round(number)) : fallback;
+}
+
+function normalizeBudget(budget = {}) {
+  return {
+    tokenLimit: nonNegative(budget.tokenLimit, 0),
+    stepLimit: nonNegative(budget.stepLimit, 0),
+    timeLimitMs: nonNegative(budget.timeLimitMs, 0),
+    tokensUsed: nonNegative(budget.tokensUsed, 0),
+    stepsUsed: nonNegative(budget.stepsUsed, 0),
+    elapsedMs: nonNegative(budget.elapsedMs, 0)
+  };
+}
+
+function summarizeJob(job) {
+  return {
+    id: job.id,
+    platformRunId: job.platformRunId,
+    type: job.type,
+    title: job.title,
+    status: job.status,
+    attempt: job.attempt,
+    maxAttempts: job.maxAttempts,
+    priority: job.priority,
+    budget: clone(job.budget),
+    resultSummary: job.resultSummary,
+    error: job.error,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    endedAt: job.endedAt,
+    updatedAt: job.updatedAt
   };
 }
 
@@ -206,6 +261,9 @@ export class PlatformKernel {
       );
 
     this.state = snapshotUsable ? snapshot : createEmptyState();
+    this.state.jobs = this.state.jobs && typeof this.state.jobs === "object"
+      ? this.state.jobs
+      : {};
     for (const event of journalEvents) {
       if (event.sequence > this.state.lastSequence) {
         this.applyEvent(event);
@@ -218,6 +276,15 @@ export class PlatformKernel {
       run.integration = run.integration && typeof run.integration === "object"
         ? run.integration
         : null;
+      run.logs = Array.isArray(run.logs) ? run.logs : [];
+    }
+    this.state.version = 2;
+    this.state.jobs = this.state.jobs && typeof this.state.jobs === "object"
+      ? this.state.jobs
+      : {};
+    for (const job of Object.values(this.state.jobs)) {
+      job.budget = normalizeBudget(job.budget);
+      job.logs = Array.isArray(job.logs) ? job.logs : [];
     }
     return this.state;
   }
@@ -300,6 +367,54 @@ export class PlatformKernel {
         if (run) {
           run.artifacts.push(clone(payload.artifact));
           run.updatedAt = event.timestamp;
+        }
+        break;
+      case "RUN_LOG_APPENDED":
+        if (run) {
+          run.logs = Array.isArray(run.logs) ? run.logs : [];
+          run.logs.push(clone(payload.log));
+          if (run.logs.length > 1000) run.logs.splice(0, run.logs.length - 1000);
+          run.updatedAt = event.timestamp;
+        }
+        if (state.jobs[payload.jobId]) {
+          const job = state.jobs[payload.jobId];
+          job.logs = Array.isArray(job.logs) ? job.logs : [];
+          job.logs.push(clone(payload.log));
+          if (job.logs.length > 400) job.logs.splice(0, job.logs.length - 400);
+          job.updatedAt = event.timestamp;
+        }
+        break;
+      case "JOB_ENQUEUED":
+        state.jobs[payload.job.id] = clone(payload.job);
+        break;
+      case "JOB_STATUS_CHANGED":
+        if (state.jobs[payload.jobId]) {
+          const job = state.jobs[payload.jobId];
+          job.status = payload.status;
+          job.statusReason = text(payload.reason, 500);
+          job.resultSummary = text(payload.resultSummary, 2000);
+          job.error = text(payload.error, 2000);
+          job.updatedAt = event.timestamp;
+          if (payload.status === "running") {
+            job.startedAt = event.timestamp;
+            job.endedAt = null;
+            job.attempt = Math.max(0, Number(job.attempt) || 0) + 1;
+          }
+          if (["completed", "failed", "cancelled"].includes(payload.status)) {
+            job.endedAt = event.timestamp;
+          }
+        }
+        break;
+      case "JOB_BUDGET_USED":
+        if (state.jobs[payload.jobId]) {
+          const job = state.jobs[payload.jobId];
+          job.budget = normalizeBudget({
+            ...job.budget,
+            tokensUsed: nonNegative(job.budget?.tokensUsed) + nonNegative(payload.tokens),
+            stepsUsed: nonNegative(job.budget?.stepsUsed) + nonNegative(payload.steps),
+            elapsedMs: nonNegative(job.budget?.elapsedMs) + nonNegative(payload.elapsedMs)
+          });
+          job.updatedAt = event.timestamp;
         }
         break;
       case "INTEGRATION_RECORDED":
@@ -418,6 +533,7 @@ export class PlatformKernel {
       reviews: [],
       integration: null,
       completionPermit: null,
+      logs: [],
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -732,6 +848,168 @@ export class PlatformKernel {
     };
     this.commit("ARTIFACT_RECORDED", { runId: run.id, artifact: normalized });
     return { ok: true, artifact: clone(normalized) };
+  }
+
+  appendRunLog(platformRunId, {
+    jobId = null,
+    level = "info",
+    source = "platform",
+    message = "",
+    details = null
+  } = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    if (!run) return { ok: false, code: "platform-run-not-found" };
+    const normalizedLevel = new Set(["debug", "info", "warn", "error"])
+      .has(level) ? level : "info";
+    const log = {
+      version: 1,
+      id: this.createId(),
+      level: normalizedLevel,
+      source: text(source, 120) || "platform",
+      message: text(message, 2000),
+      details: details && typeof details === "object" ? clone(details) : null,
+      timestamp: this.now()
+    };
+    this.commit("RUN_LOG_APPENDED", {
+      runId: run.id,
+      jobId: text(jobId, 120) || null,
+      log
+    });
+    return { ok: true, log: clone(log) };
+  }
+
+  enqueueJob(platformRunId, {
+    type,
+    title,
+    payload = {},
+    priority = 0,
+    maxAttempts = 2,
+    budget = {}
+  } = {}) {
+    const run = this.ensureLoaded().runs[text(platformRunId, 120)];
+    if (!run) return { ok: false, code: "platform-run-not-found" };
+    const normalizedType = text(type, 120);
+    if (!normalizedType) return { ok: false, code: "platform-job-type-invalid" };
+    const timestamp = this.now();
+    const job = {
+      version: 1,
+      id: this.createId(),
+      platformRunId: run.id,
+      type: normalizedType,
+      title: text(title, 500) || normalizedType,
+      payload: payload && typeof payload === "object" ? clone(payload) : {},
+      status: "queued",
+      statusReason: "",
+      priority: Math.max(-100, Math.min(100, Math.round(Number(priority) || 0))),
+      attempt: 0,
+      maxAttempts: Math.max(1, Math.min(10, Math.round(Number(maxAttempts) || 2))),
+      budget: normalizeBudget(budget),
+      resultSummary: "",
+      error: "",
+      logs: [],
+      createdAt: timestamp,
+      startedAt: null,
+      endedAt: null,
+      updatedAt: timestamp
+    };
+    this.commit("JOB_ENQUEUED", { job });
+    this.appendRunLog(run.id, {
+      jobId: job.id,
+      source: "queue",
+      message: `已加入后台队列：${job.title}`
+    });
+    return { ok: true, job: clone(job) };
+  }
+
+  setJobStatus(jobId, status, {
+    reason = "",
+    resultSummary = "",
+    error = ""
+  } = {}) {
+    const job = this.ensureLoaded().jobs[text(jobId, 120)];
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    if (!JOB_STATUSES.has(status)) {
+      return { ok: false, code: "platform-job-status-invalid" };
+    }
+    if (job.status === status) {
+      return { ok: true, changed: false, job: clone(job) };
+    }
+    if (!JOB_TRANSITIONS[job.status]?.has(status)) {
+      return {
+        ok: false,
+        code: "platform-job-transition-invalid",
+        from: job.status,
+        to: status
+      };
+    }
+    this.commit("JOB_STATUS_CHANGED", {
+      jobId: job.id,
+      status,
+      reason,
+      resultSummary,
+      error
+    });
+    return { ok: true, changed: true, job: clone(this.state.jobs[job.id]) };
+  }
+
+  recordJobUsage(jobId, usage = {}) {
+    const job = this.ensureLoaded().jobs[text(jobId, 120)];
+    if (!job) return { ok: false, code: "platform-job-not-found" };
+    this.commit("JOB_BUDGET_USED", {
+      jobId: job.id,
+      tokens: nonNegative(usage.tokens),
+      steps: nonNegative(usage.steps),
+      elapsedMs: nonNegative(usage.elapsedMs)
+    });
+    const current = this.state.jobs[job.id];
+    const exceeded = [];
+    if (current.budget.tokenLimit > 0 && current.budget.tokensUsed > current.budget.tokenLimit) {
+      exceeded.push("tokens");
+    }
+    if (current.budget.stepLimit > 0 && current.budget.stepsUsed > current.budget.stepLimit) {
+      exceeded.push("steps");
+    }
+    if (current.budget.timeLimitMs > 0 && current.budget.elapsedMs > current.budget.timeLimitMs) {
+      exceeded.push("time");
+    }
+    return { ok: exceeded.length === 0, exceeded, job: clone(current) };
+  }
+
+  getJob(jobId) {
+    const job = this.ensureLoaded().jobs[text(jobId, 120)];
+    return job ? clone(job) : null;
+  }
+
+  listJobs({ platformRunId = "", statuses = [] } = {}) {
+    const runId = text(platformRunId, 120);
+    const allowedStatuses = new Set(
+      (Array.isArray(statuses) ? statuses : []).filter((status) => JOB_STATUSES.has(status))
+    );
+    return Object.values(this.ensureLoaded().jobs)
+      .filter((job) => !runId || job.platformRunId === runId)
+      .filter((job) => allowedStatuses.size === 0 || allowedStatuses.has(job.status))
+      .sort((left, right) =>
+        right.priority - left.priority || left.createdAt - right.createdAt
+      )
+      .map(clone);
+  }
+
+  recoverInterruptedJobs() {
+    const recoveredJobIds = [];
+    for (const job of this.listJobs()) {
+      if (job.status !== "running") continue;
+      this.setJobStatus(job.id, "queued", {
+        reason: "application-restart"
+      });
+      recoveredJobIds.push(job.id);
+      this.appendRunLog(job.platformRunId, {
+        jobId: job.id,
+        level: "warn",
+        source: "recovery",
+        message: "应用重启后已将中断任务放回队列。"
+      });
+    }
+    return { ok: true, recoveredJobIds };
   }
 
   recordIntegration(platformRunId, integration = {}) {
@@ -1161,6 +1439,9 @@ export class PlatformKernel {
       runs: Object.values(state.runs)
         .sort((left, right) => right.updatedAt - left.updatedAt)
         .map(summarizeRun),
+      jobs: Object.values(state.jobs)
+        .sort((left, right) => right.updatedAt - left.updatedAt)
+        .map(summarizeJob),
       activeLeases,
       recovery: {
         loaded: this.journal.loadReport?.loaded ?? 0,

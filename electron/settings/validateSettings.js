@@ -945,6 +945,24 @@ function sanitizeModelSettings(
         defaults.runtimeAssignments?.maxConcurrency ?? 2,
         1,
         4
+      ),
+      tokenBudget: integerValue(
+        sourceModel.runtimeAssignments?.tokenBudget,
+        defaults.runtimeAssignments?.tokenBudget ?? 400000,
+        10000,
+        2000000
+      ),
+      stepBudget: integerValue(
+        sourceModel.runtimeAssignments?.stepBudget,
+        defaults.runtimeAssignments?.stepBudget ?? 40,
+        4,
+        200
+      ),
+      timeBudgetMinutes: integerValue(
+        sourceModel.runtimeAssignments?.timeBudgetMinutes,
+        defaults.runtimeAssignments?.timeBudgetMinutes ?? 30,
+        1,
+        240
       )
     }
   };

@@ -131,6 +131,14 @@ export class ModelWorkerRuntime {
         evidence: evidenceFromRecords(records),
         unresolved: [],
         finishReason: result.finishReason,
+        usage: {
+          inputTokens: Number(result.usage?.inputTokens) || 0,
+          outputTokens: Number(result.usage?.outputTokens) || 0,
+          totalTokens: Number(result.usage?.totalTokens) ||
+            (Number(result.usage?.inputTokens) || 0) +
+            (Number(result.usage?.outputTokens) || 0),
+          steps: Array.isArray(result.steps) ? result.steps.length : 0
+        },
         records,
         model: {
           providerId: modelSettings.providerId,

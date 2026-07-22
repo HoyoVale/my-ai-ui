@@ -391,7 +391,10 @@ export const FALLBACK_SETTINGS = {
     providers: {},
     runtimeAssignments: {
       worker: null,
-      maxConcurrency: 2
+      maxConcurrency: 2,
+      tokenBudget: 400000,
+      stepBudget: 40,
+      timeBudgetMinutes: 30
     }
   }
 };

@@ -14,6 +14,10 @@ function git(cwd, ...args) {
   }).trim();
 }
 
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n/gu, "\n");
+}
+
 function repository() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-worktree-repo-"));
   git(root, "init", "-b", "main");
@@ -64,11 +68,11 @@ describe("Worktree Runtime", () => {
     assert.equal(created.ok, true);
     assert.equal(created.worktree.capturedDirtyState, true);
     assert.equal(
-      fs.readFileSync(path.join(created.worktree.path, "tracked.txt"), "utf8"),
+      readText(path.join(created.worktree.path, "tracked.txt")),
       "dirty tracked\n"
     );
     assert.equal(
-      fs.readFileSync(path.join(created.worktree.path, "untracked.txt"), "utf8"),
+      readText(path.join(created.worktree.path, "untracked.txt")),
       "dirty untracked\n"
     );
     assert.equal(git(root, "branch", "--show-current"), branchBefore);
@@ -162,8 +166,8 @@ describe("Worktree Runtime", () => {
       integrationCommit: checkpoint.commit
     });
     assert.equal(published.ok, true);
-    assert.equal(fs.readFileSync(path.join(root, "worker.txt"), "utf8"), "reviewed\n");
-    assert.equal(fs.readFileSync(path.join(root, "local.txt"), "utf8"), "user untracked\n");
+    assert.equal(readText(path.join(root, "worker.txt")), "reviewed\n");
+    assert.equal(readText(path.join(root, "local.txt")), "user untracked\n");
     assert.equal(git(root, "branch", "--show-current"), branchBefore);
     assert.equal(git(root, "diff", "--cached", "--binary"), indexBefore);
   });

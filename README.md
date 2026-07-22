@@ -33,14 +33,15 @@ Input Window
 - 自动化回归测试
 - Goal、Platform Kernel、隔离 Worktree 与有界多 Agent Supervisor
 - 主模型与 Worker 模型独立配置
+- 集成队列、独立 Reviewer 与安全发布
+- 可恢复后台 Job、预算、资源租约、Artifact 与日志中心
 - MCP 与 Custom HTTP Tool
 
 暂未加入：
 
 - 自动提取记忆
 - 向量检索
-- 多 Agent commit 自动集成与冲突处理
-- 独立 Reviewer 完成门与视觉验证
+- 视觉验证
 
 ## 安装
 
@@ -75,7 +76,7 @@ npm run electron
    - 最大输出 Tokens
    - Temperature 与超时
 4. Base URL 与 API Key 由同一 Provider 下的模型共享。
-5. 在顶部分别选择“主模型”和“Worker 模型”，并设置 1–4 个 Worker 并发数。
+5. 在顶部分别选择“主模型”和“Worker 模型”，设置 1–4 个 Worker 并发数及 Token、步骤、时间预算。
 6. 打开 Input 窗口发送消息。
 
 也可以在项目根目录 `.env` 中配置开发环境回退：
@@ -475,6 +476,7 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - [第一版低风险工具系统](docs/SAFE_TOOLS.md)
 - [Tool 与 Skill 开发路线](docs/TOOL_AND_SKILL_DEVELOPMENT_PLAN.md)
 - [Platform Kernel 与 Multi-Agent 路线](docs/PLATFORM_KERNEL_AND_MULTI_AGENT_PLAN.md)
+- [Local Platform 83](docs/LOCAL_PLATFORM_83.md)
 - [Integration & Review 82](docs/INTEGRATION_REVIEW_82.md)
 
 工具运行时当前提供时间、计算、运行状态、任务计划、Tool Read 2.0 工作区读取、经用户批准的原子文件写入、MCP 与 Custom HTTP Tool。普通设置通过 `Chat / Coding` 两种工作模式与工作区完成配置；开启 `Setting → General → Developer mode` 后，才显示 Tool Runtime、Toolset、单工具 description、三态覆盖、安全诊断和恢复信息。Conversation 使用轻量工具活动卡片、Approval 卡片和持久化计划展示工具过程；运行环境注入位于 `Setting → AI → Context`。任意 Shell 与未授权外部写入仍保持关闭。

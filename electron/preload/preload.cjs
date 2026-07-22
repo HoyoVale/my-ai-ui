@@ -124,6 +124,12 @@ const CHANNELS = Object.freeze({
   PLATFORM_GET_RUN:
     "platform-get-run",
 
+  PLATFORM_CONTROL_JOB:
+    "platform-control-job",
+
+  PLATFORM_VIEW_REQUESTED:
+    "platform-view-requested",
+
   PLATFORM_CHANGED:
     "platform-changed",
 
@@ -406,10 +412,13 @@ const api = Object.freeze({
     );
   },
 
-  openConversation: () => {
+  openConversation: (request = {}) => {
     ipcRenderer.send(
       CHANNELS
-        .OPEN_CONVERSATION
+        .OPEN_CONVERSATION,
+      {
+        platformView: String(request.platformView ?? "")
+      }
     );
   },
 
@@ -633,6 +642,16 @@ const api = Object.freeze({
     );
   },
 
+  controlPlatformJob: (request = {}) => {
+    return ipcRenderer.invoke(
+      CHANNELS.PLATFORM_CONTROL_JOB,
+      {
+        jobId: String(request.jobId ?? ""),
+        action: String(request.action ?? "")
+      }
+    );
+  },
+
   onPlatformChanged: (callback) => {
     if (typeof callback !== "function") return () => {};
     const listener = (_event, state) => callback(state);
@@ -640,6 +659,14 @@ const api = Object.freeze({
     return () => {
       ipcRenderer.removeListener(CHANNELS.PLATFORM_CHANGED, listener);
     };
+  },
+
+  onPlatformViewRequested: (callback) => {
+    return subscribe(
+      CHANNELS.PLATFORM_VIEW_REQUESTED,
+      callback,
+      (view) => String(view ?? "")
+    );
   },
 
   getToolRuntimeRecovery: (taskId) => {

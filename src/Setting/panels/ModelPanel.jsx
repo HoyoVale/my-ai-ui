@@ -293,6 +293,51 @@ function RuntimeAssignments({
           })}
         />
       </SettingRow>
+      <SettingRow title="单次任务 Token 预算">
+        <Slider
+          value={modelSettings.runtimeAssignments?.tokenBudget ?? 400000}
+          min={10000}
+          max={2000000}
+          step={10000}
+          unit=" tokens"
+          onChange={(tokenBudget) => onUpdate({
+            runtimeAssignments: {
+              ...(modelSettings.runtimeAssignments ?? {}),
+              tokenBudget
+            }
+          })}
+        />
+      </SettingRow>
+      <SettingRow title="单次任务步骤预算">
+        <Slider
+          value={modelSettings.runtimeAssignments?.stepBudget ?? 40}
+          min={4}
+          max={200}
+          step={4}
+          unit=" 步"
+          onChange={(stepBudget) => onUpdate({
+            runtimeAssignments: {
+              ...(modelSettings.runtimeAssignments ?? {}),
+              stepBudget
+            }
+          })}
+        />
+      </SettingRow>
+      <SettingRow title="单次任务时间预算">
+        <Slider
+          value={modelSettings.runtimeAssignments?.timeBudgetMinutes ?? 30}
+          min={1}
+          max={240}
+          step={1}
+          unit=" 分钟"
+          onChange={(timeBudgetMinutes) => onUpdate({
+            runtimeAssignments: {
+              ...(modelSettings.runtimeAssignments ?? {}),
+              timeBudgetMinutes
+            }
+          })}
+        />
+      </SettingRow>
     </section>
   );
 }

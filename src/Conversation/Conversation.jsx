@@ -8,6 +8,7 @@ import { ConversationContextInspector } from "./components/ContextInspector.jsx"
 import { ConversationMessageList } from "./components/MessageList.jsx";
 import { ConversationGoalPanel } from "./components/GoalPanel.jsx";
 import { ConversationPlanDock } from "./components/PlanDock.jsx";
+import { ConversationPlatformDock } from "./components/PlatformDock.jsx";
 import { ConversationTaskPanel } from "./components/TaskPanel.jsx";
 import { ToolApprovalPanel } from "./components/ToolApprovalPanel.jsx";
 import { ConversationSidebar } from "./components/Sidebar.jsx";
@@ -192,6 +193,10 @@ export default function Conversation() {
           />
 
           <ConversationPlanDock activity={currentLiveActivity} />
+          <ConversationPlatformDock
+            conversation={history.current}
+            developerMode={developerMode}
+          />
           <ToolApprovalPanel
             approval={
               agentStatus.conversationId === history.current?.id

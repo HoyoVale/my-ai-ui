@@ -125,6 +125,12 @@ const IPC_CHANNELS =
       GET_RUN:
         "platform-get-run",
 
+      CONTROL_JOB:
+        "platform-control-job",
+
+      VIEW_REQUESTED:
+        "platform-view-requested",
+
       CHANGED:
         "platform-changed"
     }),

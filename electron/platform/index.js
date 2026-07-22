@@ -29,6 +29,10 @@ import {
 } from "./IntegrationCoordinator.js";
 
 import {
+  PlatformJobScheduler
+} from "./PlatformJobScheduler.js";
+
+import {
   getSettings
 } from "../settings/settingsStore.js";
 
@@ -106,4 +110,75 @@ export const integrationCoordinator = new IntegrationCoordinator({
       ? workspace.canonicalPath || workspace.rootPath
       : "";
   }
+});
+
+export const platformJobScheduler = new PlatformJobScheduler({
+  platformKernel,
+  maxConcurrency: 2,
+  autoStart: false,
+  onPause: (job) => multiAgentSupervisor.pause(job.platformRunId),
+  onResume: (job) => multiAgentSupervisor.resume(job.platformRunId),
+  onCancel: (job) => multiAgentSupervisor.cancel(job.platformRunId)
+});
+
+platformJobScheduler.register("delegation-workflow", async ({
+  job,
+  signal,
+  log,
+  consume
+}) => {
+  const taskIds = Array.isArray(job.payload?.taskIds)
+    ? job.payload.taskIds.map(String)
+    : [];
+  if (signal.aborted) return { ok: false, code: "platform-job-cancelled" };
+  multiAgentSupervisor.resume(job.platformRunId);
+  const recoveredRun = platformKernel.getRun(job.platformRunId);
+  for (const taskId of taskIds) {
+    const task = recoveredRun?.tasks?.[taskId];
+    if (
+      ["continuable", "failed", "blocked"].includes(task?.status) &&
+      task.attemptCount < task.maxAttempts
+    ) {
+      platformKernel.setTaskStatus(
+        job.platformRunId,
+        task.id,
+        "ready",
+        "background-job-resumed"
+      );
+    }
+  }
+  log(`Worker 队列开始执行 ${taskIds.length} 个任务。`, {
+    source: "supervisor"
+  });
+  const execution = await multiAgentSupervisor.run(job.platformRunId, {
+    taskIds,
+    signal
+  });
+  const usage = execution.outcomes.reduce((total, outcome) => ({
+    tokens: total.tokens + (Number(outcome.result?.usage?.totalTokens) || 0),
+    steps: total.steps + (Number(outcome.result?.usage?.steps) || 1)
+  }), { tokens: 0, steps: 0 });
+  const budget = consume(usage);
+  if (!budget.ok || signal.aborted) {
+    return { ok: false, code: "platform-job-budget-or-cancelled" };
+  }
+  if (!execution.completed) {
+    return {
+      ok: false,
+      code: "multi-agent-workers-incomplete",
+      blockedTaskIds: execution.blockedTaskIds
+    };
+  }
+  log("Worker 已完成，进入集成与独立审查。", { source: "integration" });
+  consume({ steps: 1 });
+  const integration = await integrationCoordinator.integrateAndReview(job.platformRunId);
+  return {
+    ok: integration.ok === true,
+    summary: integration.ok
+      ? "Worker 变更已集成、审查并发布。"
+      : `集成或审查未通过：${integration.code ?? "unknown"}`,
+    taskIds,
+    execution,
+    integration
+  };
 });

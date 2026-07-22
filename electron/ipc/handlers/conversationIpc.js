@@ -60,8 +60,20 @@ export function registerConversationIpc() {
     IPC_CHANNELS
       .navigation
       .OPEN_CONVERSATION,
-    () => {
-      openConversationWindow();
+    (_event, request = {}) => {
+      const window = openConversationWindow();
+      const view = String(request.platformView ?? "");
+      if (!view) return;
+      const notify = () => {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+          window.webContents.send(IPC_CHANNELS.platform.VIEW_REQUESTED, view);
+        }
+      };
+      if (window.webContents.isLoadingMainFrame()) {
+        window.webContents.once("did-finish-load", notify);
+      } else {
+        notify();
+      }
     }
   );
 

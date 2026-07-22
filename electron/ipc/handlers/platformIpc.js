@@ -7,6 +7,7 @@ import IPC_CHANNELS
 
 import {
   platformKernel,
+  platformJobScheduler,
   worktreeRuntime
 } from "../../platform/index.js";
 
@@ -41,6 +42,24 @@ export function registerPlatformIpc() {
       return platformKernel.getRun(
         String(request.platformRunId ?? "")
       );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.platform.CONTROL_JOB,
+    (event, request = {}) => {
+      requireConversationSender(event);
+      const jobId = String(request.jobId ?? "");
+      const actions = {
+        pause: () => platformJobScheduler.pause(jobId),
+        resume: () => platformJobScheduler.resume(jobId),
+        cancel: () => platformJobScheduler.cancel(jobId),
+        retry: () => platformJobScheduler.retry(jobId)
+      };
+      return actions[String(request.action ?? "")]?.() ?? {
+        ok: false,
+        code: "platform-job-action-invalid"
+      };
     }
   );
 }

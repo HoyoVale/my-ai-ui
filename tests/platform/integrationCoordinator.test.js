@@ -14,6 +14,10 @@ function git(cwd, ...args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
 }
 
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n/gu, "\n");
+}
+
 function repository() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "xixi-integration-repo-"));
   git(root, "init", "-b", "main");
@@ -119,8 +123,8 @@ describe("Integration Coordinator", () => {
     assert.equal(result.ok, true);
     assert.equal(result.integration.status, "published");
     assert.equal(result.review.approved, true);
-    assert.equal(fs.readFileSync(path.join(value.root, "alpha.txt"), "utf8"), "alpha\n");
-    assert.equal(fs.readFileSync(path.join(value.root, "beta.txt"), "utf8"), "beta\n");
+    assert.equal(readText(path.join(value.root, "alpha.txt")), "alpha\n");
+    assert.equal(readText(path.join(value.root, "beta.txt")), "beta\n");
     assert.equal(git(value.root, "branch", "--show-current"), "main");
     assert.equal(git(value.root, "diff", "--cached", "--binary"), "");
     assert.equal(git(value.root, "show", `${result.integration.commit}:alpha.txt`), "alpha");

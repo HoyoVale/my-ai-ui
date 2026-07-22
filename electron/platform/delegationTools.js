@@ -3,8 +3,12 @@ import {
 } from "zod";
 
 import {
-  integrationCoordinator,
+  getSettings
+} from "../settings/settingsStore.js";
+
+import {
   multiAgentSupervisor,
+  platformJobScheduler,
   platformKernel
 } from "./index.js";
 
@@ -58,12 +62,26 @@ export function createDelegationToolDefinition({
         };
       }
       const requestedIds = input.tasks.map((task) => task.id);
-      const execution = await multiAgentSupervisor.run(platformRunId, {
-        taskIds: requestedIds
+      const assignments = getSettings().model?.runtimeAssignments ?? {};
+      const queued = platformJobScheduler.enqueue(platformRunId, {
+        type: "delegation-workflow",
+        title: `执行 ${requestedIds.length} 个 Worker 任务并完成审查`,
+        payload: { taskIds: requestedIds },
+        maxAttempts: 3,
+        budget: {
+          tokenLimit: assignments.tokenBudget ?? 400000,
+          stepLimit: assignments.stepBudget ?? Math.max(16, requestedIds.length * 10),
+          timeLimitMs: (assignments.timeBudgetMinutes ?? 30) * 60 * 1000
+        }
       });
-      const integration = execution.completed
-        ? await integrationCoordinator.integrateAndReview(platformRunId)
-        : null;
+      if (!queued.ok) return queued;
+      const scheduled = await platformJobScheduler.wait(queued.job.id);
+      const workflow = scheduled.result ?? {};
+      const execution = workflow.execution ?? {
+        completed: false,
+        blockedTaskIds: requestedIds
+      };
+      const integration = workflow.integration ?? null;
       const latest = platformKernel.getRun(platformRunId);
       const tasks = requestedIds.map((id) => latest.tasks[id]).filter(Boolean);
       const agentRuns = Object.values(latest.agentRuns)
@@ -81,7 +99,12 @@ export function createDelegationToolDefinition({
         }));
       return {
         ok: tasks.every((task) => task.status === "completed") &&
+          scheduled.ok === true &&
           (integration?.ok ?? true),
+        job: {
+          id: queued.job.id,
+          status: platformKernel.getJob(queued.job.id)?.status ?? "unknown"
+        },
         tasks: tasks.map((task) => ({
           id: task.id,
           status: task.status,

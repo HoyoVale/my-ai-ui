@@ -72,7 +72,7 @@ export function InputComposer({
         memory: window.api?.openMemory,
         settings: window.api?.openSetting
       }[action.window];
-      open?.();
+      open?.({ platformView: action.platformView ?? "" });
     }
   };
 
