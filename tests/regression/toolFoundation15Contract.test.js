@@ -2,10 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const runtime = fs.readFileSync(
-  new URL("../../electron/agent/AgentRuntime.js", import.meta.url),
-  "utf8"
-);
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
+const runtime = readAgentRuntimeSource();
 const main = fs.readFileSync(
   new URL("../../electron/main.js", import.meta.url),
   "utf8"

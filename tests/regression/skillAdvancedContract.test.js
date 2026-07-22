@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 const read = (relativePath) => fs.readFileSync(new URL(`../../${relativePath}`, import.meta.url), "utf8");
 
 test("Input exposes bounded manual composition, auto routing and slash invocation", () => {
@@ -22,7 +26,7 @@ test("Skill settings expose dependency and router diagnostics", () => {
 });
 
 test("Agent Runtime preserves advanced Skill selection across run lifecycle", () => {
-  const runtime = read("electron/agent/AgentRuntime.js");
+  const runtime = readAgentRuntimeSource();
   const checkpoint = read("electron/agent/runCheckpoint.js");
   const resume = read("electron/agent/checkpointResume.js");
   assert.match(runtime, /parseSkillCommand/u);

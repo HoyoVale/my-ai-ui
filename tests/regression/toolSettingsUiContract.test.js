@@ -8,6 +8,10 @@ import assert
 
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(
@@ -84,9 +88,7 @@ describe(
     it(
       "wires runtime limits into AgentRuntime and ToolExecutor",
       () => {
-        const agent = read(
-          "../../electron/agent/AgentRuntime.js"
-        );
+        const agent = readAgentRuntimeSource();
         const executor = read(
           "../../electron/tools/core/ToolExecutor.js"
         );

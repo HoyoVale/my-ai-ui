@@ -6,6 +6,10 @@ import {
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -36,9 +40,7 @@ describe("live Tool activity rendering", () => {
   });
 
   it("publishes streamed text revisions through Agent status", () => {
-    const source = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const source = readAgentRuntimeSource();
 
     assert.match(source, /assistantText:[\s\S]*this\.activeRun/u);
     assert.match(source, /appendResponseChunk\([\s\S]*this\.setStatus/u);

@@ -8,6 +8,10 @@ import assert
 
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -96,9 +100,7 @@ describe(
     it(
       "keeps the model-selected execution conversation in scope for the whole run",
       () => {
-        const runtime = read(
-          "../../electron/agent/AgentRuntime.js"
-        );
+        const runtime = readAgentRuntimeSource();
 
         assert.match(runtime, /let executionConversation;/u);
         assert.match(runtime, /resolveConversationExecutionContext/u);

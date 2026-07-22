@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 const read = (relativePath) => fs.readFileSync(new URL(`../../${relativePath}`, import.meta.url), "utf8");
 
 test("Setting exposes Skill Foundation management UI", () => {
@@ -48,7 +52,7 @@ test("Skill Runtime keeps staged selection and stale UI state consistent", () =>
 });
 
 test("Skill Runtime binds continuation and recovery to immutable Skill snapshots", () => {
-  const runtime = read("electron/agent/AgentRuntime.js");
+  const runtime = readAgentRuntimeSource();
   const skillRuntime = read("electron/skills/SkillRuntime.js");
   const schema = read("electron/conversation/conversationSchema.js");
 

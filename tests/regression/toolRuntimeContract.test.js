@@ -8,6 +8,10 @@ import assert
 
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(
@@ -25,9 +29,7 @@ describe(
       "uses bounded AI SDK segments with controlled long-task continuation",
       () => {
         const source =
-          read(
-            "../../electron/agent/AgentRuntime.js"
-          );
+          readAgentRuntimeSource();
         const segmentLoop =
           read(
             "../../electron/agent/orchestration/SegmentExecutionLoop.js"
@@ -102,9 +104,7 @@ describe(
         const session = read(
           "../../electron/tools/createAgentToolSession.js"
         );
-        const runtime = read(
-          "../../electron/agent/AgentRuntime.js"
-        );
+        const runtime = readAgentRuntimeSource();
         const conversation = read(
           "../../src/Conversation/Conversation.jsx"
         );

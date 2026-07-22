@@ -6,6 +6,10 @@ import {
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -15,9 +19,7 @@ function read(relativePath) {
 
 describe("segment continuation runtime contract", () => {
   it("detects a resumable checkpoint before appending the next user message", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
 
     assert.match(runtime, /resolveCheckpointContinuation/u);
     assert.match(runtime, /createCheckpointContinuationState/u);
@@ -28,9 +30,7 @@ describe("segment continuation runtime contract", () => {
   });
 
   it("keeps the internal segment reason out of user-facing handoff copy", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
     const finalization = read(
       "../../electron/agent/finalization.js"
     );

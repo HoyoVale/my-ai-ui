@@ -4,6 +4,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const source = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
@@ -18,7 +22,7 @@ test("80 provides an isolated recoverable Worktree Runtime", () => {
 });
 
 test("81 delegates bounded tasks through a real Supervisor", () => {
-  const agent = source("electron/agent/AgentRuntime.js");
+  const agent = readAgentRuntimeSource();
   const supervisor = source("electron/platform/MultiAgentSupervisor.js");
   const delegation = source("electron/platform/delegationTools.js");
   assert.match(agent, /createDelegationToolDefinition/u);

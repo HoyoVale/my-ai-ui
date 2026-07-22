@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(new URL(relativePath, import.meta.url), "utf8");
 }
 
 test("Platform Kernel is wired into Goal execution and startup recovery", () => {
-  const runtime = read("../../electron/agent/AgentRuntime.js");
+  const runtime = readAgentRuntimeSource();
   const main = read("../../electron/main.js");
   const manager = read("../../electron/conversation/ConversationManager.js");
   assert.match(runtime, /platformKernel\.prepareExecution/u);

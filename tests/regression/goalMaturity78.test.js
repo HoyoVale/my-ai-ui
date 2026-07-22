@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(new URL(relativePath, import.meta.url), "utf8");
 }
@@ -22,7 +26,7 @@ test("Goal Runtime persists criteria, completion authority and bounded evidence 
 
 test("Goal completion is criterion-aware and progress is written back during execution", () => {
   const verifier = read("../../electron/agent/GoalCompletionVerifier.js");
-  const runtime = read("../../electron/agent/AgentRuntime.js");
+  const runtime = readAgentRuntimeSource();
   assert.match(verifier, /criterionId/u);
   assert.match(verifier, /inferGoalCriterionKind/u);
   assert.match(verifier, /user-confirmed/u);

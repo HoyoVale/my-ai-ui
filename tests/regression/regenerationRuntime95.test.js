@@ -1,20 +1,19 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 
-function source(path) {
-  return fs.readFileSync(path, "utf8");
-}
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
 
 it("95 initializes regeneration diff tracking from the prepared conversation", () => {
-  const runtime = source("electron/agent/AgentRuntime.js");
-  const methodStart = runtime.indexOf("  regenerateMessage({");
-  const methodEnd = runtime.indexOf("\n  upsertToolRecord(", methodStart);
+  const preparation = readAgentRuntimeSource("preparation");
+  const methodStart = preparation.indexOf("  regenerateMessage({");
+  const methodEnd = preparation.indexOf("\n};", methodStart);
 
   assert.notEqual(methodStart, -1);
   assert.notEqual(methodEnd, -1);
 
-  const regeneration = runtime.slice(methodStart, methodEnd);
+  const regeneration = preparation.slice(methodStart, methodEnd);
 
   assert.match(
     regeneration,

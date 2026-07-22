@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { test } from "node:test";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(new URL(`../../${relativePath}`, import.meta.url), "utf8");
 }
 
 test("94 persists Token Ledger usage across Agent, Conversation and Goal boundaries", () => {
-  const runtime = read("electron/agent/AgentRuntime.js");
+  const runtime = readAgentRuntimeSource();
   const schema = read("electron/conversation/conversationSchema.js");
   const goal = read("electron/goal/GoalRuntime.js");
   const inspector = read("src/Conversation/components/ContextInspector.jsx");

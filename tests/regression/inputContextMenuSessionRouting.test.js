@@ -8,6 +8,10 @@ import assert
 
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -107,9 +111,7 @@ describe(
         const ipc = read(
           "../../electron/ipc/handlers/agentIpc.js"
         );
-        const runtime = read(
-          "../../electron/agent/AgentRuntime.js"
-        );
+        const runtime = readAgentRuntimeSource();
 
         assert.match(input, /expectedConversationId/u);
         assert.match(preload, /expectedConversationId/u);

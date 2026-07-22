@@ -4,6 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (relativePath) => fs.readFileSync(
   path.resolve(here, relativePath),
@@ -30,7 +34,7 @@ describe("Tool Runtime boundary fallback contract", () => {
   });
 
   it("uses deterministic progress handoff when model finalization is unavailable", () => {
-    const runtime = read("../../electron/agent/AgentRuntime.js");
+    const runtime = readAgentRuntimeSource();
     const finalization = read("../../electron/agent/finalization.js");
 
     assert.match(runtime, /createFallbackFinalSummary/u);

@@ -2,6 +2,10 @@ import { it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function source(path) {
   return fs.readFileSync(path, "utf8");
 }
@@ -33,7 +37,7 @@ it("95 registers a controlled package-script process tool in the Coding capabili
 
 it("95 computes final diffs from the first baseline instead of concatenating write previews", () => {
   const tracker = source("electron/agent/RunDiffTracker.js");
-  const runtime = source("electron/agent/AgentRuntime.js");
+  const runtime = readAgentRuntimeSource();
   const writeTools = source("electron/tools/workspace/workspaceWriteTools.js");
   assert.match(tracker, /class RunDiffTracker/u);
   assert.match(tracker, /previous\?\.before/u);

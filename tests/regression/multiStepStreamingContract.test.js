@@ -6,6 +6,10 @@ import {
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -15,9 +19,7 @@ function read(relativePath) {
 
 describe("multi-step assistant streaming", () => {
   it("separates live step text from the final answer at step boundaries", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
 
     assert.match(runtime, /currentStepText/u);
     assert.match(runtime, /finalText/u);

@@ -10,6 +10,10 @@ import {
   hasResponseActivity
 } from "../../src/Response/utils/responsePresentation.js";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -99,9 +103,7 @@ describe("structured Response activity flow", () => {
   });
 
   it("publishes the final structured snapshot before releasing the active run", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
 
     assert.match(
       runtime,
@@ -110,9 +112,7 @@ describe("structured Response activity flow", () => {
   });
 
   it("streams the tool-free step after tool execution as a provisional final answer", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
     const presentation = read(
       "../../src/Response/utils/responsePresentation.js"
     );
@@ -127,9 +127,7 @@ describe("structured Response activity flow", () => {
   });
 
   it("streams finalization chunks into the structured final answer", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
 
     assert.doesNotMatch(runtime, /bufferProgressHandoff/u);
     assert.match(runtime, /const publicStream = new PublicTextStreamSanitizer\(\);/u);

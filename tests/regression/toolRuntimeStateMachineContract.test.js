@@ -6,6 +6,10 @@ import {
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import {
+  readAgentRuntimeSource
+} from "../helpers/agentRuntimeSource.js";
+
 function read(relativePath) {
   return fs.readFileSync(
     new URL(relativePath, import.meta.url),
@@ -15,9 +19,7 @@ function read(relativePath) {
 
 describe("Tool Runtime state-machine refactor contract", () => {
   it("keeps terminal state derivation in RunStateMachine", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
     const stateMachine = read(
       "../../electron/agent/RunStateMachine.js"
     );
@@ -35,9 +37,7 @@ describe("Tool Runtime state-machine refactor contract", () => {
   });
 
   it("owns the segment while-loop outside AgentRuntime", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
     const loop = read(
       "../../electron/agent/orchestration/SegmentExecutionLoop.js"
     );
@@ -51,9 +51,7 @@ describe("Tool Runtime state-machine refactor contract", () => {
   });
 
   it("routes Activity finalization and active-run cleanup through finalizeRun only", () => {
-    const runtime = read(
-      "../../electron/agent/AgentRuntime.js"
-    );
+    const runtime = readAgentRuntimeSource();
     const activityFinalizeCalls =
       runtime.match(/activityStore\?\.finalize\(/gu) ?? [];
     const activeRunCleanup =
