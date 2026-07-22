@@ -976,3 +976,29 @@ RunProjection
 - Provider DSML 嵌套关闭格式已补强清洗。
 
 下一步进入 Phase C 前，应先保持投影旁路运行，并为新旧 Thread Routing Decision 建立 Shadow Comparison。
+
+---
+
+## Implementation status update — Phase C (104)
+
+Phase C has been implemented in Shadow Mode.
+
+Implemented:
+
+- `ThreadCommand`;
+- `ExecutionThreadRouter`;
+- `ThreadRoutingDecisionStore`;
+- `SteeringQueue`;
+- Shadow calculation for ordinary messages and regeneration;
+- bounded mismatch diagnostics in developer Run details;
+- optional `threadCommand` transport through Agent IPC.
+
+Production authority remains unchanged:
+
+- legacy Checkpoint/Execution Thread continuation still executes;
+- busy input is still rejected;
+- Steering Queue is not injected;
+- routing decisions are not persisted;
+- Conversation Store remains version 22.
+
+The next implementation step is Phase D: durable Thread/Run lineage, routing decision persistence, provider continuation metadata, migration, and crash recovery.

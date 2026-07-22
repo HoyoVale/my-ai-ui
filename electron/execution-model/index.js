@@ -6,3 +6,7 @@ export * from "./ThreadStateMachine.js";
 export * from "./ExecutionItemProjector.js";
 export * from "./ExecutionItemSequence.js";
 export * from "./RunProjection.js";
+export * from "./ThreadCommand.js";
+export * from "./ExecutionThreadRouter.js";
+export * from "./ThreadRoutingDecisionStore.js";
+export * from "./SteeringQueue.js";

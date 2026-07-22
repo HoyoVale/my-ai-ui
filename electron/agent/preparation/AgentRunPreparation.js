@@ -77,12 +77,20 @@ import {
   getActiveCredentialError
 } from "../AgentRuntimeInternals.js";
 
+import {
+  ROUTING_ACTIONS,
+  THREAD_COMMANDS,
+  executionThreadRouter,
+  threadRoutingDecisionStore
+} from "../../execution-model/index.js";
+
 export const agentRunPreparation = {
   startMessage(
     content,
     {
       expectedConversationId = "",
-      continueTask = false
+      continueTask = false,
+      threadCommand = ""
     } = {}
   ) {
     const message =
@@ -98,7 +106,21 @@ export const agentRunPreparation = {
       };
     }
 
+    const initialConversation =
+      conversationManager.getCurrentConversation();
+
     if (this.activeRun) {
+      const routingDecision = executionThreadRouter.route({
+        conversation: initialConversation,
+        activeRun: this.activeRun,
+        message,
+        requestedCommand: threadCommand,
+        explicitContinue: continueTask === true,
+        legacyAction: ROUTING_ACTIONS.REJECT,
+        shadowMode: true
+      });
+      this.lastThreadRoutingDecision =
+        threadRoutingDecisionStore.record(routingDecision);
       return {
         ok: false,
         code: "busy",
@@ -108,7 +130,7 @@ export const agentRunPreparation = {
     }
 
     const credentialConversation =
-      conversationManager.getCurrentConversation();
+      initialConversation;
     const initialTargetError =
       getConversationTargetError(
         credentialConversation,
@@ -168,6 +190,8 @@ export const agentRunPreparation = {
     let continuationState = null;
     let runMessage = message;
     let skillCommand = null;
+    let userMessage = null;
+    let routingDecision = null;
 
     try {
       conversation =
@@ -199,6 +223,19 @@ export const agentRunPreparation = {
         createCheckpointContinuationState(
           checkpointContinuation
         );
+
+      routingDecision = executionThreadRouter.route({
+        conversation,
+        message,
+        requestedCommand: threadCommand,
+        explicitContinue: continueTask === true,
+        legacyAction: continuationState
+          ? ROUTING_ACTIONS.RESUME
+          : ROUTING_ACTIONS.START,
+        shadowMode: true
+      });
+      this.lastThreadRoutingDecision =
+        threadRoutingDecisionStore.record(routingDecision);
 
       if (!continuationState) {
         const runtimeSkills = skillRegistry.getRuntimeState({ mode: conversation.mode }).skills;
@@ -252,7 +289,7 @@ export const agentRunPreparation = {
         return skillRuntime;
       }
 
-      conversationManager
+      userMessage = conversationManager
         .appendMessage({
           conversationId:
             conversation.id,
@@ -346,6 +383,18 @@ export const agentRunPreparation = {
         : "") ||
       crypto.randomUUID();
 
+    if (routingDecision) {
+      routingDecision = threadRoutingDecisionStore.update(
+        routingDecision.id,
+        {
+          messageId: userMessage?.id ?? "",
+          targetThreadId: executionThreadId,
+          targetRunId: runId
+        }
+      ) ?? routingDecision;
+      this.lastThreadRoutingDecision = routingDecision;
+    }
+
     const abortController =
       new AbortController();
 
@@ -362,6 +411,7 @@ export const agentRunPreparation = {
     this.activeRun = {
       runId,
       executionThreadId,
+      threadRoutingDecision: routingDecision,
       goalId,
       parentRunId:
         continuationState?.parentRunId ?? "",
@@ -604,6 +654,18 @@ export const agentRunPreparation = {
     messageId
   } = {}) {
     if (this.activeRun) {
+      const routingDecision = executionThreadRouter.route({
+        operation: THREAD_COMMANDS.REGENERATE,
+        conversation: conversationManager.getConversation(
+          String(conversationId ?? "")
+        ),
+        activeRun: this.activeRun,
+        messageId: String(messageId ?? ""),
+        legacyAction: ROUTING_ACTIONS.REJECT,
+        shadowMode: true
+      });
+      this.lastThreadRoutingDecision =
+        threadRoutingDecisionStore.record(routingDecision);
       return {
         ok: false,
         code: "busy",
@@ -734,6 +796,29 @@ export const agentRunPreparation = {
     const taskId =
       crypto.randomUUID();
 
+    const regenerationSourceRunId = String(
+      plan.targetMessage?.activity?.runId ??
+      plan.targetMessage?.runId ??
+      ""
+    );
+    const regenerationThreadId = String(
+      plan.targetMessage?.executionThreadId ??
+      plan.conversation.executionThread?.id ??
+      ""
+    );
+    let routingDecision = executionThreadRouter.route({
+      operation: THREAD_COMMANDS.REGENERATE,
+      conversation: plan.conversation,
+      messageId: plan.userMessage?.id ?? "",
+      sourceRunId: regenerationSourceRunId,
+      targetThreadId: regenerationThreadId,
+      targetRunId: runId,
+      legacyAction: ROUTING_ACTIONS.REGENERATE,
+      shadowMode: true
+    });
+    routingDecision = threadRoutingDecisionStore.record(routingDecision);
+    this.lastThreadRoutingDecision = routingDecision;
+
     const abortController =
       new AbortController();
 
@@ -749,6 +834,7 @@ export const agentRunPreparation = {
 
     this.activeRun = {
       runId,
+      threadRoutingDecision: routingDecision,
       goalId,
       objective:
         persistentGoal?.objective ||

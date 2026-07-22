@@ -341,14 +341,13 @@ describe("ThreadRoutingDecision", () => {
 });
 
 describe("Phase A architecture boundary", () => {
-  it("keeps the contract pure and disconnected from production routing", () => {
-    const facadeSources = [
-      read("electron/agent/AgentRuntime.js"),
+  it("keeps the original Thread and Conversation authorities independent from the new model", () => {
+    const authoritySources = [
       read("electron/agent/ExecutionThread.js"),
       read("electron/conversation/ConversationManager.js"),
       read("electron/conversation/services/ConversationExecutionService.js")
     ].join("\n");
-    assert.doesNotMatch(facadeSources, /execution-model/u);
+    assert.doesNotMatch(authoritySources, /execution-model/u);
   });
 
   it("keeps Phase A modules independent from Agent and Conversation facades", () => {

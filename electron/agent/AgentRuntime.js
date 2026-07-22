@@ -74,6 +74,10 @@ import {
 } from "../custom-tools/index.js";
 
 import {
+  threadRoutingDecisionStore
+} from "../execution-model/index.js";
+
+import {
   resolveSkillRuntime,
   skillRegistry
 } from "../skills/index.js";
@@ -752,7 +756,12 @@ export class AgentRuntime {
             this.getRawStatus(),
             { developerMode: true }
           ),
-          id: "live"
+          id: "live",
+          threadRouting: threadRoutingDecisionStore.snapshot({
+            conversationId: this.activeRun.conversationId,
+            runId: this.activeRun.runId,
+            limit: 20
+          })
         }
       };
     }
@@ -802,7 +811,12 @@ export class AgentRuntime {
         toolRuntime:
           message.activity?.checkpoint?.toolRuntime ?? null,
         toolRuntimeDiagnostics: runtimeDiagnostics,
-        providerRuntimeDiagnostics: getRuntimeCircuitBreakerSnapshot()
+        providerRuntimeDiagnostics: getRuntimeCircuitBreakerSnapshot(),
+        threadRouting: threadRoutingDecisionStore.snapshot({
+          conversationId: record.conversation.id,
+          runId: message.activity?.runId ?? normalizedRunId,
+          limit: 20
+        })
       }
     };
   }
