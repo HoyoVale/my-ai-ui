@@ -28,7 +28,8 @@ const ROLE_INSTRUCTIONS = Object.freeze({
     '{"approved":boolean,"summary":"结论","findings":["问题"],"evidence":["证据"]}',
     "存在未解决风险、越界修改或证据不足时 approved 必须为 false。"
   ].join("\n"),
-  integrator: "仅按给定提交进行集成，禁止擅自覆盖冲突。"
+  integrator: "仅按给定提交进行集成，禁止擅自覆盖冲突。",
+  replanner: "独立分析已分类失败，只提出受约束的修复任务图，不修改文件。"
 });
 
 function workerSettings(settings, worktreePath) {

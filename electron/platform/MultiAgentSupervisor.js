@@ -10,14 +10,16 @@ const ROLES = new Set([
   "implementer",
   "tester",
   "reviewer",
-  "integrator"
+  "integrator",
+  "replanner"
 ]);
 
 const READ_ONLY_ROLES = new Set([
   "planner",
   "explorer",
   "tester",
-  "reviewer"
+  "reviewer",
+  "replanner"
 ]);
 
 function normalizeResult(result) {
@@ -208,6 +210,25 @@ export class MultiAgentSupervisor {
       unresolved: normalized.unresolved
     });
     if (checkpoint.ok) {
+      for (const record of normalized.records.filter((item) => item?.status === "completed").slice(-40)) {
+        this.platformKernel.recordArtifact(run.id, {
+          taskId: task.id,
+          agentRunId,
+          kind: "worker-tool-receipt",
+          commit: checkpoint.commit ?? null,
+          changed: false,
+          receiptIds: [record.id ?? record.name],
+          digest: sha256({
+            id: record.id,
+            name: record.name,
+            status: record.status,
+            input: record.input ?? null,
+            output: record.result ?? record.output ?? null
+          }),
+          summary: `${record.name}: ${record.status}`,
+          source: "worker-tool-runtime"
+        });
+      }
       this.platformKernel.recordArtifact(run.id, {
         taskId: task.id,
         agentRunId,

@@ -21,7 +21,8 @@ export class PlatformJobScheduler {
     createId = () => crypto.randomUUID(),
     onPause = () => {},
     onResume = () => {},
-    onCancel = () => {}
+    onCancel = () => {},
+    onFailure = () => null
   } = {}) {
     if (!platformKernel) {
       throw new TypeError("PlatformJobScheduler requires PlatformKernel.");
@@ -34,9 +35,11 @@ export class PlatformJobScheduler {
     this.onPause = onPause;
     this.onResume = onResume;
     this.onCancel = onCancel;
+    this.onFailure = typeof onFailure === "function" ? onFailure : () => null;
     this.handlers = new Map();
     this.controllers = new Map();
     this.active = new Map();
+    this.outcomes = new Map();
     this.pumpScheduled = false;
   }
 
@@ -85,6 +88,13 @@ export class PlatformJobScheduler {
       return { ok: false, code: "platform-job-not-runnable" };
     }
     const execution = this.runJob(job, handler)
+      .then((result) => {
+        this.outcomes.set(job.id, result);
+        while (this.outcomes.size > 100) {
+          this.outcomes.delete(this.outcomes.keys().next().value);
+        }
+        return result;
+      })
       .finally(() => {
         this.active.delete(job.id);
         this.controllers.delete(job.id);
@@ -191,11 +201,27 @@ export class PlatformJobScheduler {
         source: "scheduler",
         message
       });
+      let replan = null;
+      try {
+        replan = await this.onFailure({
+          job: this.platformKernel.getJob(job.id),
+          error,
+          result: error?.result ?? null
+        });
+      } catch (replanError) {
+        this.platformKernel.appendRunLog(job.platformRunId, {
+          jobId: job.id,
+          level: "error",
+          source: "replanner",
+          message: String(replanError?.message ?? replanError).slice(0, 2000)
+        });
+      }
       return {
         ok: false,
         code: error?.code ?? "platform-job-failed",
         error: message,
-        result: error?.result ?? null
+        result: error?.result ?? null,
+        replan
       };
     } finally {
       if (timeout) clearTimeout(timeout);
@@ -264,6 +290,8 @@ export class PlatformJobScheduler {
       if (TERMINAL.has(job.status)) {
         const active = this.active.get(job.id);
         if (active) return active;
+        const outcome = this.outcomes.get(job.id);
+        if (outcome) return outcome;
         return { ok: job.status === "completed", job };
       }
       if (timeoutMs > 0 && this.now() - startedAt >= timeoutMs) {

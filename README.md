@@ -476,6 +476,7 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - [第一版低风险工具系统](docs/SAFE_TOOLS.md)
 - [Tool 与 Skill 开发路线](docs/TOOL_AND_SKILL_DEVELOPMENT_PLAN.md)
 - [Platform Kernel 与 Multi-Agent 路线](docs/PLATFORM_KERNEL_AND_MULTI_AGENT_PLAN.md)
+- [Verification Loop 3.0（84）](docs/VERIFICATION_LOOP_84.md)
 - [Local Platform 83](docs/LOCAL_PLATFORM_83.md)
 - [Integration & Review 82](docs/INTEGRATION_REVIEW_82.md)
 

@@ -23,6 +23,7 @@ function repository() {
   git(root, "init", "-b", "main");
   git(root, "config", "user.name", "Test");
   git(root, "config", "user.email", "test@example.invalid");
+  git(root, "config", "core.autocrlf", "true");
   fs.writeFileSync(path.join(root, "README.md"), "baseline\n");
   git(root, "add", "README.md");
   git(root, "commit", "-m", "baseline");

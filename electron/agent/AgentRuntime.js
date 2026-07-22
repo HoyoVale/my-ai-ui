@@ -3521,7 +3521,7 @@ export class AgentRuntime {
           const completedGoal = conversationManager.completeGoal({
             conversationId,
             goalId: this.activeRun.persistentGoalId,
-            verification: engineResult.loopResult.verification,
+            verification: completion.verification ?? engineResult.loopResult.verification,
             completionPermit: completion.permit
           });
           if (completedGoal.ok) {

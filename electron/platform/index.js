@@ -33,6 +33,14 @@ import {
 } from "./PlatformJobScheduler.js";
 
 import {
+  classifyPlatformFailure
+} from "./FailureClassifier.js";
+
+import {
+  IndependentReplanner
+} from "./IndependentReplanner.js";
+
+import {
   getSettings
 } from "../settings/settingsStore.js";
 
@@ -63,7 +71,9 @@ export const platformKernel = new PlatformKernel({
   onChange: broadcastPlatformState
 });
 
-export const completionAuthority = platformKernel.completionAuthority;
+export const completionAuthority = Object.freeze({
+  verify: (permit, expected) => platformKernel.verifyCompletionPermit(permit, expected)
+});
 
 export const worktreeRuntime = new WorktreeRuntime({
   getStorageDirectory: () => path.join(
@@ -112,13 +122,28 @@ export const integrationCoordinator = new IntegrationCoordinator({
   }
 });
 
+export const independentReplanner = new IndependentReplanner({
+  platformKernel
+});
+
 export const platformJobScheduler = new PlatformJobScheduler({
   platformKernel,
   maxConcurrency: 2,
   autoStart: false,
   onPause: (job) => multiAgentSupervisor.pause(job.platformRunId),
   onResume: (job) => multiAgentSupervisor.resume(job.platformRunId),
-  onCancel: (job) => multiAgentSupervisor.cancel(job.platformRunId)
+  onCancel: (job) => multiAgentSupervisor.cancel(job.platformRunId),
+  onFailure: ({ job, error, result }) => independentReplanner.replan(
+    job.platformRunId,
+    classifyPlatformFailure({
+      code: error?.code ?? result?.code,
+      stage: result?.integration ? "integration-review" : "background-job",
+      message: error?.message,
+      error: result?.error,
+      findings: result?.integration?.review?.findings,
+      conflicts: result?.integration?.integration?.conflicts
+    })
+  )
 });
 
 platformJobScheduler.register("delegation-workflow", async ({
@@ -174,6 +199,7 @@ platformJobScheduler.register("delegation-workflow", async ({
   const integration = await integrationCoordinator.integrateAndReview(job.platformRunId);
   return {
     ok: integration.ok === true,
+    code: integration.ok === true ? null : integration.code ?? "integration-review-failed",
     summary: integration.ok
       ? "Worker 变更已集成、审查并发布。"
       : `集成或审查未通过：${integration.code ?? "unknown"}`,

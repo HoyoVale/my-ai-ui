@@ -53,10 +53,12 @@ export function normalizeReviewDecision(result) {
     };
   }
   return {
-    ok: source.ok !== false,
-    approved: parsed.approved === true,
+    ok: source.ok !== false && !(parsed.approved === true && list(parsed.evidence ?? source.evidence).length === 0),
+    approved: parsed.approved === true && list(parsed.evidence ?? source.evidence).length > 0,
     summary: text(parsed.summary ?? source.summary, 2000),
-    findings: list(parsed.findings),
+    findings: parsed.approved === true && list(parsed.evidence ?? source.evidence).length === 0
+      ? [...list(parsed.findings), "review-evidence-missing"]
+      : list(parsed.findings),
     evidence: list(parsed.evidence ?? source.evidence)
   };
 }
@@ -382,9 +384,28 @@ export class IntegrationCoordinator {
         evidence: []
       };
     }
+    const reviewArtifact = this.platformKernel.recordArtifact(run.id, {
+      taskId: reviewTaskId,
+      agentRunId: reviewerAgentId,
+      kind: "independent-review",
+      commit: integrated.commit,
+      integrationDigest: digest,
+      receiptIds: decision.evidence,
+      changed: false,
+      digest: sha256({
+        integrationCommit: integrated.commit,
+        integrationDigest: digest,
+        approved: decision.approved,
+        findings: decision.findings,
+        evidence: decision.evidence
+      }),
+      summary: decision.summary,
+      source: "reviewer"
+    }).artifact;
     const recordedReview = this.platformKernel.recordReview(run.id, {
       taskId: reviewTaskId,
       agentRunId: reviewerAgentId,
+      artifactId: reviewArtifact.id,
       integrationCommit: integrated.commit,
       integrationDigest: digest,
       approved: decision.approved,

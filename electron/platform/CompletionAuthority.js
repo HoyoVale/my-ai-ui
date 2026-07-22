@@ -8,7 +8,7 @@ import {
   sha256
 } from "./canonical.js";
 
-const SIGNATURE_VERSION = 1;
+const SIGNATURE_VERSION = 2;
 
 function text(value, maxLength = 240) {
   return String(value ?? "").trim().slice(0, maxLength);
@@ -87,8 +87,11 @@ export class CompletionAuthority {
     platformRunId,
     integrationHash,
     evidenceHash,
+    artifactManifestHash,
+    taskGraphHash,
+    reviewHash,
     verifierVersion = 1,
-    scope = "platform-kernel-v1"
+    scope = "platform-kernel-v3"
   } = {}) {
     const payload = {
       version: SIGNATURE_VERSION,
@@ -97,6 +100,9 @@ export class CompletionAuthority {
       platformRunId: text(platformRunId, 120),
       integrationHash: text(integrationHash, 128),
       evidenceHash: text(evidenceHash, 128),
+      artifactManifestHash: text(artifactManifestHash, 128),
+      taskGraphHash: text(taskGraphHash, 128),
+      reviewHash: text(reviewHash, 128),
       verifierVersion: Math.max(1, Math.round(Number(verifierVersion) || 1)),
       scope: text(scope, 80),
       issuedAt: this.now()
@@ -106,7 +112,10 @@ export class CompletionAuthority {
       !payload.goalId ||
       !payload.platformRunId ||
       !/^[a-f0-9]{64}$/u.test(payload.integrationHash) ||
-      !/^[a-f0-9]{64}$/u.test(payload.evidenceHash)
+      !/^[a-f0-9]{64}$/u.test(payload.evidenceHash) ||
+      !/^[a-f0-9]{64}$/u.test(payload.artifactManifestHash) ||
+      !/^[a-f0-9]{64}$/u.test(payload.taskGraphHash) ||
+      !/^[a-f0-9]{64}$/u.test(payload.reviewHash)
     ) {
       throw new TypeError("Completion signature payload is incomplete.");
     }

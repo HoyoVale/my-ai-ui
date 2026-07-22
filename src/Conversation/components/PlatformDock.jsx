@@ -35,7 +35,11 @@ function statusLabel(status) {
     ready: "待执行",
     review: "待审查",
     blocked: "已阻塞",
-    continuable: "可继续"
+    continuable: "可继续",
+    integrated: "已集成",
+    published: "已发布",
+    conflicted: "有冲突",
+    "not-required": "无需集成"
   })[status] ?? status ?? "未知";
 }
 
@@ -211,6 +215,10 @@ export function ConversationPlatformDock({
             {run.integration?.conflicts?.length > 0 && (
               <p className="conversation-platform-dock__error">冲突：{run.integration.conflicts.join("、")}</p>
             )}
+            <p>
+              验收证据：{(run.evidence ?? []).filter((item) => item.status === "valid").length}/{run.criteria?.length ?? 0} ·
+              完成签名：{run.completionPermit?.fingerprint ? "有效" : "尚未签发"}
+            </p>
           </section>
 
           {developerMode && (
@@ -248,10 +256,37 @@ export function ConversationPlatformDock({
               </section>
 
               <section>
-                <header><strong>Artifacts / Logs</strong><span>{run.artifacts?.length ?? 0} / {run.logs?.length ?? 0}</span></header>
+                <header><strong>Artifacts / Logs · Evidence</strong><span>{run.artifacts?.length ?? 0} / {run.evidence?.length ?? 0} / {run.logs?.length ?? 0}</span></header>
                 {(run.artifacts ?? []).slice(-20).reverse().map((artifact) => (
                   <article key={artifact.id}>
                     <div><strong>{artifact.kind}</strong><small>{artifact.summary || artifact.commit || artifact.digest}</small></div>
+                  </article>
+                ))}
+                {(run.evidence ?? []).slice(-20).reverse().map((evidence) => (
+                  <article key={evidence.id} className={`is-${evidence.status}`}>
+                    <div>
+                      <strong>Evidence · {evidence.criterionId}</strong>
+                      <small>{evidence.status} · Artifact {evidence.artifactId}</small>
+                      <code>{evidence.commit || evidence.artifactDigest}</code>
+                    </div>
+                  </article>
+                ))}
+                {(run.replans ?? []).slice(-10).reverse().map((replan) => (
+                  <article key={replan.id}>
+                    <div>
+                      <strong>Replanner · {replan.classification}</strong>
+                      <small>{replan.summary}</small>
+                      <code>{replan.addedTaskIds?.join(", ")}</code>
+                    </div>
+                  </article>
+                ))}
+                {(run.failures ?? []).slice(-10).reverse().map((failure) => (
+                  <article key={failure.id} className="is-failed">
+                    <div>
+                      <strong>Failure · {failure.type}</strong>
+                      <small>{failure.code} · {failure.summary}</small>
+                      <code>{failure.fingerprint}</code>
+                    </div>
                   </article>
                 ))}
                 <div className="conversation-platform-dock__logs">
