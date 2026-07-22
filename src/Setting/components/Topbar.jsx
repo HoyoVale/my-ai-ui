@@ -49,6 +49,8 @@ export function SettingsTopbar({
           />
         </button>
         <span
+          data-testid="setting-save-status"
+          data-status={status}
           className={
             `setting-save-status setting-save-status--${status}`
           }

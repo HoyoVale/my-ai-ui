@@ -197,6 +197,43 @@ async function waitForAttribute(
   );
 }
 
+async function waitForConversationModel(
+  page,
+  expectedModelId,
+  timeoutMs = 15000
+) {
+  const deadline =
+    Date.now() +
+    timeoutMs;
+
+  while (
+    Date.now() <
+    deadline
+  ) {
+    const state =
+      await page.evaluate(
+        async () => window.api
+          ?.getConversationState?.()
+      );
+    const modelId =
+      state?.currentConversation
+        ?.modelSnapshot
+        ?.modelId ??
+      state?.currentModel
+        ?.modelId;
+
+    if (modelId === expectedModelId) {
+      return state;
+    }
+
+    await delay(50);
+  }
+
+  throw new Error(
+    `Conversation model did not become ${expectedModelId}.`
+  );
+}
+
 async function revealDetails(locator) {
   await locator.waitFor({
     state: "attached"
@@ -941,6 +978,92 @@ async function main() {
       "进行中"
     );
 
+    const manualCriterionButton =
+      goalPanel
+        .locator(
+          ".conversation-goal-criterion-actions button"
+        )
+        .filter({
+          hasText: "确认完成"
+        });
+
+    await manualCriterionButton.waitFor({
+      state: "visible"
+    });
+
+    const goalLayout =
+      await goalPanel.evaluate(
+        (panel) => {
+          const scroll = panel.querySelector(
+            ".conversation-goal-panel__scroll"
+          );
+          const footer = panel.querySelector(
+            ".conversation-goal-panel__footer"
+          );
+          const manualButton = panel.querySelector(
+            ".conversation-goal-criterion-actions button"
+          );
+          const buttonRect =
+            manualButton
+              ?.getBoundingClientRect();
+          const scrollRect =
+            scroll?.getBoundingClientRect();
+          const footerRect =
+            footer?.getBoundingClientRect();
+
+          return {
+            buttonWidth:
+              buttonRect?.width ?? 0,
+            buttonHeight:
+              buttonRect?.height ?? 0,
+            buttonWhiteSpace:
+              manualButton
+                ? getComputedStyle(
+                    manualButton
+                  ).whiteSpace
+                : "",
+            regionsDoNotOverlap:
+              Boolean(
+                scrollRect &&
+                footerRect &&
+                scrollRect.bottom <=
+                  footerRect.top + 1
+              ),
+            footerInsidePanel:
+              Boolean(
+                footerRect &&
+                footerRect.bottom <=
+                  panel
+                    .getBoundingClientRect()
+                    .bottom + 1
+              )
+          };
+        }
+      );
+
+    assert.ok(
+      goalLayout.buttonWidth >= 44,
+      "Goal 人工确认按钮不应被状态圆点样式压成竖排"
+    );
+    assert.ok(
+      goalLayout.buttonHeight < 32,
+      "Goal 人工确认按钮应保持单行高度"
+    );
+    assert.equal(
+      goalLayout.buttonWhiteSpace,
+      "nowrap"
+    );
+    assert.equal(
+      goalLayout.regionsDoNotOverlap,
+      true,
+      "Goal 底部操作栏不应覆盖滚动内容"
+    );
+    assert.equal(
+      goalLayout.footerInsidePanel,
+      true,
+      "Goal 底部操作栏必须始终留在面板内"
+    );
+
     await goalPanel
       .locator('[data-testid="conversation-goal-pause"]')
       .click();
@@ -1604,13 +1727,78 @@ async function main() {
       )
       .selectOption("128000");
 
-    await delay(350);
+    await setting
+      .locator(
+        '[data-testid="setting-save-status"][data-status="saved"]'
+      )
+      .waitFor({
+        state: "visible",
+        timeout: 15000
+      });
 
-    await pet.evaluate(
-      async () => {
-        await window.api
-          ?.createConversation?.();
-      }
+    const savedE2EModel =
+      await pet.evaluate(
+        async () => {
+          const settings =
+            await window.api
+              ?.getSettings?.();
+          const provider =
+            settings?.model
+              ?.providers
+              ?.ollama;
+
+          return provider?.models?.find(
+            (model) =>
+              model.modelId ===
+              "e2e-model"
+          ) ?? null;
+        }
+      );
+
+    assert.deepEqual(
+      {
+        name: savedE2EModel?.name,
+        modelId: savedE2EModel?.modelId,
+        contextTokenBudget:
+          savedE2EModel
+            ?.contextTokenBudget
+      },
+      {
+        name: "E2E Model",
+        modelId: "e2e-model",
+        contextTokenBudget: 128000
+      },
+      "模型配置必须先完整提交到主进程，再切换当前会话"
+    );
+
+    await setting
+      .locator(
+        '[data-testid="main-model-assignment"]'
+      )
+      .selectOption({
+        label: "Ollama · E2E Model"
+      });
+
+    await waitForConversationModel(
+      pet,
+      "e2e-model"
+    );
+
+    const createdWithE2EModel =
+      await pet.evaluate(
+        async () => {
+          return window.api
+            ?.createConversation?.();
+        }
+      );
+
+    assert.equal(
+      createdWithE2EModel
+        ?.conversation
+        ?.modelSnapshot
+        ?.modelId,
+      "e2e-model",
+      "新会话应继承已经明确选择的当前会话模型"
     );
 
     await input.bringToFront();

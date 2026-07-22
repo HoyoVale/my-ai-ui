@@ -122,7 +122,14 @@ export function ConversationGoalPanel({
           <strong>Goal</strong>
           <span>{goal ? STATUS_LABELS[goal.status] ?? "已设置" : "未设置"}</span>
         </div>
-        <button type="button" onClick={onClose} aria-label="关闭 Goal">×</button>
+        <button
+          type="button"
+          className="conversation-inspector__close"
+          onClick={onClose}
+          aria-label="关闭 Goal"
+        >
+          ×
+        </button>
       </header>
 
       <div className="conversation-goal-panel__scroll">
@@ -184,7 +191,9 @@ export function ConversationGoalPanel({
           <div className="conversation-goal-criteria-list" data-testid="conversation-goal-progress">
             {criteria.map((criterion) => (
               <div key={criterion.id} className={`is-${criterion.status}`}>
-                <span aria-hidden="true">{criterion.status === "passed" ? "✓" : criterion.status === "failed" ? "!" : "·"}</span>
+                <span className="conversation-goal-criterion-status" aria-hidden="true">
+                  {criterion.status === "passed" ? "✓" : criterion.status === "failed" ? "!" : "·"}
+                </span>
                 <div>
                   <strong>{criterion.text}</strong>
                   <small>{KIND_LABELS[criterion.verificationKind] ?? "自动判断"}{criterion.detail ? ` · ${criterion.detail}` : ""}</small>
@@ -192,7 +201,7 @@ export function ConversationGoalPanel({
                     <code>{criterion.evidence.join(" · ")}</code>
                   )}
                 </div>
-                <span className="conversation-goal-criterion-actions">
+                <div className="conversation-goal-criterion-actions">
                   {developerMode && goal.status !== "completed" && (
                     <select
                       aria-label={`验证方式：${criterion.text}`}
@@ -214,7 +223,7 @@ export function ConversationGoalPanel({
                       {criterion.manualSatisfied ? "撤销确认" : "确认完成"}
                     </button>
                   )}
-                </span>
+                </div>
               </div>
             ))}
           </div>
@@ -230,41 +239,42 @@ export function ConversationGoalPanel({
 
         {error && <div className="conversation-goal-error">{error}</div>}
 
-        <div className="conversation-goal-actions">
-          {goal && (
-            <button
-              type="button"
-              className="is-secondary is-danger"
-              data-testid="conversation-goal-clear"
-              disabled={busy}
-              onClick={() => { void save({ objective: "", nextCriteria: [] }); }}
-            >
-              清除
-            </button>
-          )}
-          {goal?.status === "active" && (
-            <button
-              type="button"
-              className="is-secondary"
-              data-testid="conversation-goal-pause"
-              disabled={busy}
-              onClick={() => { void save({ status: "paused" }); }}
-            >
-              暂停
-            </button>
-          )}
+      </div>
+
+      <div className="conversation-goal-actions conversation-goal-panel__footer">
+        {goal && (
           <button
             type="button"
-            className="is-primary"
-            data-testid="conversation-goal-save"
-            disabled={busy || !objectiveDraft.trim()}
-            onClick={() => { void save({ status: "active" }); }}
+            className="is-secondary is-danger"
+            data-testid="conversation-goal-clear"
+            disabled={busy}
+            onClick={() => { void save({ objective: "", nextCriteria: [] }); }}
           >
-            {goal?.status === "paused" || goal?.status === "completed"
-              ? "恢复并保存"
-              : goal ? "保存" : "设为 Goal"}
+            清除
           </button>
-        </div>
+        )}
+        {goal?.status === "active" && (
+          <button
+            type="button"
+            className="is-secondary"
+            data-testid="conversation-goal-pause"
+            disabled={busy}
+            onClick={() => { void save({ status: "paused" }); }}
+          >
+            暂停
+          </button>
+        )}
+        <button
+          type="button"
+          className="is-primary"
+          data-testid="conversation-goal-save"
+          disabled={busy || !objectiveDraft.trim()}
+          onClick={() => { void save({ status: "active" }); }}
+        >
+          {goal?.status === "paused" || goal?.status === "completed"
+            ? "恢复并保存"
+            : goal ? "保存" : "设为 Goal"}
+        </button>
       </div>
     </aside>
   );

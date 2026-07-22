@@ -213,6 +213,65 @@ describe("session mode, workspace and model navigation", () => {
     assert.equal(manager.list().length, 1);
   });
 
+  it("does not retarget an existing session when the default changes and lets a new session inherit an explicit switch", () => {
+    const value = createMutableSettingsManager();
+    const first = value.manager.create({
+      mode: "chat",
+      workspaceId: null
+    });
+
+    assert.equal(
+      first.modelSnapshot.modelId,
+      "model-a-api"
+    );
+
+    const changedDefault =
+      structuredClone(
+        MODEL_SETTINGS
+      );
+    changedDefault.providers[
+      "provider-a"
+    ].activeModelId = "model-b";
+    value.setModelSettings(
+      changedDefault
+    );
+    value.manager.reconcileSettings();
+
+    assert.equal(
+      value.manager
+        .getState()
+        .currentModel
+        .modelId,
+      "model-a-api",
+      "changing the new-session default must not silently retarget an existing session"
+    );
+
+    const selected =
+      value.manager
+        .setModelSelection({
+          conversationId: first.id,
+          providerId: "provider-a",
+          modelConfigId: "model-b"
+        });
+
+    assert.equal(
+      selected.ok,
+      true
+    );
+
+    const next =
+      value.manager.create({
+        mode: "chat",
+        workspaceId: null
+      });
+
+    assert.equal(
+      next.modelSnapshot.modelId,
+      "model-b-api",
+      "a new session should inherit the current session's explicit model selection"
+    );
+  });
+
   it("keeps Chat and Coding sessions as separate mode groups", () => {
     const manager = createManager();
     manager.create({ mode: "chat", workspaceId: null });
