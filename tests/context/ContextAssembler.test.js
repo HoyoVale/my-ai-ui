@@ -419,3 +419,25 @@ describe("ContextAssembler persistent Goal", () => {
     assert.equal(paused.metadata.prompt.goalEnabled, false);
   });
 });
+
+
+describe("ContextAssembler tool schema budget", () => {
+  it("counts enabled tool schemas separately from the capability prose", () => {
+    const result = assembleAgentContext({
+      settings: SETTINGS,
+      conversation: { messages: [] },
+      toolManifest: [{
+        name: "read_text_file",
+        description: "Read a file",
+        ready: true,
+        inputSchema: {
+          type: "object",
+          properties: { path: { type: "string" } }
+        }
+      }]
+    });
+    const schemas = result.budget.sections.find((section) => section.id === "tool-schemas");
+    assert.ok(schemas);
+    assert.ok(schemas.tokens > 0);
+  });
+});

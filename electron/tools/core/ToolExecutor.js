@@ -5,8 +5,8 @@ import {
   ToolScopeBudget
 } from "./ToolBudget.js";
 import {
-  ToolConcurrencyGuard
-} from "./ToolConcurrencyGuard.js";
+  ToolScheduler
+} from "./ToolScheduler.js";
 import {
   ToolEventStore
 } from "./ToolEventStore.js";
@@ -195,12 +195,6 @@ function normalizedPolicy(definition, maxRetries, idempotencyKey) {
   };
 }
 
-function resolveConcurrencyKey(definition, input) {
-  if (typeof definition.concurrencyKey === "function") {
-    return String(definition.concurrencyKey(input) ?? "");
-  }
-  return String(definition.concurrencyKey ?? "");
-}
 
 function shouldCountCircuitFailure(error = {}) {
   const category = String(error?.category ?? "");
@@ -262,7 +256,8 @@ export class ToolExecutor {
     eventStore = null,
     executionLedger = null,
     circuitBreakers = null,
-    faultInjector = null
+    faultInjector = null,
+    scheduler = null
   } = {}) {
     this.context = { ...context };
     this.onRecord = onRecord;
@@ -285,7 +280,12 @@ export class ToolExecutor {
       deadline: this.deadline
     });
     this.policyEngine = policyEngine ?? new ToolPolicyEngine();
-    this.concurrency = new ToolConcurrencyGuard({ maxConcurrent });
+    this.scheduler = scheduler ?? new ToolScheduler({
+      maxConcurrent,
+      context: this.context
+    });
+    // Backwards-compatible alias for diagnostics/tests that still inspect concurrency.
+    this.concurrency = this.scheduler.guard;
     this.scopeBudget = new ToolScopeBudget({
       maxPerStep: maxToolCallsPerStep,
       maxPerBatch: maxToolCallsPerBatch
@@ -877,10 +877,18 @@ export class ToolExecutor {
     let release = null;
     let heartbeatId = null;
     try {
-      release = await this.concurrency.acquire(
-        resolveConcurrencyKey(definition, validatedInput.value),
-        scope.signal,
-        { exclusive: definition.exclusiveConcurrency === true }
+      const schedulerPolicy = this.scheduler.policyFor(
+        definition,
+        validatedInput.value
+      );
+      baseRecord.scheduler = {
+        barrier: schedulerPolicy.barrier === true,
+        resources: schedulerPolicy.resources.map((resource) => ({ ...resource }))
+      };
+      release = await this.scheduler.acquire(
+        definition,
+        validatedInput.value,
+        scope.signal
       );
       if (ledgerCall) {
         ledgerCall = await this.executionLedger.markDispatched(

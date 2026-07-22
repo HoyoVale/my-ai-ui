@@ -29,7 +29,8 @@
     "test:e2e:tool-security": "node tests/e2e/tool-approval-write-flow.cjs",
     "test:e2e:goal-crash": "node tests/e2e/goal-runtime-crash-recovery.mjs",
     "test:e2e:supervisor-crash": "node tests/e2e/multi-agent-supervisor-crash-recovery.mjs",
-    "test:e2e:long-running-crash": "node tests/e2e/long-running-agent-crash-recovery.mjs"
+    "test:e2e:long-running-crash": "node tests/e2e/long-running-agent-crash-recovery.mjs",
+    "test:p1-ledger-scheduler": "node --test tests/agent/tokenLedger.test.js tests/context/tokenEstimator.test.js tests/context/ContextAssembler.test.js tests/tools/toolScheduler.test.js tests/tools/toolConcurrencyGuard.test.js tests/tools/workspaceTools.test.js tests/conversation/ConversationStore.test.js tests/conversation/conversationGoal.test.js tests/regression/tokenLedgerScheduler94.test.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.16",

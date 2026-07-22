@@ -5,7 +5,7 @@ import {
   normalizePlanState
 } from "../agent/planState.js";
 
-const GOAL_SCHEMA_VERSION = 5;
+const GOAL_SCHEMA_VERSION = 6;
 const GOAL_EVENT_HISTORY_LIMIT = 48;
 const GOAL_VERIFICATION_HISTORY_LIMIT = 12;
 const GOAL_WORKING_FILE_LIMIT = 80;
@@ -240,6 +240,74 @@ function sanitizeWaiting(source, phase, status, updatedAt) {
     reason: stringValue(source?.reason, "", 500).trim(),
     requiredAction: stringValue(source?.requiredAction, "", 500).trim(),
     since: timestampValue(source?.since, updatedAt)
+  };
+}
+
+
+function sanitizeGoalUsage(source) {
+  const provider = source?.provider ?? {};
+  const estimated = source?.estimated ?? {};
+  const tools = source?.tools ?? {};
+  return {
+    version: 1,
+    runCount: boundedInteger(source?.runCount, 0, 1_000_000),
+    runIds: (Array.isArray(source?.runIds) ? source.runIds : [])
+      .map((item) => nullableStringValue(item, 120))
+      .filter(Boolean)
+      .slice(-64),
+    runs: (Array.isArray(source?.runs) ? source.runs : [])
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        runId: nullableStringValue(item.runId, 120),
+        provider: {
+          requests: boundedInteger(item.provider?.requests, 0, 10_000_000),
+          steps: boundedInteger(item.provider?.steps, 0, 10_000_000),
+          inputTokens: boundedInteger(item.provider?.inputTokens, 0, 10_000_000_000),
+          outputTokens: boundedInteger(item.provider?.outputTokens, 0, 10_000_000_000),
+          reasoningTokens: boundedInteger(item.provider?.reasoningTokens, 0, 10_000_000_000),
+          cachedInputTokens: boundedInteger(item.provider?.cachedInputTokens, 0, 10_000_000_000),
+          totalTokens: boundedInteger(item.provider?.totalTokens, 0, 10_000_000_000),
+          reportedRequests: boundedInteger(item.provider?.reportedRequests, 0, 10_000_000)
+        },
+        estimated: {
+          contextInputTokens: boundedInteger(item.estimated?.contextInputTokens, 0, 10_000_000_000),
+          toolSchemaTokens: boundedInteger(item.estimated?.toolSchemaTokens, 0, 10_000_000_000),
+          toolArgumentTokens: boundedInteger(item.estimated?.toolArgumentTokens, 0, 10_000_000_000),
+          toolResultTokens: boundedInteger(item.estimated?.toolResultTokens, 0, 10_000_000_000),
+          totalInputTokens: boundedInteger(item.estimated?.totalInputTokens, 0, 10_000_000_000)
+        },
+        tools: {
+          callCount: boundedInteger(item.tools?.callCount, 0, 10_000_000),
+          resultCount: boundedInteger(item.tools?.resultCount, 0, 10_000_000),
+          cacheReuseCount: boundedInteger(item.tools?.cacheReuseCount, 0, 10_000_000)
+        },
+        updatedAt: timestampValue(item.updatedAt, 0)
+      }))
+      .filter((item) => item.runId)
+      .slice(-64),
+    provider: {
+      requests: boundedInteger(provider.requests, 0, 10_000_000),
+      steps: boundedInteger(provider.steps, 0, 10_000_000),
+      inputTokens: boundedInteger(provider.inputTokens, 0, 10_000_000_000),
+      outputTokens: boundedInteger(provider.outputTokens, 0, 10_000_000_000),
+      reasoningTokens: boundedInteger(provider.reasoningTokens, 0, 10_000_000_000),
+      cachedInputTokens: boundedInteger(provider.cachedInputTokens, 0, 10_000_000_000),
+      totalTokens: boundedInteger(provider.totalTokens, 0, 10_000_000_000),
+      reportedRequests: boundedInteger(provider.reportedRequests, 0, 10_000_000)
+    },
+    estimated: {
+      contextInputTokens: boundedInteger(estimated.contextInputTokens, 0, 10_000_000_000),
+      toolSchemaTokens: boundedInteger(estimated.toolSchemaTokens, 0, 10_000_000_000),
+      toolArgumentTokens: boundedInteger(estimated.toolArgumentTokens, 0, 10_000_000_000),
+      toolResultTokens: boundedInteger(estimated.toolResultTokens, 0, 10_000_000_000),
+      totalInputTokens: boundedInteger(estimated.totalInputTokens, 0, 10_000_000_000)
+    },
+    tools: {
+      callCount: boundedInteger(tools.callCount, 0, 10_000_000),
+      resultCount: boundedInteger(tools.resultCount, 0, 10_000_000),
+      cacheReuseCount: boundedInteger(tools.cacheReuseCount, 0, 10_000_000)
+    },
+    updatedAt: timestampValue(source?.updatedAt, 0)
   };
 }
 
@@ -608,9 +676,69 @@ export function sanitizeGoal(source) {
       objective,
       updatedAt
     }),
+    usage: sanitizeGoalUsage(source.usage),
     lastTransition: sanitizeGoalTransition(source.lastTransition),
     eventHistory
   };
+}
+
+export function recordGoalTokenUsage(goalSource, ledgerSource, {
+  now = Date.now()
+} = {}) {
+  const goal = sanitizeGoal(goalSource);
+  if (!goal) return { ok: false, code: "goal-not-found" };
+  const ledger = ledgerSource && typeof ledgerSource === "object"
+    ? ledgerSource
+    : null;
+  const runId = nullableStringValue(ledger?.runId, 120);
+  if (!ledger || !runId) {
+    return { ok: false, code: "token-ledger-invalid" };
+  }
+
+  const usage = sanitizeGoalUsage(goal.usage);
+  const nextRun = {
+    runId,
+    provider: sanitizeGoalUsage({ provider: ledger.provider }).provider,
+    estimated: sanitizeGoalUsage({ estimated: ledger.estimated }).estimated,
+    tools: sanitizeGoalUsage({ tools: ledger.tools }).tools,
+    updatedAt: timestampValue(now, Date.now())
+  };
+  const previousIndex = usage.runs.findIndex((item) => item.runId === runId);
+  const previous = previousIndex >= 0 ? usage.runs[previousIndex] : null;
+  const delta = (target, before, after) => {
+    for (const key of Object.keys(target)) {
+      target[key] = Math.max(
+        0,
+        boundedInteger(target[key], 0, 10_000_000_000) -
+        boundedInteger(before?.[key], 0, 10_000_000_000) +
+        boundedInteger(after?.[key], 0, 10_000_000_000)
+      );
+    }
+  };
+  delta(usage.provider, previous?.provider, nextRun.provider);
+  delta(usage.estimated, previous?.estimated, nextRun.estimated);
+  delta(usage.tools, previous?.tools, nextRun.tools);
+
+  if (previousIndex >= 0) {
+    usage.runs[previousIndex] = nextRun;
+  } else {
+    usage.runs.push(nextRun);
+    usage.runCount += 1;
+    usage.runIds = [...usage.runIds, runId].slice(-64);
+  }
+  usage.runs = usage.runs.slice(-64);
+  usage.updatedAt = nextRun.updatedAt;
+  goal.usage = usage;
+  touch(goal, usage.updatedAt);
+  if (!previous) {
+    appendEvent(goal, {
+      type: "token_usage_recorded",
+      reason: `run:${runId}`,
+      runId,
+      at: usage.updatedAt
+    });
+  }
+  return { ok: true, changed: true, goal };
 }
 
 function eventId(goal, type, at) {
@@ -791,6 +919,9 @@ export function upsertGoal(existingGoal, {
           createdAt: timestamp,
           updatedAt: timestamp
         }),
+    usage: keepIdentity
+      ? clone(existing.usage)
+      : sanitizeGoalUsage(null),
     workingState: keepIdentity
       ? {
           ...clone(existing.workingState),

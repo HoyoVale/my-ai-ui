@@ -348,7 +348,8 @@ export function createAgentToolSession({
     getRuntimeDiagnostics: () => ({
       ...executionLedger.developerSnapshot(),
       circuitBreakers: toolCircuitBreakers.snapshot(),
-      subprocesses: subprocessSupervisor.snapshot()
+      subprocesses: subprocessSupervisor.snapshot(),
+      scheduler: executor.scheduler?.snapshot?.() ?? null
     }),
     reconcileRuntime: (options = {}) =>
       executionLedger.reconcile(capabilityDefinitions, options),

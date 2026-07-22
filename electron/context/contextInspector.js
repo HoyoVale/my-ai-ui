@@ -18,6 +18,14 @@ import {
   assembleAgentContext
 } from "./ContextAssembler.js";
 
+import {
+  getToolManifestSnapshot
+} from "../tools/index.js";
+
+import {
+  aggregateTokenLedgers
+} from "../agent/TokenLedger.js";
+
 function getInspectionQuery(
   conversation
 ) {
@@ -61,12 +69,24 @@ export function inspectConversationContext(
       conversation
     });
 
+  const manifest = getToolManifestSnapshot({
+    settings: execution.settings,
+    executionContext: execution.metadata
+  });
+
   const context =
     assembleAgentContext({
       settings: execution.settings,
       conversation: execution.conversation,
-      memories
+      memories,
+      toolManifest: manifest.tools.filter((tool) => tool.ready)
     });
+
+  const ledgers = (conversation.messages ?? [])
+    .map((message) => message?.tokenLedger)
+    .filter(Boolean);
+  const latestRun = [...ledgers].reverse().find(Boolean) ?? null;
+  const conversationUsage = aggregateTokenLedgers(ledgers);
 
   return {
     conversationId:
@@ -78,6 +98,11 @@ export function inspectConversationContext(
       conversation
         .contextStartAfterMessageId,
     budget: context.budget,
+    usage: {
+      latestRun,
+      conversation: conversationUsage,
+      goal: conversation.goal?.usage ?? null
+    },
     metadata:
       context.metadata,
     memories:

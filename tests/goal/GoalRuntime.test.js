@@ -44,7 +44,7 @@ describe("GoalRuntime", () => {
   it("creates a versioned lifecycle object with progress and audit history", () => {
     const goal = createGoal();
 
-    assert.equal(goal.version, 5);
+    assert.equal(goal.version, 6);
     assert.equal(goal.phase, GOAL_PHASES.IDLE);
     assert.equal(goal.runtimeRevision, 1);
     assert.equal(goal.runtime.attempt, 0);
@@ -390,7 +390,7 @@ describe("GoalRuntime", () => {
       }
     });
 
-    assert.equal(goal.version, 5);
+    assert.equal(goal.version, 6);
     assert.equal(goal.phase, GOAL_PHASES.WAITING);
     assert.equal(goal.waiting.kind, "user_paused");
     assert.equal(goal.criteria[0].status, "passed");

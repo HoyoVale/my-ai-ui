@@ -27,7 +27,7 @@ try {
   assert.equal(recovered.status, 0, recovered.stderr || recovered.stdout);
 
   const goal = JSON.parse(recovered.stdout);
-  assert.equal(goal.version, 5);
+  assert.equal(goal.version, 6);
   assert.equal(goal.phase, "waiting");
   assert.equal(goal.waiting.kind, "recovery");
   assert.equal(goal.waiting.requiredAction, "resume_from_checkpoint");

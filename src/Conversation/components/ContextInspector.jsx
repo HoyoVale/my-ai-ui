@@ -70,6 +70,9 @@ export function ConversationContextInspector({
   const sections =
     budget?.sections ?? [];
 
+  const latestUsage = inspection?.usage?.latestRun ?? null;
+  const goalUsage = inspection?.usage?.goal ?? null;
+
   return (
     <aside
       className="conversation-context"
@@ -200,6 +203,47 @@ export function ConversationContextInspector({
               </em>
             </div>
           </section>
+
+          {latestUsage ? (
+            <section className="context-section context-facts" data-testid="token-ledger-summary">
+              <div>
+                <span>本次 Run 实际输入</span>
+                <strong>{formatTokens(latestUsage.provider?.inputTokens)}</strong>
+              </div>
+              <div>
+                <span>本次 Run 实际输出</span>
+                <strong>{formatTokens(latestUsage.provider?.outputTokens)}</strong>
+              </div>
+              <div>
+                <span>工具 Schema（估算）</span>
+                <strong>{formatTokens(latestUsage.estimated?.toolSchemaTokens)}</strong>
+              </div>
+              <div>
+                <span>工具参数（估算）</span>
+                <strong>{formatTokens(latestUsage.estimated?.toolArgumentTokens)}</strong>
+              </div>
+              <div>
+                <span>工具返回（估算）</span>
+                <strong>{formatTokens(latestUsage.estimated?.toolResultTokens)}</strong>
+              </div>
+              <div>
+                <span>读取缓存复用</span>
+                <strong>{latestUsage.tools?.cacheReuseCount ?? 0}</strong>
+              </div>
+              {goalUsage ? (
+                <>
+                  <div>
+                    <span>Goal 累计实际 Token</span>
+                    <strong>{formatTokens(goalUsage.provider?.totalTokens)}</strong>
+                  </div>
+                  <div>
+                    <span>Goal 累计 Run</span>
+                    <strong>{goalUsage.runCount ?? 0}</strong>
+                  </div>
+                </>
+              ) : null}
+            </section>
+          ) : null}
 
           <section className="context-section">
             <div className="context-section__title">

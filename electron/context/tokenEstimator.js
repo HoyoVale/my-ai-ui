@@ -199,3 +199,82 @@ export function buildTokenBudget({
       normalizedSections
   };
 }
+
+function jsonText(value) {
+  if (value === undefined) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value ?? "");
+  }
+}
+
+export function estimateJsonTokens(value) {
+  return estimateTextTokens(jsonText(value));
+}
+
+export function estimateToolDefinitionTokens(definition = {}) {
+  return estimateJsonTokens({
+    name: definition.name ?? "",
+    description: definition.description ?? "",
+    inputSchema: definition.inputSchema ?? definition.schema ?? null
+  });
+}
+
+export function estimateToolDefinitionsTokens(definitions = []) {
+  return (Array.isArray(definitions) ? definitions : []).reduce(
+    (total, definition) => total + estimateToolDefinitionTokens(definition),
+    0
+  );
+}
+
+export function normalizeProviderUsage(source = {}) {
+  const usage = source && typeof source === "object" ? source : {};
+  const inputTokens = Math.max(
+    0,
+    Number(
+      usage.inputTokens ??
+      usage.promptTokens ??
+      usage.inputTokenCount
+    ) || 0
+  );
+  const outputTokens = Math.max(
+    0,
+    Number(
+      usage.outputTokens ??
+      usage.completionTokens ??
+      usage.outputTokenCount
+    ) || 0
+  );
+  const reasoningTokens = Math.max(
+    0,
+    Number(
+      usage.reasoningTokens ??
+      usage.outputTokenDetails?.reasoningTokens ??
+      usage.completionTokensDetails?.reasoningTokens
+    ) || 0
+  );
+  const cachedInputTokens = Math.max(
+    0,
+    Number(
+      usage.cachedInputTokens ??
+      usage.inputTokenDetails?.cacheReadTokens ??
+      usage.promptTokensDetails?.cachedTokens
+    ) || 0
+  );
+  const totalTokens = Math.max(
+    0,
+    Number(usage.totalTokens) || inputTokens + outputTokens
+  );
+
+  return {
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cachedInputTokens,
+    totalTokens,
+    reported: Boolean(
+      inputTokens || outputTokens || totalTokens || reasoningTokens || cachedInputTokens
+    )
+  };
+}

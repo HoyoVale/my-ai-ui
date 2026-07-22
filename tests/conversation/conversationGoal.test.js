@@ -133,9 +133,9 @@ describe("conversation Goal", () => {
       }]
     });
 
-    assert.equal(data.version, 19);
+    assert.equal(data.version, 20);
     const goal = data.conversations[0].goal;
-    assert.equal(goal.version, 5);
+    assert.equal(goal.version, 6);
     assert.equal(goal.id, "goal-1");
     assert.equal(goal.revision, 1);
     assert.equal(goal.objective, "保留这个目标");
@@ -159,7 +159,7 @@ describe("conversation Goal", () => {
       autoContinue: false
     });
 
-    assert.equal(created.goal.version, 5);
+    assert.equal(created.goal.version, 6);
     assert.equal(created.goal.autoContinue, false);
     assert.equal(created.goal.criteria.length, 2);
     assert.equal(created.goal.criteria[1].manualSatisfied, true);

@@ -9,6 +9,7 @@ import {
   linkGoalPlatformRun as linkGoalPlatformRunRuntime,
   recordGoalCheckpoint as recordGoalCheckpointRuntime,
   recordGoalWorkingState as recordGoalWorkingStateRuntime,
+  recordGoalTokenUsage as recordGoalTokenUsageRuntime,
   applyGoalPlanState as applyGoalPlanStateRuntime,
   replanGoal as replanGoalRuntime,
   recoverInterruptedGoal,
@@ -892,6 +893,22 @@ export class ConversationManager {
       mutate: (goal) => recordGoalWorkingStateRuntime(
         goal,
         patch,
+        { now: this.now() }
+      )
+    });
+  }
+
+  recordGoalTokenUsage({
+    conversationId,
+    goalId,
+    ledger
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => recordGoalTokenUsageRuntime(
+        goal,
+        ledger,
         { now: this.now() }
       )
     });

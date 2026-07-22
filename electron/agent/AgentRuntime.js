@@ -147,6 +147,10 @@ import {
 } from "./contextCompaction.js";
 
 import {
+  TokenLedger
+} from "./TokenLedger.js";
+
+import {
   createCheckpointInstruction,
   createRunCheckpoint
 } from "./runCheckpoint.js";
@@ -951,7 +955,7 @@ export class AgentRuntime {
     this.activeRun.activityStore
       ?.updateCheckpoint(checkpoint);
 
-    return this.persistAssistantResponse({
+    const persisted = this.persistAssistantResponse({
       conversationId:
         this.activeRun.conversationId,
       content:
@@ -960,6 +964,14 @@ export class AgentRuntime {
         ),
       status
     });
+    if (this.activeRun.persistentGoalId) {
+      conversationManager.recordGoalTokenUsage?.({
+        conversationId: this.activeRun.conversationId,
+        goalId: this.activeRun.persistentGoalId,
+        ledger: this.activeRun.tokenLedger?.snapshot?.() ?? null
+      });
+    }
+    return persisted;
   }
 
   finalizeRun({
@@ -1087,6 +1099,11 @@ export class AgentRuntime {
           checkpoint: finalCheckpoint
         });
       }
+      conversationManager.recordGoalTokenUsage?.({
+        conversationId,
+        goalId: run.persistentGoalId,
+        ledger: run.tokenLedger?.snapshot?.() ?? null
+      });
       conversationManager.finishGoalRun({
         conversationId,
         goalId: run.persistentGoalId,
@@ -1593,6 +1610,14 @@ export class AgentRuntime {
       finalizationAttemptCount: 0,
       contextCompactionCount:
         continuationState?.contextCompactionCount ?? 0,
+      tokenLedger: new TokenLedger({
+        runId,
+        goalId,
+        taskId,
+        providerId: context.metadata?.activeModel?.providerId ?? "",
+        modelId: context.metadata?.activeModel?.modelId ?? "",
+        context
+      }),
       ...createRunStateFields(startedAt)
     };
 
@@ -1929,6 +1954,14 @@ export class AgentRuntime {
       resumeInPlace: false,
       finalizationAttemptCount: 0,
       contextCompactionCount: 0,
+      tokenLedger: new TokenLedger({
+        runId,
+        goalId,
+        taskId,
+        providerId: context.metadata?.activeModel?.providerId ?? "",
+        modelId: context.metadata?.activeModel?.modelId ?? "",
+        context
+      }),
       ...createRunStateFields(startedAt)
     };
 
@@ -2120,6 +2153,16 @@ export class AgentRuntime {
         classified.text;
     }
 
+    const providerUsage = step?.usage ?? step?.totalUsage ?? {};
+    this.activeRun.tokenLedger?.recordProviderUsage(
+      providerUsage,
+      {
+        phase: "execution",
+        stepNumber: this.activeRun.stepNumber,
+        requestId: String(step?.request?.id ?? step?.response?.id ?? "")
+      }
+    );
+
     void this.activeRun.toolSession?.recordRuntimeEvent?.(
       "MODEL_STEP_COMPLETED",
       {
@@ -2224,7 +2267,9 @@ export class AgentRuntime {
       skillRun:
         this.activeRun.skillRun
           ? structuredClone(this.activeRun.skillRun)
-          : null
+          : null,
+      tokenLedger:
+        this.activeRun.tokenLedger?.snapshot?.() ?? null
     };
 
     if (
@@ -3073,6 +3118,18 @@ export class AgentRuntime {
             );
           }
         }
+
+        const finalizationUsage = await settleResultValue(
+          result.usage,
+          {}
+        );
+        this.activeRun.tokenLedger?.recordProviderUsage(
+          finalizationUsage,
+          {
+            phase: "finalization",
+            stepNumber: attempt
+          }
+        );
       } catch (error) {
         if (
           abortController.signal.aborted ||
@@ -3206,6 +3263,7 @@ export class AgentRuntime {
         }
 
         this.activeRun.contextCompactionCount += 1;
+        this.activeRun.tokenLedger?.recordCompaction(compacted);
         this.persistActiveRunCheckpoint({
           status: "running"
         });
@@ -3370,6 +3428,7 @@ export class AgentRuntime {
         abortSignal: abortController.signal,
         onRecord: (record) => {
           approvalController.markToolRecord(record);
+          this.activeRun?.tokenLedger?.recordTool(record);
           this.upsertToolRecord(runId, record);
         },
         authorizeTool: (request) =>
@@ -3437,6 +3496,7 @@ export class AgentRuntime {
       });
 
       this.activeRun.toolSession = toolSession;
+      this.activeRun.tokenLedger?.setToolDefinitions(toolSession.definitions);
       if (this.activeRun.skillRun) {
         const resolution = toolSession.capabilityResolution;
         this.activeRun.skillRun = {

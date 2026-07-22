@@ -28,6 +28,11 @@ export {
 } from "./core/ToolExecutor.js";
 
 export {
+  ToolScheduler,
+  resolveToolSchedulerPolicy
+} from "./core/ToolScheduler.js";
+
+export {
   ToolPolicyEngine
 } from "./core/ToolPolicyEngine.js";
 

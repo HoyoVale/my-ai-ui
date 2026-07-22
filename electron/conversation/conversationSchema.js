@@ -18,11 +18,15 @@ import {
 } from "../agent/planState.js";
 
 import {
+  sanitizeTokenLedgerSnapshot
+} from "../agent/TokenLedger.js";
+
+import {
   createSkillSnapshot,
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
-const STORE_VERSION = 19;
+const STORE_VERSION = 20;
 
 const MESSAGE_ROLES =
   new Set([
@@ -579,6 +583,11 @@ export function sanitizeMessage(
     const skillRun = sanitizeSkillRun(source.skillRun);
     if (skillRun) {
       message.skillRun = skillRun;
+    }
+
+    const tokenLedger = sanitizeTokenLedgerSnapshot(source.tokenLedger);
+    if (tokenLedger) {
+      message.tokenLedger = tokenLedger;
     }
 
     const resumedFromMessageId =

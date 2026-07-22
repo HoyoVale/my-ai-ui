@@ -31,7 +31,8 @@ import {
 import {
   buildTokenBudget,
   estimateMessageTokens,
-  estimateTextTokens
+  estimateTextTokens,
+  estimateToolDefinitionsTokens
 } from "./tokenEstimator.js";
 
 import {
@@ -356,6 +357,14 @@ export function assembleAgentContext({
             estimateTextTokens(
               capabilityContext
             )
+        },
+        {
+          id: "tool-schemas",
+          label: "工具 Schema",
+          tokens: estimateToolDefinitionsTokens(
+            (Array.isArray(toolManifest) ? toolManifest : [])
+              .filter((tool) => tool?.ready !== false)
+          )
         },
         {
           id: "runtime",
