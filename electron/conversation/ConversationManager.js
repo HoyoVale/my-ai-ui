@@ -1,6 +1,19 @@
 import crypto from "node:crypto";
 
 import {
+  applyGoalVerification as applyGoalVerificationRuntime,
+  beginGoalRun as beginGoalRuntime,
+  completeGoal as completeGoalRuntime,
+  finishGoalRun as finishGoalRuntime,
+  heartbeatGoal as heartbeatGoalRuntime,
+  linkGoalPlatformRun as linkGoalPlatformRunRuntime,
+  recordGoalCheckpoint as recordGoalCheckpointRuntime,
+  recoverInterruptedGoal,
+  transitionGoal as transitionGoalRuntime,
+  upsertGoal
+} from "../goal/GoalRuntime.js";
+
+import {
   buildShortTermContext
 } from "./contextBuilder.js";
 
@@ -20,17 +33,6 @@ import {
 
 function clone(value) {
   return structuredClone(value);
-}
-
-function inferGoalCriterionKind(value) {
-  const source = String(value ?? "");
-  if (/(?:测试|test|e2e|端到端|vitest|jest|pytest|playwright)/iu.test(source)) return "test";
-  if (/(?:构建|打包|build|compile|编译)/iu.test(source)) return "build";
-  if (/(?:lint|代码规范|静态检查|eslint|oxlint|biome|ruff)/iu.test(source)) return "lint";
-  if (/(?:类型检查|type[\s_-]?check|tsc|mypy|pyright)/iu.test(source)) return "typecheck";
-  if (/(?:检查命令|check\s+(?:passes|通过)|npm\s+run\s+check)/iu.test(source)) return "check";
-  if (/(?:修复|修改|实现|添加|新增|删除|重构|创建|生成|开发|优化|替换|写入|更新|接入|安装|配置|fix|implement|add|remove|refactor|create|generate|develop|optimi[sz]e|replace|write|update|integrate|install|configure)/iu.test(source)) return "change";
-  return "manual";
 }
 
 function createTitle(
@@ -115,6 +117,26 @@ export class ConversationManager {
     if (!this.data) {
       this.data =
         this.store.load();
+
+      const timestamp = this.now();
+      let recovered = false;
+      for (const conversation of this.data.conversations) {
+        const result = recoverInterruptedGoal(
+          conversation.goal,
+          { now: timestamp }
+        );
+        if (result.changed) {
+          conversation.goal = result.goal;
+          conversation.updatedAt = Math.max(
+            conversation.updatedAt,
+            timestamp
+          );
+          recovered = true;
+        }
+      }
+      if (recovered) {
+        this.data = this.store.save(this.data);
+      }
     }
 
     return this.data;
@@ -677,131 +699,23 @@ export class ConversationManager {
       };
     }
 
-    const normalizedObjective = String(objective ?? "")
-      .replace(/\r\n?/gu, "\n")
-      .trim()
-      .slice(0, 4000);
-
-    if (!normalizedObjective) {
-      conversation.goal = null;
-      conversation.updatedAt = this.now();
-      this.commit();
-      return {
-        ok: true,
-        conversation: clone(conversation),
-        goal: null
-      };
-    }
-
-    const normalizedStatus = ["active", "paused"].includes(status)
-      ? status
-      : "active";
-    const normalizedCriteria = (Array.isArray(criteria) ? criteria : [])
-      .map((criterion, index) => {
-        const item = typeof criterion === "string" ? { text: criterion } : criterion;
-        const criterionText = String(item?.text ?? "")
-          .replace(/\s+/gu, " ")
-          .trim()
-          .slice(0, 500);
-        if (!criterionText) return null;
-        return {
-          id: String(item?.id ?? "").trim().slice(0, 120) || `criterion-${index + 1}`,
-          text: criterionText,
-          verificationKind: [
-            "auto", "test", "build", "lint", "typecheck", "check", "change", "manual"
-          ].includes(item?.verificationKind) && item.verificationKind !== "auto"
-            ? item.verificationKind
-            : inferGoalCriterionKind(criterionText),
-          manualSatisfied: item?.manualSatisfied === true,
-          status: "pending",
-          detail: "",
-          evidence: [],
-          verifiedAt: null
-        };
-      })
-      .filter(Boolean)
-      .slice(0, 12);
-    const criterionIds = new Set();
-    normalizedCriteria.forEach((item, index) => {
-      const base = item.id || `criterion-${index + 1}`;
-      let nextId = base;
-      let suffix = 2;
-      while (criterionIds.has(nextId)) {
-        nextId = `${base.slice(0, 112)}-${suffix++}`;
+    const result = upsertGoal(
+      conversation.goal,
+      {
+        objective,
+        status,
+        criteria,
+        autoContinue
+      },
+      {
+        now: this.now(),
+        createId: this.createId
       }
-      item.id = nextId;
-      criterionIds.add(nextId);
-    });
-    const timestamp = this.now();
-    const existing = conversation.goal;
-    const criterionIdentity = (items) => JSON.stringify((items ?? []).map((item) => ({
-      text: item.text,
-      verificationKind: item.verificationKind
-    })));
-    const sameCriteria = Boolean(existing) &&
-      criterionIdentity(existing.criteria) === criterionIdentity(normalizedCriteria);
-    const keepIdentity = Boolean(
-      existing?.id &&
-      existing.objective === normalizedObjective &&
-      sameCriteria &&
-      existing.status !== "completed"
     );
-    const preservedCriteria = keepIdentity
-      ? normalizedCriteria.map((item, index) => ({
-          ...item,
-          id: existing.criteria?.[index]?.id ?? item.id,
-          status: item.manualSatisfied
-            ? "passed"
-            : item.verificationKind === "manual"
-              ? "pending"
-              : existing.criteria?.[index]?.status ?? "pending",
-          detail: !item.manualSatisfied && item.verificationKind === "manual"
-            ? ""
-            : item.manualSatisfied && item.verificationKind === "manual"
-              ? `完成标准“${item.text}”已由用户确认。`
-              : existing.criteria?.[index]?.detail ?? "",
-          evidence: !item.manualSatisfied && item.verificationKind === "manual"
-            ? []
-            : item.manualSatisfied && item.verificationKind === "manual"
-              ? ["user-confirmed"]
-              : existing.criteria?.[index]?.evidence ?? [],
-          verifiedAt: item.manualSatisfied
-            ? existing.criteria?.[index]?.verifiedAt ?? timestamp
-            : item.verificationKind === "manual"
-              ? null
-              : existing.criteria?.[index]?.verifiedAt ?? null
-        }))
-      : normalizedCriteria;
-    const manualStateChanged = keepIdentity && normalizedCriteria.some(
-      (item, index) =>
-        item.manualSatisfied !==
-          (existing.criteria?.[index]?.manualSatisfied === true)
-    );
+    if (!result.ok) return result;
 
-    conversation.goal = {
-      version: 3,
-      id: keepIdentity ? existing.id : this.createId(),
-      revision: keepIdentity
-        ? Math.max(1, Number(existing.revision) || 1)
-        : existing
-          ? Math.max(1, Number(existing.revision) || 1) + 1
-          : 1,
-      objective: normalizedObjective,
-      criteria: preservedCriteria,
-      autoContinue: autoContinue !== false,
-      status: normalizedStatus,
-      platformRunId: keepIdentity ? existing.platformRunId ?? null : null,
-      completionFingerprint: null,
-      createdAt: keepIdentity ? existing.createdAt : timestamp,
-      updatedAt: timestamp,
-      completedAt: null,
-      lastVerification:
-        keepIdentity && !manualStateChanged
-          ? existing.lastVerification ?? null
-          : null,
-      verificationHistory: keepIdentity ? existing.verificationHistory ?? [] : []
-    };
-    conversation.updatedAt = timestamp;
+    conversation.goal = result.goal;
+    conversation.updatedAt = conversation.goal?.updatedAt ?? this.now();
     this.commit();
 
     return {
@@ -844,22 +758,25 @@ export class ConversationManager {
         platformRunId: goal.platformRunId
       }
     );
-    if (!authorization.ok) {
-      return authorization;
-    }
+    if (!authorization.ok) return authorization;
 
-    const timestamp = this.now();
-    goal.status = "completed";
-    goal.updatedAt = timestamp;
-    goal.completedAt = timestamp;
-    goal.completionFingerprint = authorization.fingerprint;
-    this.applyGoalVerification(goal, verification, timestamp);
-    conversation.updatedAt = timestamp;
+    const completed = completeGoalRuntime(
+      goal,
+      {
+        verification,
+        completionFingerprint: authorization.fingerprint,
+        now: this.now()
+      }
+    );
+    if (!completed.ok) return completed;
+
+    conversation.goal = completed.goal;
+    conversation.updatedAt = completed.goal.updatedAt;
     this.commit();
 
     return {
       ok: true,
-      goal: clone(goal)
+      goal: clone(completed.goal)
     };
   }
 
@@ -868,79 +785,151 @@ export class ConversationManager {
     const goal = conversation?.goal;
     if (!conversation || !goal) return { ok: false, code: "goal-not-found" };
     if (goalId && goal.id !== goalId) return { ok: false, code: "goal-changed" };
-    const normalizedRunId = String(platformRunId ?? "").trim().slice(0, 120);
-    if (!normalizedRunId) {
-      return { ok: false, code: "platform-run-id-required" };
-    }
-    if (goal.platformRunId === normalizedRunId) {
-      return { ok: true, changed: false, goal: clone(goal) };
-    }
-    goal.platformRunId = normalizedRunId;
-    goal.completionFingerprint = null;
-    goal.updatedAt = this.now();
-    conversation.updatedAt = goal.updatedAt;
-    this.commit();
-    return { ok: true, changed: true, goal: clone(goal) };
-  }
 
-  applyGoalVerification(goal, verification, timestamp = this.now()) {
-    const checks = Array.isArray(verification?.checks) ? verification.checks : [];
-    const criteriaById = new Map(
-      checks
-        .filter((item) => item?.criterionId)
-        .map((item) => [String(item.criterionId), item])
+    const result = linkGoalPlatformRunRuntime(
+      goal,
+      { platformRunId, now: this.now() }
     );
-    goal.criteria = (goal.criteria ?? []).map((criterion) => {
-      const result = criteriaById.get(criterion.id);
-      if (!result) return criterion;
-      return {
-        ...criterion,
-        verificationKind: String(result.verificationKind ?? criterion.verificationKind),
-        status: result.passed === true ? "passed" : "failed",
-        detail: String(result.detail ?? "").slice(0, 500),
-        evidence: (Array.isArray(result.evidence) ? result.evidence : [])
-          .map((item) => String(item ?? "").slice(0, 240))
-          .filter(Boolean)
-          .slice(0, 20),
-        verifiedAt: result.passed === true ? timestamp : null
-      };
-    });
-    const summary = {
-      version: Number(verification?.version) || 2,
-      status: String(verification?.status ?? "pending"),
-      verified: verification?.verified === true,
-      checkedAt: Number(verification?.checkedAt) || timestamp,
-      reason: String(verification?.reason ?? "").slice(0, 500),
-      missingCriteria: checks
-        .filter((item) => item?.criterionId && item.passed !== true)
-        .map((item) => String(item.criterionId))
-        .slice(0, 20)
-    };
-    goal.lastVerification = summary;
-    const history = Array.isArray(goal.verificationHistory)
-      ? [...goal.verificationHistory]
-      : [];
-    const previous = history.at(-1);
-    if (previous?.checkedAt === summary.checkedAt && previous?.status === summary.status) {
-      history[history.length - 1] = summary;
-    } else {
-      history.push(summary);
-    }
-    goal.verificationHistory = history.slice(-12);
-    goal.updatedAt = timestamp;
+    if (!result.ok) return result;
+    if (!result.changed) return { ...result, goal: clone(result.goal) };
+
+    conversation.goal = result.goal;
+    conversation.updatedAt = result.goal.updatedAt;
+    this.commit();
+    return { ...result, goal: clone(result.goal) };
   }
 
-  recordGoalVerification({ conversationId, goalId, verification } = {}) {
+  beginGoalRun({
+    conversationId,
+    goalId,
+    runId,
+    taskId = null,
+    platformRunId = undefined
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => beginGoalRuntime(goal, {
+        runId,
+        taskId,
+        platformRunId,
+        now: this.now()
+      })
+    });
+  }
+
+  transitionGoal({
+    conversationId,
+    goalId,
+    phase,
+    reason = "",
+    runId = null,
+    taskId = null,
+    waiting = undefined,
+    resumable = undefined,
+    force = false
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => transitionGoalRuntime(goal, {
+        phase,
+        reason,
+        runId,
+        taskId,
+        waiting,
+        resumable,
+        force,
+        now: this.now()
+      })
+    });
+  }
+
+  heartbeatGoal({
+    conversationId,
+    goalId,
+    runId = null,
+    phase = undefined
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => heartbeatGoalRuntime(goal, {
+        runId,
+        phase,
+        now: this.now()
+      })
+    });
+  }
+
+  recordGoalCheckpoint({
+    conversationId,
+    goalId,
+    checkpoint
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => recordGoalCheckpointRuntime(
+        goal,
+        checkpoint,
+        { now: this.now() }
+      )
+    });
+  }
+
+  finishGoalRun({
+    conversationId,
+    goalId,
+    runId = null,
+    outcome = "",
+    stopReason = "",
+    error = ""
+  } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => finishGoalRuntime(goal, {
+        runId,
+        outcome,
+        stopReason,
+        error,
+        now: this.now()
+      })
+    });
+  }
+
+  mutateGoalRuntime({ conversationId, goalId, mutate } = {}) {
     const conversation = this.findMutableConversation(conversationId);
     const goal = conversation?.goal;
     if (!conversation || !goal) return { ok: false, code: "goal-not-found" };
     if (goalId && goal.id !== goalId) return { ok: false, code: "goal-changed" };
+    if (typeof mutate !== "function") {
+      return { ok: false, code: "goal-mutation-required" };
+    }
 
-    const timestamp = this.now();
-    this.applyGoalVerification(goal, verification, timestamp);
-    conversation.updatedAt = timestamp;
+    const result = mutate(goal);
+    if (!result?.ok) return result;
+    if (result.changed === false) {
+      return { ...result, goal: clone(result.goal) };
+    }
+
+    conversation.goal = result.goal;
+    conversation.updatedAt = result.goal.updatedAt;
     this.commit();
-    return { ok: true, goal: clone(goal) };
+    return { ...result, goal: clone(result.goal) };
+  }
+
+  recordGoalVerification({ conversationId, goalId, verification } = {}) {
+    return this.mutateGoalRuntime({
+      conversationId,
+      goalId,
+      mutate: (goal) => applyGoalVerificationRuntime(
+        goal,
+        verification,
+        { now: this.now() }
+      )
+    });
   }
 
   select(id) {

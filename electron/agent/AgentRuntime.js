@@ -939,9 +939,27 @@ export class AgentRuntime {
         resumable: state.resumable
       }
     );
+    const finalCheckpoint = this.buildActiveCheckpoint();
     run.activityStore?.updateCheckpoint(
-      this.buildActiveCheckpoint()
+      finalCheckpoint
     );
+    if (run.persistentGoalId) {
+      if (finalCheckpoint) {
+        conversationManager.recordGoalCheckpoint({
+          conversationId,
+          goalId: run.persistentGoalId,
+          checkpoint: finalCheckpoint
+        });
+      }
+      conversationManager.finishGoalRun({
+        conversationId,
+        goalId: run.persistentGoalId,
+        runId,
+        outcome: state.outcome,
+        stopReason: state.executionStopReason,
+        error: state.lastError
+      });
+    }
 
     this.persistAssistantResponse({
       conversationId,
@@ -1445,14 +1463,6 @@ export class AgentRuntime {
         if (platformExecution.ok) {
           this.activeRun.platformRunId = platformExecution.platformRunId;
           this.activeRun.platformLeaseIds = platformExecution.leaseIds;
-          const linked = conversationManager.linkGoalPlatformRun({
-            conversationId: conversation.id,
-            goalId: persistentGoal.id,
-            platformRunId: platformExecution.platformRunId
-          });
-          if (!linked.ok) {
-            this.activeRun.platformError = linked;
-          }
         } else {
           this.activeRun.platformError = platformExecution;
         }
@@ -1462,6 +1472,17 @@ export class AgentRuntime {
           code: "platform-kernel-start-failed",
           message: String(error?.message ?? error)
         };
+      }
+
+      const startedGoal = conversationManager.beginGoalRun({
+        conversationId: conversation.id,
+        goalId: persistentGoal.id,
+        runId,
+        taskId,
+        platformRunId: this.activeRun.platformRunId || undefined
+      });
+      if (!startedGoal.ok && !this.activeRun.platformError) {
+        this.activeRun.platformError = startedGoal;
       }
     }
 
@@ -1762,12 +1783,6 @@ export class AgentRuntime {
         if (platformExecution.ok) {
           this.activeRun.platformRunId = platformExecution.platformRunId;
           this.activeRun.platformLeaseIds = platformExecution.leaseIds;
-          const linked = conversationManager.linkGoalPlatformRun({
-            conversationId: plan.conversation.id,
-            goalId: persistentGoal.id,
-            platformRunId: platformExecution.platformRunId
-          });
-          if (!linked.ok) this.activeRun.platformError = linked;
         } else {
           this.activeRun.platformError = platformExecution;
         }
@@ -1777,6 +1792,17 @@ export class AgentRuntime {
           code: "platform-kernel-start-failed",
           message: String(error?.message ?? error)
         };
+      }
+
+      const startedGoal = conversationManager.beginGoalRun({
+        conversationId: plan.conversation.id,
+        goalId: persistentGoal.id,
+        runId,
+        taskId,
+        platformRunId: this.activeRun.platformRunId || undefined
+      });
+      if (!startedGoal.ok && !this.activeRun.platformError) {
+        this.activeRun.platformError = startedGoal;
       }
     }
 
@@ -3323,6 +3349,14 @@ export class AgentRuntime {
           },
           onSegmentStart: async ({ segment }) => {
             this.activeRun.currentSegmentId = segment.id;
+            if (this.activeRun.persistentGoalId) {
+              conversationManager.heartbeatGoal({
+                conversationId,
+                goalId: this.activeRun.persistentGoalId,
+                runId,
+                phase: "executing"
+              });
+            }
             await toolSession.recordRuntimeEvent?.(
               "SEGMENT_STARTED",
               {
@@ -3366,6 +3400,34 @@ export class AgentRuntime {
             checkpoint
           }) => {
             this.activeRun.currentSegmentId = "";
+            if (this.activeRun.persistentGoalId) {
+              conversationManager.heartbeatGoal({
+                conversationId,
+                goalId: this.activeRun.persistentGoalId,
+                runId,
+                phase: "evaluating"
+              });
+              if (checkpoint) {
+                conversationManager.recordGoalCheckpoint({
+                  conversationId,
+                  goalId: this.activeRun.persistentGoalId,
+                  checkpoint: {
+                    ...checkpoint,
+                    segmentId: segment.id
+                  }
+                });
+              }
+              if (segmentOutcome.decision === "continue") {
+                conversationManager.transitionGoal({
+                  conversationId,
+                  goalId: this.activeRun.persistentGoalId,
+                  phase: "replanning",
+                  reason: segmentOutcome.stopReason || "continue-goal-run",
+                  runId,
+                  force: true
+                });
+              }
+            }
             const title =
               segmentOutcome.decision === "continue"
                 ? segmentOutcome.verification?.verified === false

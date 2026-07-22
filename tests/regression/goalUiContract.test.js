@@ -28,6 +28,17 @@ describe("Goal UI contract", () => {
     assert.match(inputMenu, /input-goal-criteria/u);
   });
 
+  it("surfaces Goal Runtime phases and recovery waits", () => {
+    const panel = read("../../src/Conversation/components/GoalPanel.jsx");
+
+    assert.match(panel, /PHASE_LABELS/u);
+    assert.match(panel, /planning: "规划中"/u);
+    assert.match(panel, /executing: "执行中"/u);
+    assert.match(panel, /evaluating: "验收中"/u);
+    assert.match(panel, /recovery: "检测到中断，可从检查点恢复"/u);
+    assert.match(panel, /goalLifecycleLabel/u);
+  });
+
   it("uses text input operations for editable font family fields in E2E", () => {
     const e2e = read("../e2e/conversation-flow.cjs");
     assert.match(e2e, /appearance-latin-font-family[\s\S]*?\.fill\("Georgia"\)/u);

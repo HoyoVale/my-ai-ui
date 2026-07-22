@@ -14,6 +14,37 @@ const STATUS_LABELS = {
   completed: "已完成"
 };
 
+const PHASE_LABELS = {
+  idle: "待执行",
+  planning: "规划中",
+  executing: "执行中",
+  waiting: "等待中",
+  evaluating: "验收中",
+  replanning: "重新规划",
+  completed: "已完成"
+};
+
+const WAITING_LABELS = {
+  checkpoint: "已保存进度，可继续执行",
+  user_input: "等待用户补充信息",
+  user_paused: "已由用户暂停",
+  user_stopped: "本轮已停止，可从检查点继续",
+  verification: "等待完成证据",
+  blocked: "存在阻塞项",
+  error: "本轮执行失败，需要检查",
+  recovery: "检测到中断，可从检查点恢复",
+  reconciliation: "需要核对工具执行结果",
+  confirmation: "需要确认工具执行结果"
+};
+
+function goalLifecycleLabel(goal) {
+  if (!goal) return "未设置";
+  return [
+    STATUS_LABELS[goal.status] ?? "已设置",
+    PHASE_LABELS[goal.phase]
+  ].filter(Boolean).join(" · ");
+}
+
 const KIND_LABELS = {
   auto: "自动判断",
   test: "测试",
@@ -120,7 +151,7 @@ export function ConversationGoalPanel({
       <header className="conversation-inspector__header">
         <div>
           <strong>Goal</strong>
-          <span>{goal ? STATUS_LABELS[goal.status] ?? "已设置" : "未设置"}</span>
+          <span>{goalLifecycleLabel(goal)}</span>
         </div>
         <button
           type="button"
@@ -136,11 +167,13 @@ export function ConversationGoalPanel({
         <div className={`conversation-goal-status is-${goal?.status ?? "empty"}`}>
           <span><ConversationIcon name="goal" size={17} /></span>
           <div>
-            <strong>{goal ? STATUS_LABELS[goal.status] ?? "已设置" : "设置一个可验收的长期目标"}</strong>
+            <strong>{goal ? goalLifecycleLabel(goal) : "设置一个可验收的长期目标"}</strong>
             <small>
-              {criteria.length
-                ? `${passedCount}/${criteria.length} 条完成标准已有证据`
-                : "目标与完成标准会持续绑定当前会话。"}
+              {goal?.phase === "waiting" && goal.waiting?.kind
+                ? WAITING_LABELS[goal.waiting.kind] ?? goal.waiting.reason ?? "等待继续执行"
+                : criteria.length
+                  ? `${passedCount}/${criteria.length} 条完成标准已有证据`
+                  : "目标与完成标准会持续绑定当前会话。"}
             </small>
           </div>
         </div>

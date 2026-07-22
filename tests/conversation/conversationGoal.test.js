@@ -134,22 +134,16 @@ describe("conversation Goal", () => {
     });
 
     assert.equal(data.version, 19);
-    assert.deepEqual(data.conversations[0].goal, {
-      version: 3,
-      id: "goal-1",
-      revision: 1,
-      objective: "保留这个目标",
-      criteria: [],
-      autoContinue: true,
-      status: "paused",
-      platformRunId: null,
-      completionFingerprint: null,
-      createdAt: 10,
-      updatedAt: 11,
-      completedAt: null,
-      lastVerification: null,
-      verificationHistory: []
-    });
+    const goal = data.conversations[0].goal;
+    assert.equal(goal.version, 4);
+    assert.equal(goal.id, "goal-1");
+    assert.equal(goal.revision, 1);
+    assert.equal(goal.objective, "保留这个目标");
+    assert.equal(goal.status, "paused");
+    assert.equal(goal.phase, "waiting");
+    assert.equal(goal.waiting.kind, "user_paused");
+    assert.equal(goal.runtime.activeRunId, null);
+    assert.equal(goal.progress.total, 0);
   });
 
   it("persists structured Done when criteria and verification progress", () => {
@@ -165,7 +159,7 @@ describe("conversation Goal", () => {
       autoContinue: false
     });
 
-    assert.equal(created.goal.version, 3);
+    assert.equal(created.goal.version, 4);
     assert.equal(created.goal.autoContinue, false);
     assert.equal(created.goal.criteria.length, 2);
     assert.equal(created.goal.criteria[1].manualSatisfied, true);
@@ -250,6 +244,64 @@ describe("conversation Goal", () => {
     assert.equal(confirmed.criteria[1].status, "passed");
     assert.deepEqual(confirmed.criteria[1].evidence, ["user-confirmed"]);
     assert.equal(confirmed.lastVerification, null);
+  });
+
+  it("persists run phases and recovers an interrupted Goal when reloaded", () => {
+    const store = new MemoryStore();
+    let now = 200;
+    let id = 0;
+    const create = () => new ConversationManager({
+      store,
+      now: () => ++now,
+      createId: () => `runtime-id-${++id}`,
+      getSettings: () => ({
+        conversation: {
+          maxConversations: 100,
+          contextTurns: 8,
+          autoTitle: true,
+          saveAbortedReplies: true
+        }
+      })
+    });
+    const manager = create();
+    const conversation = manager.create();
+    const created = manager.setGoal({
+      conversationId: conversation.id,
+      objective: "恢复长任务"
+    });
+    const started = manager.beginGoalRun({
+      conversationId: conversation.id,
+      goalId: created.goal.id,
+      runId: "run-crash",
+      taskId: "task-crash"
+    });
+    assert.equal(started.goal.phase, "planning");
+    manager.heartbeatGoal({
+      conversationId: conversation.id,
+      goalId: created.goal.id,
+      runId: "run-crash",
+      phase: "executing"
+    });
+    manager.recordGoalCheckpoint({
+      conversationId: conversation.id,
+      goalId: created.goal.id,
+      checkpoint: {
+        id: "checkpoint-crash",
+        runId: "run-crash",
+        taskId: "task-crash",
+        messageId: "message-crash",
+        phase: "executing",
+        resumable: true
+      }
+    });
+
+    const reloaded = create();
+    const recovered = reloaded.getConversation(conversation.id).goal;
+    assert.equal(recovered.phase, "waiting");
+    assert.equal(recovered.waiting.kind, "recovery");
+    assert.equal(recovered.runtime.activeRunId, null);
+    assert.equal(recovered.runtime.lastRunId, "run-crash");
+    assert.equal(recovered.checkpoint.id, "checkpoint-crash");
   });
 
   it("reserves completion for the verifier and deduplicates criterion ids", () => {

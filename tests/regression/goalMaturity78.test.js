@@ -6,15 +6,18 @@ function read(relativePath) {
   return fs.readFileSync(new URL(relativePath, import.meta.url), "utf8");
 }
 
-test("Goal v3 persists criteria, completion authority and bounded evidence history", () => {
+test("Goal Runtime persists criteria, completion authority and bounded evidence history", () => {
   const schema = read("../../electron/conversation/conversationSchema.js");
+  const goalRuntime = read("../../electron/goal/GoalRuntime.js");
   const manager = read("../../electron/conversation/ConversationManager.js");
   assert.match(schema, /const STORE_VERSION = 19/u);
-  assert.match(schema, /verificationHistory/u);
-  assert.match(schema, /completionFingerprint/u);
-  assert.match(schema, /autoContinue/u);
+  assert.match(schema, /sanitizeGoal/u);
+  assert.match(goalRuntime, /GOAL_SCHEMA_VERSION = 4/u);
+  assert.match(goalRuntime, /verificationHistory/u);
+  assert.match(goalRuntime, /completionFingerprint/u);
+  assert.match(goalRuntime, /autoContinue/u);
+  assert.match(goalRuntime, /GOAL_VERIFICATION_HISTORY_LIMIT/u);
   assert.match(manager, /recordGoalVerification/u);
-  assert.match(manager, /slice\(-12\)/u);
 });
 
 test("Goal completion is criterion-aware and progress is written back during execution", () => {
@@ -23,7 +26,11 @@ test("Goal completion is criterion-aware and progress is written back during exe
   assert.match(verifier, /criterionId/u);
   assert.match(verifier, /inferGoalCriterionKind/u);
   assert.match(verifier, /user-confirmed/u);
+  assert.match(runtime, /beginGoalRun/u);
+  assert.match(runtime, /heartbeatGoal/u);
+  assert.match(runtime, /recordGoalCheckpoint/u);
   assert.match(runtime, /recordGoalVerification/u);
+  assert.match(runtime, /finishGoalRun/u);
   assert.match(runtime, /goalSpec\?\.autoContinue === false/u);
 });
 

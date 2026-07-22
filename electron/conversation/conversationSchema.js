@@ -1,4 +1,8 @@
 import {
+  sanitizeGoal
+} from "../goal/GoalRuntime.js";
+
+import {
   createLegacyActivity,
   deriveLegacyActivityFields,
   sanitizeActivity,
@@ -37,29 +41,6 @@ const MESSAGE_STATUSES =
 const SESSION_MODES = new Set([
   "chat",
   "coding"
-]);
-
-const GOAL_STATUSES = new Set([
-  "active",
-  "paused",
-  "completed"
-]);
-
-const GOAL_CRITERION_KINDS = new Set([
-  "auto",
-  "test",
-  "build",
-  "lint",
-  "typecheck",
-  "check",
-  "change",
-  "manual"
-]);
-
-const GOAL_CRITERION_STATUSES = new Set([
-  "pending",
-  "passed",
-  "failed"
 ]);
 
 function sanitizeModelSelection(source) {
@@ -133,118 +114,6 @@ function nullableStringValue(
   ).trim();
 
   return normalized || null;
-}
-
-function sanitizeGoalEvidence(source) {
-  return (Array.isArray(source) ? source : [])
-    .map((item) => stringValue(item, "", 240).trim())
-    .filter(Boolean)
-    .slice(0, 20);
-}
-
-function sanitizeGoalCriterion(source, index = 0) {
-  const item = typeof source === "string" ? { text: source } : source;
-  if (!item || typeof item !== "object") return null;
-
-  const text = stringValue(item.text, "", 500).trim();
-  if (!text) return null;
-
-  return {
-    id: nullableStringValue(item.id, 120) ?? `criterion-${index + 1}`,
-    text,
-    verificationKind: GOAL_CRITERION_KINDS.has(item.verificationKind)
-      ? item.verificationKind
-      : "auto",
-    manualSatisfied: item.manualSatisfied === true,
-    status: GOAL_CRITERION_STATUSES.has(item.status)
-      ? item.status
-      : "pending",
-    detail: stringValue(item.detail, "", 500).trim(),
-    evidence: sanitizeGoalEvidence(item.evidence),
-    verifiedAt: item.status === "passed"
-      ? timestampValue(item.verifiedAt, 0) || null
-      : null
-  };
-}
-
-function sanitizeGoalVerification(source) {
-  if (!source || typeof source !== "object") return null;
-  const status = ["pending", "verified", "incomplete", "needs_input", "blocked"]
-    .includes(source.status)
-    ? source.status
-    : "pending";
-  return {
-    version: Math.max(1, Number(source.version) || 1),
-    status,
-    verified: status === "verified" && source.verified !== false,
-    checkedAt: timestampValue(source.checkedAt, 0),
-    reason: stringValue(source.reason, "", 500).trim(),
-    missingCriteria: (Array.isArray(source.missingCriteria) ? source.missingCriteria : [])
-      .map((item) => nullableStringValue(item, 120))
-      .filter(Boolean)
-      .slice(0, 20)
-  };
-}
-
-function sanitizeConversationGoal(source) {
-  if (!source || typeof source !== "object") {
-    return null;
-  }
-
-  const id = nullableStringValue(source.id, 120);
-  const objective = stringValue(source.objective, "", 4000).trim();
-
-  if (!id || !objective) {
-    return null;
-  }
-
-  const createdAt = timestampValue(source.createdAt, 0);
-  const updatedAt = Math.max(
-    createdAt,
-    timestampValue(source.updatedAt, createdAt)
-  );
-  const status = GOAL_STATUSES.has(source.status)
-    ? source.status
-    : "active";
-
-  const criterionIds = new Set();
-  const criteria = (Array.isArray(source.criteria) ? source.criteria : [])
-    .map(sanitizeGoalCriterion)
-    .filter(Boolean)
-    .filter((item) => {
-      if (criterionIds.has(item.id)) return false;
-      criterionIds.add(item.id);
-      return true;
-    })
-    .slice(0, 12);
-  const lastVerification = sanitizeGoalVerification(source.lastVerification);
-  const verificationHistory = (Array.isArray(source.verificationHistory)
-    ? source.verificationHistory
-    : [])
-    .map(sanitizeGoalVerification)
-    .filter(Boolean)
-    .slice(-12);
-
-  return {
-    version: 3,
-    id,
-    revision: Math.max(1, Math.round(Number(source.revision) || 1)),
-    objective,
-    criteria,
-    autoContinue: source.autoContinue !== false,
-    status,
-    platformRunId: nullableStringValue(source.platformRunId, 120),
-    completionFingerprint: status === "completed"
-      ? nullableStringValue(source.completionFingerprint, 128)
-      : null,
-    createdAt,
-    updatedAt,
-    completedAt: status === "completed"
-      ? Math.max(updatedAt, timestampValue(source.completedAt, updatedAt))
-      : null,
-    lastVerification,
-    verificationHistory
-  };
 }
 
 function sanitizeWorkspaceSnapshot(source) {
@@ -846,7 +715,7 @@ export function sanitizeConversation(
   const modelSnapshot = sanitizeModelSnapshot(
     source.modelSnapshot
   );
-  const goal = sanitizeConversationGoal(source.goal);
+  const goal = sanitizeGoal(source.goal);
 
   return {
     id,
