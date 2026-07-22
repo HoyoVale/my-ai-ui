@@ -258,7 +258,7 @@ describe("SteeringQueue", () => {
   });
 });
 
-test("phase C is integrated in shadow mode without changing production routing", () => {
+test("phase C shadow comparison remains available during guarded rollout", () => {
   const preparation = read("electron/agent/preparation/AgentRunPreparation.js");
   const runtime = read("electron/agent/AgentRuntime.js");
   const ipc = read("electron/ipc/handlers/agentIpc.js");
@@ -267,6 +267,7 @@ test("phase C is integrated in shadow mode without changing production routing",
   assert.match(preparation, /legacyAction:/u);
   assert.match(preparation, /shadowMode:\s*true/u);
   assert.match(preparation, /threadRoutingDecisionStore\.record/u);
+  assert.match(preparation, /routingRolloutController\.evaluate/u);
   assert.match(runtime, /threadRoutingDecisionStore\.snapshot/u);
   assert.match(ipc, /threadCommand/u);
   assert.doesNotMatch(preparation, /steeringQueue\.enqueue/u);

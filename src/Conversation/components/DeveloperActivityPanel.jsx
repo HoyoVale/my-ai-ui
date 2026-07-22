@@ -165,6 +165,14 @@ export function DeveloperActivity({
         />
       )}
 
+      {snapshot.threadRouting && (
+        <RawDetail
+          title="Thread routing rollout"
+          value={stringifyTaskValue(snapshot.threadRouting)}
+          code
+        />
+      )}
+
       {snapshot.toolCalls.length > 0 && (
         <div className="conversation-developer-tool-list">
           {snapshot.toolCalls.map((toolCall) => {

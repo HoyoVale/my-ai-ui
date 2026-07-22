@@ -226,7 +226,15 @@ export const FALLBACK_SETTINGS = {
     contextTurns: 8,
     maxConversations: 100,
     autoTitle: true,
-    saveAbortedReplies: true
+    saveAbortedReplies: true,
+    executionRouting: {
+      mode: "guarded",
+      minimumSamples: 12,
+      maxMismatchRate: 0.35,
+      maxHighRiskMismatches: 0,
+      windowSize: 100,
+      autoRollback: true
+    }
   },
   context: {
     environment: {

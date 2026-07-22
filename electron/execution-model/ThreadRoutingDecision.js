@@ -35,6 +35,8 @@ const COMMANDS = new Set(Object.values(THREAD_COMMANDS));
 const ACTIONS = new Set(Object.values(ROUTING_ACTIONS));
 const SOURCES = new Set(Object.values(ROUTING_SOURCES));
 const STATES = new Set(Object.values(ROUTING_DECISION_STATES));
+const ROLLOUT_MODES = new Set(["legacy", "shadow", "guarded", "authority"]);
+const ROLLOUT_RISKS = new Set(["none", "low", "high"]);
 
 function text(value, maxLength = 160) {
   return String(value ?? "").trim().slice(0, maxLength);
@@ -43,6 +45,37 @@ function text(value, maxLength = 160) {
 function timestamp(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.round(number)) : fallback;
+}
+
+
+function sanitizeRollout(source) {
+  if (!source || typeof source !== "object") return null;
+  const mode = text(source.mode, 40);
+  const effectiveAction = text(source.effectiveAction, 40);
+  const fallbackAction = text(source.fallbackAction, 40);
+  const risk = text(source.risk, 40);
+  const metrics = source.metrics && typeof source.metrics === "object"
+    ? {
+        sampleSize: Math.max(0, Math.round(Number(source.metrics.sampleSize) || 0)),
+        mismatchCount: Math.max(0, Math.round(Number(source.metrics.mismatchCount) || 0)),
+        mismatchRate: Math.max(0, Math.min(1, Number(source.metrics.mismatchRate) || 0)),
+        highRiskMismatchCount: Math.max(0, Math.round(Number(source.metrics.highRiskMismatchCount) || 0)),
+        authorityCount: Math.max(0, Math.round(Number(source.metrics.authorityCount) || 0)),
+        fallbackCount: Math.max(0, Math.round(Number(source.metrics.fallbackCount) || 0))
+      }
+    : null;
+  return {
+    version: 1,
+    mode: ROLLOUT_MODES.has(mode) ? mode : "",
+    eligible: source.eligible === true,
+    authority: source.authority === true,
+    effectiveAction: ACTIONS.has(effectiveAction) ? effectiveAction : "",
+    fallbackAction: ACTIONS.has(fallbackAction) ? fallbackAction : "",
+    reason: text(source.reason, 240),
+    risk: ROLLOUT_RISKS.has(risk) ? risk : "",
+    autoRollback: source.autoRollback === true,
+    metrics
+  };
 }
 
 function evidenceList(value) {
@@ -72,6 +105,7 @@ export function createThreadRoutingDecision({
   evidence = [],
   legacyAction = "",
   shadowMode = false,
+  rollout = null,
   now = Date.now()
 } = {}) {
   const decision = {
@@ -99,6 +133,7 @@ export function createThreadRoutingDecision({
         ? legacyAction !== action
         : false
     },
+    rollout: sanitizeRollout(rollout),
     createdAt: timestamp(now, Date.now())
   };
 

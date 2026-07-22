@@ -79,9 +79,11 @@ import {
 
 import {
   ROUTING_ACTIONS,
+  ROUTING_DECISION_STATES,
   THREAD_COMMANDS,
   executionThreadRouter,
   findExecutionThread,
+  routingRolloutController,
   threadRoutingDecisionStore
 } from "../../execution-model/index.js";
 
@@ -104,6 +106,67 @@ function updateRoutingDecision(id, patch) {
   return persistRoutingDecision(
     threadRoutingDecisionStore.update(id, patch)
   );
+}
+
+function evaluateRoutingDecision(decision, {
+  conversation = null,
+  activeRun = null
+} = {}) {
+  return routingRolloutController.evaluate({
+    decision,
+    conversation,
+    activeRun,
+    settings: getSettings().conversation?.executionRouting ?? {}
+  }) ?? decision;
+}
+
+function effectiveRoutingAction(decision) {
+  return decision?.rollout?.effectiveAction ||
+    decision?.shadow?.legacyAction ||
+    decision?.action ||
+    ROUTING_ACTIONS.NONE;
+}
+
+function resolveRoutedContinuation({
+  conversation,
+  message,
+  decision,
+  legacyContinuation
+} = {}) {
+  const action = effectiveRoutingAction(decision);
+  if (action === ROUTING_ACTIONS.START) {
+    return { continuation: null, state: null };
+  }
+  if (action !== ROUTING_ACTIONS.RESUME) {
+    return {
+      continuation: legacyContinuation,
+      state: createCheckpointContinuationState(legacyContinuation)
+    };
+  }
+  if (legacyContinuation) {
+    return {
+      continuation: legacyContinuation,
+      state: createCheckpointContinuationState(legacyContinuation)
+    };
+  }
+  const targetThread = findExecutionThread(
+    conversation,
+    decision?.targetThreadId
+  );
+  const continuation = targetThread
+    ? resolveExecutionThreadContinuation({
+        conversation: {
+          ...conversation,
+          executionThread: targetThread
+        },
+        message,
+        explicit: true
+      })
+    : null;
+  return {
+    continuation,
+    state: createCheckpointContinuationState(continuation)
+  };
 }
 
 export const agentRunPreparation = {
@@ -132,15 +195,21 @@ export const agentRunPreparation = {
       conversationManager.getCurrentConversation();
 
     if (this.activeRun) {
-      const routingDecision = executionThreadRouter.route({
-        conversation: initialConversation,
-        activeRun: this.activeRun,
-        message,
-        requestedCommand: threadCommand,
-        explicitContinue: continueTask === true,
-        legacyAction: ROUTING_ACTIONS.REJECT,
-        shadowMode: true
-      });
+      const routingDecision = evaluateRoutingDecision(
+        executionThreadRouter.route({
+          conversation: initialConversation,
+          activeRun: this.activeRun,
+          message,
+          requestedCommand: threadCommand,
+          explicitContinue: continueTask === true,
+          legacyAction: ROUTING_ACTIONS.REJECT,
+          shadowMode: true
+        }),
+        {
+          conversation: initialConversation,
+          activeRun: this.activeRun
+        }
+      );
       this.lastThreadRoutingDecision =
         recordRoutingDecision(routingDecision);
       return {
@@ -230,7 +299,7 @@ export const agentRunPreparation = {
         return targetError;
       }
 
-      checkpointContinuation =
+      const legacyContinuation =
         resolveCheckpointContinuation({
           conversation,
           message,
@@ -241,21 +310,32 @@ export const agentRunPreparation = {
           message,
           explicit: continueTask === true
         });
-      continuationState =
+      const legacyContinuationState =
         createCheckpointContinuationState(
-          checkpointContinuation
+          legacyContinuation
         );
 
-      routingDecision = executionThreadRouter.route({
+      routingDecision = evaluateRoutingDecision(
+        executionThreadRouter.route({
+          conversation,
+          message,
+          requestedCommand: threadCommand,
+          explicitContinue: continueTask === true,
+          legacyAction: legacyContinuationState
+            ? ROUTING_ACTIONS.RESUME
+            : ROUTING_ACTIONS.START,
+          shadowMode: true
+        }),
+        { conversation }
+      );
+      const routedContinuation = resolveRoutedContinuation({
         conversation,
         message,
-        requestedCommand: threadCommand,
-        explicitContinue: continueTask === true,
-        legacyAction: continuationState
-          ? ROUTING_ACTIONS.RESUME
-          : ROUTING_ACTIONS.START,
-        shadowMode: true
+        decision: routingDecision,
+        legacyContinuation
       });
+      checkpointContinuation = routedContinuation.continuation;
+      continuationState = routedContinuation.state;
       this.lastThreadRoutingDecision =
         recordRoutingDecision(routingDecision);
 
@@ -616,6 +696,14 @@ export const agentRunPreparation = {
     if (executionThread?.ok) {
       this.activeRun.executionThread = executionThread.thread;
       this.activeRun.continuationCount = executionThread.thread.continuationCount;
+      if (routingDecision) {
+        routingDecision = updateRoutingDecision(
+          routingDecision.id,
+          { state: ROUTING_DECISION_STATES.APPLIED }
+        ) ?? routingDecision;
+        this.activeRun.threadRoutingDecision = routingDecision;
+        this.lastThreadRoutingDecision = routingDecision;
+      }
     }
 
     if (skillRuntime.active) {
@@ -679,16 +767,23 @@ export const agentRunPreparation = {
     messageId
   } = {}) {
     if (this.activeRun) {
-      const routingDecision = executionThreadRouter.route({
-        operation: THREAD_COMMANDS.REGENERATE,
-        conversation: conversationManager.getConversation(
-          String(conversationId ?? "")
-        ),
-        activeRun: this.activeRun,
-        messageId: String(messageId ?? ""),
-        legacyAction: ROUTING_ACTIONS.REJECT,
-        shadowMode: true
-      });
+      const routingConversation = conversationManager.getConversation(
+        String(conversationId ?? "")
+      );
+      const routingDecision = evaluateRoutingDecision(
+        executionThreadRouter.route({
+          operation: THREAD_COMMANDS.REGENERATE,
+          conversation: routingConversation,
+          activeRun: this.activeRun,
+          messageId: String(messageId ?? ""),
+          legacyAction: ROUTING_ACTIONS.REJECT,
+          shadowMode: true
+        }),
+        {
+          conversation: routingConversation,
+          activeRun: this.activeRun
+        }
+      );
       this.lastThreadRoutingDecision =
         recordRoutingDecision(routingDecision);
       return {
@@ -837,16 +932,19 @@ export const agentRunPreparation = {
       regenerationThreadId
     );
     taskId = regenerationThread?.taskId || taskId;
-    let routingDecision = executionThreadRouter.route({
-      operation: THREAD_COMMANDS.REGENERATE,
-      conversation: plan.conversation,
-      messageId: plan.userMessage?.id ?? "",
-      sourceRunId: regenerationSourceRunId,
-      targetThreadId: regenerationThreadId,
-      targetRunId: runId,
-      legacyAction: ROUTING_ACTIONS.REGENERATE,
-      shadowMode: true
-    });
+    let routingDecision = evaluateRoutingDecision(
+      executionThreadRouter.route({
+        operation: THREAD_COMMANDS.REGENERATE,
+        conversation: plan.conversation,
+        messageId: plan.userMessage?.id ?? "",
+        sourceRunId: regenerationSourceRunId,
+        targetThreadId: regenerationThreadId,
+        targetRunId: runId,
+        legacyAction: ROUTING_ACTIONS.REGENERATE,
+        shadowMode: true
+      }),
+      { conversation: plan.conversation }
+    );
     routingDecision = recordRoutingDecision(routingDecision);
     this.lastThreadRoutingDecision = routingDecision;
 
@@ -973,6 +1071,12 @@ export const agentRunPreparation = {
       this.activeRun.executionThread = executionThread.thread;
       this.activeRun.executionThreadId = executionThread.thread.id;
       this.activeRun.continuationCount = executionThread.thread.continuationCount;
+      routingDecision = updateRoutingDecision(
+        routingDecision.id,
+        { state: ROUTING_DECISION_STATES.APPLIED }
+      ) ?? routingDecision;
+      this.activeRun.threadRoutingDecision = routingDecision;
+      this.lastThreadRoutingDecision = routingDecision;
     }
 
     if (persistentGoal) {

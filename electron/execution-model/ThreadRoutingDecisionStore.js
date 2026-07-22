@@ -2,6 +2,10 @@ import {
   createThreadRoutingDecision
 } from "./ThreadRoutingDecision.js";
 
+import {
+  summarizeRoutingRollout
+} from "./RoutingRolloutPolicy.js";
+
 function text(value, maxLength = 160) {
   return String(value ?? "").trim().slice(0, maxLength);
 }
@@ -77,12 +81,20 @@ export class ThreadRoutingDecisionStore {
 
   snapshot(filters = {}) {
     const decisions = this.list(filters);
+    const rollout = summarizeRoutingRollout(decisions);
     return {
-      version: 1,
+      version: 2,
       total: decisions.length,
-      mismatchCount: decisions.filter((decision) => decision.shadow.mismatch).length,
+      mismatchCount: rollout.mismatchCount,
+      mismatchRate: rollout.mismatchRate,
+      highRiskMismatchCount: rollout.highRiskMismatchCount,
+      authorityCount: rollout.authorityCount,
+      fallbackCount: rollout.fallbackCount,
+      autoRollbackCount: rollout.autoRollbackCount,
       byAction: countBy(decisions, (decision) => decision.action),
       byLegacyAction: countBy(decisions, (decision) => decision.shadow.legacyAction),
+      byEffectiveAction: countBy(decisions, (decision) => decision.rollout?.effectiveAction),
+      byRolloutMode: countBy(decisions, (decision) => decision.rollout?.mode),
       decisions
     };
   }

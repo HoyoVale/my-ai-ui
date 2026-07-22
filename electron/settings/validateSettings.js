@@ -2280,7 +2280,42 @@ export function sanitizeSettings(
             .saveAbortedReplies,
           defaults.conversation
             .saveAbortedReplies
+        ),
+      executionRouting: {
+        mode: enumValue(
+          conversation.executionRouting?.mode,
+          ["legacy", "shadow", "guarded", "authority"],
+          defaults.conversation.executionRouting?.mode ?? "guarded"
+        ),
+        minimumSamples: integerValue(
+          conversation.executionRouting?.minimumSamples,
+          defaults.conversation.executionRouting?.minimumSamples ?? 12,
+          0,
+          500
+        ),
+        maxMismatchRate: numberValue(
+          conversation.executionRouting?.maxMismatchRate,
+          defaults.conversation.executionRouting?.maxMismatchRate ?? 0.35,
+          0,
+          1
+        ),
+        maxHighRiskMismatches: integerValue(
+          conversation.executionRouting?.maxHighRiskMismatches,
+          defaults.conversation.executionRouting?.maxHighRiskMismatches ?? 0,
+          0,
+          100
+        ),
+        windowSize: integerValue(
+          conversation.executionRouting?.windowSize,
+          defaults.conversation.executionRouting?.windowSize ?? 100,
+          20,
+          300
+        ),
+        autoRollback: booleanValue(
+          conversation.executionRouting?.autoRollback,
+          defaults.conversation.executionRouting?.autoRollback ?? true
         )
+      }
     },
 
     context: sanitizeContextSettings(

@@ -1091,4 +1091,34 @@ Intentionally not exposed in normal mode:
 
 Runtime authority remains unchanged. Phase F only changes projection and presentation. Legacy routing still executes in Shadow Mode, Steering remains inactive, Conversation Store remains v23, and Platform snapshot remains v6.
 
-The next planned phase is Phase G: Shadow Rollout and authority cutover. It should use collected routing decisions and mismatch evidence before enabling the new Router, rather than adding more ordinary-user UI controls.
+Phase G now completes Shadow Rollout with guarded authority cutover, health thresholds, durable audit metadata, and automatic fallback. No additional ordinary-user routing controls were added.
+
+---
+
+## Implementation status update — Phase G (108)
+
+Phase G has been implemented on the `my-ai-ui(106)` baseline.
+
+Implemented:
+
+- rollout modes: `legacy`, `shadow`, `guarded`, and `authority`;
+- `guarded` as the default mode;
+- safe authority cutover for `start`, `resume`, and `regenerate`;
+- immediate guarded handling for explicit Start and Workspace isolation;
+- observation-window thresholds for low-risk mismatches;
+- high-risk mismatch blocking;
+- automatic rollback to the legacy action;
+- durable rollout metadata inside Routing Decisions;
+- authority, fallback, mismatch, risk, and rollback metrics;
+- developer-only rollout diagnostics;
+- applied-state audit after successful Thread Run creation.
+
+Intentionally retained:
+
+- the legacy route as a fallback;
+- Shadow comparison metadata;
+- Conversation Store v23 compatibility;
+- inactive Steering Queue;
+- non-executing Fork semantics.
+
+Phase G completes the planned Execution Model 2.0 rollout. Future work should be treated as normal product iteration rather than another mandatory architecture migration phase.

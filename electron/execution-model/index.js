@@ -13,3 +13,5 @@ export * from "./SteeringQueue.js";
 export * from "./ExecutionPersistence.js";
 
 export * from "./PlatformExecutionBridge.js";
+export * from "./RoutingRolloutPolicy.js";
+export * from "./RoutingRolloutController.js";

@@ -295,11 +295,12 @@ describe("ConversationStore interrupted replacement recovery", () => {
   });
 });
 
-test("phase D keeps routing shadow-only while persisting thread state", () => {
+test("phase D persistence keeps the legacy rollback path during guarded rollout", () => {
   const schema = fs.readFileSync(new URL("../../electron/conversation/conversationSchema.js", import.meta.url), "utf8");
   const preparation = fs.readFileSync(new URL("../../electron/agent/preparation/AgentRunPreparation.js", import.meta.url), "utf8");
   assert.match(schema, /const STORE_VERSION = 23;/u);
   assert.match(preparation, /recordThreadRoutingDecision/u);
+  assert.match(preparation, /effectiveRoutingAction/u);
   assert.match(preparation, /relation:\s*"regenerate"/u);
   assert.match(preparation, /regeneratedFromRunId:\s*regenerationSourceRunId/u);
   assert.doesNotMatch(preparation, /steeringQueue\.enqueue/u);
