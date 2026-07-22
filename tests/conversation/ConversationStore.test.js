@@ -84,7 +84,7 @@ describe(
         assert.deepEqual(
           store.load(),
           {
-            version: 21,
+            version: 22,
             currentConversationId:
               null,
             conversations: []
@@ -207,7 +207,7 @@ describe(
 
         assert.equal(
           loaded.version,
-          21
+          22
         );
         assert.equal(
           Object.hasOwn(
@@ -320,7 +320,7 @@ describe(
           assert.deepEqual(
             store.load(),
             {
-              version: 21,
+              version: 22,
               currentConversationId:
                 null,
               conversations: []

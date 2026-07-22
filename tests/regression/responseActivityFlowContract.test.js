@@ -132,10 +132,11 @@ describe("structured Response activity flow", () => {
     );
 
     assert.doesNotMatch(runtime, /bufferProgressHandoff/u);
-    assert.match(
-      runtime,
-      /for await \([\s\S]*result\.textStream[\s\S]*this\.activeRun\.finalText =\s*text;[\s\S]*appendResponseChunk\(\s*textPart/u
-    );
+    assert.match(runtime, /const publicStream = new PublicTextStreamSanitizer\(\);/u);
+    assert.match(runtime, /const publicChunk = publicStream\.push\(textPart\);/u);
+    assert.match(runtime, /this\.activeRun\.finalText = text;/u);
+    assert.match(runtime, /appendResponseChunk\(publicChunk\);/u);
+    assert.doesNotMatch(runtime, /appendResponseChunk\(textPart\);/u);
   });
 
 });

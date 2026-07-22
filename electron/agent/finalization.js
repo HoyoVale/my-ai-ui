@@ -1,4 +1,8 @@
 import {
+  sanitizePublicAssistantText
+} from "./PublicTextSanitizer.js";
+
+import {
   RUN_STOP_REASONS,
   isGracefulRunBoundary,
   isRecoverableRunFailure
@@ -15,7 +19,7 @@ export function sanitizeFinalizationText(
   value,
   executionStopReason = ""
 ) {
-  const normalized = String(value ?? "").trim();
+  const normalized = sanitizePublicAssistantText(value);
 
   if (
     !normalized ||

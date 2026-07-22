@@ -12,7 +12,7 @@ const NEW_TASK_PATTERNS = [
 ];
 
 const CONTINUATION_PATTERNS = [
-  /^(?:请)?(?:继续|接着|继续做|接着做|继续执行|接着执行|继续完成|完成剩余|完成余下|执行下一步|继续下一步)(?:吧|下去|剩余部分|余下部分|这个任务|当前任务|，|,|。|\s|$)/u,
+  /^(?:请(?:你)?|你)?(?:继续|接着|继续做|接着做|继续执行|接着执行|继续完成|完成剩余|完成余下|执行下一步|继续下一步)(?:吧|下去|剩余部分|余下部分|这个任务|当前任务|，|,|。|\s|$)/u,
   /^(?:按|照)(?:你|你的|刚才|之前|上面|这个|该)?(?:的)?(?:方案|计划|建议|步骤)(?:继续|接着|执行|完成|做|处理)(?:吧|，|,|。|\s|$)/u,
   /^(?:继续|接着)(?:，|,)?(?:但|不过|同时|并且|先|请)(?:.|\s)+/u,
   /^(?:continue|go on|proceed|resume|keep going|continue the task|continue with the plan)\b/iu
@@ -220,9 +220,8 @@ export function createCheckpointContinuationState(
   );
 
   return {
-    goalId: String(
-      checkpoint.goalId || checkpoint.taskId || ""
-    ),
+    executionThreadId: String(checkpoint.executionThreadId || ""),
+    goalId: String(checkpoint.goalId || ""),
     taskId: String(checkpoint.taskId || ""),
     workspaceId: String(checkpoint.workspaceId || ""),
     workspaceSnapshot:

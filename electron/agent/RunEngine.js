@@ -1,14 +1,16 @@
 import {
   createFallbackFinalSummary,
-  getPlanCompletionState,
   shouldRunFinalization
 } from "./finalization.js";
 
 import {
   isGracefulRunBoundary,
-  isRecoverableRunFailure,
   RUN_STOP_REASONS
 } from "./runStopReasons.js";
+
+import {
+  resolveRunOutcome
+} from "./RunOutcomeResolver.js";
 
 import {
   RUN_OUTCOMES
@@ -23,7 +25,7 @@ export class RunEngine {
     segmentLoop,
     finalizationPolicy = shouldRunFinalization,
     fallbackFactory = createFallbackFinalSummary,
-    planStateFactory = getPlanCompletionState,
+    outcomeResolver = resolveRunOutcome,
     gracefulBoundary = isGracefulRunBoundary
   } = {}) {
     if (!segmentLoop) {
@@ -33,7 +35,7 @@ export class RunEngine {
     this.segmentLoop = segmentLoop;
     this.finalizationPolicy = finalizationPolicy;
     this.fallbackFactory = fallbackFactory;
-    this.planStateFactory = planStateFactory;
+    this.outcomeResolver = outcomeResolver;
     this.gracefulBoundary = gracefulBoundary;
   }
 
@@ -123,23 +125,14 @@ export class RunEngine {
       appendFinalText(finalText);
     }
 
-    const planState = this.planStateFactory(plan);
-    const goalVerified = loopResult.verification?.verified !== false;
-    const outcome = (
-      this.gracefulBoundary(executionStopReason) ||
-      isRecoverableRunFailure({
-        stopReason: executionStopReason,
-        records
-      })
-    )
-      ? RUN_OUTCOMES.CONTINUABLE
-      : goalVerified && finalText &&
-          (
-            planState.isComplete ||
-            executionStopReason === RUN_STOP_REASONS.COMPLETED
-          )
-        ? RUN_OUTCOMES.COMPLETED
-        : undefined;
+    const resolved = this.outcomeResolver({
+      stopReason: executionStopReason,
+      records,
+      plan,
+      finalText,
+      goalVerification: loopResult.verification ?? null,
+      gracefulBoundary: this.gracefulBoundary
+    });
 
     return {
       cancelled: false,
@@ -147,9 +140,11 @@ export class RunEngine {
       records,
       plan,
       finishReason,
-      executionStopReason,
+      executionStopReason: resolved.stopReason,
+      originalExecutionStopReason: executionStopReason,
       finalText,
-      outcome
+      outcome: resolved.outcome,
+      outcomeResolution: resolved
     };
   }
 }

@@ -170,6 +170,19 @@ import {
 } from "./checkpointResume.js";
 
 import {
+  resolveExecutionThreadContinuation
+} from "./ExecutionThread.js";
+
+import {
+  PublicTextStreamSanitizer,
+  sanitizePublicAssistantText
+} from "./PublicTextSanitizer.js";
+
+import {
+  hasActiveToolFailures
+} from "./ToolErrorClassifier.js";
+
+import {
   createFallbackFinalSummary,
   createFinalizationInstruction,
   sanitizeFinalizationText
@@ -826,6 +839,7 @@ export class AgentRuntime {
       ?.getRuntimeCursor?.() ?? {};
 
     return createRunCheckpoint({
+      executionThreadId: this.activeRun.executionThreadId,
       taskId: this.activeRun.taskId,
       workspaceId:
         this.activeRun.workspaceId ?? "",
@@ -979,6 +993,14 @@ export class AgentRuntime {
         ledger: this.activeRun.tokenLedger?.snapshot?.() ?? null
       });
     }
+    conversationManager.recordExecutionThreadCheckpoint?.({
+      conversationId: this.activeRun.conversationId,
+      threadId: this.activeRun.executionThreadId,
+      checkpoint,
+      planState: checkpoint?.planState ?? null,
+      workingState: checkpoint?.workingState ?? null,
+      runId: this.activeRun.runId
+    });
     return persisted;
   }
 
@@ -1062,7 +1084,10 @@ export class AgentRuntime {
       );
     }
 
-    run.finalText = String(content ?? "").trim();
+    run.finalText = sanitizePublicAssistantText(content);
+    if (!run.finalText) {
+      run.finalText = "当前处理已经结束，但模型没有生成可公开显示的总结。";
+    }
     if (run.skillRun) {
       const skillStatus = state.outcome === RUN_OUTCOMES.COMPLETED
         ? "completed"
@@ -1126,10 +1151,24 @@ export class AgentRuntime {
       });
     }
 
-    this.persistAssistantResponse({
+    const persistedFinalMessage = this.persistAssistantResponse({
       conversationId,
       content: run.finalText,
       status: state.messageStatus
+    });
+    conversationManager.finishExecutionThread?.({
+      conversationId,
+      threadId: run.executionThreadId,
+      outcome: state.outcome,
+      stopReason: state.executionStopReason,
+      checkpoint: finalCheckpoint,
+      planState: finalCheckpoint?.planState ?? null,
+      workingState: finalCheckpoint?.workingState ?? null,
+      lastAssistantMessageId:
+        persistedFinalMessage?.message?.id ??
+        persistedFinalMessage?.id ??
+        run.replaceMessageId ?? "",
+      resumable: state.resumable
     });
     run.approvalController?.close?.();
     const closePersistence =
@@ -1366,6 +1405,11 @@ export class AgentRuntime {
           conversation,
           message,
           explicit: continueTask === true
+        }) ??
+        resolveExecutionThreadContinuation({
+          conversation,
+          message,
+          explicit: continueTask === true
         });
       continuationState =
         createCheckpointContinuationState(
@@ -1504,10 +1548,18 @@ export class AgentRuntime {
     const goalId =
       continuationState?.goalId ||
       persistentGoal?.id ||
-      crypto.randomUUID();
+      "";
 
     const taskId =
       continuationState?.taskId ||
+      crypto.randomUUID();
+
+    const existingExecutionThread = executionConversation.executionThread;
+    const executionThreadId =
+      continuationState?.executionThreadId ||
+      (existingExecutionThread?.taskId === taskId
+        ? existingExecutionThread.id
+        : "") ||
       crypto.randomUUID();
 
     const abortController =
@@ -1525,6 +1577,7 @@ export class AgentRuntime {
 
     this.activeRun = {
       runId,
+      executionThreadId,
       goalId,
       parentRunId:
         continuationState?.parentRunId ?? "",
@@ -1686,6 +1739,24 @@ export class AgentRuntime {
         this.activeRun.workingState = workingState.goal.workingState;
         this.activeRun.goalSpec = workingState.goal;
       }
+    }
+
+    const executionThread = conversationManager.beginExecutionThread({
+      conversationId: conversation.id,
+      threadId: executionThreadId,
+      taskId,
+      goalId,
+      platformRunId: this.activeRun.platformRunId,
+      objective: this.activeRun.objective,
+      mode: this.activeRun.mode,
+      workspaceId: this.activeRun.workspaceId ?? "",
+      planState: this.activeRun.initialPlanState,
+      workingState: this.activeRun.workingState,
+      runId
+    });
+    if (executionThread?.ok) {
+      this.activeRun.executionThread = executionThread.thread;
+      this.activeRun.continuationCount = executionThread.thread.continuationCount;
     }
 
     if (skillRuntime.active) {
@@ -2218,6 +2289,8 @@ export class AgentRuntime {
       return null;
     }
 
+    content = sanitizePublicAssistantText(content);
+
     const saveToolHistory =
       this.activeRun.runtimePreferences
         ?.saveToolHistory !== false;
@@ -2278,6 +2351,8 @@ export class AgentRuntime {
           .resumedFromMessageId,
       taskId:
         this.activeRun.taskId,
+      executionThreadId:
+        this.activeRun.executionThreadId,
       activity:
         persistedActivity,
       skillRun:
@@ -3110,6 +3185,7 @@ export class AgentRuntime {
           }
         });
 
+        const publicStream = new PublicTextStreamSanitizer();
         for await (
           const textPart
           of result.textStream
@@ -3121,20 +3197,25 @@ export class AgentRuntime {
           }
 
           if (textPart) {
+            const publicChunk = publicStream.push(textPart);
+            if (!publicChunk) continue;
             const firstFinalChunk = text.length === 0;
-            text += textPart;
-            this.activeRun.finalText =
-              text;
+            text += publicChunk;
+            this.activeRun.finalText = text;
 
             this.setStatus(
               { ...this.status },
               { immediate: firstFinalChunk }
             );
 
-            appendResponseChunk(
-              textPart
-            );
+            appendResponseChunk(publicChunk);
           }
+        }
+        const finalPublicChunk = publicStream.flush();
+        if (finalPublicChunk) {
+          text += finalPublicChunk;
+          this.activeRun.finalText = text;
+          appendResponseChunk(finalPublicChunk);
         }
 
         const finalizationUsage = await settleResultValue(
@@ -3332,18 +3413,27 @@ export class AgentRuntime {
       }
     });
 
+    const publicStream = new PublicTextStreamSanitizer();
     for await (const textPart of result.textStream) {
       if (!this.isCurrentRun(runId)) {
         break;
       }
 
       if (textPart) {
-        this.activeRun.currentStepText += textPart;
-        appendResponseChunk(textPart);
-        this.setStatus({
-          ...this.status
-        });
+        const publicChunk = publicStream.push(textPart);
+        if (publicChunk) {
+          this.activeRun.currentStepText += publicChunk;
+          appendResponseChunk(publicChunk);
+          this.setStatus({
+            ...this.status
+          });
+        }
       }
+    }
+    const finalPublicChunk = publicStream.flush();
+    if (finalPublicChunk && this.isCurrentRun(runId)) {
+      this.activeRun.currentStepText += finalPublicChunk;
+      appendResponseChunk(finalPublicChunk);
     }
 
     const records = toolSession.getRecords();
@@ -3366,9 +3456,7 @@ export class AgentRuntime {
     const segmentRecords = records.filter(
       (record) => record?.segmentId === segment.id
     );
-    const batchFailed = segmentRecords.some(
-      (record) => ["failed", "error"].includes(record?.status)
-    );
+    const batchFailed = hasActiveToolFailures(segmentRecords);
     this.activeRun.activityStore?.closeBatch(
       batchFailed ? "failed" : "completed"
     );

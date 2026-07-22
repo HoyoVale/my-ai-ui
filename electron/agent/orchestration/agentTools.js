@@ -12,6 +12,12 @@ import {
   validatePlanItems
 } from "../planState.js";
 
+import {
+  authoritativeRootItems,
+  mergePlanProgressOnly,
+  reconcileRootPlanFromSubplans
+} from "../PlanAuthority.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -28,100 +34,6 @@ function planAuthorityError(code, message, details = undefined) {
   error.code = code;
   if (details !== undefined) error.details = details;
   return error;
-}
-
-function authoritativeRootItems(items = []) {
-  return items.filter((item) => item.status !== "superseded");
-}
-
-function allowedProgressTransition(previous, next) {
-  if (previous === next) return true;
-  if (previous === "pending") {
-    return [
-      "in_progress",
-      "completed",
-      "blocked",
-      "needs_input",
-      "skipped",
-      "cancelled"
-    ].includes(next);
-  }
-  if (previous === "in_progress") {
-    return [
-      "completed",
-      "blocked",
-      "needs_input",
-      "skipped",
-      "cancelled"
-    ].includes(next);
-  }
-  if (["blocked", "needs_input"].includes(previous)) {
-    return [
-      "pending",
-      "in_progress",
-      "completed",
-      "blocked",
-      "needs_input",
-      "skipped",
-      "cancelled"
-    ].includes(next);
-  }
-  return false;
-}
-
-function mergeProgressOnly(previousItems, incomingItems) {
-  const previous = authoritativeRootItems(previousItems);
-  const incoming = authoritativeRootItems(incomingItems);
-  const previousById = new Map(previous.map((item) => [item.id, item]));
-  const incomingById = new Map(incoming.map((item) => [item.id, item]));
-  const structuralChanges = [];
-
-  for (const item of previous) {
-    const next = incomingById.get(item.id);
-    if (!next) {
-      structuralChanges.push({ type: "removed", id: item.id });
-      continue;
-    }
-    if (next.title !== item.title) {
-      structuralChanges.push({
-        type: "renamed",
-        id: item.id,
-        from: item.title,
-        to: next.title
-      });
-    }
-    if (!allowedProgressTransition(item.status, next.status)) {
-      structuralChanges.push({
-        type: "status_regression",
-        id: item.id,
-        from: item.status,
-        to: next.status
-      });
-    }
-  }
-
-  for (const item of incoming) {
-    if (!previousById.has(item.id)) {
-      structuralChanges.push({ type: "added", id: item.id });
-    }
-  }
-
-  if (structuralChanges.length > 0) {
-    throw planAuthorityError(
-      "PLAN_REPLAN_REQUIRED",
-      "顶层计划结构由 Goal Runtime 持有。新增、删除、改名或回退步骤必须调用 replan_goal，并说明失败假设与重规划原因。",
-      structuralChanges
-    );
-  }
-
-  const history = previousItems.filter((item) => item.status === "superseded");
-  return [
-    ...incoming.map((item) => ({
-      ...item,
-      reason: item.reason || previousById.get(item.id)?.reason || ""
-    })),
-    ...history
-  ];
 }
 
 export class RunPlanStore {
@@ -228,9 +140,15 @@ export class RunPlanStore {
       this.rootPlanId = this.rootPlanId ||
         `root-plan:${incoming[0]?.id ?? Date.now()}`;
     } else {
-      this.rootItems = clone(
-        mergeProgressOnly(this.rootItems, incoming)
-      );
+      const merged = mergePlanProgressOnly(this.rootItems, incoming);
+      if (!merged.ok) {
+        throw planAuthorityError(
+          "PLAN_REPLAN_REQUIRED",
+          "顶层计划结构由 Goal Runtime 持有。新增、删除、改名或回退步骤必须调用 replan_goal，并说明失败假设与重规划原因。",
+          merged.structuralChanges
+        );
+      }
+      this.rootItems = clone(merged.items);
     }
 
     this.revision += 1;
@@ -309,6 +227,20 @@ export class RunPlanStore {
     });
   }
 
+  reconcileRootCompletionFromSubplans() {
+    const reconciled = reconcileRootPlanFromSubplans({
+      ...this.getState(),
+      rootItems: this.rootItems,
+      subplans: [...this.subplans.values()]
+    });
+    if (!reconciled.changed) return false;
+    this.rootItems = clone(reconciled.state.rootItems);
+    this.revision = reconciled.state.revision;
+    this.rootRevision = reconciled.state.rootRevision;
+    this.authorityRevision = reconciled.state.authorityRevision;
+    return true;
+  }
+
   updateStepWork(rootStepId, items, { reason = "" } = {}) {
     const targetId = String(rootStepId ?? "").trim();
     const root = this.rootItems.find((item) => item.id === targetId);
@@ -352,10 +284,13 @@ export class RunPlanStore {
       this.subplans.delete(oldest);
     }
     this.revision += 1;
+    const rootAutoClosed = this.reconcileRootCompletionFromSubplans();
 
     this.notify({
       scope: "step_work",
       rootStepId: targetId,
+      rootAutoClosed,
+      authorityAction: rootAutoClosed ? "auto_complete" : "step_work",
       reason: String(reason ?? "").trim()
     });
 

@@ -5,6 +5,10 @@ import {
   normalizePlanState
 } from "../agent/planState.js";
 
+import {
+  reconcileRootPlanFromSubplans
+} from "../agent/PlanAuthority.js";
+
 const GOAL_SCHEMA_VERSION = 6;
 const GOAL_EVENT_HISTORY_LIMIT = 48;
 const GOAL_VERIFICATION_HISTORY_LIMIT = 12;
@@ -1355,7 +1359,8 @@ export function applyGoalPlanState(goalSource, planState, {
     return { ok: false, code: "goal-completed" };
   }
   const timestamp = timestampValue(now, Date.now());
-  const incoming = normalizePlanState(planState);
+  const reconciledIncoming = reconcileRootPlanFromSubplans(planState);
+  const incoming = normalizePlanState(reconciledIncoming.state);
   const existing = normalizePlanState(goal.planAuthority?.state ?? []);
   const rootPlanId = goal.planAuthority?.rootPlanId ?? `${goal.id}:root-plan`;
 

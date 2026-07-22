@@ -136,6 +136,7 @@ function compactToolRuntime(runtime) {
 }
 
 export function createRunCheckpoint({
+  executionThreadId = "",
   goalId = "",
   taskId = "",
   workspaceId = "",
@@ -224,6 +225,7 @@ export function createRunCheckpoint({
 
   return {
     version: 5,
+    executionThreadId: text(executionThreadId, 120),
     goalId: text(goalId, 120),
     taskId: text(taskId, 120),
     workspaceId: text(workspaceId, 120),

@@ -34,6 +34,15 @@ import {
   interruptPlanState
 } from "../agent/planState.js";
 
+import {
+  beginExecutionThreadRun,
+  createExecutionThread,
+  finishExecutionThreadRun,
+  recordExecutionThreadCheckpoint,
+  recoverInterruptedExecutionThread,
+  sanitizeExecutionThread
+} from "../agent/ExecutionThread.js";
+
 
 function clone(value) {
   return structuredClone(value);
@@ -131,6 +140,18 @@ export class ConversationManager {
         );
         if (result.changed) {
           conversation.goal = result.goal;
+          conversation.updatedAt = Math.max(
+            conversation.updatedAt,
+            timestamp
+          );
+          recovered = true;
+        }
+        const threadRecovery = recoverInterruptedExecutionThread(
+          conversation.executionThread,
+          { now: timestamp }
+        );
+        if (threadRecovery.changed) {
+          conversation.executionThread = threadRecovery.thread;
           conversation.updatedAt = Math.max(
             conversation.updatedAt,
             timestamp
@@ -398,6 +419,7 @@ export class ConversationManager {
       skillSnapshots: normalizedSkillSnapshots,
       skillRoutingMode: skillRoutingMode === "auto" ? "auto" : "manual",
       goal: null,
+      executionThread: null,
       title:
         String(title)
           .trim()
@@ -682,6 +704,112 @@ export class ConversationManager {
           conversationId
         )
     };
+  }
+
+  beginExecutionThread({
+    conversationId,
+    threadId,
+    taskId,
+    goalId = "",
+    platformRunId = "",
+    objective = "",
+    mode = "chat",
+    workspaceId = "",
+    planState = [],
+    workingState = null,
+    runId = ""
+  } = {}) {
+    const conversation = this.findMutableConversation(
+      conversationId || this.ensureLoaded().currentConversationId
+    );
+    if (!conversation) return { ok: false, code: "conversation-not-found" };
+    const timestamp = this.now();
+    const existing = sanitizeExecutionThread(conversation.executionThread);
+    const base = existing?.id === String(threadId ?? "")
+      ? existing
+      : createExecutionThread({
+          id: threadId || this.createId(),
+          taskId: taskId || this.createId(),
+          goalId,
+          platformRunId,
+          objective,
+          mode,
+          workspaceId,
+          planState,
+          workingState,
+          runId,
+          now: timestamp
+        });
+    const thread = beginExecutionThreadRun(base, {
+      runId,
+      goalId,
+      platformRunId,
+      objective,
+      planState,
+      workingState,
+      now: timestamp
+    });
+    if (!thread) return { ok: false, code: "execution-thread-invalid" };
+    conversation.executionThread = thread;
+    conversation.updatedAt = timestamp;
+    this.commit();
+    return { ok: true, thread: clone(thread) };
+  }
+
+  recordExecutionThreadCheckpoint({
+    conversationId,
+    threadId,
+    checkpoint,
+    planState = null,
+    workingState = null,
+    runId = ""
+  } = {}) {
+    const conversation = this.findMutableConversation(conversationId);
+    const current = sanitizeExecutionThread(conversation?.executionThread);
+    if (!conversation || !current) return { ok: false, code: "execution-thread-not-found" };
+    if (threadId && current.id !== threadId) return { ok: false, code: "execution-thread-changed" };
+    const thread = recordExecutionThreadCheckpoint(current, {
+      checkpoint,
+      planState,
+      workingState,
+      runId,
+      now: this.now()
+    });
+    conversation.executionThread = thread;
+    conversation.updatedAt = thread.updatedAt;
+    this.commit();
+    return { ok: true, thread: clone(thread) };
+  }
+
+  finishExecutionThread({
+    conversationId,
+    threadId,
+    outcome = "",
+    stopReason = "",
+    checkpoint = null,
+    planState = null,
+    workingState = null,
+    lastAssistantMessageId = "",
+    resumable = false
+  } = {}) {
+    const conversation = this.findMutableConversation(conversationId);
+    const current = sanitizeExecutionThread(conversation?.executionThread);
+    if (!conversation || !current) return { ok: false, code: "execution-thread-not-found" };
+    if (threadId && current.id !== threadId) return { ok: false, code: "execution-thread-changed" };
+    const thread = finishExecutionThreadRun(current, {
+      outcome,
+      stopReason,
+      checkpoint,
+      planState,
+      workingState,
+      lastAssistantMessageId,
+      resumable,
+      now: this.now()
+    });
+    conversation.executionThread = thread;
+    conversation.updatedAt = thread.updatedAt;
+    this.commit();
+    return { ok: true, thread: clone(thread) };
   }
 
   setGoal({
@@ -1115,6 +1243,7 @@ export class ConversationManager {
     stopReason = "",
     resumedFromMessageId = "",
     taskId = "",
+    executionThreadId = "",
     activity = null,
     skillRun = null,
     tokenLedger = null,
@@ -1177,6 +1306,7 @@ export class ConversationManager {
         stopReason,
         resumedFromMessageId,
         taskId,
+        executionThreadId,
         activity,
         skillRun,
         tokenLedger,
@@ -1317,6 +1447,7 @@ export class ConversationManager {
     stopReason = "",
     resumedFromMessageId = "",
     taskId = "",
+    executionThreadId = "",
     activity = null,
     skillRun = null,
     tokenLedger = null,
@@ -1402,6 +1533,7 @@ export class ConversationManager {
         stopReason,
         resumedFromMessageId,
         taskId,
+        executionThreadId,
         activity,
         skillRun,
         tokenLedger,
@@ -1440,6 +1572,7 @@ export class ConversationManager {
       stopReason = "",
       resumedFromMessageId = "",
       taskId = "",
+      executionThreadId = "",
       activity = null,
       skillRun = null,
       tokenLedger = null,
@@ -1501,6 +1634,10 @@ export class ConversationManager {
     if (taskId) {
       message.taskId =
         String(taskId);
+    }
+
+    if (executionThreadId) {
+      message.executionThreadId = String(executionThreadId);
     }
 
     if (

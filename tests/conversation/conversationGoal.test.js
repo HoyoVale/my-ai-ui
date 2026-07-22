@@ -133,7 +133,7 @@ describe("conversation Goal", () => {
       }]
     });
 
-    assert.equal(data.version, 21);
+    assert.equal(data.version, 22);
     const goal = data.conversations[0].goal;
     assert.equal(goal.version, 6);
     assert.equal(goal.id, "goal-1");

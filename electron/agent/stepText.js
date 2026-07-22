@@ -1,3 +1,7 @@
+import {
+  sanitizePublicAssistantText
+} from "./PublicTextSanitizer.js";
+
 export const LIVE_STEP_ROLES = Object.freeze({
   NONE: "none",
   COMMENTARY: "commentary",
@@ -24,9 +28,9 @@ export function inferLiveStepRole({ records = [] } = {}) {
 }
 
 export function classifyAgentStep(step = {}) {
-  const text = String(
+  const text = sanitizePublicAssistantText(
     step.text ?? ""
-  ).trim();
+  );
   const toolCalls = Array.isArray(
     step.toolCalls
   )
