@@ -20,7 +20,7 @@ const messages = readConversationMessageSource();
 describe("Tool Foundation 1.5 contract", () => {
   it("persists one assistant run placeholder and compact checkpoints", () => {
     assert.match(runtime, /ensureActiveAssistantMessage/);
-    assert.match(runtime, /createRunCheckpoint/);
+    assert.match(runtime, /createCoreLiteRunCheckpoint/);
     assert.match(runtime, /persistActiveRunCheckpoint/);
   });
 

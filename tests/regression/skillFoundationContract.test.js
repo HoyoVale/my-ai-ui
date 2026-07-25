@@ -57,9 +57,9 @@ test("Skill Runtime binds continuation and recovery to immutable Skill snapshots
   const schema = read("electron/conversation/conversationSchema.js");
 
   assert.match(runtime, /preparedExecution\.conversation\.skillId/u);
-  assert.match(runtime, /expectedSnapshot: preparedExecution\.conversation\.skillSnapshot/u);
-  assert.match(runtime, /expectedSnapshot: plan\.conversation\.skillSnapshot/u);
-  assert.match(runtime, /expectedSnapshot: execution\.conversation\.skillSnapshot/u);
+  assert.match(runtime, /expectedSnapshot:\s*preparedExecution\.conversation\.skillSnapshot/u);
+  assert.match(runtime, /expectedSnapshot:\s*regeneration\.conversation\.skillSnapshot/u);
+  assert.match(runtime, /skillRuntime/u);
   assert.match(skillRuntime, /skill-snapshot-mismatch/u);
   assert.match(schema, /createSkillSnapshot/u);
 });

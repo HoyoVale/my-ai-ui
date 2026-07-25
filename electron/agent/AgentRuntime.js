@@ -74,10 +74,6 @@ import {
 } from "../custom-tools/index.js";
 
 import {
-  threadRoutingDecisionStore
-} from "../execution-model/index.js";
-
-import {
   resolveSkillRuntime,
   skillRegistry
 } from "../skills/index.js";
@@ -301,6 +297,10 @@ export class AgentRuntime {
       return state;
     }
 
+    if (typeof this.activeRun.applyState === "function") {
+      return this.activeRun.applyState(state);
+    }
+
     this.activeRun.phase = state.phase;
     this.activeRun.outcome = state.outcome;
     this.activeRun.executionStopReason =
@@ -354,12 +354,7 @@ export class AgentRuntime {
           ?.stopReason ??
         this.status.stopReason ??
         null,
-      plan:
-        this.activeRun
-          ?.toolSession
-          ?.getPlan?.() ??
-        this.activeRun
-          ?.initialPlan ?? [],
+      plan: [],
       activeToolCalls:
         this.activeRun
           ?.toolSession
@@ -367,13 +362,10 @@ export class AgentRuntime {
       taskId:
         this.activeRun
           ?.taskId ?? null,
-      goalId:
-        this.activeRun
-          ?.goalId ?? null,
-      orchestration:
-        this.activeRun
-          ?.orchestrator
-          ?.snapshot?.() ?? null,
+      runSession:
+        developerMode
+          ? this.activeRun?.snapshot?.() ?? null
+          : null,
       currentSegmentId:
         this.activeRun?.currentSegmentId ?? "",
       activity:
@@ -757,11 +749,7 @@ export class AgentRuntime {
             { developerMode: true }
           ),
           id: "live",
-          threadRouting: threadRoutingDecisionStore.snapshot({
-            conversationId: this.activeRun.conversationId,
-            runId: this.activeRun.runId,
-            limit: 20
-          })
+          runSession: this.activeRun.snapshot?.() ?? null
         }
       };
     }
@@ -801,7 +789,7 @@ export class AgentRuntime {
         taskId: normalizedTaskId,
         startedAt: message.activity?.startedAt ?? message.createdAt,
         stopReason: message.stopReason ?? message.activity?.stopReason ?? "",
-        plan: message.plan ?? [],
+        plan: [],
         activeToolCalls: message.toolCalls ?? [],
         activity: message.activity ?? null,
         liveStepText: "",
@@ -812,11 +800,7 @@ export class AgentRuntime {
           message.activity?.checkpoint?.toolRuntime ?? null,
         toolRuntimeDiagnostics: runtimeDiagnostics,
         providerRuntimeDiagnostics: getRuntimeCircuitBreakerSnapshot(),
-        threadRouting: threadRoutingDecisionStore.snapshot({
-          conversationId: record.conversation.id,
-          runId: message.activity?.runId ?? normalizedRunId,
-          limit: 20
-        })
+        runSession: null
       }
     };
   }

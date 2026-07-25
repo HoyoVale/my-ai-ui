@@ -18,13 +18,17 @@ function read(relativePath) {
 }
 
 describe("Tool Runtime state-machine refactor contract", () => {
-  it("keeps terminal state derivation in RunStateMachine", () => {
+  it("keeps terminal state derivation in AgentRunSession and RunStateMachine", () => {
     const runtime = readAgentRuntimeSource();
+    const session = read(
+      "../../electron/agent/AgentRunSession.js"
+    );
     const stateMachine = read(
       "../../electron/agent/RunStateMachine.js"
     );
 
-    assert.match(runtime, /new RunStateMachine/u);
+    assert.match(session, /new RunStateMachine/u);
+    assert.match(session, /applyState\(state\)/u);
     assert.match(runtime, /finalizeRun\(/u);
     assert.match(stateMachine, /executionStopReason/u);
     assert.match(stateMachine, /activityStatus/u);
@@ -36,18 +40,19 @@ describe("Tool Runtime state-machine refactor contract", () => {
     );
   });
 
-  it("owns the segment while-loop outside AgentRuntime", () => {
-    const runtime = readAgentRuntimeSource();
+  it("owns the single Core Lite segment outside AgentRuntime", () => {
+    const execution = readAgentRuntimeSource("execution");
     const loop = read(
-      "../../electron/agent/orchestration/SegmentExecutionLoop.js"
+      "../../electron/agent/execution/CoreLiteRunLoop.js"
     );
 
-    assert.match(runtime, /new SegmentExecutionLoop/u);
-    assert.match(runtime, /executeAgentSegment/u);
-    assert.doesNotMatch(runtime, /while\s*\(true\)/u);
-    assert.match(loop, /while\s*\(this\.canContinue\(\)\)/u);
-    assert.match(loop, /orchestrator\.beginSegment/u);
-    assert.match(loop, /orchestrator\.completeSegment/u);
+    assert.match(execution, /new CoreLiteRunLoop/u);
+    assert.match(execution, /executeAgentSegment/u);
+    assert.doesNotMatch(execution, /while\s*\(true\)/u);
+    assert.match(loop, /const segment = \{/u);
+    assert.match(loop, /await executeSegment\(/u);
+    assert.doesNotMatch(loop, /while\s*\(/u);
+    assert.doesNotMatch(loop, /orchestrator/u);
   });
 
   it("routes Activity finalization and active-run cleanup through finalizeRun only", () => {

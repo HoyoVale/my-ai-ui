@@ -3,10 +3,6 @@ import {
 } from "ai";
 
 import {
-  conversationManager
-} from "../../conversation/index.js";
-
-import {
   appendResponseChunk,
   endResponseStream
 } from "../../windows/response/index.js";
@@ -16,8 +12,7 @@ import {
 } from "../agentErrors.js";
 
 import {
-  RUN_STOP_REASONS,
-  isRecoverableRunFailure
+  RUN_STOP_REASONS
 } from "../runStopReasons.js";
 
 import {
@@ -79,49 +74,49 @@ export const agentRunFinalization = {
     }
 
     const run = this.activeRun;
-    const runtimeRecovery = run.toolSession
-      ?.getRuntimeRecovery?.() ?? null;
+    const runtimeRecovery =
+      run.toolSession?.getRuntimeRecovery?.() ?? null;
     const recoveryOutcome = recoveryOutcomeFromSnapshot(
       runtimeRecovery
     );
-    const rawRecords = run.toolSession?.getRecords?.() ?? run.toolCalls ?? [];
-    const plan = run.toolSession?.getPlan?.() ?? run.initialPlan ?? [];
+    const rawRecords =
+      run.toolSession?.getRecords?.() ??
+      run.toolCalls ?? [];
 
     let effectiveOutcome = recoveryOutcome || outcome;
     let effectiveStopReason = recoveryOutcome
       ? RUN_STOP_REASONS.INTERRUPTED
       : executionStopReason;
 
-    /*
-     * Finalization is the last authority boundary. Even callers that propose a
-     * completed outcome must prove it from the frozen tool/plan evidence. This
-     * prevents direct finalizeRun callers from bypassing RunEngine's resolver.
-     */
-    if (!recoveryOutcome && effectiveOutcome === RUN_OUTCOMES.COMPLETED) {
+    if (
+      !recoveryOutcome &&
+      effectiveOutcome === RUN_OUTCOMES.COMPLETED
+    ) {
       const guardedResolution = resolveRunOutcome({
         stopReason: effectiveStopReason,
         records: rawRecords,
-        plan,
+        plan: [],
         finalText: content,
-        goalVerification: run.goalSpec?.verification ?? null
+        goalVerification: null
       });
 
       effectiveOutcome = guardedResolution.outcome;
       if (effectiveOutcome !== RUN_OUTCOMES.COMPLETED) {
-        if (guardedResolution.completionEvidence.failures.hasActive) {
+        if (
+          guardedResolution.completionEvidence
+            .failures.hasActive
+        ) {
           effectiveStopReason = RUN_STOP_REASONS.TOOL_ERROR;
-        } else if (guardedResolution.completionEvidence.openRecordIds.length > 0) {
+        } else if (
+          guardedResolution.completionEvidence
+            .openRecordIds.length > 0
+        ) {
           effectiveStopReason = RUN_STOP_REASONS.INTERRUPTED;
-        } else if (guardedResolution.planState.hasNeedsInput) {
-          effectiveStopReason = RUN_STOP_REASONS.NEEDS_INPUT;
-        } else if (guardedResolution.planState.hasBlocked) {
-          effectiveStopReason = RUN_STOP_REASONS.BLOCKED;
         } else {
-          effectiveStopReason = RUN_STOP_REASONS.PLAN_INCOMPLETE;
+          effectiveStopReason = guardedResolution.stopReason;
         }
       }
     }
-
 
     const state = this.applyRunState(
       run.stateMachine.finalize({
@@ -131,46 +126,43 @@ export const agentRunFinalization = {
       })
     );
 
-    const orchestration =
-      run.orchestrator?.snapshot?.();
-    if (
-      orchestration?.task?.status === "running" &&
-      state.outcome !== RUN_OUTCOMES.COMPLETED
-    ) {
-      run.orchestrator.terminate(
-        state.executionStopReason
-      );
-    }
-
-    run.toolCalls = terminalizeToolRecords(rawRecords, {
-      outcome: state.outcome,
-      activityStatus: state.activityStatus,
-      endedAt: state.endedAt
-    });
+    run.toolCalls = terminalizeToolRecords(
+      rawRecords,
+      {
+        outcome: state.outcome,
+        activityStatus: state.activityStatus,
+        endedAt: state.endedAt
+      }
+    );
 
     const reconciledFinal = reconcileFinalResponse({
       finalText: sanitizePublicAssistantText(content),
       records: run.toolCalls,
-      plan,
-      goalVerification: run.goalSpec?.verification ?? null,
+      plan: [],
+      goalVerification: null,
       diffSummary: run.diffTracker?.snapshot?.() ?? null,
       outcome: state.outcome,
       stopReason: state.executionStopReason,
       lastError: state.lastError
     });
     run.completionEvidence = reconciledFinal.evidence;
-    run.finalText = sanitizePublicAssistantText(reconciledFinal.text);
+    run.finalText = sanitizePublicAssistantText(
+      reconciledFinal.text
+    );
     if (!run.finalText) {
-      run.finalText = "当前处理已经结束，但模型没有生成可公开显示的总结。";
+      run.finalText =
+        "当前处理已经结束，但模型没有生成可公开显示的总结。";
     }
+
     if (run.skillRun) {
-      const skillStatus = state.outcome === RUN_OUTCOMES.COMPLETED
-        ? "completed"
-        : state.outcome === RUN_OUTCOMES.CANCELLED
-          ? "cancelled"
-          : state.outcome === RUN_OUTCOMES.FAILED
-            ? "failed"
-            : "interrupted";
+      const skillStatus =
+        state.outcome === RUN_OUTCOMES.COMPLETED
+          ? "completed"
+          : state.outcome === RUN_OUTCOMES.CANCELLED
+            ? "cancelled"
+            : state.outcome === RUN_OUTCOMES.FAILED
+              ? "failed"
+              : "interrupted";
       run.skillRun = {
         ...run.skillRun,
         status: skillStatus,
@@ -182,10 +174,13 @@ export const agentRunFinalization = {
         source: run.skillRuntime.source,
         router: run.skillRuntime.router,
         status: skillStatus,
-        selectedToolNames: run.skillRun.selectedToolNames,
-        missingRequired: run.skillRun.missingRequired
+        selectedToolNames:
+          run.skillRun.selectedToolNames,
+        missingRequired:
+          run.skillRun.missingRequired
       }, state.endedAt);
     }
+
     run.activityStore?.finalize(
       state.executionStopReason,
       state.endedAt,
@@ -196,37 +191,9 @@ export const agentRunFinalization = {
       }
     );
     const finalCheckpoint = this.buildActiveCheckpoint();
-    run.activityStore?.updateCheckpoint(
-      finalCheckpoint
-    );
-    if (run.persistentGoalId) {
-      if (finalCheckpoint) {
-        conversationManager.recordGoalCheckpoint({
-          conversationId,
-          goalId: run.persistentGoalId,
-          checkpoint: finalCheckpoint
-        });
-      }
-      conversationManager.recordGoalTokenUsage?.({
-        conversationId,
-        goalId: run.persistentGoalId,
-        ledger: run.tokenLedger?.snapshot?.() ?? null
-      });
-      conversationManager.finishGoalRun({
-        conversationId,
-        goalId: run.persistentGoalId,
-        runId,
-        outcome: state.outcome,
-        stopReason: state.executionStopReason,
-        error: state.lastError,
-        recoverable: isRecoverableRunFailure({
-          stopReason: state.executionStopReason,
-          records: run.toolSession?.getRecords?.() ?? run.toolCalls ?? []
-        })
-      });
-    }
+    run.activityStore?.updateCheckpoint(finalCheckpoint);
 
-    const persistedFinalMessage = this.persistAssistantResponse({
+    this.persistAssistantResponse({
       conversationId,
       content: run.finalText,
       status: state.messageStatus,
@@ -234,29 +201,12 @@ export const agentRunFinalization = {
       runPhase: state.phase,
       runResumable: state.resumable
     });
-    conversationManager.finishExecutionThread?.({
-      conversationId,
-      threadId: run.executionThreadId,
-      outcome: state.outcome,
-      stopReason: state.executionStopReason,
-      checkpoint: finalCheckpoint,
-      planState: finalCheckpoint?.planState ?? null,
-      workingState: finalCheckpoint?.workingState ?? null,
-      lastAssistantMessageId:
-        persistedFinalMessage?.message?.id ??
-        persistedFinalMessage?.id ??
-        run.replaceMessageId ?? "",
-      resumable: state.resumable
-    });
+
     run.approvalController?.close?.();
     const closePersistence =
-      run.toolSession
-        ?.closePersistence?.();
-
+      run.toolSession?.closePersistence?.();
     if (closePersistence) {
-      void Promise.resolve(
-        closePersistence
-      )
+      void Promise.resolve(closePersistence)
         .then((closed) => {
           if (closed === false) {
             console.warn(
@@ -272,11 +222,6 @@ export const agentRunFinalization = {
         });
     }
 
-    /*
-     * Response 窗口需要在 activeRun 被释放前收到最后一份结构化快照。
-     * 否则错误兜底或本地总结只存在于旧的文本流中，工具活动与最终回复
-     * 无法分区渲染。
-     */
     this.setStatus({
       state: state.runtimeState,
       runId,
@@ -292,11 +237,8 @@ export const agentRunFinalization = {
       endResponseStream();
     }
 
-    const finalState = {
-      ...state
-    };
+    const finalState = { ...state };
     this.activeRun = null;
-
     this.setStatus({
       state: state.runtimeState,
       runId: null,
@@ -344,17 +286,27 @@ export const agentRunFinalization = {
     const checkpoint = this.buildActiveCheckpoint();
     if (checkpoint) {
       await this.activeRun.toolSession
-        ?.storeRuntimeCheckpoint?.(checkpoint, {
-          runId,
-          segmentId: this.activeRun.currentSegmentId
-        });
+        ?.storeRuntimeCheckpoint?.(
+          checkpoint,
+          {
+            runId,
+            segmentId:
+              this.activeRun.currentSegmentId
+          }
+        );
     }
     await this.activeRun.toolSession
       ?.recordRuntimeEvent?.(
-        hasUncertainEffects ? "RUN_INTERRUPTED" : "RUN_CANCELLED",
+        hasUncertainEffects
+          ? "RUN_INTERRUPTED"
+          : "RUN_CANCELLED",
         {
-          outcome: hasUncertainEffects ? "interrupted" : "cancelled",
-          unresolvedTools: runtimeRecovery?.unresolvedCount ?? 0
+          outcome: hasUncertainEffects
+            ? "interrupted"
+            : "cancelled",
+          unresolvedTools:
+            runtimeRecovery?.unresolvedCount ?? 0,
+          runtimeFlavor: "core-lite"
         },
         { runId }
       );
@@ -366,7 +318,8 @@ export const agentRunFinalization = {
         ? RUN_STOP_REASONS.INTERRUPTED
         : RUN_STOP_REASONS.CANCELLED_BY_USER,
       outcome: hasUncertainEffects
-        ? recoveryOutcomeFromSnapshot(runtimeRecovery) || RUN_OUTCOMES.UNKNOWN
+        ? recoveryOutcomeFromSnapshot(runtimeRecovery) ||
+          RUN_OUTCOMES.UNKNOWN
         : RUN_OUTCOMES.CANCELLED,
       content
     });
@@ -379,48 +332,33 @@ export const agentRunFinalization = {
     modelSettings,
     settings,
     records,
-    plan,
+    plan: _plan = [],
     executionStopReason,
-    goalVerification = null,
+    goalVerification: _goalVerification = null,
     abortController
   }) {
     const maxAttempts =
-      settings.tools
-        ?.runtime
-        ?.maxFinalizationAttempts ??
-      1;
+      settings.tools?.runtime?.maxFinalizationAttempts ?? 1;
     const finalizationTimeoutMs =
-      settings.tools
-        ?.runtime
-        ?.finalizationTimeoutMs ??
-      30000;
-    const finalizationBudget =
-      createFinalizationBudget({
-        timeoutMs: finalizationTimeoutMs
-      });
+      settings.tools?.runtime?.finalizationTimeoutMs ?? 30000;
+    const finalizationBudget = createFinalizationBudget({
+      timeoutMs: finalizationTimeoutMs
+    });
 
-    this.beginRunFinalization(
-      executionStopReason
-    );
-    this.activeRun.currentStepText =
-      "";
-    this.activeRun.liveStepRole =
-      LIVE_STEP_ROLES.NONE;
+    this.beginRunFinalization(executionStopReason);
+    this.activeRun.currentStepText = "";
+    this.activeRun.liveStepRole = LIVE_STEP_ROLES.NONE;
     this.persistActiveRunCheckpoint({
       status: "running"
     });
+    this.setStatus({ ...this.status });
 
-    this.setStatus({
-      ...this.status
+    const instruction = createFinalizationInstruction({
+      plan: [],
+      records,
+      executionStopReason,
+      goalVerification: null
     });
-
-    const instruction =
-      createFinalizationInstruction({
-        plan,
-        records,
-        executionStopReason,
-        goalVerification
-      });
 
     for (
       let attempt = 1;
@@ -438,24 +376,15 @@ export const agentRunFinalization = {
         };
       }
 
-      this.activeRun
-        .finalizationAttemptCount =
-        attempt;
-      this.activeRun.currentStepText =
-        "";
-      this.activeRun.liveStepRole =
-        LIVE_STEP_ROLES.NONE;
-      this.activeRun.finalText =
-        "";
-
-      this.setStatus({
-        ...this.status
-      });
+      this.activeRun.finalizationAttemptCount = attempt;
+      this.activeRun.currentStepText = "";
+      this.activeRun.liveStepRole = LIVE_STEP_ROLES.NONE;
+      this.activeRun.finalText = "";
+      this.setStatus({ ...this.status });
 
       let text = "";
       const remainingFinalizationMs =
         finalizationBudget.remainingMs();
-
       if (remainingFinalizationMs <= 0) {
         break;
       }
@@ -464,7 +393,6 @@ export const agentRunFinalization = {
         this.assertProviderAvailable(runtime);
         const result = streamText({
           model: runtime.model,
-
           system: [
             context.system,
             instruction,
@@ -472,20 +400,12 @@ export const agentRunFinalization = {
               ? "The previous finalization attempt returned no usable text. Return a concise final answer now."
               : ""
           ].filter(Boolean).join("\n\n"),
-
-          messages:
-            context.messages,
-
+          messages: context.messages,
           ...runtime.requestOptions,
-
-          abortSignal:
-            abortController.signal,
-
-          timeout:
-            finalizationBudget.timeoutFor(
-              modelSettings.timeoutMs
-            ),
-
+          abortSignal: abortController.signal,
+          timeout: finalizationBudget.timeoutFor(
+            modelSettings.timeoutMs
+          ),
           onError: ({ error }) => {
             console.error(
               "最终总结流式请求错误：",
@@ -494,21 +414,18 @@ export const agentRunFinalization = {
           }
         });
 
-        const publicStream = new PublicTextStreamSanitizer();
-        for await (
-          const textPart
-          of result.textStream
-        ) {
-          if (
-            !this.isCurrentRun(runId)
-          ) {
+        const publicStream =
+          new PublicTextStreamSanitizer();
+        for await (const textPart of result.textStream) {
+          if (!this.isCurrentRun(runId)) {
             break;
           }
-
           if (textPart) {
-            const publicChunk = publicStream.push(textPart);
-            if (!publicChunk) continue;
-            text += publicChunk;
+            const publicChunk =
+              publicStream.push(textPart);
+            if (publicChunk) {
+              text += publicChunk;
+            }
           }
         }
         const finalPublicChunk = publicStream.flush();
@@ -543,38 +460,36 @@ export const agentRunFinalization = {
         continue;
       }
 
-      const normalized =
-        sanitizeFinalizationText(
-          text,
-          executionStopReason
-        );
-
+      const normalized = sanitizeFinalizationText(
+        text,
+        executionStopReason
+      );
       if (normalized) {
         const resolution = resolveRunOutcome({
           stopReason: executionStopReason,
           records,
-          plan,
+          plan: [],
           finalText: normalized,
-          goalVerification
+          goalVerification: null
         });
         const reconciled = reconcileFinalResponse({
           finalText: normalized,
           records,
-          plan,
-          goalVerification,
-          diffSummary: this.activeRun?.diffTracker?.snapshot?.() ?? null,
+          plan: [],
+          goalVerification: null,
+          diffSummary:
+            this.activeRun?.diffTracker?.snapshot?.() ?? null,
           outcome: resolution.outcome,
           stopReason: resolution.stopReason
         });
-        const publicText = reconciled.text || normalized;
+        const publicText =
+          reconciled.text || normalized;
 
         this.noteProviderSuccess(runtime);
         this.activeRun.finalText = publicText;
         this.activeRun.currentStepText = "";
         appendResponseChunk(publicText);
-        this.setStatus({
-          ...this.status
-        });
+        this.setStatus({ ...this.status });
 
         return {
           ok: true,
@@ -585,40 +500,37 @@ export const agentRunFinalization = {
       }
     }
 
-    const fallback =
-      createFallbackFinalSummary({
-        plan,
-        records,
-        executionStopReason
-      });
-
+    const fallback = createFallbackFinalSummary({
+      plan: [],
+      records,
+      executionStopReason
+    });
     const fallbackResolution = resolveRunOutcome({
       stopReason: executionStopReason,
       records,
-      plan,
+      plan: [],
       finalText: fallback,
-      goalVerification
+      goalVerification: null
     });
     const reconciledFallback = reconcileFinalResponse({
       finalText: fallback,
       records,
-      plan,
-      goalVerification,
-      diffSummary: this.activeRun?.diffTracker?.snapshot?.() ?? null,
+      plan: [],
+      goalVerification: null,
+      diffSummary:
+        this.activeRun?.diffTracker?.snapshot?.() ?? null,
       outcome: fallbackResolution.outcome,
       stopReason: fallbackResolution.stopReason
     });
-    const publicFallback = reconciledFallback.text || fallback;
+    const publicFallback =
+      reconciledFallback.text || fallback;
 
     this.activeRun.finalText = publicFallback;
     this.activeRun.currentStepText = "";
     if (publicFallback) {
       appendResponseChunk(publicFallback);
     }
-
-    this.setStatus({
-      ...this.status
-    });
+    this.setStatus({ ...this.status });
 
     return {
       ok: Boolean(publicFallback),

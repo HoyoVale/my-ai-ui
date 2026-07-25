@@ -299,6 +299,7 @@ export const ConversationMessageService = {
     delete message.stopReason;
     delete message.resumedFromMessageId;
     delete message.taskId;
+    delete message.executionThreadId;
     delete message.activity;
     delete message.skillRun;
     delete message.tokenLedger;

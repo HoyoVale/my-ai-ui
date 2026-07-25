@@ -36,7 +36,7 @@ describe(
           readAgentRuntimeSource();
         const segmentLoop =
           read(
-            "../../electron/agent/orchestration/SegmentExecutionLoop.js"
+            "../../electron/agent/execution/CoreLiteRunLoop.js"
           );
 
         assert.match(
@@ -49,15 +49,15 @@ describe(
         );
         assert.match(
           source,
-          /new LongTaskOrchestrator/u
+          /new CoreLiteRunLoop/u
         );
         assert.match(
           segmentLoop,
-          /segmentOutcome\.decision !== "continue"/u
+          /await executeSegment\(/u
         );
-        assert.match(
+        assert.doesNotMatch(
           source,
-          /maxNoProgressSegments/u
+          /maxNoProgressSegments|LongTaskOrchestrator/u
         );
         assert.doesNotMatch(
           source,
@@ -112,7 +112,7 @@ describe(
         const conversation = readConversationShellSource();
 
         assert.match(session, /ToolResultStore/u);
-        assert.match(runtime, /createCheckpointContinuationState/u);
+        assert.match(runtime, /createCoreLiteContinuationState/u);
         assert.doesNotMatch(runtime, /resumeQuestion|getPendingQuestion|pendingQuestion/u);
         assert.match(conversation, /liveActivity/u);
       }

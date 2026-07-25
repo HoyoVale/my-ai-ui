@@ -396,9 +396,9 @@ test("Phase G integrates guarded authority without exposing controls in normal U
     new URL("../../src/Conversation/components/ActivityTimeline.jsx", import.meta.url),
     "utf8"
   );
-  assert.match(preparation, /routingRolloutController\.evaluate/u);
-  assert.match(preparation, /effectiveRoutingAction/u);
-  assert.match(preparation, /ROUTING_DECISION_STATES\.APPLIED/u);
+  assert.doesNotMatch(preparation, /routingRolloutController\.evaluate/u);
+  assert.doesNotMatch(preparation, /effectiveRoutingAction|ROUTING_DECISION_STATES\.APPLIED/u);
+  assert.match(preparation, /new AgentRunSession/u);
   assert.doesNotMatch(preparation, /steeringQueue\.enqueue/u);
   assert.match(developerPanel, /Thread routing rollout/u);
   assert.doesNotMatch(ordinaryTimeline, /Thread routing rollout|executionRouting/u);

@@ -53,114 +53,124 @@ import {
 } from "../TokenLedger.js";
 
 import {
-  createCheckpointContinuationState,
-  resolveCheckpointContinuation
-} from "../checkpointResume.js";
-
-import {
-  resolveExecutionThreadContinuation
-} from "../ExecutionThread.js";
-
-import {
-  LIVE_STEP_ROLES
-} from "../stepText.js";
+  createCoreLiteContinuationState,
+  resolveCoreLiteCheckpointContinuation
+} from "../CoreLiteCheckpointResume.js";
 
 import {
   appendTaskContinuationToContext,
-  createRunStateFields,
   getActiveCredentialError
 } from "../AgentRuntimeInternals.js";
 
 import {
-  ROUTING_ACTIONS,
-  ROUTING_DECISION_STATES,
-  THREAD_COMMANDS,
-  executionThreadRouter,
-  findExecutionThread,
-  routingRolloutController,
-  threadRoutingDecisionStore
-} from "../../execution-model/index.js";
+  AgentRunSession
+} from "../AgentRunSession.js";
 
-function persistRoutingDecision(decision) {
-  if (!decision?.conversationId) return decision;
-  conversationManager.recordThreadRoutingDecision?.({
-    conversationId: decision.conversationId,
-    decision
-  });
-  return decision;
-}
-
-function recordRoutingDecision(decision) {
-  return persistRoutingDecision(
-    threadRoutingDecisionStore.record(decision)
-  );
-}
-
-function updateRoutingDecision(id, patch) {
-  return persistRoutingDecision(
-    threadRoutingDecisionStore.update(id, patch)
-  );
-}
-
-function evaluateRoutingDecision(decision, {
-  conversation = null,
-  activeRun = null
-} = {}) {
-  return routingRolloutController.evaluate({
-    decision,
-    conversation,
-    activeRun,
-    settings: getSettings().conversation?.executionRouting ?? {}
-  }) ?? decision;
-}
-
-function effectiveRoutingAction(decision) {
-  return decision?.rollout?.effectiveAction ||
-    decision?.shadow?.legacyAction ||
-    decision?.action ||
-    ROUTING_ACTIONS.NONE;
-}
-
-function resolveRoutedContinuation({
+function createSession({
+  runId,
+  taskId,
   conversation,
-  message,
-  decision,
-  legacyContinuation
-} = {}) {
-  const action = effectiveRoutingAction(decision);
-  if (action === ROUTING_ACTIONS.START) {
-    return { continuation: null, state: null };
+  objective,
+  continuationState,
+  skillRuntime,
+  activeWorkspace,
+  runSettings,
+  context,
+  replaceMessageId = null,
+  resumeInPlace = false
+}) {
+  const abortController = new AbortController();
+  const startedAt = Date.now();
+  const activityStore = new RunActivityStore({
+    taskId,
+    runId,
+    startedAt
+  });
+
+  return new AgentRunSession({
+    runId,
+    taskId,
+    conversationId: conversation.id,
+    objective,
+    parentRunId:
+      continuationState?.parentRunId ?? "",
+    resumedFromMessageId:
+      continuationState?.resumedFromMessageId ?? "",
+    continuationCount:
+      continuationState?.continuationCount ?? 0,
+    workspaceId:
+      conversation.workspaceId ?? null,
+    workspaceSnapshot:
+      conversation.workspaceSnapshot ?? null,
+    mode: conversation.mode ?? "chat",
+    modelSelection:
+      conversation.modelSelection ?? null,
+    modelSnapshot:
+      conversation.modelSnapshot ?? null,
+    skillRuntime,
+    activeWorkspace,
+    runtimePreferences: {
+      saveAbortedReplies:
+        runSettings.conversation?.saveAbortedReplies !== false,
+      saveToolHistory:
+        runSettings.tools?.runtime?.saveToolHistory !== false
+    },
+    abortController,
+    activityStore,
+    diffTracker: new RunDiffTracker({
+      runId,
+      workspaceId: conversation.workspaceId ?? ""
+    }),
+    tokenLedger: new TokenLedger({
+      runId,
+      taskId,
+      providerId:
+        context.metadata?.activeModel?.providerId ?? "",
+      modelId:
+        context.metadata?.activeModel?.modelId ?? "",
+      context
+    }),
+    replaceMessageId,
+    resumeInPlace,
+    startedAt,
+    contextCompactionCount:
+      continuationState?.contextCompactionCount ?? 0
+  });
+}
+
+function recordActiveSkill(session) {
+  if (!session.skillRuntime?.active) {
+    return;
   }
-  if (action !== ROUTING_ACTIONS.RESUME) {
-    return {
-      continuation: legacyContinuation,
-      state: createCheckpointContinuationState(legacyContinuation)
-    };
-  }
-  if (legacyContinuation) {
-    return {
-      continuation: legacyContinuation,
-      state: createCheckpointContinuationState(legacyContinuation)
-    };
-  }
-  const targetThread = findExecutionThread(
-    conversation,
-    decision?.targetThreadId
-  );
-  const continuation = targetThread
-    ? resolveExecutionThreadContinuation({
-        conversation: {
-          ...conversation,
-          executionThread: targetThread
-        },
-        message,
-        explicit: true
-      })
-    : null;
-  return {
-    continuation,
-    state: createCheckpointContinuationState(continuation)
+
+  session.activityStore?.recordSkill({
+    skill: session.skillRuntime.skill,
+    skills: session.skillRuntime.skills,
+    source: session.skillRuntime.source,
+    router: session.skillRuntime.router,
+    status: "running"
+  });
+}
+
+function launchRun(runtime, {
+  context,
+  memories,
+  settings
+}) {
+  const runArguments = {
+    runId: runtime.activeRun.runId,
+    conversationId: runtime.activeRun.conversationId,
+    context,
+    memories,
+    settings,
+    abortController: runtime.activeRun.abortController
   };
+
+  if (isE2EMode()) {
+    void runtime.runE2EMessage(runArguments);
+  } else {
+    void runtime.runMessage(runArguments);
+  }
 }
 
 export const agentRunPreparation = {
@@ -169,19 +179,16 @@ export const agentRunPreparation = {
     {
       expectedConversationId = "",
       continueTask = false,
-      threadCommand = ""
+      threadCommand: _threadCommand = ""
     } = {}
   ) {
-    const message =
-      String(content ?? "")
-        .trim();
+    const message = String(content ?? "").trim();
 
     if (!message) {
       return {
         ok: false,
         code: "empty-message",
-        message:
-          "消息不能为空。"
+        message: "消息不能为空。"
       };
     }
 
@@ -189,39 +196,17 @@ export const agentRunPreparation = {
       conversationManager.getCurrentConversation();
 
     if (this.activeRun) {
-      const routingDecision = evaluateRoutingDecision(
-        executionThreadRouter.route({
-          conversation: initialConversation,
-          activeRun: this.activeRun,
-          message,
-          requestedCommand: threadCommand,
-          explicitContinue: continueTask === true,
-          legacyAction: ROUTING_ACTIONS.REJECT,
-          shadowMode: true
-        }),
-        {
-          conversation: initialConversation,
-          activeRun: this.activeRun
-        }
-      );
-      this.lastThreadRoutingDecision =
-        recordRoutingDecision(routingDecision);
       return {
         ok: false,
         code: "busy",
-        message:
-          "当前回复尚未结束，请先停止生成。"
+        message: "当前回复尚未结束，请先停止生成。"
       };
     }
 
-    const credentialConversation =
-      initialConversation;
-    const initialTargetError =
-      getConversationTargetError(
-        credentialConversation,
-        expectedConversationId
-      );
-
+    const initialTargetError = getConversationTargetError(
+      initialConversation,
+      expectedConversationId
+    );
     if (initialTargetError) {
       return initialTargetError;
     }
@@ -229,38 +214,29 @@ export const agentRunPreparation = {
     const credentialBinding =
       resolveConversationExecutionContext({
         settings: getSettings(),
-        conversation: credentialConversation
+        conversation: initialConversation
       });
-    const credentialError =
-      isE2EMode()
-        ? null
-        : getActiveCredentialError(
-            credentialBinding.settings.model
-          );
+    const credentialError = isE2EMode()
+      ? null
+      : getActiveCredentialError(
+          credentialBinding.settings.model
+        );
 
     if (credentialError) {
-      const errorMessage =
-        credentialError;
-
       startResponseStream();
-      appendResponseChunk(
-        `⚠ ${errorMessage}`
-      );
+      appendResponseChunk(`⚠ ${credentialError}`);
       endResponseStream();
-
       this.setStatus({
         state: "error",
         runId: null,
         conversationId: null,
         startedAt: null,
-        lastError:
-          errorMessage
+        lastError: credentialError
       });
-
       return {
         ok: false,
         code: "missing-api-key",
-        message: errorMessage
+        message: credentialError
       };
     }
 
@@ -274,67 +250,32 @@ export const agentRunPreparation = {
     let checkpointContinuation = null;
     let continuationState = null;
     let runMessage = message;
-    let skillCommand = null;
-    let userMessage = null;
-    let routingDecision = null;
 
     try {
       conversation =
-        conversationManager
-          .getCurrentConversation();
-
-      const targetError =
-        getConversationTargetError(
-          conversation,
-          expectedConversationId
-        );
-
+        conversationManager.getCurrentConversation();
+      const targetError = getConversationTargetError(
+        conversation,
+        expectedConversationId
+      );
       if (targetError) {
         return targetError;
       }
 
-      const legacyContinuation =
-        resolveCheckpointContinuation({
-          conversation,
-          message,
-          explicit: continueTask === true
-        }) ??
-        resolveExecutionThreadContinuation({
-          conversation,
-          message,
-          explicit: continueTask === true
-        });
-      const legacyContinuationState =
-        createCheckpointContinuationState(
-          legacyContinuation
-        );
-
-      routingDecision = evaluateRoutingDecision(
-        executionThreadRouter.route({
-          conversation,
-          message,
-          requestedCommand: threadCommand,
-          explicitContinue: continueTask === true,
-          legacyAction: legacyContinuationState
-            ? ROUTING_ACTIONS.RESUME
-            : ROUTING_ACTIONS.START,
-          shadowMode: true
-        }),
-        { conversation }
-      );
-      const routedContinuation = resolveRoutedContinuation({
+      checkpointContinuation = resolveCoreLiteCheckpointContinuation({
         conversation,
         message,
-        decision: routingDecision,
-        legacyContinuation
+        explicit: continueTask === true
       });
-      checkpointContinuation = routedContinuation.continuation;
-      continuationState = routedContinuation.state;
-      this.lastThreadRoutingDecision =
-        recordRoutingDecision(routingDecision);
+      continuationState = createCoreLiteContinuationState(
+        checkpointContinuation
+      );
 
+      let skillCommand = null;
       if (!continuationState) {
-        const runtimeSkills = skillRegistry.getRuntimeState({ mode: conversation.mode }).skills;
+        const runtimeSkills = skillRegistry
+          .getRuntimeState({ mode: conversation.mode })
+          .skills;
         skillCommand = parseSkillCommand(
           message,
           runtimeSkills.map((skill) => skill.id)
@@ -354,18 +295,27 @@ export const agentRunPreparation = {
           conversation,
           overrides: continuationState ?? {}
         });
-      const boundSkillIds = preparedExecution.conversation.skillIds ??
-        (preparedExecution.conversation.skillId ? [preparedExecution.conversation.skillId] : []);
+      const boundSkillIds =
+        preparedExecution.conversation.skillIds ??
+        (preparedExecution.conversation.skillId
+          ? [preparedExecution.conversation.skillId]
+          : []);
+
       skillRuntime = resolveSkillRuntime({
         registry: skillRegistry,
         skillId: preparedExecution.conversation.skillId,
-        skillIds: skillCommand?.matched ? skillCommand.skillIds : boundSkillIds,
+        skillIds: skillCommand?.matched
+          ? skillCommand.skillIds
+          : boundSkillIds,
         mode: preparedExecution.metadata.mode,
-        expectedSnapshot: preparedExecution.conversation.skillSnapshot,
+        expectedSnapshot:
+          preparedExecution.conversation.skillSnapshot,
         expectedSnapshots: skillCommand?.matched
           ? null
           : preparedExecution.conversation.skillSnapshots ??
-            (preparedExecution.conversation.skillSnapshot ? [preparedExecution.conversation.skillSnapshot] : []),
+            (preparedExecution.conversation.skillSnapshot
+              ? [preparedExecution.conversation.skillSnapshot]
+              : []),
         routingMode: skillCommand?.matched
           ? "manual"
           : preparedExecution.conversation.skillRoutingMode,
@@ -385,300 +335,97 @@ export const agentRunPreparation = {
         return skillRuntime;
       }
 
-      userMessage = conversationManager
-        .appendMessage({
-          conversationId:
-            conversation.id,
-          role: "user",
-          content: runMessage
-        });
+      conversationManager.appendMessage({
+        conversationId: conversation.id,
+        role: "user",
+        content: runMessage
+      });
+      conversation = conversationManager.getConversation(
+        conversation.id
+      );
 
-      conversation =
-        conversationManager
-          .getConversation(
-            conversation.id
-          );
+      memories = memoryManager.retrieve({
+        query: runMessage
+      });
 
-      memories =
-        memoryManager.retrieve({
-          query: runMessage
-        });
-
-      const execution =
-        resolveConversationExecutionContext({
-          settings: settingsSnapshot,
-          conversation,
-          overrides: continuationState ?? {}
-        });
+      const execution = resolveConversationExecutionContext({
+        settings: settingsSnapshot,
+        conversation,
+        overrides: continuationState ?? {}
+      });
       executionConversation = execution.conversation;
       runSettings = execution.settings;
       activeWorkspace = execution.workspace;
 
-      context =
-        assembleAgentContext({
-          settings: runSettings,
-          conversation:
-            executionConversation,
-          memories,
-          skillRuntime
-        });
-
+      context = assembleAgentContext({
+        settings: runSettings,
+        conversation: executionConversation,
+        memories,
+        skillRuntime
+      });
       context = appendTaskContinuationToContext(
         context,
         checkpointContinuation,
         continuationState,
         runMessage
       );
-
     } catch (error) {
       const errorMessage =
         "无法准备当前消息或长期记忆，请检查应用数据目录。";
-
       console.error(
         "准备会话消息或长期记忆失败：",
         error
       );
-
       startResponseStream();
-      appendResponseChunk(
-        `⚠ ${errorMessage}`
-      );
+      appendResponseChunk(`⚠ ${errorMessage}`);
       endResponseStream();
-
       return {
         ok: false,
-        code:
-          "conversation-write-failed",
+        code: "conversation-write-failed",
         message: errorMessage
       };
     }
 
-    const runId =
-      crypto.randomUUID();
-
-    const persistentGoal = null;
-
-    const goalId = "";
-
+    const runId = crypto.randomUUID();
     const taskId =
-      continuationState?.taskId ||
-      crypto.randomUUID();
+      continuationState?.taskId || crypto.randomUUID();
 
-    const existingExecutionThread = executionConversation.executionThread;
-    const executionThreadId =
-      continuationState?.executionThreadId ||
-      (existingExecutionThread?.taskId === taskId
-        ? existingExecutionThread.id
-        : "") ||
-      crypto.randomUUID();
-
-    if (routingDecision) {
-      routingDecision = updateRoutingDecision(
-        routingDecision.id,
-        {
-          messageId: userMessage?.id ?? "",
-          targetThreadId: executionThreadId,
-          targetRunId: runId
-        }
-      ) ?? routingDecision;
-      this.lastThreadRoutingDecision = routingDecision;
-    }
-
-    const abortController =
-      new AbortController();
-
-    const startedAt =
-      Date.now();
-
-    const activityStore =
-      new RunActivityStore({
-        taskId,
-        runId,
-        startedAt
-      });
-
-    this.activeRun = {
+    this.activeRun = createSession({
       runId,
-      executionThreadId,
-      threadRoutingDecision: routingDecision,
-      goalId,
-      parentRunId:
-        continuationState?.parentRunId ?? "",
+      taskId,
+      conversation: executionConversation,
       objective:
-        continuationState?.objective ||
-        persistentGoal?.objective ||
-        runMessage,
-      persistentGoalId:
-        persistentGoal?.id ?? "",
-      goalSpec: persistentGoal ? structuredClone(persistentGoal) : null,
-      continuationInstruction:
-        persistentGoal ? runMessage : continuationState ? runMessage : "",
-      continuationCount:
-        continuationState?.continuationCount ?? 0,
-      previousSegmentCount:
-        continuationState?.previousSegmentCount ?? 0,
-      orchestrator: null,
-      currentSegmentId: "",
-      taskId,
-      workspaceId:
-        executionConversation.workspaceId ?? null,
-      workspaceSnapshot:
-        executionConversation.workspaceSnapshot ?? null,
-      mode:
-        executionConversation.mode ?? "chat",
-      modelSelection:
-        executionConversation.modelSelection ?? null,
-      modelSnapshot:
-        executionConversation.modelSnapshot ?? null,
+        continuationState?.objective || runMessage,
+      continuationState,
       skillRuntime,
-      skillRun: skillRuntime.active
-        ? {
-            id: skillRuntime.skill.id,
-            name: skillRuntime.rootSkills.map((skill) => skill.name).join(" + "),
-            version: skillRuntime.skill.version,
-            status: "running",
-            source: skillRuntime.source,
-            routingMode: skillRuntime.routingMode,
-            skills: structuredClone(skillRuntime.skills),
-            rootSkillIds: [...skillRuntime.rootSkillIds],
-            dependencySkillIds: skillRuntime.dependencySkills.map((skill) => skill.id),
-            router: skillRuntime.router ? structuredClone(skillRuntime.router) : null,
-            requiredCapabilities: [...skillRuntime.capabilityRequest.requiredCapabilities],
-            optionalCapabilities: [...skillRuntime.capabilityRequest.optionalCapabilities],
-            selectedToolNames: [],
-            missingRequired: [],
-            startedAt,
-            endedAt: null
-          }
-        : null,
       activeWorkspace,
-      runtimePreferences: {
-        saveAbortedReplies:
-          runSettings.conversation?.saveAbortedReplies !== false,
-        saveToolHistory:
-          runSettings.tools?.runtime?.saveToolHistory !== false
-      },
-      conversationId:
-        conversation.id,
-      abortController,
-      currentStepText: "",
-      liveStepRole: LIVE_STEP_ROLES.NONE,
-      finalText: "",
-      stepNumber: 0,
-      startedAt,
-      replaceMessageId: null,
-      toolCalls: [],
-      pendingApproval: null,
-      toolSecurity: null,
-      approvalController: null,
-      activityStore,
-      initialPlan: [],
-      initialPlanState: [],
-      workingState: null,
-      resumedFromMessageId:
-        continuationState?.resumedFromMessageId ?? "",
-      platformRunId: "",
-      platformLeaseIds: [],
-      platformError: null,
-      resumeInPlace: false,
-      finalizationAttemptCount: 0,
-      contextCompactionCount:
-        continuationState?.contextCompactionCount ?? 0,
-      diffTracker: new RunDiffTracker({
-        runId,
-        workspaceId: executionConversation.workspaceId ?? ""
-      }),
-      tokenLedger: new TokenLedger({
-        runId,
-        goalId,
-        taskId,
-        providerId: context.metadata?.activeModel?.providerId ?? "",
-        modelId: context.metadata?.activeModel?.modelId ?? "",
-        context
-      }),
-      ...createRunStateFields(startedAt)
-    };
-
-    const executionThread = conversationManager.beginExecutionThread({
-      conversationId: conversation.id,
-      threadId: executionThreadId,
-      taskId,
-      goalId,
-      platformRunId: this.activeRun.platformRunId,
-      objective: this.activeRun.objective,
-      mode: this.activeRun.mode,
-      workspaceId: this.activeRun.workspaceId ?? "",
-      planState: this.activeRun.initialPlanState,
-      workingState: this.activeRun.workingState,
-      runId,
-      relation: continuationState ? "resume" : "initial",
-      previousRunId: existingExecutionThread?.lastRunId ?? "",
-      userMessageId: userMessage?.id ?? ""
+      runSettings,
+      context
     });
-    if (executionThread?.ok) {
-      this.activeRun.executionThread = executionThread.thread;
-      this.activeRun.continuationCount = executionThread.thread.continuationCount;
-      if (routingDecision) {
-        routingDecision = updateRoutingDecision(
-          routingDecision.id,
-          { state: ROUTING_DECISION_STATES.APPLIED }
-        ) ?? routingDecision;
-        this.activeRun.threadRoutingDecision = routingDecision;
-        this.lastThreadRoutingDecision = routingDecision;
-      }
-    }
 
-    if (skillRuntime.active) {
-      activityStore.recordSkill({
-        skill: skillRuntime.skill,
-        skills: skillRuntime.skills,
-        source: skillRuntime.source,
-        router: skillRuntime.router,
-        status: "running"
-      });
-    }
-
+    recordActiveSkill(this.activeRun);
     this.ensureActiveAssistantMessage(
-      conversation.id
+      this.activeRun.conversationId
     );
-
     this.setStatus({
       state: "running",
       runId,
-      conversationId:
-        conversation.id,
-      startedAt,
+      conversationId: this.activeRun.conversationId,
+      startedAt: this.activeRun.startedAt,
       lastError: null
     });
-
-    const runArguments = {
-      runId,
-      conversationId:
-        conversation.id,
+    launchRun(this, {
       context,
       memories,
-      settings: runSettings,
-      abortController
-    };
-
-    if (isE2EMode()) {
-      void this.runE2EMessage(
-        runArguments
-      );
-    } else {
-      void this.runMessage(
-        runArguments
-      );
-    }
+      settings: runSettings
+    });
 
     return {
       ok: true,
       runId,
       taskId,
-      conversationId:
-        conversation.id,
-      continuedTask:
-        Boolean(continuationState),
+      conversationId: this.activeRun.conversationId,
+      continuedTask: Boolean(continuationState),
       resumedFromMessageId:
         continuationState?.resumedFromMessageId ?? ""
     };
@@ -689,47 +436,14 @@ export const agentRunPreparation = {
     messageId
   } = {}) {
     if (this.activeRun) {
-      const routingConversation = conversationManager.getConversation(
-        String(conversationId ?? "")
-      );
-      const routingDecision = evaluateRoutingDecision(
-        executionThreadRouter.route({
-          operation: THREAD_COMMANDS.REGENERATE,
-          conversation: routingConversation,
-          activeRun: this.activeRun,
-          messageId: String(messageId ?? ""),
-          legacyAction: ROUTING_ACTIONS.REJECT,
-          shadowMode: true
-        }),
-        {
-          conversation: routingConversation,
-          activeRun: this.activeRun
-        }
-      );
-      this.lastThreadRoutingDecision =
-        recordRoutingDecision(routingDecision);
       return {
         ok: false,
         code: "busy",
-        message:
-          "当前回复尚未结束，请先停止生成。"
+        message: "当前回复尚未结束，请先停止生成。"
       };
     }
 
-    const credentialError =
-      isE2EMode()
-        ? null
-        : getActiveCredentialError();
-
-    if (credentialError) {
-      return {
-        ok: false,
-        code: "missing-api-key",
-        message: credentialError
-      };
-    }
-
-    let plan;
+    let regeneration;
     let memories;
     let context;
     let runSettings;
@@ -737,42 +451,59 @@ export const agentRunPreparation = {
     let skillRuntime = null;
 
     try {
-      plan =
-        conversationManager
-          .prepareRegeneration({
-            conversationId:
-              String(
-                conversationId ?? ""
-              ),
-            messageId:
-              String(
-                messageId ?? ""
-              )
-          });
-
-      if (!plan.ok) {
-        return plan;
+      regeneration = conversationManager.prepareRegeneration({
+        conversationId: String(conversationId ?? ""),
+        messageId: String(messageId ?? "")
+      });
+      if (!regeneration.ok) {
+        return regeneration;
       }
 
-      const previousSkillRun = plan.targetMessage?.skillRun ?? null;
-      const regenerationSkillIds = previousSkillRun?.rootSkillIds?.length
-        ? previousSkillRun.rootSkillIds
-        : plan.conversation.skillIds ??
-          (plan.conversation.skillId ? [plan.conversation.skillId] : []);
-      const regenerationSkillSnapshots = previousSkillRun?.skills?.length
-        ? previousSkillRun.skills
-        : plan.conversation.skillSnapshots ??
-          (plan.conversation.skillSnapshot ? [plan.conversation.skillSnapshot] : []);
+      const execution = resolveConversationExecutionContext({
+        settings: getSettings(),
+        conversation: regeneration.conversation
+      });
+      const credentialError = isE2EMode()
+        ? null
+        : getActiveCredentialError(execution.settings.model);
+      if (credentialError) {
+        return {
+          ok: false,
+          code: "missing-api-key",
+          message: credentialError
+        };
+      }
+
+      const previousSkillRun =
+        regeneration.targetMessage?.skillRun ?? null;
+      const regenerationSkillIds =
+        previousSkillRun?.rootSkillIds?.length
+          ? previousSkillRun.rootSkillIds
+          : regeneration.conversation.skillIds ??
+            (regeneration.conversation.skillId
+              ? [regeneration.conversation.skillId]
+              : []);
+      const regenerationSkillSnapshots =
+        previousSkillRun?.skills?.length
+          ? previousSkillRun.skills
+          : regeneration.conversation.skillSnapshots ??
+            (regeneration.conversation.skillSnapshot
+              ? [regeneration.conversation.skillSnapshot]
+              : []);
 
       skillRuntime = resolveSkillRuntime({
         registry: skillRegistry,
-        skillId: previousSkillRun?.id ?? plan.conversation.skillId,
+        skillId:
+          previousSkillRun?.id ?? regeneration.conversation.skillId,
         skillIds: regenerationSkillIds,
-        mode: plan.conversation.mode,
-        expectedSnapshot: plan.conversation.skillSnapshot,
+        mode: regeneration.conversation.mode,
+        expectedSnapshot:
+          regeneration.conversation.skillSnapshot,
         expectedSnapshots: regenerationSkillSnapshots,
-        routingMode: previousSkillRun?.routingMode ?? plan.conversation.skillRoutingMode,
-        routeMessage: plan.userMessage.content,
+        routingMode:
+          previousSkillRun?.routingMode ??
+          regeneration.conversation.skillRoutingMode,
+        routeMessage: regeneration.userMessage.content,
         source: previousSkillRun?.source ?? "manual",
         routerSnapshot: previousSkillRun?.router ?? null
       });
@@ -780,272 +511,82 @@ export const agentRunPreparation = {
         return skillRuntime;
       }
 
-      memories =
-        memoryManager.retrieve({
-          query:
-            plan.userMessage
-              .content
-        });
-
-      const execution =
-        resolveConversationExecutionContext({
-          settings: getSettings(),
-          conversation: plan.conversation
-        });
+      memories = memoryManager.retrieve({
+        query: regeneration.userMessage.content
+      });
       runSettings = execution.settings;
       activeWorkspace = execution.workspace;
-
-      context =
-        assembleAgentContext({
-          settings: runSettings,
-          conversation:
-            plan.conversation,
-          memories,
-          skillRuntime
-        });
-
+      context = assembleAgentContext({
+        settings: runSettings,
+        conversation: regeneration.conversation,
+        memories,
+        skillRuntime
+      });
       context.metadata = {
         ...context.metadata,
         regeneration: true
       };
     } catch (error) {
-      console.error(
-        "准备重新生成失败：",
-        error
-      );
-
+      console.error("准备重新生成失败：", error);
       return {
         ok: false,
-        code:
-          "regeneration-prepare-failed",
-        message:
-          "无法准备重新生成。"
+        code: "regeneration-prepare-failed",
+        message: "无法准备重新生成。"
       };
     }
 
-    const runId =
-      crypto.randomUUID();
-
-    const persistentGoal = null;
-
-    const goalId = "";
-
-    let taskId =
-      crypto.randomUUID();
-
-    const regenerationSourceRunId = String(
-      plan.targetMessage?.activity?.runId ??
-      plan.targetMessage?.runId ??
-      ""
-    );
-    const regenerationThreadId = String(
-      plan.targetMessage?.executionThreadId ??
-      plan.conversation.activeExecutionThreadId ??
-      plan.conversation.executionThread?.id ??
-      ""
-    );
-    const regenerationThread = findExecutionThread(
-      plan.conversation,
-      regenerationThreadId
-    );
-    taskId = regenerationThread?.taskId || taskId;
-    let routingDecision = evaluateRoutingDecision(
-      executionThreadRouter.route({
-        operation: THREAD_COMMANDS.REGENERATE,
-        conversation: plan.conversation,
-        messageId: plan.userMessage?.id ?? "",
-        sourceRunId: regenerationSourceRunId,
-        targetThreadId: regenerationThreadId,
-        targetRunId: runId,
-        legacyAction: ROUTING_ACTIONS.REGENERATE,
-        shadowMode: true
-      }),
-      { conversation: plan.conversation }
-    );
-    routingDecision = recordRoutingDecision(routingDecision);
-    this.lastThreadRoutingDecision = routingDecision;
-
-    const abortController =
-      new AbortController();
-
-    const startedAt =
-      Date.now();
-
-    const activityStore =
-      new RunActivityStore({
-        taskId,
-        runId,
-        startedAt
-      });
-
-    this.activeRun = {
-      runId,
-      executionThreadId: regenerationThreadId,
-      threadRoutingDecision: routingDecision,
-      goalId,
-      objective:
-        persistentGoal?.objective ||
-        plan.userMessage.content,
-      persistentGoalId:
-        persistentGoal?.id ?? "",
-      goalSpec: persistentGoal ? structuredClone(persistentGoal) : null,
-      orchestrator: null,
-      currentSegmentId: "",
-      taskId,
-      workspaceId:
-        plan.conversation.workspaceId ?? null,
-      workspaceSnapshot:
-        plan.conversation.workspaceSnapshot ?? null,
-      mode: plan.conversation.mode ?? "chat",
-      modelSelection:
-        plan.conversation.modelSelection ?? null,
-      modelSnapshot:
-        plan.conversation.modelSnapshot ?? null,
-      skillRuntime,
-      skillRun: skillRuntime.active
-        ? {
-            id: skillRuntime.skill.id,
-            name: skillRuntime.rootSkills.map((skill) => skill.name).join(" + "),
-            version: skillRuntime.skill.version,
-            status: "running",
-            source: skillRuntime.source,
-            routingMode: skillRuntime.routingMode,
-            skills: structuredClone(skillRuntime.skills),
-            rootSkillIds: [...skillRuntime.rootSkillIds],
-            dependencySkillIds: skillRuntime.dependencySkills.map((skill) => skill.id),
-            router: skillRuntime.router ? structuredClone(skillRuntime.router) : null,
-            requiredCapabilities: [...skillRuntime.capabilityRequest.requiredCapabilities],
-            optionalCapabilities: [...skillRuntime.capabilityRequest.optionalCapabilities],
-            selectedToolNames: [],
-            missingRequired: [],
-            startedAt,
-            endedAt: null
-          }
-        : null,
-      activeWorkspace,
-      runtimePreferences: {
-        saveAbortedReplies:
-          runSettings.conversation?.saveAbortedReplies !== false,
-        saveToolHistory:
-          runSettings.tools?.runtime?.saveToolHistory !== false
-      },
-      conversationId:
-        plan.conversation.id,
-      abortController,
-      currentStepText: "",
-      liveStepRole: LIVE_STEP_ROLES.NONE,
-      finalText: "",
-      stepNumber: 0,
-      startedAt,
-      replaceMessageId:
-        plan.targetMessage.id,
-      toolCalls: [],
-      pendingApproval: null,
-      toolSecurity: null,
-      approvalController: null,
-      activityStore,
-      initialPlan: [],
-      initialPlanState: [],
-      resumedFromMessageId: "",
-      platformRunId: "",
-      platformLeaseIds: [],
-      platformError: null,
-      resumeInPlace: false,
-      finalizationAttemptCount: 0,
+    const runId = crypto.randomUUID();
+    const taskId = String(
+      regeneration.targetMessage?.taskId ?? ""
+    ).trim() || crypto.randomUUID();
+    const continuationState = {
+      parentRunId: String(
+        regeneration.targetMessage?.activity?.runId ??
+        regeneration.targetMessage?.runId ??
+        ""
+      ),
+      continuationCount: 0,
       contextCompactionCount: 0,
-      diffTracker: new RunDiffTracker({
-        runId,
-        workspaceId: plan.conversation.workspaceId ?? ""
-      }),
-      tokenLedger: new TokenLedger({
-        runId,
-        goalId,
-        taskId,
-        providerId: context.metadata?.activeModel?.providerId ?? "",
-        modelId: context.metadata?.activeModel?.modelId ?? "",
-        context
-      }),
-      ...createRunStateFields(startedAt)
+      resumedFromMessageId: ""
     };
 
-    const executionThread = conversationManager.beginExecutionThread({
-      conversationId: plan.conversation.id,
-      threadId: regenerationThreadId,
-      taskId,
-      goalId: persistentGoal?.id ?? "",
-      objective: this.activeRun.objective,
-      mode: this.activeRun.mode,
-      workspaceId: this.activeRun.workspaceId ?? "",
-      planState: [],
-      workingState: null,
+    this.activeRun = createSession({
       runId,
-      relation: "regenerate",
-      previousRunId: regenerationThread?.lastRunId ?? regenerationSourceRunId,
-      regeneratedFromRunId: regenerationSourceRunId,
-      userMessageId: plan.userMessage?.id ?? ""
+      taskId,
+      conversation: regeneration.conversation,
+      objective: regeneration.userMessage.content,
+      continuationState,
+      skillRuntime,
+      activeWorkspace,
+      runSettings,
+      context,
+      replaceMessageId: regeneration.targetMessage.id,
+      resumeInPlace: false
     });
-    if (executionThread?.ok) {
-      this.activeRun.executionThread = executionThread.thread;
-      this.activeRun.executionThreadId = executionThread.thread.id;
-      this.activeRun.continuationCount = executionThread.thread.continuationCount;
-      routingDecision = updateRoutingDecision(
-        routingDecision.id,
-        { state: ROUTING_DECISION_STATES.APPLIED }
-      ) ?? routingDecision;
-      this.activeRun.threadRoutingDecision = routingDecision;
-      this.lastThreadRoutingDecision = routingDecision;
-    }
 
-    if (skillRuntime.active) {
-      activityStore.recordSkill({
-        skill: skillRuntime.skill,
-        skills: skillRuntime.skills,
-        source: skillRuntime.source,
-        router: skillRuntime.router,
-        status: "running"
-      });
-    }
-
+    recordActiveSkill(this.activeRun);
     this.ensureActiveAssistantMessage(
-      plan.conversation.id
+      this.activeRun.conversationId
     );
-
     this.setStatus({
       state: "running",
       runId,
-      conversationId:
-        plan.conversation.id,
-      startedAt,
+      conversationId: this.activeRun.conversationId,
+      startedAt: this.activeRun.startedAt,
       lastError: null
     });
-
-    const runArguments = {
-      runId,
-      conversationId:
-        plan.conversation.id,
+    launchRun(this, {
       context,
       memories,
-      settings: runSettings,
-      abortController
-    };
-
-    if (isE2EMode()) {
-      void this.runE2EMessage(
-        runArguments
-      );
-    } else {
-      void this.runMessage(
-        runArguments
-      );
-    }
+      settings: runSettings
+    });
 
     return {
       ok: true,
       runId,
-      conversationId:
-        plan.conversation.id,
-      messageId:
-        plan.targetMessage.id
+      taskId,
+      conversationId: this.activeRun.conversationId,
+      messageId: regeneration.targetMessage.id
     };
   }
 };

@@ -295,13 +295,15 @@ describe("ConversationStore interrupted replacement recovery", () => {
   });
 });
 
-test("phase D persistence keeps the legacy rollback path during guarded rollout", () => {
+test("phase D persistence remains readable while Core Lite stops writing routing decisions", () => {
   const schema = fs.readFileSync(new URL("../../electron/conversation/conversationSchema.js", import.meta.url), "utf8");
   const preparation = fs.readFileSync(new URL("../../electron/agent/preparation/AgentRunPreparation.js", import.meta.url), "utf8");
+  const executionService = fs.readFileSync(new URL("../../electron/conversation/services/ConversationExecutionService.js", import.meta.url), "utf8");
+
   assert.match(schema, /const STORE_VERSION = 23;/u);
-  assert.match(preparation, /recordThreadRoutingDecision/u);
-  assert.match(preparation, /effectiveRoutingAction/u);
-  assert.match(preparation, /relation:\s*"regenerate"/u);
-  assert.match(preparation, /regeneratedFromRunId:\s*regenerationSourceRunId/u);
+  assert.match(executionService, /recordThreadRoutingDecision/u);
+  assert.doesNotMatch(preparation, /recordThreadRoutingDecision|effectiveRoutingAction/u);
+  assert.match(preparation, /regenerateMessage/u);
+  assert.match(preparation, /parentRunId:/u);
   assert.doesNotMatch(preparation, /steeringQueue\.enqueue/u);
 });

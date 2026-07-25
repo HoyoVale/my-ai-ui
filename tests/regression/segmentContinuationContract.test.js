@@ -21,13 +21,12 @@ describe("segment continuation runtime contract", () => {
   it("detects a resumable checkpoint before appending the next user message", () => {
     const runtime = readAgentRuntimeSource();
 
-    assert.match(runtime, /resolveCheckpointContinuation/u);
-    assert.match(runtime, /createCheckpointContinuationState/u);
+    assert.match(runtime, /resolveCoreLiteCheckpointContinuation/u);
+    assert.match(runtime, /createCoreLiteContinuationState/u);
     assert.match(runtime, /continuedTask/u);
     assert.match(runtime, /parentRunId/u);
-    assert.match(runtime, /previousSegmentCount/u);
-    assert.match(runtime, /initialPlan:\s*\[\]/u);
-    assert.doesNotMatch(runtime, /initialPlan:\s*continuationState/u);
+    assert.match(runtime, /resumedFromMessageId/u);
+    assert.doesNotMatch(runtime, /previousSegmentCount|initialPlan/u);
   });
 
   it("keeps the internal segment reason out of user-facing handoff copy", () => {
@@ -40,7 +39,7 @@ describe("segment continuation runtime contract", () => {
     );
 
     assert.doesNotMatch(runtime, /已达到任务分段上限/u);
-    assert.match(runtime, /当前阶段进展已整理/u);
+    assert.match(runtime, /当前进展已整理/u);
     assert.match(finalization, /Never mention segments/u);
     assert.match(activity, /当前进展已整理/u);
   });

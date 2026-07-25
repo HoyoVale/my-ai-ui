@@ -3,8 +3,8 @@ import {
 } from "../../conversation/index.js";
 
 import {
-  createRunCheckpoint
-} from "../runCheckpoint.js";
+  createCoreLiteRunCheckpoint
+} from "../CoreLiteCheckpoint.js";
 
 import {
   resolveActiveRunText
@@ -23,10 +23,6 @@ import {
   RUN_STOP_REASONS
 } from "../runStopReasons.js";
 
-import {
-  deriveGoalWorkingState
-} from "../AgentRuntimeInternals.js";
-
 export const agentRunPersistence = {
   buildActiveCheckpoint() {
     if (!this.activeRun) {
@@ -36,8 +32,7 @@ export const agentRunPersistence = {
     const runtimeCursor = this.activeRun.toolSession
       ?.getRuntimeCursor?.() ?? {};
 
-    return createRunCheckpoint({
-      executionThreadId: this.activeRun.executionThreadId,
+    return createCoreLiteRunCheckpoint({
       taskId: this.activeRun.taskId,
       workspaceId:
         this.activeRun.workspaceId ?? "",
@@ -62,7 +57,6 @@ export const agentRunPersistence = {
         this.activeRun.skillRuntime?.source ?? "manual",
       skillRouter:
         this.activeRun.skillRuntime?.router ?? null,
-      goalId: this.activeRun.goalId,
       runId: this.activeRun.runId,
       parentRunId:
         this.activeRun.parentRunId ?? "",
@@ -80,18 +74,8 @@ export const agentRunPersistence = {
         this.activeRun.resumable === true,
       publicStatus:
         this.activeRun.publicStatus ?? "running",
-      plan:
-        this.activeRun.toolSession
-          ?.getPlan?.() ??
-        this.activeRun.initialPlan ?? [],
-      planState:
-        this.activeRun.toolSession
-          ?.getPlanState?.() ??
-        this.activeRun.initialPlanState ??
-        this.activeRun.initialPlan ?? [],
       records:
-        this.activeRun.toolSession
-          ?.getRecords?.() ??
+        this.activeRun.toolSession?.getRecords?.() ??
         this.activeRun.toolCalls ?? [],
       stopReason:
         this.activeRun.stopReason ?? "",
@@ -99,16 +83,11 @@ export const agentRunPersistence = {
         this.activeRun.contextCompactionCount ?? 0,
       continuationCount:
         this.activeRun.continuationCount ?? 0,
-      previousSegmentCount:
-        this.activeRun.previousSegmentCount ?? 0,
-      orchestration:
-        this.activeRun.orchestrator
-          ?.snapshot?.({ compact: true }) ?? null,
       toolRuntime:
         this.activeRun.toolSession
           ?.getRuntimeRecovery?.() ?? null,
-      workingState:
-        deriveGoalWorkingState(this.activeRun),
+      snapshotSource:
+        "core-lite-agent-run-session",
       ...runtimeCursor
     });
   },
@@ -127,27 +106,22 @@ export const agentRunPersistence = {
       return this.activeRun.replaceMessageId;
     }
 
-    const checkpoint =
-      this.buildActiveCheckpoint();
+    const checkpoint = this.buildActiveCheckpoint();
     this.activeRun.activityStore
       ?.updateCheckpoint(checkpoint);
 
-    const persisted =
-      this.persistAssistantResponse({
-        conversationId,
-        content: "",
-        status: "running"
-      });
-    const message =
-      persisted?.message ?? persisted;
+    const persisted = this.persistAssistantResponse({
+      conversationId,
+      content: "",
+      status: "running"
+    });
+    const message = persisted?.message ?? persisted;
 
     if (message?.id) {
-      this.activeRun.replaceMessageId =
-        message.id;
+      this.activeRun.replaceMessageId = message.id;
       this.activeRun.resumeInPlace = true;
 
-      const updated =
-        this.buildActiveCheckpoint();
+      const updated = this.buildActiveCheckpoint();
       this.activeRun.activityStore
         ?.updateCheckpoint(updated);
       this.persistAssistantResponse({
@@ -170,56 +144,29 @@ export const agentRunPersistence = {
       return null;
     }
 
-    const checkpoint =
-      this.buildActiveCheckpoint();
+    const checkpoint = this.buildActiveCheckpoint();
     this.activeRun.activityStore
       ?.updateCheckpoint(checkpoint);
 
-    const persisted = this.persistAssistantResponse({
-      conversationId:
-        this.activeRun.conversationId,
-      content:
-        resolveActiveRunText(
-          this.activeRun
-        ),
+    return this.persistAssistantResponse({
+      conversationId: this.activeRun.conversationId,
+      content: resolveActiveRunText(this.activeRun),
       status
     });
-    if (this.activeRun.persistentGoalId) {
-      conversationManager.recordGoalTokenUsage?.({
-        conversationId: this.activeRun.conversationId,
-        goalId: this.activeRun.persistentGoalId,
-        ledger: this.activeRun.tokenLedger?.snapshot?.() ?? null
-      });
-    }
-    conversationManager.recordExecutionThreadCheckpoint?.({
-      conversationId: this.activeRun.conversationId,
-      threadId: this.activeRun.executionThreadId,
-      checkpoint,
-      planState: checkpoint?.planState ?? null,
-      workingState: checkpoint?.workingState ?? null,
-      runId: this.activeRun.runId
-    });
-    return persisted;
   },
 
   upsertToolRecord(
     runId,
     record
   ) {
-    if (
-      !this.isCurrentRun(runId)
-    ) {
+    if (!this.isCurrentRun(runId)) {
       return;
     }
 
-    const records =
-      this.activeRun.toolCalls;
-
-    const index =
-      records.findIndex(
-        (item) =>
-          item.id === record.id
-      );
+    const records = this.activeRun.toolCalls;
+    const index = records.findIndex(
+      (item) => item.id === record.id
+    );
 
     if (index >= 0) {
       records[index] = {
@@ -227,31 +174,23 @@ export const agentRunPersistence = {
         ...structuredClone(record)
       };
     } else {
-      records.push(
-        structuredClone(record)
-      );
+      records.push(structuredClone(record));
     }
 
-    this.activeRun
-      .activityStore
-      ?.upsertTool(record);
+    this.activeRun.activityStore?.upsertTool(record);
 
-    if (
-      [
-        "retrying",
-        "completed",
-        "failed",
-        "cancelled"
-      ].includes(record.status)
-    ) {
+    if ([
+      "retrying",
+      "completed",
+      "failed",
+      "cancelled"
+    ].includes(record.status)) {
       this.persistActiveRunCheckpoint({
         status: "running"
       });
     }
 
-    this.setStatus({
-      ...this.status
-    });
+    this.setStatus({ ...this.status });
   },
 
   handleStepEnd(
@@ -262,49 +201,33 @@ export const agentRunPersistence = {
       return;
     }
 
-    const classified =
-      classifyAgentStep(step);
-
+    const classified = classifyAgentStep(step);
     this.activeRun.stepNumber =
       Number(step?.stepNumber) || 0;
 
-    this.activeRun.orchestrator
-      ?.recordStep(step);
-
-    if (
-      classified.kind ===
-        "commentary"
-    ) {
-      this.activeRun
-        .activityStore
-        ?.recordCommentary({
-          content:
-            classified.text,
-          phase:
-            classified.phase,
-          objective:
-            classified.objective
-        });
-    } else if (
-      classified.kind ===
-        "final"
-    ) {
-      this.activeRun
-        .activityStore
-        ?.closeBatch(
-          "completed"
-        );
-      this.activeRun.finalText =
-        classified.text;
+    if (classified.kind === "commentary") {
+      this.activeRun.activityStore?.recordCommentary({
+        content: classified.text,
+        phase: classified.phase,
+        objective: classified.objective
+      });
+    } else if (classified.kind === "final") {
+      this.activeRun.activityStore?.closeBatch(
+        "completed"
+      );
+      this.activeRun.finalText = classified.text;
     }
 
-    const providerUsage = step?.usage ?? step?.totalUsage ?? {};
+    const providerUsage =
+      step?.usage ?? step?.totalUsage ?? {};
     this.activeRun.tokenLedger?.recordProviderUsage(
       providerUsage,
       {
         phase: "execution",
         stepNumber: this.activeRun.stepNumber,
-        requestId: String(step?.request?.id ?? step?.response?.id ?? "")
+        requestId: String(
+          step?.request?.id ?? step?.response?.id ?? ""
+        )
       }
     );
 
@@ -321,10 +244,8 @@ export const agentRunPersistence = {
       }
     );
 
-    this.activeRun.currentStepText =
-      "";
-    this.activeRun.liveStepRole =
-      LIVE_STEP_ROLES.NONE;
+    this.activeRun.currentStepText = "";
+    this.activeRun.liveStepRole = LIVE_STEP_ROLES.NONE;
     this.activeRun.toolSession?.endStep?.(
       `${this.activeRun.currentSegmentId}:step:${this.activeRun.stepNumber}`
     );
@@ -332,10 +253,7 @@ export const agentRunPersistence = {
     this.persistActiveRunCheckpoint({
       status: "running"
     });
-
-    this.setStatus({
-      ...this.status
-    });
+    this.setStatus({ ...this.status });
   },
 
   persistAssistantResponse({
@@ -356,50 +274,25 @@ export const agentRunPersistence = {
       this.activeRun.runtimePreferences
         ?.saveToolHistory !== false;
     const activitySnapshot =
-      this.activeRun
-        .activityStore
-        ?.snapshot?.() ?? null;
+      this.activeRun.activityStore?.snapshot?.() ?? null;
     const persistedActivity =
-      !saveToolHistory &&
-      activitySnapshot
+      !saveToolHistory && activitySnapshot
         ? {
             ...activitySnapshot,
-            events:
-              activitySnapshot.events
-                .filter(
-                  (event) =>
-                    event.type !==
-                    "tool"
-                )
+            events: activitySnapshot.events.filter(
+              (event) => event.type !== "tool"
+            )
           }
         : activitySnapshot;
 
     const metadata = {
-      durationMs:
-        Math.max(
-          1,
-          Date.now() -
-          this.activeRun.startedAt
-        ),
-      toolCalls:
-        saveToolHistory
-          ? this.activeRun
-              .toolCalls
-          : [],
-      plan:
-        this.activeRun
-          .toolSession
-          ?.getPlan?.() ??
-        this.activeRun
-          .initialPlan ?? [],
-      planState:
-        this.activeRun
-          .toolSession
-          ?.getPlanState?.() ??
-        this.activeRun
-          .initialPlanState ??
-        this.activeRun
-          .initialPlan ?? [],
+      durationMs: Math.max(
+        1,
+        Date.now() - this.activeRun.startedAt
+      ),
+      toolCalls: saveToolHistory
+        ? this.activeRun.toolCalls
+        : [],
       stopReason:
         this.activeRun.executionStopReason ??
         (status === "aborted"
@@ -408,59 +301,47 @@ export const agentRunPersistence = {
             ? ""
             : RUN_STOP_REASONS.COMPLETED),
       resumedFromMessageId:
-        this.activeRun
-          .resumedFromMessageId,
-      taskId:
-        this.activeRun.taskId,
-      executionThreadId:
-        this.activeRun.executionThreadId,
-      activity:
-        persistedActivity,
-      skillRun:
-        this.activeRun.skillRun
-          ? structuredClone(this.activeRun.skillRun)
-          : null,
+        this.activeRun.resumedFromMessageId,
+      taskId: this.activeRun.taskId,
+      activity: persistedActivity,
+      skillRun: this.activeRun.skillRun
+        ? structuredClone(this.activeRun.skillRun)
+        : null,
       tokenLedger:
         this.activeRun.tokenLedger?.snapshot?.() ?? null,
       diffSummary:
         this.activeRun.diffTracker?.snapshot?.() ?? null,
       runOutcome: String(
-        runOutcome || this.activeRun.stateMachine?.snapshot?.().outcome || ""
+        runOutcome ||
+        this.activeRun.stateMachine?.snapshot?.().outcome ||
+        ""
       ),
       runPhase: String(
-        runPhase || this.activeRun.stateMachine?.snapshot?.().phase || ""
+        runPhase ||
+        this.activeRun.stateMachine?.snapshot?.().phase ||
+        ""
       ),
       runResumable: runResumable === true
     };
 
-    if (
-      this.activeRun
-        .replaceMessageId
-    ) {
-      return conversationManager
-        .replaceAssistantMessage({
-          conversationId,
-          messageId:
-            this.activeRun
-              .replaceMessageId,
-          content,
-          status,
-          preserveCreatedAt:
-            Boolean(
-              this.activeRun
-                .resumeInPlace
-            ),
-          ...metadata
-        });
-    }
-
-    return conversationManager
-      .appendMessage({
+    if (this.activeRun.replaceMessageId) {
+      return conversationManager.replaceAssistantMessage({
         conversationId,
-        role: "assistant",
+        messageId: this.activeRun.replaceMessageId,
         content,
         status,
+        preserveCreatedAt:
+          Boolean(this.activeRun.resumeInPlace),
         ...metadata
       });
+    }
+
+    return conversationManager.appendMessage({
+      conversationId,
+      role: "assistant",
+      content,
+      status,
+      ...metadata
+    });
   }
 };

@@ -134,8 +134,8 @@ describe("structured Response activity flow", () => {
     );
 
     assert.doesNotMatch(finalization, /bufferProgressHandoff/u);
-    assert.match(finalization, /const publicStream = new PublicTextStreamSanitizer\(\);/u);
-    assert.match(finalization, /const publicChunk = publicStream\.push\(textPart\);/u);
+    assert.match(finalization, /const publicStream\s*=\s*new PublicTextStreamSanitizer\(\);/u);
+    assert.match(finalization, /const publicChunk\s*=\s*publicStream\.push\(textPart\);/u);
     assert.match(finalization, /const reconciled = reconcileFinalResponse\(\{/u);
     assert.match(finalization, /this\.activeRun\.finalText = publicText;/u);
     assert.match(finalization, /appendResponseChunk\(publicText\);/u);

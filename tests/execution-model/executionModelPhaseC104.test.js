@@ -258,17 +258,18 @@ describe("SteeringQueue", () => {
   });
 });
 
-test("phase C shadow comparison remains available during guarded rollout", () => {
+test("phase C routing source remains dormant under Core Lite", () => {
   const preparation = read("electron/agent/preparation/AgentRunPreparation.js");
   const runtime = read("electron/agent/AgentRuntime.js");
+  const router = read("electron/execution-model/ExecutionThreadRouter.js");
   const ipc = read("electron/ipc/handlers/agentIpc.js");
   const schema = read("electron/conversation/conversationSchema.js");
-  assert.match(preparation, /executionThreadRouter\.route\(/u);
-  assert.match(preparation, /legacyAction:/u);
-  assert.match(preparation, /shadowMode:\s*true/u);
-  assert.match(preparation, /threadRoutingDecisionStore\.record/u);
-  assert.match(preparation, /routingRolloutController\.evaluate/u);
-  assert.match(runtime, /threadRoutingDecisionStore\.snapshot/u);
+
+  assert.match(router, /class ExecutionThreadRouter/u);
+  assert.doesNotMatch(preparation, /executionThreadRouter\.route\(/u);
+  assert.doesNotMatch(preparation, /threadRoutingDecisionStore|routingRolloutController/u);
+  assert.doesNotMatch(runtime, /threadRoutingDecisionStore\.snapshot/u);
+  assert.match(preparation, /resolveCoreLiteCheckpointContinuation/u);
   assert.match(ipc, /threadCommand/u);
   assert.doesNotMatch(preparation, /steeringQueue\.enqueue/u);
   assert.match(schema, /const STORE_VERSION = 23;/u);
