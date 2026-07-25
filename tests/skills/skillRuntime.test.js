@@ -108,7 +108,7 @@ test("Skill Runtime test framework validates prompt, capabilities and permission
     assert.equal(result.ok, true);
     assert.equal(result.report.failed, 0);
     assert.ok(result.report.tests.some((item) => item.id === "required-capabilities"));
-    assert.ok(result.report.supportToolNames.includes("update_plan"));
+    assert.equal(result.report.supportToolNames.includes("update_plan"), false);
     assert.ok(result.report.supportToolNames.includes("read_tool_result"));
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });

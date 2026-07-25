@@ -35,6 +35,10 @@ import {
   getBuiltinToolPresentation
 } from "./builtinToolPresentation.js";
 
+import {
+  CORE_LITE_MODE
+} from "../../config/coreLite.js";
+
 function withPresentation(definitions = []) {
   return definitions.map((definition) => ({
     ...definition,
@@ -138,7 +142,8 @@ export function registerBuiltinToolDefinitions(
     .registerMany(
       withPresentation(createAgentToolDefinitions({
         resultStore,
-        planStore: effectivePlanStore
+        planStore: effectivePlanStore,
+        includePlanTools: !CORE_LITE_MODE
       })),
       {
         source: "builtin.agent",

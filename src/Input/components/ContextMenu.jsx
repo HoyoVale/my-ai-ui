@@ -129,21 +129,6 @@ function recentWorkspaceForMode(conversations, mode) {
   return recent?.workspaceId ?? null;
 }
 
-function goalCriteriaFromLines(value, currentGoal) {
-  const existing = new Map((currentGoal?.criteria ?? []).map((item) => [item.text, item]));
-  return String(value ?? "")
-    .split(/\n/gu)
-    .map((text) => text.trim())
-    .filter(Boolean)
-    .slice(0, 12)
-    .map((text, index) => ({
-      id: existing.get(text)?.id ?? `criterion-${index + 1}`,
-      text,
-      verificationKind: existing.get(text)?.verificationKind ?? "auto",
-      manualSatisfied: existing.get(text)?.manualSatisfied === true
-    }));
-}
-
 export const InputContextMenu = forwardRef(function InputContextMenu({
   context,
   disabled,
@@ -154,7 +139,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
   onCreateSession,
   onAddWorkspace,
   onSkillChange,
-  onGoalChange,
   onModelChange,
   onToggleMcp,
   onToggleMcpServer
@@ -170,9 +154,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
   const [targetSkillIds, setTargetSkillIds] = useState([]);
   const targetSkillId = targetSkillIds[0] ?? "";
   const [targetRoutingMode, setTargetRoutingMode] = useState("manual");
-  const [goalDraft, setGoalDraft] = useState("");
-  const [goalCriteriaDraft, setGoalCriteriaDraft] = useState("");
-  const [goalAutoContinue, setGoalAutoContinue] = useState(true);
   const [actionError, setActionError] = useState("");
 
   const currentMode = normalizeSessionMode(context?.mode, "chat");
@@ -180,7 +161,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
   const currentConversationId = context?.currentConversationId ?? null;
   const currentConversationTitle =
     context?.currentConversationTitle ?? "新会话";
-  const currentGoal = context?.currentGoal ?? null;
 
   const workspaces = useMemo(
     () => Array.isArray(context?.workspaces)
@@ -280,9 +260,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
       setTargetWorkspaceId(currentWorkspaceId);
       setTargetSkillIds(currentSkillIds);
       setTargetRoutingMode(context?.currentSkillRoutingMode === "auto" ? "auto" : "manual");
-      setGoalDraft(currentGoal?.objective ?? "");
-      setGoalCriteriaDraft((currentGoal?.criteria ?? []).map((item) => item.text).join("\n"));
-      setGoalAutoContinue(currentGoal?.autoContinue !== false);
       setActionError("");
     } else if (lastPanelHeightRef.current !== 0) {
       lastPanelHeightRef.current = 0;
@@ -290,9 +267,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
     }
   }, [
     context?.currentSkillRoutingMode,
-    currentGoal?.autoContinue,
-    currentGoal?.criteria,
-    currentGoal?.objective,
     currentSkillIds,
     currentMode,
     currentWorkspaceId,
@@ -304,7 +278,7 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
     openPage(nextPage = "root") {
       if (disabled) return false;
       setMenuOpen(true);
-      setPage(["root", "mode", "workspace", "session", "goal", "skill", "mcp", "model"]
+      setPage(["root", "mode", "workspace", "session", "skill", "mcp", "model"]
         .includes(nextPage) ? nextPage : "root");
       return true;
     },
@@ -538,21 +512,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
     setMenuOpen(false);
   };
 
-  const updateGoal = async ({
-    objective = goalDraft,
-    status = "active",
-    criteria = goalCriteriaFromLines(goalCriteriaDraft, currentGoal),
-    autoContinue = goalAutoContinue
-  } = {}) => {
-    setActionError("");
-    const result = await onGoalChange?.({ objective, status, criteria, autoContinue });
-    if (result?.ok === false) {
-      setActionError(result.message ?? "无法更新 Goal。");
-      return;
-    }
-    setMenuOpen(false);
-  };
-
   const renderRoot = () => (
     <div className="input-context-menu__items">
       <MenuItem
@@ -575,21 +534,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
         trailing={<Chevron />}
         onClick={() => setPage("session")}
         testId="input-context-session"
-      />
-      <MenuItem
-        label="Goal"
-        value={
-          currentGoal?.status === "active"
-            ? "进行中"
-            : currentGoal?.status === "paused"
-              ? "已暂停"
-              : currentGoal?.status === "completed"
-                ? "已完成"
-                : "未设置"
-        }
-        trailing={<Chevron />}
-        onClick={() => setPage("goal")}
-        testId="input-context-goal"
       />
       <MenuItem
         label="Skill"
@@ -808,76 +752,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
     </>
   );
 
-  const renderGoalPage = () => (
-    <>
-      {renderPageHeader("Goal")}
-      <div className="input-goal-editor">
-        <textarea
-          data-testid="input-goal-objective"
-          value={goalDraft}
-          maxLength={4000}
-          rows={5}
-          placeholder="描述最终结果…"
-          onChange={(event) => setGoalDraft(event.target.value)}
-        />
-        <textarea
-          data-testid="input-goal-criteria"
-          value={goalCriteriaDraft}
-          maxLength={6000}
-          rows={4}
-          placeholder={"Done when（每行一条）\n例如：npm test 全部通过"}
-          onChange={(event) => setGoalCriteriaDraft(event.target.value)}
-        />
-        <label className="input-goal-editor__toggle">
-          <input
-            type="checkbox"
-            checked={goalAutoContinue}
-            onChange={(event) => setGoalAutoContinue(event.target.checked)}
-          />
-          <span>证据不足且仍有进展时自动继续</span>
-        </label>
-        <div className="input-context-menu__notice">
-          Goal 绑定当前会话。新消息会作为推进目标的补充指令；只有完成验证通过后才会自动标记完成。
-        </div>
-        <div className="input-goal-editor__actions">
-          {currentGoal && (
-            <button
-              type="button"
-              className="is-secondary"
-              data-testid="input-goal-clear"
-              onClick={() => { void updateGoal({ objective: "", criteria: [] }); }}
-            >
-              清除
-            </button>
-          )}
-          {currentGoal?.status === "active" && (
-            <button
-              type="button"
-              className="is-secondary"
-              data-testid="input-goal-pause"
-              onClick={() => { void updateGoal({ objective: goalDraft, status: "paused" }); }}
-            >
-              暂停
-            </button>
-          )}
-          <button
-            type="button"
-            className="is-primary"
-            data-testid="input-goal-save"
-            disabled={!goalDraft.trim() || context?.busy}
-            onClick={() => { void updateGoal({ status: "active" }); }}
-          >
-            {currentGoal?.status === "paused" || currentGoal?.status === "completed"
-              ? "恢复并保存"
-              : currentGoal
-                ? "保存"
-                : "设为 Goal"}
-          </button>
-        </div>
-      </div>
-    </>
-  );
-
   const toggleMcp = async (enabled) => {
     setActionError("");
     const result = await onToggleMcp?.(enabled);
@@ -972,7 +846,6 @@ export const InputContextMenu = forwardRef(function InputContextMenu({
           {page === "mode" && renderModePage()}
           {page === "workspace" && renderWorkspacePage()}
       {page === "session" && renderSessionPage()}
-      {page === "goal" && renderGoalPage()}
       {page === "skill" && renderSkillPage()}
           {page === "mcp" && renderMcpPage()}
           {page === "model" && renderModelPage()}

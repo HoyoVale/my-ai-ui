@@ -15,21 +15,17 @@ function read(path) {
 }
 
 describe("Goal UI contract", () => {
-  it("exposes Goal controls in both Conversation and Input", () => {
+  it("keeps the dormant Goal component out of Core Lite entry points", () => {
+    const conversation = read("../../src/Conversation/Conversation.jsx");
     const topbar = read("../../src/Conversation/components/Topbar.jsx");
     const panel = read("../../src/Conversation/components/GoalPanel.jsx");
     const inputMenu = read("../../src/Input/components/ContextMenu.jsx");
 
-    assert.match(topbar, /conversation-goal-toggle/u);
+    assert.doesNotMatch(conversation, /ConversationGoalPanel/u);
+    assert.doesNotMatch(topbar, /conversation-goal-toggle/u);
+    assert.doesNotMatch(inputMenu, /input-context-goal|input-goal-objective|input-goal-criteria/u);
     assert.match(panel, /conversation-goal-objective/u);
     assert.match(panel, /conversation-goal-criteria/u);
-    assert.match(panel, /conversation-goal-auto-continue/u);
-    assert.match(panel, /conversation-goal-progress/u);
-    assert.match(panel, /conversation-goal-pause/u);
-    assert.match(panel, /conversation-goal-clear/u);
-    assert.match(inputMenu, /input-context-goal/u);
-    assert.match(inputMenu, /input-goal-objective/u);
-    assert.match(inputMenu, /input-goal-criteria/u);
   });
 
   it("surfaces Goal Runtime phases and recovery waits", () => {

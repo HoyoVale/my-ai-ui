@@ -18,7 +18,7 @@ test("83 exposes a durable background scheduler with controls and budgets", () =
   assert.match(scheduler, /resume\(jobId\)/u);
   assert.match(scheduler, /cancel\(jobId\)/u);
   assert.match(scheduler, /retry\(jobId\)/u);
-  assert.match(main, /longRunningAgentService\.start/u);
+  assert.doesNotMatch(main, /longRunningAgentService\.start|platformKernel/u);
 });
 
 test("83 routes delegated coding work through the background job", () => {
@@ -30,18 +30,18 @@ test("83 routes delegated coding work through the background job", () => {
   assert.match(platform, /integrationCoordinator\.integrateAndReview/u);
 });
 
-test("83 adds platform commands, detailed developer state and job control IPC", () => {
+test("83 keeps dormant Platform diagnostics out of Core Lite entry points", () => {
   const commands = source("src/Input/utils/slashCommand.js");
+  const conversation = source("src/Conversation/Conversation.jsx");
   const dock = source("src/Conversation/components/PlatformDock.jsx");
-  const preload = source("electron/preload/preload.cjs");
+  const registration = source("electron/ipc/registerIpcHandlers.js");
   for (const command of ["agents", "tasks", "worktrees", "run", "review", "artifacts"]) {
-    assert.match(commands, new RegExp(`id: "${command}"`, "u"));
+    assert.doesNotMatch(commands, new RegExp(`id: "${command}"`, "u"));
   }
+  assert.doesNotMatch(conversation, /ConversationPlatformDock/u);
+  assert.doesNotMatch(registration, /registerPlatformIpc/u);
   assert.match(dock, /controlPlatformJob/u);
   assert.match(dock, /developerMode/u);
-  assert.match(dock, /Worktrees \/ Leases/u);
-  assert.match(dock, /Artifacts \/ Logs/u);
-  assert.match(preload, /onPlatformViewRequested/u);
 });
 
 test("Windows worktree text assertions normalize only line endings", () => {

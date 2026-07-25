@@ -379,8 +379,8 @@ describe(
   }
 );
 
-describe("ContextAssembler persistent Goal", () => {
-  it("injects only an active conversation Goal", () => {
+describe("ContextAssembler Core Lite Goal isolation", () => {
+  it("does not inject persisted Goal data into the model context", () => {
     const active = assembleAgentContext({
       settings: SETTINGS,
       conversation: {
@@ -396,27 +396,14 @@ describe("ContextAssembler persistent Goal", () => {
         messages: []
       }
     });
-    assert.match(active.system, /persistent goal/u);
-    assert.match(active.system, /交付一个经过测试的桌面应用/u);
-    assert.match(active.system, /Done when:/u);
-    assert.match(active.system, /所有测试通过/u);
-    assert.match(active.system, /Automatic continuation is enabled/u);
-    assert.equal(active.metadata.prompt.goalEnabled, true);
-    assert.equal(active.budget.sections.some((section) => section.id === "goal"), true);
 
-    const paused = assembleAgentContext({
-      settings: SETTINGS,
-      conversation: {
-        goal: {
-          id: "goal-1",
-          objective: "不应注入",
-          status: "paused"
-        },
-        messages: []
-      }
-    });
-    assert.doesNotMatch(paused.system, /不应注入/u);
-    assert.equal(paused.metadata.prompt.goalEnabled, false);
+    assert.doesNotMatch(active.system, /persistent goal/u);
+    assert.doesNotMatch(active.system, /交付一个经过测试的桌面应用/u);
+    assert.doesNotMatch(active.system, /Done when:/u);
+    assert.doesNotMatch(active.system, /所有测试通过/u);
+    assert.doesNotMatch(active.system, /Automatic continuation is enabled/u);
+    assert.equal("goalEnabled" in active.metadata.prompt, false);
+    assert.equal(active.budget.sections.some((section) => section.id === "goal"), false);
   });
 });
 

@@ -60,20 +60,8 @@ export function registerConversationIpc() {
     IPC_CHANNELS
       .navigation
       .OPEN_CONVERSATION,
-    (_event, request = {}) => {
-      const window = openConversationWindow();
-      const view = String(request.platformView ?? "");
-      if (!view) return;
-      const notify = () => {
-        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-          window.webContents.send(IPC_CHANNELS.platform.VIEW_REQUESTED, view);
-        }
-      };
-      if (window.webContents.isLoadingMainFrame()) {
-        window.webContents.once("did-finish-load", notify);
-      } else {
-        notify();
-      }
+    () => {
+      openConversationWindow();
     }
   );
 
@@ -314,18 +302,11 @@ export function registerConversationIpc() {
 
   ipcMain.handle(
     IPC_CHANNELS.conversation.SET_GOAL,
-    (_event, input = {}) => {
-      const busy = rejectWhenBusy();
-      if (busy) return busy;
-
-      return conversationManager.setGoal({
-        conversationId: String(input.conversationId ?? ""),
-        objective: String(input.objective ?? ""),
-        criteria: Array.isArray(input.criteria) ? input.criteria : [],
-        autoContinue: input.autoContinue !== false,
-        status: String(input.status ?? "active")
-      });
-    }
+    () => ({
+      ok: false,
+      code: "core-lite-goal-disabled",
+      message: "Core Lite 分支未启用 Goal。"
+    })
   );
 
   ipcMain.handle(

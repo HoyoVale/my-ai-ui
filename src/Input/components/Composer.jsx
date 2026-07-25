@@ -36,7 +36,6 @@ export function InputComposer({
   onCreateSession,
   onAddWorkspace,
   onSkillChange,
-  onGoalChange,
   onModelChange,
   onToggleMcp,
   onToggleMcpServer,
@@ -72,7 +71,7 @@ export function InputComposer({
         memory: window.api?.openMemory,
         settings: window.api?.openSetting
       }[action.window];
-      open?.({ platformView: action.platformView ?? "" });
+      open?.();
     }
   };
 
@@ -105,7 +104,6 @@ export function InputComposer({
           onCreateSession={onCreateSession}
           onAddWorkspace={onAddWorkspace}
           onSkillChange={onSkillChange}
-          onGoalChange={onGoalChange}
           onModelChange={onModelChange}
           onToggleMcp={onToggleMcp}
           onToggleMcpServer={onToggleMcpServer}

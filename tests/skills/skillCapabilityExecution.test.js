@@ -77,11 +77,20 @@ test("Skill capability requests retain bounded Agent support tools", async () =>
 
   try {
     assert.equal(session.capabilityResolution.satisfied, true);
-    assert.ok(session.capabilityResolution.supportingCapabilities.includes("agent.plan"));
+    assert.equal(
+      session.capabilityResolution.supportingCapabilities.includes("agent.plan"),
+      false
+    );
     assert.ok(session.capabilityResolution.supportingCapabilities.includes("agent.result.page"));
-    assert.ok(session.capabilityResolution.supportToolNames.includes("update_plan"));
+    assert.equal(
+      session.capabilityResolution.supportToolNames.includes("update_plan"),
+      false
+    );
     assert.ok(session.capabilityResolution.supportToolNames.includes("read_tool_result"));
-    assert.ok(session.definitions.some((tool) => tool.name === "update_plan"));
+    assert.equal(
+      session.definitions.some((tool) => tool.name === "update_plan"),
+      false
+    );
     assert.ok(session.definitions.some((tool) => tool.name === "read_tool_result"));
   } finally {
     await session.closePersistence();

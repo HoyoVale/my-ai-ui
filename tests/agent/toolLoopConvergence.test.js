@@ -88,7 +88,7 @@ describe("AI SDK Tool loop convergence", () => {
     assert.equal(session.getRecords()[0].status, "completed");
   });
 
-  it("continues a real Tool loop across two bounded segments", async () => {
+  it("continues a real Tool loop across two bounded segments without plan tools", async () => {
     let segmentId = "";
     const session = createAgentToolSession({
       getSegmentId: () => segmentId,
@@ -97,55 +97,45 @@ describe("AI SDK Tool loop convergence", () => {
     });
     const model = new MockLanguageModelV4({
       doGenerate: [
-        toolCall("plan-1", "update_plan", {
-          items: [
-            { id: "calculate", title: "Calculate", status: "in_progress" },
-            { id: "answer", title: "Answer", status: "pending" }
-          ]
-        }),
         toolCall("calculator-1", "calculator", { expression: "20 + 22" }),
-        toolCall("plan-2", "update_plan", {
-          items: [
-            { id: "calculate", title: "Calculate", status: "completed" },
-            { id: "answer", title: "Answer", status: "completed" }
-          ]
-        }),
+        toolCall("calculator-2", "calculator", { expression: "40 + 2" }),
+        toolCall("calculator-3", "calculator", { expression: "84 / 2" }),
         finalText("The result is 42.")
       ]
     });
     const orchestrator = new LongTaskOrchestrator({
-      goalId: "goal",
       taskId: "task",
       runId: "run",
       maxSegmentSteps: 2,
       maxSegments: 3
     });
 
+    assert.equal("update_plan" in session.tools, false);
+
     const firstSegment = orchestrator.beginSegment({
-      plan: session.getPlan(),
+      plan: [],
       records: session.getRecords()
     });
     segmentId = firstSegment.id;
     const firstResult = await generateText({
       model,
       tools: session.tools,
-      prompt: "Calculate 20 + 22 with a plan.",
+      prompt: "Calculate 20 + 22 and verify the result.",
       stopWhen: stepCountIs(2)
     });
     firstResult.steps.forEach((step) => orchestrator.recordStep(step));
-    const firstPlan = session.getPlan();
     const firstRecords = session.getRecords();
     const firstReason = inferRunStopReason({
       records: firstRecords,
       finishReason: firstResult.finishReason,
       steps: firstResult.steps,
       maxSteps: 2,
-      plan: firstPlan
+      plan: []
     });
     const firstOutcome = orchestrator.completeSegment({
       stopReason: firstReason,
       finishReason: firstResult.finishReason,
-      plan: firstPlan,
+      plan: [],
       records: firstRecords
     });
 
@@ -153,30 +143,29 @@ describe("AI SDK Tool loop convergence", () => {
     assert.equal(firstOutcome.decision, "continue");
 
     const secondSegment = orchestrator.beginSegment({
-      plan: firstPlan,
+      plan: [],
       records: firstRecords
     });
     segmentId = secondSegment.id;
     const secondResult = await generateText({
       model,
       tools: session.tools,
-      prompt: "Continue from the checkpoint and finish the plan.",
+      prompt: "Continue from the checkpoint and return the result.",
       stopWhen: stepCountIs(2)
     });
     secondResult.steps.forEach((step) => orchestrator.recordStep(step));
-    const finalPlan = session.getPlan();
     const finalRecords = session.getRecords();
     const finalReason = inferRunStopReason({
       records: finalRecords,
       finishReason: secondResult.finishReason,
       steps: secondResult.steps,
       maxSteps: 2,
-      plan: finalPlan
+      plan: []
     });
     const finalOutcome = orchestrator.completeSegment({
       stopReason: finalReason,
       finishReason: secondResult.finishReason,
-      plan: finalPlan,
+      plan: [],
       records: finalRecords,
       finalText: secondResult.text
     });
@@ -190,9 +179,10 @@ describe("AI SDK Tool loop convergence", () => {
       firstSegment.id
     );
     assert.equal(
-      finalRecords.find((record) => record.id === "plan-2")?.segmentId,
+      finalRecords.find((record) => record.id === "calculator-3")?.segmentId,
       secondSegment.id
     );
+    await session.closePersistence();
   });
 
 
@@ -260,27 +250,9 @@ describe("AI SDK Tool loop convergence", () => {
     });
     const model = new MockLanguageModelV4({
       doGenerate: [
-        toolCall("plan-write", "update_plan", {
-          items: [
-            {
-              id: "write",
-              title: "Write approved file",
-              status: "in_progress"
-            }
-          ]
-        }),
         toolCall("write-file", "write_text_file", {
           path: "approved.txt",
           content: "approved write\n"
-        }),
-        toolCall("plan-complete", "update_plan", {
-          items: [
-            {
-              id: "write",
-              title: "Write approved file",
-              status: "completed"
-            }
-          ]
         }),
         finalText("The approved file was written.")
       ]

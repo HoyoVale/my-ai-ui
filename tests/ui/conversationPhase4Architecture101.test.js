@@ -51,8 +51,6 @@ test("Phase 4 keeps Conversation CSS in an ordered responsibility manifest", () 
     "task-panel.css",
     "activity.css",
     "navigation.css",
-    "plan-goal.css",
-    "platform.css",
     "approval.css",
     "responsive.css",
     "diff-command.css",

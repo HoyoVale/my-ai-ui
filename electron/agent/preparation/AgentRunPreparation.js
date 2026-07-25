@@ -5,10 +5,6 @@ import {
 } from "../../conversation/index.js";
 
 import {
-  platformKernel
-} from "../../platform/index.js";
-
-import {
   resolveConversationExecutionContext
 } from "../../conversation/executionContext.js";
 
@@ -58,7 +54,6 @@ import {
 
 import {
   createCheckpointContinuationState,
-  isExplicitNewTask,
   resolveCheckpointContinuation
 } from "../checkpointResume.js";
 
@@ -72,7 +67,6 @@ import {
 
 import {
   appendTaskContinuationToContext,
-  classifyWorkingInstruction,
   createRunStateFields,
   getActiveCredentialError
 } from "../AgentRuntimeInternals.js";
@@ -462,16 +456,9 @@ export const agentRunPreparation = {
     const runId =
       crypto.randomUUID();
 
-    const persistentGoal =
-      executionConversation.goal?.status === "active" &&
-      !isExplicitNewTask(message)
-        ? executionConversation.goal
-        : null;
+    const persistentGoal = null;
 
-    const goalId =
-      continuationState?.goalId ||
-      persistentGoal?.id ||
-      "";
+    const goalId = "";
 
     const taskId =
       continuationState?.taskId ||
@@ -585,19 +572,9 @@ export const agentRunPreparation = {
       toolSecurity: null,
       approvalController: null,
       activityStore,
-      initialPlan:
-        continuationState?.initialPlan ??
-        persistentGoal?.planAuthority?.state?.rootItems ??
-        [],
-      initialPlanState:
-        continuationState?.initialPlanState ??
-        persistentGoal?.planAuthority?.state ??
-        continuationState?.initialPlan ??
-        [],
-      workingState:
-        continuationState?.workingState ??
-        persistentGoal?.workingState ??
-        null,
+      initialPlan: [],
+      initialPlanState: [],
+      workingState: null,
       resumedFromMessageId:
         continuationState?.resumedFromMessageId ?? "",
       platformRunId: "",
@@ -621,61 +598,6 @@ export const agentRunPreparation = {
       }),
       ...createRunStateFields(startedAt)
     };
-
-    if (persistentGoal) {
-      try {
-        const platformExecution = platformKernel.prepareExecution({
-          conversationId: conversation.id,
-          goal: persistentGoal,
-          agentRunId: runId,
-          taskId,
-          workspaceId: executionConversation.workspaceId ?? null,
-          workspaceResource: activeWorkspace
-            ? `workspace:${activeWorkspace.canonicalPath ?? activeWorkspace.rootPath ?? activeWorkspace.id}`
-            : "",
-          mode: executionConversation.mode ?? "chat"
-        });
-        if (platformExecution.ok) {
-          this.activeRun.platformRunId = platformExecution.platformRunId;
-          this.activeRun.platformLeaseIds = platformExecution.leaseIds;
-        } else {
-          this.activeRun.platformError = platformExecution;
-        }
-      } catch (error) {
-        this.activeRun.platformError = {
-          ok: false,
-          code: "platform-kernel-start-failed",
-          message: String(error?.message ?? error)
-        };
-      }
-
-      const startedGoal = conversationManager.beginGoalRun({
-        conversationId: conversation.id,
-        goalId: persistentGoal.id,
-        runId,
-        taskId,
-        platformRunId: this.activeRun.platformRunId || undefined
-      });
-      if (!startedGoal.ok && !this.activeRun.platformError) {
-        this.activeRun.platformError = startedGoal;
-      }
-      const workingState = conversationManager.recordGoalWorkingState({
-        conversationId: conversation.id,
-        goalId: persistentGoal.id,
-        patch: {
-          lastUserInstruction: runMessage,
-          lastRunId: runId,
-          ...classifyWorkingInstruction(runMessage),
-          reason: continuationState
-            ? "goal-continuation-instruction"
-            : "goal-run-instruction"
-        }
-      });
-      if (workingState?.ok) {
-        this.activeRun.workingState = workingState.goal.workingState;
-        this.activeRun.goalSpec = workingState.goal;
-      }
-    }
 
     const executionThread = conversationManager.beginExecutionThread({
       conversationId: conversation.id,
@@ -904,14 +826,9 @@ export const agentRunPreparation = {
     const runId =
       crypto.randomUUID();
 
-    const persistentGoal =
-      plan.conversation.goal?.status === "active"
-        ? plan.conversation.goal
-        : null;
+    const persistentGoal = null;
 
-    const goalId =
-      persistentGoal?.id ||
-      crypto.randomUUID();
+    const goalId = "";
 
     let taskId =
       crypto.randomUUID();
@@ -1059,8 +976,8 @@ export const agentRunPreparation = {
       objective: this.activeRun.objective,
       mode: this.activeRun.mode,
       workspaceId: this.activeRun.workspaceId ?? "",
-      planState: regenerationThread?.planState ?? [],
-      workingState: regenerationThread?.workingState ?? null,
+      planState: [],
+      workingState: null,
       runId,
       relation: "regenerate",
       previousRunId: regenerationThread?.lastRunId ?? regenerationSourceRunId,
@@ -1077,45 +994,6 @@ export const agentRunPreparation = {
       ) ?? routingDecision;
       this.activeRun.threadRoutingDecision = routingDecision;
       this.lastThreadRoutingDecision = routingDecision;
-    }
-
-    if (persistentGoal) {
-      try {
-        const platformExecution = platformKernel.prepareExecution({
-          conversationId: plan.conversation.id,
-          goal: persistentGoal,
-          agentRunId: runId,
-          taskId,
-          workspaceId: plan.conversation.workspaceId ?? null,
-          workspaceResource: activeWorkspace
-            ? `workspace:${activeWorkspace.canonicalPath ?? activeWorkspace.rootPath ?? activeWorkspace.id}`
-            : "",
-          mode: plan.conversation.mode ?? "chat"
-        });
-        if (platformExecution.ok) {
-          this.activeRun.platformRunId = platformExecution.platformRunId;
-          this.activeRun.platformLeaseIds = platformExecution.leaseIds;
-        } else {
-          this.activeRun.platformError = platformExecution;
-        }
-      } catch (error) {
-        this.activeRun.platformError = {
-          ok: false,
-          code: "platform-kernel-start-failed",
-          message: String(error?.message ?? error)
-        };
-      }
-
-      const startedGoal = conversationManager.beginGoalRun({
-        conversationId: plan.conversation.id,
-        goalId: persistentGoal.id,
-        runId,
-        taskId,
-        platformRunId: this.activeRun.platformRunId || undefined
-      });
-      if (!startedGoal.ok && !this.activeRun.platformError) {
-        this.activeRun.platformError = startedGoal;
-      }
     }
 
     if (skillRuntime.active) {

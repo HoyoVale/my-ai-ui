@@ -109,16 +109,16 @@ test("slash Skill suggestions normalize modes and hide unavailable entries", () 
   );
 });
 
-test("slash command registry combines real app commands and compatible Skills", () => {
-  assert.equal(BUILTIN_SLASH_COMMANDS.some((command) => command.id === "goal"), true);
+test("slash command registry keeps Core Lite commands and compatible Skills", () => {
+  assert.equal(BUILTIN_SLASH_COMMANDS.some((command) => command.id === "goal"), false);
+  assert.equal(BUILTIN_SLASH_COMMANDS.some((command) => command.id === "plan"), false);
   assert.equal(BUILTIN_SLASH_COMMANDS.some((command) => command.id === "model"), true);
   const suggestions = filterSlashCommandSuggestions({
     mode: "coding",
     query: "goal",
     skills: [{ id: "goal-review", name: "Goal Review", description: "Review", modes: ["coding"], enabled: true, available: true, integrity: "verified" }]
   });
-  assert.deepEqual(suggestions.slice(0, 2).map((item) => `${item.kind}:${item.id}`), [
-    "command:goal",
+  assert.deepEqual(suggestions.map((item) => `${item.kind}:${item.id}`), [
     "skill:goal-review"
   ]);
 });

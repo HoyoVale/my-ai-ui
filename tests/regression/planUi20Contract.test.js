@@ -36,12 +36,12 @@ describe("Plan UI 2.0", () => {
     assert.match(activity, /activeSubplan/u);
   });
 
-  it("renders internal subplans only inside developer diagnostics", () => {
+  it("does not expose internal subplans in Core Lite diagnostics", () => {
     const taskPanel = readConversationTaskPanelSource();
 
-    assert.match(taskPanel, /DeveloperPlanInspector/u);
-    assert.match(taskPanel, /conversation-developer-subplans/u);
-    assert.match(taskPanel, /仅开发者可见，不计入用户总计划进度/u);
+    assert.doesNotMatch(taskPanel, /DeveloperPlanInspector/u);
+    assert.doesNotMatch(taskPanel, /conversation-developer-subplans/u);
+    assert.match(taskPanel, /"summary", "batch", "plan"/u);
   });
 
   it("provides reduced-motion-safe status transitions", () => {

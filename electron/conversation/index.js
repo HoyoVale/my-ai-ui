@@ -25,10 +25,6 @@ import {
   getWorkspaceById
 } from "../workspace/workspaceRegistry.js";
 
-import {
-  completionAuthority
-} from "../platform/index.js";
-
 function broadcastState(
   state
 ) {
@@ -75,7 +71,7 @@ export const conversationManager =
     getSettings,
     getWorkspaceById,
     createWorkspaceSnapshot,
-    completionAuthority,
+    completionAuthority: null,
     onChange:
       broadcastState
   });

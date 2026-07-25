@@ -225,13 +225,6 @@ export function useConversationHistory() {
             ?.setConversationModel?.(input)
       ),
 
-    setGoal: (input) =>
-      runAction(
-        () =>
-          window.api
-            ?.setConversationGoal?.(input)
-      ),
-
     select: (conversationId) =>
       runAction(
         () =>

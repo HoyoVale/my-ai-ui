@@ -36,12 +36,6 @@ import {
 } from "./tools/runtime-state/RuntimeRecoveryManager.js";
 
 import {
-  longRunningAgentService,
-  platformKernel,
-  worktreeRuntime
-} from "./platform/index.js";
-
-import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
 
@@ -71,34 +65,6 @@ if (e2eUserData) {
 registerIpcHandlers();
 
 app.whenReady().then(async () => {
-  try {
-    const platformRecovery = platformKernel.recoverInterruptedRuns();
-    const longRunning = longRunningAgentService.start();
-    const jobRecovery = longRunning.recovery;
-    const worktreeRecovery = worktreeRuntime.recover();
-    if (
-      platformRecovery.recoveredRunIds.length > 0 ||
-      platformRecovery.expiredLeaseIds.length > 0 ||
-      jobRecovery.recoveredJobIds.length > 0
-    ) {
-      console.info(
-        "Platform Kernel recovered interrupted work:",
-        { ...platformRecovery, recoveredJobIds: jobRecovery.recoveredJobIds }
-      );
-    }
-    if (worktreeRecovery.recoveredWorktreeIds.length > 0) {
-      console.info(
-        "Worktree Runtime recovered isolated work:",
-        worktreeRecovery
-      );
-    }
-  } catch (error) {
-    console.warn(
-      "Platform Kernel startup recovery failed:",
-      error
-    );
-  }
-
   let runtimeRecoveryReport = { decisions: [] };
   try {
     const runtimeRecoveryManager = new RuntimeRecoveryManager({
@@ -175,8 +141,6 @@ app.on(
     event.preventDefault();
     persistenceFlushInProgress = true;
     destroyTray();
-
-    longRunningAgentService.stop();
 
     void Promise.all([
       flushAllPersistenceQueues(),

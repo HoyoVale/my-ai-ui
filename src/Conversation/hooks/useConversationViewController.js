@@ -20,7 +20,6 @@ export function useConversationViewController({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
-  const [goalOpen, setGoalOpen] = useState(false);
   const [taskTargetMessageId, setTaskTargetMessageId] = useState(null);
   const [query, setQuery] = useState("");
   const [sidebarMode, setSidebarMode] = useState("chat");
@@ -40,7 +39,6 @@ export function useConversationViewController({
 
   useEffect(() => {
     setTaskOpen(false);
-    setGoalOpen(false);
     setTaskTargetMessageId(null);
   }, [currentConversationId]);
 
@@ -49,11 +47,10 @@ export function useConversationViewController({
     theme === "dark" ? "theme-dark" : "",
     settings.appearance.reducedMotion ? "reduce-motion" : "",
     sidebarCollapsed ? "is-sidebar-collapsed" : "",
-    contextOpen || taskOpen || goalOpen ? "is-context-open" : "",
+    contextOpen || taskOpen ? "is-context-open" : "",
     isMaximized ? "is-maximized" : ""
   ].filter(Boolean).join(" "), [
     contextOpen,
-    goalOpen,
     isMaximized,
     settings.appearance.reducedMotion,
     sidebarCollapsed,
@@ -85,26 +82,17 @@ export function useConversationViewController({
 
   const toggleContext = () => {
     setTaskOpen(false);
-    setGoalOpen(false);
     setContextOpen((current) => !current);
   };
 
   const toggleTask = () => {
     setContextOpen(false);
-    setGoalOpen(false);
     setTaskOpen((current) => !current);
     setTaskTargetMessageId((current) => current ?? (currentLiveActivity ? "live" : null));
   };
 
-  const toggleGoal = () => {
-    setContextOpen(false);
-    setTaskOpen(false);
-    setGoalOpen((current) => !current);
-  };
-
   const openTaskPanel = (messageId) => {
     setContextOpen(false);
-    setGoalOpen(false);
     setTaskTargetMessageId(messageId);
     setTaskOpen(true);
   };
@@ -113,7 +101,6 @@ export function useConversationViewController({
     sidebarCollapsed,
     contextOpen,
     taskOpen,
-    goalOpen,
     taskTargetMessageId,
     query,
     sidebarMode,
@@ -122,7 +109,6 @@ export function useConversationViewController({
     setSidebarCollapsed,
     setContextOpen,
     setTaskOpen,
-    setGoalOpen,
     setQuery,
     setSidebarMode,
     openInput,
@@ -130,7 +116,6 @@ export function useConversationViewController({
     createForWorkspace,
     toggleContext,
     toggleTask,
-    toggleGoal,
     openTaskPanel
   };
 }

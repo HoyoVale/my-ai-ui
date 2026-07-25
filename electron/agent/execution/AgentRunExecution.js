@@ -8,14 +8,6 @@ import {
 } from "../../conversation/index.js";
 
 import {
-  platformKernel
-} from "../../platform/index.js";
-
-import {
-  createDelegationToolDefinition
-} from "../../platform/delegationTools.js";
-
-import {
   getSettings
 } from "../../settings/settingsStore.js";
 
@@ -183,19 +175,6 @@ export const agentRunExecution = {
           throw error;
         }
 
-        await toolSession.tools.update_plan.execute(
-          {
-            items: [
-              {
-                id: "write",
-                title: "Write an approved file",
-                status: "in_progress"
-              }
-            ]
-          },
-          { toolCallId: "e2e-plan-write" }
-        );
-
         const writeResult = await toolSession.tools.write_text_file.execute(
           writeRequest,
           { toolCallId: "e2e-write-file" }
@@ -208,19 +187,6 @@ export const agentRunExecution = {
           error.code = writeResult?.error?.code ?? "E2E_WRITE_FAILED";
           throw error;
         }
-
-        await toolSession.tools.update_plan.execute(
-          {
-            items: [
-              {
-                id: "write",
-                title: "Write an approved file",
-                status: "completed"
-              }
-            ]
-          },
-          { toolCallId: "e2e-plan-complete" }
-        );
 
         const assistantText = `E2E_TOOL_WRITE_OK:${writeResult.data.path}`;
         this.activeRun.finalText = assistantText;
@@ -545,12 +511,7 @@ export const agentRunExecution = {
         });
       const externalDefinitions = [
         ...mcpDefinitions,
-        ...declarativeHttpToolManager.getToolDefinitions(runSettings),
-        ...(this.activeRun.platformRunId
-          ? [createDelegationToolDefinition({
-              getPlatformRunId: () => this.activeRun?.platformRunId ?? ""
-            })]
-          : [])
+        ...declarativeHttpToolManager.getToolDefinitions(runSettings)
       ];
 
       const approvalController = this.createToolApprovalController(
@@ -955,46 +916,6 @@ export const agentRunExecution = {
 
       if (!this.isCurrentRun(runId)) {
         return;
-      }
-
-      if (
-        this.activeRun.persistentGoalId &&
-        engineResult.outcome === RUN_OUTCOMES.COMPLETED &&
-        engineResult.loopResult?.verification?.verified === true
-      ) {
-        const completion = this.activeRun.platformRunId
-          ? platformKernel.authorizeCompletion({
-              platformRunId: this.activeRun.platformRunId,
-              agentRunId: runId,
-              verification: engineResult.loopResult.verification,
-              records: engineResult.records
-            })
-          : {
-              ok: false,
-              code: this.activeRun.platformError?.code ??
-                "platform-completion-authority-unavailable"
-            };
-        if (completion.ok) {
-          const completedGoal = conversationManager.completeGoal({
-            conversationId,
-            goalId: this.activeRun.persistentGoalId,
-            verification: completion.verification ?? engineResult.loopResult.verification,
-            completionPermit: completion.permit
-          });
-          if (completedGoal.ok) {
-            platformKernel.setRunStatus(
-              this.activeRun.platformRunId,
-              "completed",
-              "goal-completion-authorized"
-            );
-          } else {
-            platformKernel.setRunStatus(
-              this.activeRun.platformRunId,
-              "blocked",
-              completedGoal.code
-            );
-          }
-        }
       }
 
       const finalCheckpoint = this.buildActiveCheckpoint();

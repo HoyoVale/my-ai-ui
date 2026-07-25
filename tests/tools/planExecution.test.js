@@ -104,7 +104,7 @@ describe("executable task plans", () => {
     );
   });
 
-  it("blocks ordinary tools when a plan has no active step", async () => {
+  it("allows ordinary tools directly and ignores dormant initial plans", async () => {
     const session = createAgentToolSession({
       initialPlan: [
         {
@@ -121,23 +121,22 @@ describe("executable task plans", () => {
           expression: "1 + 1"
         },
         {
-          toolCallId: "plan-guard"
+          toolCallId: "core-lite-direct-tool"
         }
       );
 
-    assert.equal(result.ok, false);
-    assert.equal(
-      result.error.code,
-      "PLAN_STEP_REQUIRED"
-    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(session.getPlan(), []);
+    assert.equal("update_plan" in session.tools, false);
+    await session.closePersistence();
   });
 
-  it("always allows paged result reads after a terminal plan", async () => {
+  it("always allows paged result reads in Core Lite", async () => {
     const session = createAgentToolSession({
       initialPlan: [
         {
           id: "one",
-          title: "Done",
+          title: "Dormant legacy plan",
           status: "completed"
         }
       ]
@@ -156,7 +155,7 @@ describe("executable task plans", () => {
     await session.closePersistence();
   });
 
-  it("associates tool activity with the active plan step", async () => {
+  it("does not attach dormant plan metadata to tool activity", async () => {
     const session = createAgentToolSession({
       initialPlan: [
         {
@@ -172,17 +171,15 @@ describe("executable task plans", () => {
         expression: "2 + 2"
       },
       {
-        toolCallId: "plan-step-call"
+        toolCallId: "core-lite-tool-call"
       }
     );
 
-    assert.deepEqual(
+    assert.equal(
       session.getRecords()[0].planStep,
-      {
-        id: "one",
-        title: "Calculate"
-      }
+      null
     );
+    await session.closePersistence();
   });
 });
 

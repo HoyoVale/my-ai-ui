@@ -17,8 +17,7 @@ import {
 } from "./DeveloperActivityPanel.jsx";
 
 import {
-  panelTimelineEvents,
-  planStatusMark
+  panelTimelineEvents
 } from "./taskPanelModel.js";
 
 import {
@@ -185,37 +184,6 @@ export function ConversationTaskPanel({
             </div>
           </div>
         </section>
-
-        {snapshot.plan.length > 0 && (
-          <section className="conversation-activity-section">
-            <header className="conversation-activity-section__header">
-              <div className="conversation-activity-section__title-row">
-                <h2>计划</h2>
-                {snapshot.planAdjusted && (
-                  <em className="conversation-plan-adjusted-badge">计划已调整</em>
-                )}
-              </div>
-              <span>
-                {snapshot.planStats.completed}/{snapshot.planStats.total}
-              </span>
-            </header>
-
-            <div className="conversation-activity-plan">
-              {snapshot.plan.map((item, index) => (
-                <div
-                  className={`conversation-activity-plan__row is-${item.status}`}
-                  key={item.id ?? `${item.title}-${index}`}
-                >
-                  <span>{planStatusMark(item.status)}</span>
-                  <div>
-                    <strong>{item.title}</strong>
-                    {item.reason && <small>{item.reason}</small>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {developerMode && (
           <DeveloperActivity

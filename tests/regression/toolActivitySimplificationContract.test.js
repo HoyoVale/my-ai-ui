@@ -32,6 +32,7 @@ describe("compact thinking activity", () => {
     const source = readConversationMessageSource();
 
     assert.doesNotMatch(source, /PendingQuestionCard|reasoningSummary|reasoningText/u);
-    assert.match(source, /event\.type === "batch"|event\.type === "plan"/u);
+    assert.match(source, /\["batch", "plan"\]\.includes\(event\.type\)/u);
+    assert.doesNotMatch(source, /PlanRenderer|event\.type === "plan"/u);
   });
 });

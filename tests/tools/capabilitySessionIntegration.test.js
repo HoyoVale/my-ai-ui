@@ -41,14 +41,10 @@ test("Agent Session exposes requested tools plus bounded Agent support tools", a
     assert.equal(session.capabilityResolution.satisfied, true);
     assert.deepEqual(Object.keys(session.tools).sort(), [
       "read_tool_result",
-      "replan_goal",
       "search_files",
-      "search_text",
-      "update_plan",
-      "update_step_work"
+      "search_text"
     ]);
     assert.deepEqual(session.capabilityResolution.supportingCapabilities, [
-      "agent.plan",
       "agent.result.page"
     ]);
   } finally {

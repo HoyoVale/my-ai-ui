@@ -7,10 +7,6 @@ import {
 } from "../../conversation/index.js";
 
 import {
-  platformKernel
-} from "../../platform/index.js";
-
-import {
   appendResponseChunk,
   endResponseStream
 } from "../../windows/response/index.js";
@@ -126,43 +122,7 @@ export const agentRunFinalization = {
       }
     }
 
-    if (run.platformRunId) {
-      const platformStatus = effectiveOutcome === RUN_OUTCOMES.CANCELLED
-        ? "cancelled"
-        : effectiveOutcome === RUN_OUTCOMES.FAILED
-          ? "failed"
-          : effectiveOutcome === RUN_OUTCOMES.COMPLETED
-            ? "completed"
-            : "interrupted";
-      const platformTaskStatus = platformStatus === "completed"
-        ? "continuable"
-        : platformStatus === "interrupted"
-          ? "continuable"
-          : platformStatus;
-      platformKernel.finishAgentRun(
-        run.platformRunId,
-        run.runId,
-        {
-          status: platformStatus,
-          outcome: effectiveOutcome,
-          stopReason: effectiveStopReason,
-          error: lastError,
-          taskStatus: platformTaskStatus
-        }
-      );
-      const currentPlatformRun = platformKernel.getRun(run.platformRunId);
-      if (currentPlatformRun && currentPlatformRun.status !== "completed") {
-        platformKernel.setRunStatus(
-          run.platformRunId,
-          platformStatus === "cancelled"
-            ? "cancelled"
-            : platformStatus === "failed"
-              ? "failed"
-              : "continuable",
-          effectiveStopReason
-        );
-      }
-    }
+
     const state = this.applyRunState(
       run.stateMachine.finalize({
         executionStopReason: effectiveStopReason,

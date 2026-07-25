@@ -71,7 +71,6 @@ export function ConversationContextInspector({
     budget?.sections ?? [];
 
   const latestUsage = inspection?.usage?.latestRun ?? null;
-  const goalUsage = inspection?.usage?.goal ?? null;
 
   return (
     <aside
@@ -230,18 +229,6 @@ export function ConversationContextInspector({
                 <span>读取缓存复用</span>
                 <strong>{latestUsage.tools?.cacheReuseCount ?? 0}</strong>
               </div>
-              {goalUsage ? (
-                <>
-                  <div>
-                    <span>Goal 累计实际 Token</span>
-                    <strong>{formatTokens(goalUsage.provider?.totalTokens)}</strong>
-                  </div>
-                  <div>
-                    <span>Goal 累计 Run</span>
-                    <strong>{goalUsage.runCount ?? 0}</strong>
-                  </div>
-                </>
-              ) : null}
             </section>
           ) : null}
 

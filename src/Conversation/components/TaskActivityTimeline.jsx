@@ -93,22 +93,6 @@ export function ActivityTimelineEvent({ event }) {
     );
   }
 
-  if (event.type === "plan") {
-    return (
-      <div
-        className="conversation-activity-timeline__event is-plan"
-        data-batch-id={event.batchId || undefined}
-      >
-        <span>
-          <ConversationIcon name="activity" size={15} />
-        </span>
-        <div className="conversation-activity-timeline__copy">
-          <strong>{event.title || "更新了任务计划"}</strong>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="conversation-activity-timeline__event is-status">
       <span>

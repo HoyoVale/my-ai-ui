@@ -24,7 +24,7 @@ export function panelTimelineEvents(snapshot, developerMode = false) {
       return false;
     }
 
-    if (["summary", "batch"].includes(event.type)) {
+    if (["summary", "batch", "plan"].includes(event.type)) {
       return false;
     }
 

@@ -3,7 +3,6 @@ import {
 } from "../../shared/sessionNavigation.js";
 
 export const BUILTIN_SLASH_COMMANDS = Object.freeze([
-  { id: "goal", name: "Goal", description: "设置、暂停或查看当前会话的长期目标", action: { type: "open-context", page: "goal" } },
   { id: "model", name: "模型", description: "切换当前会话使用的模型", action: { type: "open-context", page: "model" } },
   { id: "workspace", name: "工作区", description: "选择或添加当前任务的工作区", action: { type: "open-context", page: "workspace" } },
   { id: "session", name: "会话", description: "切换或新建会话", action: { type: "open-context", page: "session" } },
@@ -11,14 +10,7 @@ export const BUILTIN_SLASH_COMMANDS = Object.freeze([
   { id: "mcp", name: "MCP", description: "查看并切换当前 MCP 连接", action: { type: "open-context", page: "mcp" } },
   { id: "mode", name: "模式", description: "在 Chat 与 Coding 工作流之间切换", action: { type: "open-context", page: "mode" } },
   { id: "new", name: "新建会话", description: "在当前模式和工作区中新建会话", action: { type: "new-session" } },
-  { id: "plan", name: "计划", description: "打开 Conversation 查看当前执行计划", action: { type: "open-window", window: "conversation" } },
-  { id: "status", name: "任务状态", description: "打开 Conversation 查看计划、工具与 Goal 进度", action: { type: "open-window", window: "conversation" } },
-  { id: "agents", name: "Agents", description: "查看当前主 Agent 与 Worker 状态", action: { type: "open-window", window: "conversation", platformView: "agents" } },
-  { id: "tasks", name: "后台任务", description: "查看任务队列并暂停、继续、取消或重试", action: { type: "open-window", window: "conversation", platformView: "tasks" } },
-  { id: "worktrees", name: "Worktrees", description: "查看隔离工作区、分支与检查点", modes: ["coding"], action: { type: "open-window", window: "conversation", platformView: "worktrees" } },
-  { id: "run", name: "运行中心", description: "查看预算、租约与本次运行状态", action: { type: "open-window", window: "conversation", platformView: "run" } },
-  { id: "review", name: "审查", description: "查看集成队列、冲突与独立审查", modes: ["coding"], action: { type: "open-window", window: "conversation", platformView: "review" } },
-  { id: "artifacts", name: "Artifacts", description: "查看提交、证据、产物与日志", action: { type: "open-window", window: "conversation", platformView: "artifacts" } },
+  { id: "status", name: "任务状态", description: "打开 Conversation 查看工具活动、命令与文件改动", action: { type: "open-window", window: "conversation" } },
   { id: "memory", name: "Memory", description: "打开长期记忆管理", action: { type: "open-window", window: "memory" } },
   { id: "settings", name: "Settings", description: "打开应用设置", action: { type: "open-window", window: "settings" } }
 ]);

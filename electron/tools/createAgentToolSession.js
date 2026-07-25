@@ -58,6 +58,10 @@ import {
   resolveCapabilitySet
 } from "./capabilities/CapabilityResolver.js";
 
+import {
+  CORE_LITE_MODE
+} from "../config/coreLite.js";
+
 export function createAgentToolSession({
   activeModel = null,
   getAgentStatus = null,
@@ -82,11 +86,11 @@ export function createAgentToolSession({
 } = {}) {
   const planStore =
     new RunPlanStore(
-      initialPlan,
+      CORE_LITE_MODE ? [] : initialPlan,
       {
-        onChange: onPlanChange,
+        onChange: CORE_LITE_MODE ? null : onPlanChange,
         rootPlanId:
-          initialPlan && typeof initialPlan === "object" && !Array.isArray(initialPlan)
+          !CORE_LITE_MODE && initialPlan && typeof initialPlan === "object" && !Array.isArray(initialPlan)
             ? initialPlan.rootPlanId ?? ""
             : "",
         runId
@@ -202,10 +206,12 @@ export function createAgentToolSession({
       },
       policyEngine: new ToolPolicyEngine({
         authorize: async (request) => {
-          const permission = planStore.canRunTool(
-            request.definition.name,
-            request.input
-          );
+          const permission = CORE_LITE_MODE
+            ? { ok: true }
+            : planStore.canRunTool(
+                request.definition.name,
+                request.input
+              );
           if (permission?.ok === false) {
             return {
               decision: "deny",
@@ -226,7 +232,9 @@ export function createAgentToolSession({
         }
       }),
       getRecordMetadata: ({ definition } = {}) => {
-        const active = planStore.getExecutionState().active;
+        const active = CORE_LITE_MODE
+          ? null
+          : planStore.getExecutionState().active;
         let batch = activityStore?.getActiveBatch?.() ?? null;
 
         if (!batch) {

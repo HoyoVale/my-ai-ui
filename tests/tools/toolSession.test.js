@@ -185,7 +185,7 @@ describe(
     );
 
     it(
-      "records completed tool executions and keeps a run plan",
+      "records completed ordinary tool executions without plan tools",
       async () => {
         const records = [];
         const session =
@@ -198,20 +198,15 @@ describe(
             }
           });
 
+        assert.equal("update_plan" in session.tools, false);
+        assert.deepEqual(session.getPlan(), []);
+
         const result =
           await session.tools
-            .update_plan
+            .calculator
             .execute(
               {
-                items: [
-                  {
-                    id: "step-1",
-                    title:
-                      "Inspect project",
-                    status:
-                      "in_progress"
-                  }
-                ]
+                expression: "20 + 22"
               },
               {
                 toolCallId:
@@ -224,14 +219,14 @@ describe(
           true
         );
         assert.equal(
-          session.getPlan()[0]
-            .status,
-          "in_progress"
-        );
-        assert.equal(
           session.getRecords()[0]
             .status,
           "completed"
+        );
+        assert.equal(
+          session.getRecords()[0]
+            .planStep,
+          null
         );
         assert.equal(
           records.some(
@@ -241,6 +236,7 @@ describe(
           ),
           true
         );
+        await session.closePersistence();
       }
     );
 
@@ -286,10 +282,6 @@ describe(
             });
           }
         });
-
-        await session.tools.update_plan.execute({
-          items: [{ id: "step-1", title: "Write remote value", status: "in_progress" }]
-        }, { toolCallId: "plan-call" });
 
         const execution = session.tools.mcp_fixture_write.execute(
           { value: "approved" },

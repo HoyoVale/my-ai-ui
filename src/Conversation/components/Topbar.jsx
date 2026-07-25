@@ -7,8 +7,6 @@ export function ConversationTopbar({
   isMaximized,
   contextOpen,
   taskOpen,
-  goalOpen,
-  goal = null,
 
   skill = null,
   skills = [],
@@ -16,7 +14,6 @@ export function ConversationTopbar({
   onToggleSidebar,
   onToggleContext,
   onToggleTask,
-  onToggleGoal,
 
   onOpenInput,
   onMinimize,
@@ -67,19 +64,6 @@ export function ConversationTopbar({
       </div>
 
       <div className="conversation-topbar__right">
-        <button
-          type="button"
-          className={`conversation-icon-button conversation-goal-toggle${goalOpen ? " is-active" : ""}${goal?.status ? ` is-${goal.status}` : ""}`}
-          data-testid="conversation-goal-toggle"
-          title={goal ? `Goal · ${STATUS_LABELS[goal.status] ?? "已设置"}` : "设置 Goal"}
-          aria-label="Goal"
-          aria-pressed={goalOpen}
-          onClick={onToggleGoal}
-        >
-          <ConversationIcon name="goal" size={17} />
-          {goal?.status === "active" && <span aria-hidden="true" />}
-        </button>
-
         <button
           type="button"
           className={
@@ -146,12 +130,6 @@ export function ConversationTopbar({
     </header>
   );
 }
-
-const STATUS_LABELS = {
-  active: "进行中",
-  paused: "已暂停",
-  completed: "已完成"
-};
 
 function WindowControls({
   isMaximized,

@@ -396,7 +396,8 @@ export class RunPlanStore {
 
 export function createAgentToolDefinitions({
   resultStore = null,
-  planStore = null
+  planStore = null,
+  includePlanTools = true
 } = {}) {
   const planItemSchema = z.object({
     id: z.string().min(1).max(80),
@@ -414,7 +415,7 @@ export function createAgentToolDefinitions({
     reason: z.string().max(300).optional()
   });
 
-  return [
+  const definitions = [
     {
       name: "update_plan",
       title: "Update task plan",
@@ -591,4 +592,17 @@ export function createAgentToolDefinitions({
       }
     }
   ];
+
+  if (includePlanTools) {
+    return definitions;
+  }
+
+  return definitions.filter(
+    (definition) =>
+      ![
+        "update_plan",
+        "replan_goal",
+        "update_step_work"
+      ].includes(definition.name)
+  );
 }

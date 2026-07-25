@@ -24,26 +24,25 @@ test("Goal Runtime persists criteria, completion authority and bounded evidence 
   assert.match(manager, /recordGoalVerification/u);
 });
 
-test("Goal completion is criterion-aware and progress is written back during execution", () => {
+test("Core Lite keeps Goal verification source dormant outside Agent execution", () => {
   const verifier = read("../../electron/agent/GoalCompletionVerifier.js");
   const runtime = readAgentRuntimeSource();
   assert.match(verifier, /criterionId/u);
   assert.match(verifier, /inferGoalCriterionKind/u);
   assert.match(verifier, /user-confirmed/u);
-  assert.match(runtime, /beginGoalRun/u);
-  assert.match(runtime, /heartbeatGoal/u);
-  assert.match(runtime, /recordGoalCheckpoint/u);
-  assert.match(runtime, /recordGoalVerification/u);
-  assert.match(runtime, /finishGoalRun/u);
-  assert.match(runtime, /goalSpec\?\.autoContinue === false/u);
+  assert.doesNotMatch(runtime, /beginGoalRun|recordGoalWorkingState/u);
+  assert.doesNotMatch(runtime, /platformKernel|authorizeCompletion/u);
 });
 
-test("Input slash menu exposes built-in commands and keeps Skills in one registry", () => {
+test("Core Lite slash menu keeps foundational commands in one registry", () => {
   const registry = read("../../src/Input/utils/slashCommand.js");
   const menu = read("../../src/Input/components/SlashMenu.jsx");
   const composer = read("../../src/Input/components/Composer.jsx");
-  for (const command of ["goal", "model", "workspace", "session", "skill", "mcp", "new", "plan", "status"]) {
+  for (const command of ["model", "workspace", "session", "skill", "mcp", "new", "status", "memory", "settings"]) {
     assert.match(registry, new RegExp(`id: "${command}"`, "u"));
+  }
+  for (const command of ["goal", "plan", "agents", "tasks", "worktrees", "review", "artifacts"]) {
+    assert.doesNotMatch(registry, new RegExp(`id: "${command}"`, "u"));
   }
   assert.match(menu, /filterSlashCommandSuggestions/u);
   assert.match(menu, /data-command-count/u);

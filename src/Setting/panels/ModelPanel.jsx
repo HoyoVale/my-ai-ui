@@ -4,11 +4,6 @@ import {
 } from "react";
 
 import {
-  WORKER_RUNTIME_DEFAULTS,
-  WORKER_RUNTIME_LIMITS
-} from "../../shared/runtimeDefaults.js";
-
-import {
   ActionButton,
   Select,
   SettingRow,
@@ -213,11 +208,6 @@ function RuntimeAssignments({
   const mainValue = options.some((item) => item.value === selectedCurrentValue)
     ? selectedCurrentValue
     : defaultValue;
-  const workerSelection = modelSettings.runtimeAssignments?.worker;
-  const workerValue = workerSelection
-    ? encodeSelection(workerSelection.providerId, workerSelection.modelConfigId)
-    : defaultValue;
-
   const selectMain = (value) => {
     const selection = decodeSelection(value);
     if (!selection) return;
@@ -240,23 +230,12 @@ function RuntimeAssignments({
     });
   };
 
-  const selectWorker = (value) => {
-    const selection = decodeSelection(value);
-    if (!selection) return;
-    onUpdate({
-      runtimeAssignments: {
-        ...(modelSettings.runtimeAssignments ?? {}),
-        worker: selection
-      }
-    });
-  };
-
   return (
     <section className="model-runtime-assignments" data-testid="model-runtime-assignments">
       <div>
-        <span className="model-eyebrow">Runtime routing</span>
-        <strong>主模型与 Worker 独立配置</strong>
-        <small>会话由主模型负责；多 Agent 子任务统一使用 Worker 模型。</small>
+        <span className="model-eyebrow">Model routing</span>
+        <strong>会话模型</strong>
+        <small>当前会话可单独选择模型，新会话使用默认模型。</small>
       </div>
       <SettingRow title="主模型">
         <Select
@@ -273,74 +252,6 @@ function RuntimeAssignments({
           value={defaultValue}
           options={options}
           onChange={selectDefault}
-        />
-      </SettingRow>
-      <SettingRow title="Worker 模型">
-        <Select
-          testId="worker-model-assignment"
-          value={workerValue}
-          options={options}
-          onChange={selectWorker}
-        />
-      </SettingRow>
-      <SettingRow title="Worker 并发数">
-        <Slider
-          value={modelSettings.runtimeAssignments?.maxConcurrency ?? WORKER_RUNTIME_DEFAULTS.maxConcurrency}
-          min={WORKER_RUNTIME_LIMITS.maxConcurrency.min}
-          max={WORKER_RUNTIME_LIMITS.maxConcurrency.max}
-          step={1}
-          unit=" 个"
-          onChange={(maxConcurrency) => onUpdate({
-            runtimeAssignments: {
-              ...(modelSettings.runtimeAssignments ?? {}),
-              maxConcurrency
-            }
-          })}
-        />
-      </SettingRow>
-      <SettingRow title="一次多 Agent 运行 Token 预算">
-        <Slider
-          value={modelSettings.runtimeAssignments?.tokenBudget ?? WORKER_RUNTIME_DEFAULTS.tokenBudget}
-          min={WORKER_RUNTIME_LIMITS.tokenBudget.min}
-          max={WORKER_RUNTIME_LIMITS.tokenBudget.max}
-          step={WORKER_RUNTIME_LIMITS.tokenBudget.step}
-          unit=" tokens"
-          onChange={(tokenBudget) => onUpdate({
-            runtimeAssignments: {
-              ...(modelSettings.runtimeAssignments ?? {}),
-              tokenBudget
-            }
-          })}
-        />
-      </SettingRow>
-      <SettingRow title="一次多 Agent 运行步骤预算">
-        <Slider
-          value={modelSettings.runtimeAssignments?.stepBudget ?? WORKER_RUNTIME_DEFAULTS.stepBudget}
-          min={WORKER_RUNTIME_LIMITS.stepBudget.min}
-          max={WORKER_RUNTIME_LIMITS.stepBudget.max}
-          step={WORKER_RUNTIME_LIMITS.stepBudget.step}
-          unit=" 步"
-          onChange={(stepBudget) => onUpdate({
-            runtimeAssignments: {
-              ...(modelSettings.runtimeAssignments ?? {}),
-              stepBudget
-            }
-          })}
-        />
-      </SettingRow>
-      <SettingRow title="一次多 Agent 运行时间预算">
-        <Slider
-          value={modelSettings.runtimeAssignments?.timeBudgetMinutes ?? WORKER_RUNTIME_DEFAULTS.timeBudgetMinutes}
-          min={WORKER_RUNTIME_LIMITS.timeBudgetMinutes.min}
-          max={WORKER_RUNTIME_LIMITS.timeBudgetMinutes.max}
-          step={WORKER_RUNTIME_LIMITS.timeBudgetMinutes.step}
-          unit=" 分钟"
-          onChange={(timeBudgetMinutes) => onUpdate({
-            runtimeAssignments: {
-              ...(modelSettings.runtimeAssignments ?? {}),
-              timeBudgetMinutes
-            }
-          })}
         />
       </SettingRow>
     </section>

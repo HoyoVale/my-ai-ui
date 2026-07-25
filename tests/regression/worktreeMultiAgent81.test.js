@@ -21,11 +21,11 @@ test("80 provides an isolated recoverable Worktree Runtime", () => {
   assert.doesNotMatch(runtime, /node:child_process/u);
 });
 
-test("81 delegates bounded tasks through a real Supervisor", () => {
+test("81 keeps Supervisor source dormant outside the Core Lite Agent path", () => {
   const agent = readAgentRuntimeSource();
   const supervisor = source("electron/platform/MultiAgentSupervisor.js");
   const delegation = source("electron/platform/delegationTools.js");
-  assert.match(agent, /createDelegationToolDefinition/u);
+  assert.doesNotMatch(agent, /createDelegationToolDefinition|delegate_tasks/u);
   assert.match(delegation, /delegate_tasks/u);
   assert.match(delegation, /max\(4\)/u);
   assert.match(supervisor, /Promise\.all/u);
@@ -34,13 +34,12 @@ test("81 delegates bounded tasks through a real Supervisor", () => {
   assert.match(supervisor, /isReadOnlySupervisorRole/u);
 });
 
-test("main and Worker model routing are independently configurable", () => {
+test("Core Lite exposes only the main model while retaining rollback-compatible settings source", () => {
   const panel = source("src/Setting/panels/ModelPanel.jsx");
   const resolver = source("electron/settings/modelSettings.js");
   const validation = source("electron/settings/validateSettings.js");
   assert.match(panel, /main-model-assignment/u);
-  assert.match(panel, /worker-model-assignment/u);
-  assert.match(panel, /Worker 并发数/u);
+  assert.doesNotMatch(panel, /worker-model-assignment|Worker 并发数/u);
   assert.match(resolver, /resolveWorkerModelSettings/u);
   assert.match(validation, /runtimeAssignments/u);
 });

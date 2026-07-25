@@ -1,8 +1,5 @@
 import { ConversationContextInspector } from "./components/ContextInspector.jsx";
 import { ConversationMessageList } from "./components/MessageList.jsx";
-import { ConversationGoalPanel } from "./components/GoalPanel.jsx";
-import { ConversationPlanDock } from "./components/PlanDock.jsx";
-import { ConversationPlatformDock } from "./components/PlatformDock.jsx";
 import { ConversationTaskPanel } from "./components/TaskPanel.jsx";
 import { ToolApprovalPanel } from "./components/ToolApprovalPanel.jsx";
 import { ConversationSidebar } from "./components/Sidebar.jsx";
@@ -40,7 +37,6 @@ export default function Conversation() {
     sidebarCollapsed,
     contextOpen,
     taskOpen,
-    goalOpen,
     taskTargetMessageId,
     query,
     sidebarMode,
@@ -49,7 +45,6 @@ export default function Conversation() {
     setSidebarCollapsed,
     setContextOpen,
     setTaskOpen,
-    setGoalOpen,
     setQuery,
     setSidebarMode,
     openInput,
@@ -57,7 +52,6 @@ export default function Conversation() {
     createForWorkspace,
     toggleContext,
     toggleTask,
-    toggleGoal,
     openTaskPanel
   } = view;
 
@@ -74,8 +68,6 @@ export default function Conversation() {
         sidebarCollapsed={sidebarCollapsed}
         contextOpen={contextOpen}
         taskOpen={taskOpen}
-        goalOpen={goalOpen}
-        goal={history.current?.goal ?? null}
         skill={history.current?.skillSnapshot ?? null}
         skills={history.current?.skillSnapshots ?? []}
         skillRoutingMode={history.current?.skillRoutingMode ?? "manual"}
@@ -83,7 +75,6 @@ export default function Conversation() {
         onToggleSidebar={() => setSidebarCollapsed((current) => !current)}
         onToggleContext={toggleContext}
         onToggleTask={toggleTask}
-        onToggleGoal={toggleGoal}
         onOpenInput={openInput}
         onMinimize={() => window.api?.minimizeWindow?.()}
         onMaximize={() => window.api?.maximizeWindow?.()}
@@ -131,11 +122,6 @@ export default function Conversation() {
             }}
           />
 
-          <ConversationPlanDock activity={currentLiveActivity} />
-          <ConversationPlatformDock
-            conversation={history.current}
-            developerMode={developerMode}
-          />
           <ToolApprovalPanel
             approval={
               agentStatus.conversationId === history.current?.id
@@ -153,21 +139,6 @@ export default function Conversation() {
           developerMode={developerMode}
           onLoadDeveloperDetails={(request) => window.api?.getAgentRunDetails?.(request)}
           onClose={() => setTaskOpen(false)}
-        />
-
-        <ConversationGoalPanel
-          open={goalOpen}
-          conversation={history.current}
-          busy={history.busy || Boolean(currentLiveActivity)}
-          developerMode={developerMode}
-          onUpdate={({ objective, status, criteria, autoContinue }) => history.setGoal({
-            conversationId: history.current?.id ?? "",
-            objective,
-            status,
-            criteria,
-            autoContinue
-          })}
-          onClose={() => setGoalOpen(false)}
         />
 
         <ConversationContextInspector

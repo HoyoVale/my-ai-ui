@@ -26,7 +26,8 @@ describe("segment continuation runtime contract", () => {
     assert.match(runtime, /continuedTask/u);
     assert.match(runtime, /parentRunId/u);
     assert.match(runtime, /previousSegmentCount/u);
-    assert.match(runtime, /initialPlan:\s*continuationState/u);
+    assert.match(runtime, /initialPlan:\s*\[\]/u);
+    assert.doesNotMatch(runtime, /initialPlan:\s*continuationState/u);
   });
 
   it("keeps the internal segment reason out of user-facing handoff copy", () => {

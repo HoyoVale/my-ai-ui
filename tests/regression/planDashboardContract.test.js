@@ -21,18 +21,16 @@ function read(relativePath) {
 }
 
 describe("compact plan dock", () => {
-  it("renders the live plan as a bottom dock outside the message stream", () => {
+  it("keeps the dormant plan dock out of the Core Lite conversation", () => {
     const conversation = readConversationShellSource();
     const messageList = readConversationMessageSource();
     const dock = read(
       "../../src/Conversation/components/PlanDock.jsx"
     );
 
-    assert.match(conversation, /<ConversationPlanDock/u);
-    assert.match(conversation, /activity=\{currentLiveActivity\}/u);
+    assert.doesNotMatch(conversation, /ConversationPlanDock|<ConversationPlanDock/u);
     assert.match(dock, /conversation-plan-dock/u);
     assert.match(dock, /setCollapsed/u);
-    assert.match(dock, /aria-expanded=\{!collapsed\}/u);
     assert.doesNotMatch(messageList, /PlanDashboard|conversation-plan-dashboard/u);
   });
 

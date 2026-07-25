@@ -225,20 +225,6 @@ function TimelineEvent({
     );
   }
 
-  if (event.type === "plan") {
-    return (
-      <button
-        type="button"
-        className="conversation-thinking-event conversation-thinking-event--plan"
-        data-batch-id={event.batchId || undefined}
-        onClick={onOpenTaskPanel}
-      >
-        <ConversationIcon name="activity" size={16} />
-        <strong>{event.title || "更新了任务计划"}</strong>
-      </button>
-    );
-  }
-
   return (
     <div className="conversation-thinking-event conversation-thinking-event--status">
       <span>{event.title || stopReasonLabel(event.stopReason)}</span>

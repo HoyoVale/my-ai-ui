@@ -38,8 +38,10 @@ test("91 connects Electron power, network and native notification lifecycle", ()
   assert.match(adapter, /net\.isOnline/u);
   assert.match(adapter, /Notification\.isSupported/u);
   assert.match(service, /pruneLongRunningState/u);
-  assert.match(main, /longRunningAgentService\.start/u);
-  assert.match(main, /longRunningAgentService\.stop/u);
+  assert.doesNotMatch(
+    main,
+    /longRunningAgentService\.(?:start|stop|shutdown)/u
+  );
 });
 
 test("91 exposes Approval Inbox, input continuation and notification controls", () => {
