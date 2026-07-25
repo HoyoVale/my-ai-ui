@@ -49,6 +49,18 @@ import {
 } from "../RunStateMachine.js";
 
 import {
+  resolveRunOutcome
+} from "../RunOutcomeResolver.js";
+
+import {
+  reconcileFinalResponse
+} from "./CompletionEvidenceGate.js";
+
+import {
+  terminalizeToolRecords
+} from "./ActivityTerminalizer.js";
+
+import {
   createFinalizationBudget
 } from "../finalizationBudget.js";
 
@@ -76,10 +88,43 @@ export const agentRunFinalization = {
     const recoveryOutcome = recoveryOutcomeFromSnapshot(
       runtimeRecovery
     );
-    const effectiveOutcome = recoveryOutcome || outcome;
-    const effectiveStopReason = recoveryOutcome
+    const rawRecords = run.toolSession?.getRecords?.() ?? run.toolCalls ?? [];
+    const plan = run.toolSession?.getPlan?.() ?? run.initialPlan ?? [];
+
+    let effectiveOutcome = recoveryOutcome || outcome;
+    let effectiveStopReason = recoveryOutcome
       ? RUN_STOP_REASONS.INTERRUPTED
       : executionStopReason;
+
+    /*
+     * Finalization is the last authority boundary. Even callers that propose a
+     * completed outcome must prove it from the frozen tool/plan evidence. This
+     * prevents direct finalizeRun callers from bypassing RunEngine's resolver.
+     */
+    if (!recoveryOutcome && effectiveOutcome === RUN_OUTCOMES.COMPLETED) {
+      const guardedResolution = resolveRunOutcome({
+        stopReason: effectiveStopReason,
+        records: rawRecords,
+        plan,
+        finalText: content,
+        goalVerification: run.goalSpec?.verification ?? null
+      });
+
+      effectiveOutcome = guardedResolution.outcome;
+      if (effectiveOutcome !== RUN_OUTCOMES.COMPLETED) {
+        if (guardedResolution.completionEvidence.failures.hasActive) {
+          effectiveStopReason = RUN_STOP_REASONS.TOOL_ERROR;
+        } else if (guardedResolution.completionEvidence.openRecordIds.length > 0) {
+          effectiveStopReason = RUN_STOP_REASONS.INTERRUPTED;
+        } else if (guardedResolution.planState.hasNeedsInput) {
+          effectiveStopReason = RUN_STOP_REASONS.NEEDS_INPUT;
+        } else if (guardedResolution.planState.hasBlocked) {
+          effectiveStopReason = RUN_STOP_REASONS.BLOCKED;
+        } else {
+          effectiveStopReason = RUN_STOP_REASONS.PLAN_INCOMPLETE;
+        }
+      }
+    }
 
     if (run.platformRunId) {
       const platformStatus = effectiveOutcome === RUN_OUTCOMES.CANCELLED
@@ -137,7 +182,24 @@ export const agentRunFinalization = {
       );
     }
 
-    run.finalText = sanitizePublicAssistantText(content);
+    run.toolCalls = terminalizeToolRecords(rawRecords, {
+      outcome: state.outcome,
+      activityStatus: state.activityStatus,
+      endedAt: state.endedAt
+    });
+
+    const reconciledFinal = reconcileFinalResponse({
+      finalText: sanitizePublicAssistantText(content),
+      records: run.toolCalls,
+      plan,
+      goalVerification: run.goalSpec?.verification ?? null,
+      diffSummary: run.diffTracker?.snapshot?.() ?? null,
+      outcome: state.outcome,
+      stopReason: state.executionStopReason,
+      lastError: state.lastError
+    });
+    run.completionEvidence = reconciledFinal.evidence;
+    run.finalText = sanitizePublicAssistantText(reconciledFinal.text);
     if (!run.finalText) {
       run.finalText = "当前处理已经结束，但模型没有生成可公开显示的总结。";
     }
@@ -207,7 +269,10 @@ export const agentRunFinalization = {
     const persistedFinalMessage = this.persistAssistantResponse({
       conversationId,
       content: run.finalText,
-      status: state.messageStatus
+      status: state.messageStatus,
+      runOutcome: state.outcome,
+      runPhase: state.phase,
+      runResumable: state.resumable
     });
     conversationManager.finishExecutionThread?.({
       conversationId,
@@ -483,23 +548,12 @@ export const agentRunFinalization = {
           if (textPart) {
             const publicChunk = publicStream.push(textPart);
             if (!publicChunk) continue;
-            const firstFinalChunk = text.length === 0;
             text += publicChunk;
-            this.activeRun.finalText = text;
-
-            this.setStatus(
-              { ...this.status },
-              { immediate: firstFinalChunk }
-            );
-
-            appendResponseChunk(publicChunk);
           }
         }
         const finalPublicChunk = publicStream.flush();
         if (finalPublicChunk) {
           text += finalPublicChunk;
-          this.activeRun.finalText = text;
-          appendResponseChunk(finalPublicChunk);
         }
 
         const finalizationUsage = await settleResultValue(
@@ -536,20 +590,37 @@ export const agentRunFinalization = {
         );
 
       if (normalized) {
+        const resolution = resolveRunOutcome({
+          stopReason: executionStopReason,
+          records,
+          plan,
+          finalText: normalized,
+          goalVerification
+        });
+        const reconciled = reconcileFinalResponse({
+          finalText: normalized,
+          records,
+          plan,
+          goalVerification,
+          diffSummary: this.activeRun?.diffTracker?.snapshot?.() ?? null,
+          outcome: resolution.outcome,
+          stopReason: resolution.stopReason
+        });
+        const publicText = reconciled.text || normalized;
+
         this.noteProviderSuccess(runtime);
-        this.activeRun.finalText =
-          normalized;
-        this.activeRun
-          .currentStepText =
-          "";
+        this.activeRun.finalText = publicText;
+        this.activeRun.currentStepText = "";
+        appendResponseChunk(publicText);
         this.setStatus({
           ...this.status
         });
 
         return {
           ok: true,
-          text: normalized,
-          attempts: attempt
+          text: publicText,
+          attempts: attempt,
+          evidenceReconciled: reconciled.changed
         };
       }
     }
@@ -561,14 +632,28 @@ export const agentRunFinalization = {
         executionStopReason
       });
 
-    this.activeRun.finalText =
-      fallback;
-    this.activeRun.currentStepText =
-      "";
-    if (fallback) {
-      appendResponseChunk(
-        fallback
-      );
+    const fallbackResolution = resolveRunOutcome({
+      stopReason: executionStopReason,
+      records,
+      plan,
+      finalText: fallback,
+      goalVerification
+    });
+    const reconciledFallback = reconcileFinalResponse({
+      finalText: fallback,
+      records,
+      plan,
+      goalVerification,
+      diffSummary: this.activeRun?.diffTracker?.snapshot?.() ?? null,
+      outcome: fallbackResolution.outcome,
+      stopReason: fallbackResolution.stopReason
+    });
+    const publicFallback = reconciledFallback.text || fallback;
+
+    this.activeRun.finalText = publicFallback;
+    this.activeRun.currentStepText = "";
+    if (publicFallback) {
+      appendResponseChunk(publicFallback);
     }
 
     this.setStatus({
@@ -576,8 +661,8 @@ export const agentRunFinalization = {
     });
 
     return {
-      ok: Boolean(fallback),
-      text: fallback,
+      ok: Boolean(publicFallback),
+      text: publicFallback,
       attempts: maxAttempts,
       fallback: true
     };

@@ -16,6 +16,10 @@ import {
   RUN_OUTCOMES
 } from "./RunStateMachine.js";
 
+import {
+  reconcileFinalResponse
+} from "./finalization/CompletionEvidenceGate.js";
+
 function text(value) {
   return String(value ?? "").trim();
 }
@@ -133,6 +137,18 @@ export class RunEngine {
       goalVerification: loopResult.verification ?? null,
       gracefulBoundary: this.gracefulBoundary
     });
+    const reconciled = reconcileFinalResponse({
+      finalText,
+      records,
+      plan,
+      goalVerification: loopResult.verification ?? null,
+      outcome: resolved.outcome,
+      stopReason: resolved.stopReason
+    });
+    if (reconciled.text && reconciled.text !== finalText) {
+      finalText = reconciled.text;
+      setFinalText(finalText);
+    }
 
     return {
       cancelled: false,

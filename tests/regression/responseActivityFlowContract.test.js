@@ -128,15 +128,19 @@ describe("structured Response activity flow", () => {
     assert.match(conversation, /displayedFinalText/u);
   });
 
-  it("streams finalization chunks into the structured final answer", () => {
-    const runtime = readAgentRuntimeSource();
+  it("publishes finalization only after public text and completion evidence are reconciled", () => {
+    const finalization = read(
+      "../../electron/agent/finalization/AgentRunFinalization.js"
+    );
 
-    assert.doesNotMatch(runtime, /bufferProgressHandoff/u);
-    assert.match(runtime, /const publicStream = new PublicTextStreamSanitizer\(\);/u);
-    assert.match(runtime, /const publicChunk = publicStream\.push\(textPart\);/u);
-    assert.match(runtime, /this\.activeRun\.finalText = text;/u);
-    assert.match(runtime, /appendResponseChunk\(publicChunk\);/u);
-    assert.doesNotMatch(runtime, /appendResponseChunk\(textPart\);/u);
+    assert.doesNotMatch(finalization, /bufferProgressHandoff/u);
+    assert.match(finalization, /const publicStream = new PublicTextStreamSanitizer\(\);/u);
+    assert.match(finalization, /const publicChunk = publicStream\.push\(textPart\);/u);
+    assert.match(finalization, /const reconciled = reconcileFinalResponse\(\{/u);
+    assert.match(finalization, /this\.activeRun\.finalText = publicText;/u);
+    assert.match(finalization, /appendResponseChunk\(publicText\);/u);
+    assert.doesNotMatch(finalization, /appendResponseChunk\(publicChunk\);/u);
+    assert.doesNotMatch(finalization, /appendResponseChunk\(textPart\);/u);
   });
 
 });

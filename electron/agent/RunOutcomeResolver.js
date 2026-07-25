@@ -17,6 +17,11 @@ import {
   RUN_OUTCOMES
 } from "./RunStateMachine.js";
 
+import {
+  buildCompletionEvidence,
+  validateCompletionClaims
+} from "./finalization/CompletionEvidenceGate.js";
+
 const TOOL_FAILURE_REASONS = new Set([
   RUN_STOP_REASONS.TOOL_ERROR,
   RUN_STOP_REASONS.TOOL_TIMEOUT,
@@ -57,7 +62,11 @@ export function resolveRunOutcome({
     plan
   });
   const planState = getPlanCompletionState(plan);
-  const goalVerified = goalVerification?.verified !== false;
+  const completionEvidence = buildCompletionEvidence({
+    records,
+    plan,
+    goalVerification
+  });
 
   let outcome;
   if (
@@ -68,19 +77,42 @@ export function resolveRunOutcome({
     })
   ) {
     outcome = RUN_OUTCOMES.CONTINUABLE;
+  } else if (completionEvidence.failures.hasActive) {
+    outcome = completionEvidence.failures.hasRecoverable
+      ? RUN_OUTCOMES.CONTINUABLE
+      : RUN_OUTCOMES.FAILED;
+  } else if (completionEvidence.openRecordIds.length > 0) {
+    outcome = RUN_OUTCOMES.CONTINUABLE;
   } else if (
     effectiveStopReason === RUN_STOP_REASONS.COMPLETED &&
-    goalVerified &&
-    String(finalText ?? "").trim() &&
-    (!planState.hasPlan || planState.isComplete)
+    completionEvidence.canComplete &&
+    String(finalText ?? "").trim()
   ) {
     outcome = RUN_OUTCOMES.COMPLETED;
+  } else if (planState.hasNeedsInput) {
+    outcome = RUN_OUTCOMES.NEEDS_INPUT;
+  } else if (planState.hasBlocked) {
+    outcome = RUN_OUTCOMES.BLOCKED;
+  } else if (
+    effectiveStopReason === RUN_STOP_REASONS.COMPLETED ||
+    planState.hasUnfinished ||
+    goalVerification?.verified === false
+  ) {
+    outcome = RUN_OUTCOMES.CONTINUABLE;
+  } else {
+    outcome = RUN_OUTCOMES.FAILED;
   }
 
   return {
     outcome,
     stopReason: effectiveStopReason,
     planState,
-    toolFailures: classifyToolFailureHistory(records)
+    toolFailures: completionEvidence.failures,
+    completionEvidence,
+    claimValidation: validateCompletionClaims({
+      finalText,
+      evidence: completionEvidence,
+      outcome
+    })
   };
 }

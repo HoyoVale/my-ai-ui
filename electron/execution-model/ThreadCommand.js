@@ -2,6 +2,11 @@ import {
   THREAD_COMMANDS
 } from "./ThreadRoutingDecision.js";
 
+import {
+  classifyTaskBoundary,
+  TASK_BOUNDARIES
+} from "./TaskBoundaryClassifier.js";
+
 const COMMANDS = new Set(Object.values(THREAD_COMMANDS));
 
 const START_PATTERNS = [
@@ -76,6 +81,22 @@ export function classifyThreadCommand({
     };
   }
 
+  const normalized = normalizedText(message);
+  const boundary = classifyTaskBoundary({
+    message: normalized
+  });
+
+  if (boundary.boundary === TASK_BOUNDARIES.NEW_TASK) {
+    return {
+      command: THREAD_COMMANDS.START,
+      source: "task_boundary",
+      evidence: [
+        "task-boundary:new-task",
+        ...boundary.reasons.map((reason) => `task-boundary:${reason}`)
+      ].slice(0, 8)
+    };
+  }
+
   if (activeRun) {
     return {
       command: THREAD_COMMANDS.STEER,
@@ -92,7 +113,6 @@ export function classifyThreadCommand({
     };
   }
 
-  const normalized = normalizedText(message);
   if (!normalized) {
     return { command: "", source: "none", evidence: [] };
   }

@@ -19,7 +19,10 @@ export const ConversationMessageService = {
     activity = null,
     skillRun = null,
     tokenLedger = null,
-    diffSummary = null
+    diffSummary = null,
+    runOutcome = "",
+    runPhase = "",
+    runResumable = false
   }) {
     const data =
       this.ensureLoaded();
@@ -82,7 +85,10 @@ export const ConversationMessageService = {
         activity,
         skillRun,
         tokenLedger,
-        diffSummary
+        diffSummary,
+        runOutcome,
+        runPhase,
+        runResumable
       }
     );
   
@@ -224,6 +230,9 @@ export const ConversationMessageService = {
     skillRun = null,
     tokenLedger = null,
     diffSummary = null,
+    runOutcome = "",
+    runPhase = "",
+    runResumable = false,
     preserveCreatedAt = false
   }) {
     const conversation =
@@ -294,6 +303,9 @@ export const ConversationMessageService = {
     delete message.skillRun;
     delete message.tokenLedger;
     delete message.diffSummary;
+    delete message.runOutcome;
+    delete message.runPhase;
+    delete message.runResumable;
   
     this.applyAssistantMetadata(
       message,
@@ -309,7 +321,10 @@ export const ConversationMessageService = {
         activity,
         skillRun,
         tokenLedger,
-        diffSummary
+        diffSummary,
+        runOutcome,
+        runPhase,
+        runResumable
       }
     );
   
@@ -348,7 +363,10 @@ export const ConversationMessageService = {
       activity = null,
       skillRun = null,
       tokenLedger = null,
-      diffSummary = null
+      diffSummary = null,
+      runOutcome = "",
+      runPhase = "",
+      runResumable = false
     } = {}
   ) {
     if (
@@ -434,6 +452,16 @@ export const ConversationMessageService = {
     if (diffSummary && typeof diffSummary === "object" && diffSummary.empty !== true) {
       message.diffSummary = internals.clone(diffSummary);
     }
+
+    if (runOutcome) {
+      message.runOutcome = String(runOutcome);
+    }
+
+    if (runPhase) {
+      message.runPhase = String(runPhase);
+    }
+
+    message.runResumable = runResumable === true;
   },
 
   recoverInterruptedRuns({ runtimeRecoveries = [] } = {}) {
@@ -481,6 +509,14 @@ export const ConversationMessageService = {
   
         message.status = messageStatus;
         message.stopReason = stopReason;
+        message.runOutcome = String(
+          runtimeDecision?.outcome ?? "interrupted"
+        );
+        message.runPhase = String(
+          runtimeDecision?.phase ?? "interrupted"
+        );
+        message.runResumable =
+          runtimeDecision?.resumable !== false;
   
         const interruptionReason =
           runtimeDecision?.recovery?.unresolvedCount > 0

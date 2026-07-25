@@ -31,7 +31,10 @@ function runStateFromSource(assistantMessage, activity) {
   }
 
   const status = text(activity?.status, 80);
-  const outcome = text(activity?.outcome, 80);
+  const outcome = text(
+    assistantMessage?.runOutcome || activity?.outcome,
+    80
+  );
   const resumable = activity?.resumable === true;
   const ended = activity?.endedAt != null;
 
@@ -198,9 +201,9 @@ export function projectRun({
     startedAt,
     endedAt,
     durationMs: timestamp(activity?.durationMs || assistantMessage.durationMs),
-    outcome: text(activity?.outcome || state, 80),
+    outcome: text(assistantMessage?.runOutcome || activity?.outcome || state, 80),
     stopReason: text(activity?.stopReason || assistantMessage.stopReason, 120),
-    resumable: activity?.resumable === true || state === RUN_STATES_V2.CONTINUABLE,
+    resumable: assistantMessage?.runResumable === true || activity?.resumable === true || state === RUN_STATES_V2.CONTINUABLE,
     items,
     itemFingerprint: executionItemSequenceFingerprint(items),
     itemCounts: countItems(items),

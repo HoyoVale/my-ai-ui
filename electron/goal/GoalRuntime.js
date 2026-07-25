@@ -9,6 +9,10 @@ import {
   reconcileRootPlanFromSubplans
 } from "../agent/PlanAuthority.js";
 
+import {
+  evaluateObjectiveCompatibility
+} from "../execution-model/ObjectiveCompatibilityGate.js";
+
 const GOAL_SCHEMA_VERSION = 6;
 const GOAL_EVENT_HISTORY_LIMIT = 48;
 const GOAL_VERIFICATION_HISTORY_LIMIT = 12;
@@ -1471,6 +1475,11 @@ export function replanGoal(goalSource, {
 } = {}, {
   now = Date.now()
 } = {}) {
+  const goal = sanitizeGoal(goalSource);
+  if (!goal) {
+    return { ok: false, code: "goal-not-found" };
+  }
+
   const normalizedReason = stringValue(reason, "", 500).trim();
   const normalizedAssumption = stringValue(
     failedAssumption,
@@ -1483,6 +1492,22 @@ export function replanGoal(goalSource, {
   if (!normalizedAssumption) {
     return { ok: false, code: "goal-replan-assumption-required" };
   }
+
+  const compatibility = evaluateObjectiveCompatibility({
+    currentObjective: goal.objective,
+    reason: normalizedReason,
+    failedAssumption: normalizedAssumption,
+    planState
+  });
+  if (!compatibility.compatible) {
+    return {
+      ok: false,
+      code: "goal-objective-drift",
+      requiresNewThread: true,
+      compatibility
+    };
+  }
+
   const incoming = normalizePlanState(planState);
   const timestamp = timestampValue(now, Date.now());
   incoming.lastReplan = {
@@ -1491,7 +1516,7 @@ export function replanGoal(goalSource, {
     runId: nullableStringValue(runId, 120),
     at: timestamp
   };
-  return applyGoalPlanState(goalSource, incoming, {
+  return applyGoalPlanState(goal, incoming, {
     runId,
     authorityAction: "replan",
     now: timestamp

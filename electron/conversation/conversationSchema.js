@@ -32,6 +32,36 @@ import {
 
 const STORE_VERSION = 23;
 
+const MESSAGE_RUN_OUTCOMES = new Set([
+  "running",
+  "completed",
+  "continuable",
+  "needs_input",
+  "blocked",
+  "needs_reconciliation",
+  "needs_confirmation",
+  "unknown",
+  "cancelled",
+  "interrupted",
+  "failed"
+]);
+
+const MESSAGE_RUN_PHASES = new Set([
+  "executing",
+  "finalizing",
+  "cancelling",
+  "checkpoint_ready",
+  "completed",
+  "needs_input",
+  "blocked",
+  "reconciling",
+  "needs_confirmation",
+  "unknown",
+  "cancelled",
+  "interrupted",
+  "failed"
+]);
+
 
 function sanitizeDiffSummary(source) {
   if (!source || typeof source !== "object") return null;
@@ -665,6 +695,29 @@ export function sanitizeMessage(
     if (executionThreadId) {
       message.executionThreadId = executionThreadId;
     }
+
+    const runOutcome = stringValue(
+      source.runOutcome ?? activity?.outcome,
+      "",
+      60
+    );
+    if (MESSAGE_RUN_OUTCOMES.has(runOutcome)) {
+      message.runOutcome = runOutcome;
+    }
+
+    const runPhase = stringValue(
+      source.runPhase ?? activity?.checkpoint?.phase,
+      "",
+      60
+    );
+    if (MESSAGE_RUN_PHASES.has(runPhase)) {
+      message.runPhase = runPhase;
+    }
+
+    message.runResumable = booleanValue(
+      source.runResumable,
+      activity?.resumable === true
+    );
   }
 
   return message;

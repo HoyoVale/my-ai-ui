@@ -3,6 +3,10 @@ import {
   runStatusFromStopReason
 } from "./runStopReasons.js";
 
+import {
+  terminalizeActivityEvents
+} from "./finalization/ActivityTerminalizer.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -36,6 +40,7 @@ function canonicalToolStatus(status) {
 
   if ([
     "unknown",
+    "interrupted",
     "needs_reconciliation",
     "needs_confirmation",
     "attention"
@@ -266,7 +271,11 @@ export class RunActivityStore {
       return null;
     }
 
-    const normalizedStatus = ["failed", "cancelled"].includes(status)
+    const normalizedStatus = [
+      "failed",
+      "cancelled",
+      "interrupted"
+    ].includes(status)
       ? status
       : "completed";
 
@@ -659,10 +668,18 @@ export class RunActivityStore {
           ? "failed"
           : this.status === "cancelled"
             ? "cancelled"
-            : "completed",
+            : this.status === "completed"
+              ? "completed"
+              : "interrupted",
         this.endedAt
       );
     }
+
+    this.events = terminalizeActivityEvents(this.events, {
+      outcome: this.outcome,
+      activityStatus: this.status,
+      endedAt: this.endedAt
+    });
 
     this.upsertEvent({
       id: `run:${this.runId || this.taskId}`,

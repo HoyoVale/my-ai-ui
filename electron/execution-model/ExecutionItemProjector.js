@@ -30,7 +30,7 @@ function itemStatus(value, fallback = EXECUTION_ITEM_STATES.COMPLETED) {
   if (["running", "in_progress", "retrying"].includes(value)) {
     return EXECUTION_ITEM_STATES.RUNNING;
   }
-  if (["cancelled", "aborted"].includes(value)) {
+  if (["cancelled", "aborted", "interrupted"].includes(value)) {
     return EXECUTION_ITEM_STATES.CANCELLED;
   }
   if (["failed", "error", "attention", "blocked"].includes(value)) {

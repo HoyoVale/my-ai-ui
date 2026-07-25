@@ -15,3 +15,13 @@ export * from "./ExecutionPersistence.js";
 export * from "./PlatformExecutionBridge.js";
 export * from "./RoutingRolloutPolicy.js";
 export * from "./RoutingRolloutController.js";
+export {
+  TASK_BOUNDARIES,
+  classifyTaskBoundary,
+  hasExplicitNewTaskIntent
+} from "./TaskBoundaryClassifier.js";
+
+export {
+  evaluateObjectiveCompatibility
+} from "./ObjectiveCompatibilityGate.js";
+

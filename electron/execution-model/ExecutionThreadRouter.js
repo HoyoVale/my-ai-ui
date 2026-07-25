@@ -13,6 +13,11 @@ import {
   normalizeThreadCommand
 } from "./ThreadCommand.js";
 
+import {
+  classifyTaskBoundary,
+  TASK_BOUNDARIES
+} from "./TaskBoundaryClassifier.js";
+
 const REUSABLE_THREAD_STATES = new Set([
   "active",
   "running",
@@ -36,6 +41,7 @@ function currentThread(conversation) {
     id,
     taskId: text(source.taskId),
     status: text(source.status, 40) || "active",
+    objective: text(source.objective, 2000),
     workspaceId: text(source.workspaceId),
     lastRunId: text(source.lastRunId),
     lastAssistantMessageId: text(source.lastAssistantMessageId)
@@ -57,7 +63,8 @@ function routeSource(classification, action) {
     "explicit",
     "explicit_continue",
     "message",
-    "operation"
+    "operation",
+    "task_boundary"
   ].includes(classification.source)) {
     return ROUTING_SOURCES.EXPLICIT_COMMAND;
   }
@@ -110,6 +117,10 @@ export class ExecutionThreadRouter {
       activeRun: Boolean(activeRunId),
       explicitContinue
     });
+    const taskBoundary = classifyTaskBoundary({
+      message,
+      currentObjective: thread?.objective ?? ""
+    });
 
     let command = normalizeThreadCommand(classification.command);
     let action = actionForCommand(command);
@@ -118,6 +129,19 @@ export class ExecutionThreadRouter {
     let resolvedTargetThreadId = text(targetThreadId);
     let resolvedSourceThreadId = text(sourceThreadId);
     let resolvedSourceRunId = text(sourceRunId);
+
+    if (
+      !command &&
+      taskBoundary.boundary === TASK_BOUNDARIES.NEW_TASK
+    ) {
+      command = THREAD_COMMANDS.START;
+      action = ROUTING_ACTIONS.START;
+      reason = "task-boundary-start-new-thread";
+      evidence.push(
+        "task-boundary:new-task",
+        ...taskBoundary.reasons.map((item) => `task-boundary:${item}`)
+      );
+    }
 
     if (activeRunId && operation === THREAD_COMMANDS.REGENERATE) {
       action = ROUTING_ACTIONS.REJECT;

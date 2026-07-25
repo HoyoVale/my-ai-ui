@@ -242,6 +242,8 @@ export function createFinalizationInstruction({
     isContinuationBoundary
       ? "This is a natural progress handoff, not an error. Summarize the work completed so far, the important results, what remains, and one concrete recommended next action. End naturally so the user can ask you to continue."
       : "Summarize what was completed, the important results, and any remaining limitations.",
+    "Only claim that installation, tests, builds, or the whole task succeeded when the tool summaries contain a matching completed command with a successful exit status.",
+    "If a tool failed, the plan is unfinished, or verification is missing, state that clearly and do not describe the task as complete.",
     "Do not repeat the activity log verbatim.",
     isContinuationBoundary
       ? "Never mention segments, checkpoints, internal execution counts, budgets, limits, stop reasons, or that the runtime paused."

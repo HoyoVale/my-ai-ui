@@ -1,15 +1,11 @@
 import {
+  hasExplicitNewTaskIntent
+} from "../execution-model/TaskBoundaryClassifier.js";
+
+import {
   isGracefulRunBoundary,
   isRecoverableRunFailure
 } from "./runStopReasons.js";
-
-const NEW_TASK_PATTERNS = [
-  /^(?:换个|换一个|开始)?新(?:的)?(?:话题|问题|任务)(?:吧|：|:|，|,|。|\s|$)/u,
-  /^(?:换个|换一个|聊点|说点)(?:别的|其他的)(?:吧|，|,|。|\s|$)/u,
-  /^(?:另一个|另外一个)(?:问题|任务)(?:是|：|:|，|,|。|\s|$)/u,
-  /^(?:不继续了|先不继续|停止|放弃|结束)(?:这个|当前)?任务(?:吧|，|,|。|\s|$)/u,
-  /^(?:new task|new topic|different question|stop this task|do not continue|don't continue)\b/iu
-];
 
 const CONTINUATION_PATTERNS = [
   /^(?:请(?:你)?|你)?(?:继续|接着|继续做|接着做|继续执行|接着执行|继续完成|完成剩余|完成余下|执行下一步|继续下一步)(?:吧|下去|剩余部分|余下部分|这个任务|当前任务|，|,|。|\s|$)/u,
@@ -19,14 +15,7 @@ const CONTINUATION_PATTERNS = [
 ];
 
 export function isExplicitNewTask(message) {
-  const normalized = String(message ?? "").trim();
-
-  return Boolean(
-    normalized &&
-    NEW_TASK_PATTERNS.some((pattern) =>
-      pattern.test(normalized)
-    )
-  );
+  return hasExplicitNewTaskIntent(message);
 }
 
 export function isExplicitContinuationMessage(message) {

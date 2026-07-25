@@ -341,7 +341,10 @@ export const agentRunPersistence = {
   persistAssistantResponse({
     conversationId,
     content,
-    status = "complete"
+    status = "complete",
+    runOutcome = "",
+    runPhase = "",
+    runResumable = false
   }) {
     if (!this.activeRun) {
       return null;
@@ -420,7 +423,14 @@ export const agentRunPersistence = {
       tokenLedger:
         this.activeRun.tokenLedger?.snapshot?.() ?? null,
       diffSummary:
-        this.activeRun.diffTracker?.snapshot?.() ?? null
+        this.activeRun.diffTracker?.snapshot?.() ?? null,
+      runOutcome: String(
+        runOutcome || this.activeRun.stateMachine?.snapshot?.().outcome || ""
+      ),
+      runPhase: String(
+        runPhase || this.activeRun.stateMachine?.snapshot?.().phase || ""
+      ),
+      runResumable: runResumable === true
     };
 
     if (
