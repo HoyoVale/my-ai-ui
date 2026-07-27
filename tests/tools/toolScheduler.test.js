@@ -66,37 +66,7 @@ it("treats parent and child paths as conflicting resources", async () => {
   releaseChild();
 });
 
-it("uses Plan and whole-workspace mutations as queue barriers", async () => {
-  const scheduler = new ToolScheduler({
-    context: { workspaceId: "workspace-1", taskId: "task-1" }
-  });
-  const releaseRead = await scheduler.acquire(
-    definition("read_text_file"),
-    { path: "src/a.js" }
-  );
-  const order = [];
-  const plan = scheduler.acquire(
-    definition("update_plan"),
-    { items: [] }
-  ).then((release) => {
-    order.push("plan");
-    return release;
-  });
-  const laterRead = scheduler.acquire(
-    definition("read_text_file"),
-    { path: "src/b.js" }
-  ).then((release) => {
-    order.push("read");
-    return release;
-  });
-  releaseRead();
-  const releasePlan = await plan;
-  assert.deepEqual(order, ["plan"]);
-  releasePlan();
-  const releaseLater = await laterRead;
-  assert.deepEqual(order, ["plan", "read"]);
-  releaseLater();
-
+it("uses whole-workspace mutations as queue barriers", () => {
   const patchPolicy = resolveToolSchedulerPolicy(
     definition("apply_patch"),
     { patch: "--- a/a\n+++ b/a" },

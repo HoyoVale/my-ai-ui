@@ -1,5 +1,18 @@
 import * as internals from "../ConversationManagerInternals.js";
 
+import {
+  projectConversationForRead,
+  projectMessageForRead
+} from "../conversationSchema.js";
+
+function messageTaskId(message) {
+  return String(
+    message?.metadata?.taskId ??
+    message?.activity?.taskId ??
+    ""
+  ).trim();
+}
+
 export const ConversationToolRecoveryService = {
   getTaskRuntimeRecord(taskId) {
     const normalizedTaskId = String(taskId ?? "").trim();
@@ -13,7 +26,7 @@ export const ConversationToolRecoveryService = {
       for (const message of conversation.messages) {
         if (
           message.role !== "assistant" ||
-          String(message.taskId ?? "") !== normalizedTaskId
+          messageTaskId(message) !== normalizedTaskId
         ) {
           continue;
         }
@@ -31,8 +44,8 @@ export const ConversationToolRecoveryService = {
   
     return latest
       ? {
-          conversation: internals.clone(latest.conversation),
-          message: internals.clone(latest.message)
+          conversation: projectConversationForRead(latest.conversation),
+          message: projectMessageForRead(latest.message)
         }
       : null;
   },
@@ -43,7 +56,7 @@ export const ConversationToolRecoveryService = {
   
     for (const conversation of data.conversations) {
       for (const message of conversation.messages) {
-        if (message.role !== "assistant" || !message.taskId) {
+        if (message.role !== "assistant" || !messageTaskId(message)) {
           continue;
         }
   
@@ -67,7 +80,7 @@ export const ConversationToolRecoveryService = {
           Number(message.activity?.endedAt ?? 0),
           Number(message.createdAt ?? 0)
         );
-        const taskId = String(message.taskId);
+        const taskId = messageTaskId(message);
         const previous = byTask.get(taskId);
         if (previous && previous.updatedAt > updatedAt) {
           continue;
@@ -144,7 +157,7 @@ export const ConversationToolRecoveryService = {
       for (const message of conversation.messages) {
         if (
           message.role !== "assistant" ||
-          String(message.taskId ?? "") !== normalizedTaskId
+          messageTaskId(message) !== normalizedTaskId
         ) {
           continue;
         }
@@ -184,7 +197,7 @@ export const ConversationToolRecoveryService = {
     this.commit();
     return {
       ok: true,
-      message: internals.clone(updatedMessage)
+      message: projectMessageForRead(updatedMessage)
     };
   }
 };

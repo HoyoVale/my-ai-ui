@@ -3,8 +3,8 @@ import {
 } from "../context/tokenEstimator.js";
 
 import {
-  createCheckpointInstruction
-} from "./runCheckpoint.js";
+  createCoreLiteCheckpointInstruction
+} from "./CoreLiteCheckpoint.js";
 
 function messageTokens(message) {
   let content = "";
@@ -105,7 +105,7 @@ export function compactRunStepContext({
     ...recent
   ];
   const checkpointInstruction =
-    createCheckpointInstruction(checkpoint);
+    createCoreLiteCheckpointInstruction(checkpoint);
 
   return {
     compacted: true,

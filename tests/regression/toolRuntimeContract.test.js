@@ -30,11 +30,11 @@ describe(
   "agent tool runtime contract",
   () => {
     it(
-      "uses bounded AI SDK segments with controlled long-task continuation",
+      "uses a bounded AI SDK model loop with controlled Core Lite continuation",
       () => {
         const source =
           readAgentRuntimeSource();
-        const segmentLoop =
+        const runLoop =
           read(
             "../../electron/agent/execution/CoreLiteRunLoop.js"
           );
@@ -52,8 +52,16 @@ describe(
           /new CoreLiteRunLoop/u
         );
         assert.match(
-          segmentLoop,
-          /await executeSegment\(/u
+          source,
+          /runLoop\.runToCompletion/u
+        );
+        assert.doesNotMatch(
+          source,
+          /new RunEngine|segmentCallbacks/u
+        );
+        assert.match(
+          runLoop,
+          /const execution = await executeRun\(/u
         );
         assert.doesNotMatch(
           source,

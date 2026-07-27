@@ -1,8 +1,4 @@
 import {
-  sanitizeGoal
-} from "../goal/GoalRuntime.js";
-
-import {
   createLegacyActivity,
   deriveLegacyActivityFields,
   sanitizeActivity,
@@ -14,23 +10,24 @@ import {
 } from "../agent/runStopReasons.js";
 
 import {
-  compactPlanState
-} from "../agent/planState.js";
+  sanitizeLegacyPlanState
+} from "./legacyPlanSnapshot.js";
 
 import {
   sanitizeTokenLedgerSnapshot
 } from "../agent/TokenLedger.js";
 
 import {
-  sanitizeExecutionThreadCollection
-} from "../execution-model/ExecutionPersistence.js";
-
-import {
   createSkillSnapshot,
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
-const STORE_VERSION = 23;
+import {
+  projectLegacyConversationFields,
+  sanitizeLegacyAdvancedMetadata
+} from "./legacyConversationCompatibility.js";
+
+const STORE_VERSION = 24;
 
 const MESSAGE_RUN_OUTCOMES = new Set([
   "running",
@@ -408,319 +405,217 @@ export function sanitizeMessage(
   fallbackTimestamp = 0,
   fallbackId = null
 ) {
-  if (
-    !source ||
-    typeof source !== "object"
-  ) {
-    return null;
-  }
+  if (!source || typeof source !== "object") return null;
 
-  const role =
-    MESSAGE_ROLES.has(
-      source.role
-    )
-      ? source.role
-      : null;
-
+  const role = MESSAGE_ROLES.has(source.role) ? source.role : null;
+  const metadataSource = source.metadata && typeof source.metadata === "object"
+    ? source.metadata
+    : {};
   const legacyQuestion =
     role === "assistant" &&
     source.pendingQuestion &&
     typeof source.pendingQuestion === "object"
-      ? stringValue(
-          source.pendingQuestion.question,
-          "",
-          1000
-        ).trim()
+      ? stringValue(source.pendingQuestion.question, "", 1000).trim()
       : "";
-  const legacyAnswer =
-    legacyQuestion
-      ? stringValue(
-          source.pendingQuestion?.answer,
-          "",
-          2000
-        ).trim()
-      : "";
-  const sourceContent =
-    stringValue(
-      source.content
-    ).trim();
-  const content =
-    sourceContent ||
-    (legacyQuestion
-      ? legacyAnswer
-        ? `已记录的信息：${legacyQuestion}\n\n回答：${legacyAnswer}`
-        : `需要补充信息：${legacyQuestion}`
-      : "");
+  const legacyAnswer = legacyQuestion
+    ? stringValue(source.pendingQuestion?.answer, "", 2000).trim()
+    : "";
+  const sourceContent = stringValue(source.content).trim();
+  const content = sourceContent || (legacyQuestion
+    ? legacyAnswer
+      ? `已记录的信息：${legacyQuestion}\n\n回答：${legacyAnswer}`
+      : `需要补充信息：${legacyQuestion}`
+    : "");
+  const canStoreEmptyAssistant = role === "assistant" && Boolean(source.activity);
 
-  const canStoreEmptyAssistant =
-    role === "assistant" &&
-    Boolean(source.activity);
+  if (!role || (!content && !canStoreEmptyAssistant)) return null;
 
-  if (
-    !role ||
-    (
-      !content &&
-      !canStoreEmptyAssistant
-    )
-  ) {
-    return null;
-  }
-
-  const status =
-    source.status === "waiting"
-      ? "complete"
-      : MESSAGE_STATUSES.has(
-          source.status
-        )
-        ? source.status
-        : "complete";
-
-  const includeInContext =
-    booleanValue(
-      source.includeInContext,
-      true
-    );
-
+  const status = source.status === "waiting"
+    ? "complete"
+    : MESSAGE_STATUSES.has(source.status)
+      ? source.status
+      : "complete";
+  const includeInContext = booleanValue(source.includeInContext, true);
   const message = {
-    id:
-      stringValue(
-        source.id,
-        "",
-        100
-      ) || fallbackId,
-
+    id: stringValue(source.id, "", 100) || fallbackId,
     role,
     content,
     status,
-
     includeInContext,
-
-    pinnedToContext:
-      includeInContext &&
-      booleanValue(
-        source.pinnedToContext,
-        false
-      ),
-
-    createdAt:
-      timestampValue(
-        source.createdAt,
-        fallbackTimestamp
-      )
+    pinnedToContext: includeInContext && booleanValue(source.pinnedToContext, false),
+    createdAt: timestampValue(source.createdAt, fallbackTimestamp)
   };
 
-  if (role === "assistant") {
-    const durationMs =
-      timestampValue(
-        source.durationMs,
-        0
-      );
+  if (role !== "assistant") return message;
 
-    const sourceToolCalls =
-      Array.isArray(
-        source.toolCalls
-      )
-        ? source.toolCalls
-            .map(
-              sanitizeToolCall
-            )
-            .filter(Boolean)
-            .slice(0, 100)
-        : [];
-
-    const normalizedPlanState = compactPlanState(
-      source.planState && typeof source.planState === "object"
+  const durationMs = timestampValue(source.durationMs, 0);
+  const sourceToolCalls = Array.isArray(source.toolCalls)
+    ? source.toolCalls.map(sanitizeToolCall).filter(Boolean).slice(0, 100)
+    : [];
+  const planInput =
+    metadataSource.planState && typeof metadataSource.planState === "object"
+      ? metadataSource.planState
+      : source.planState && typeof source.planState === "object"
         ? source.planState
-        : Array.isArray(source.plan)
-          ? source.plan
-          : [],
-      {
-        maxRootItems: 20,
-        maxSubplans: 12,
-        maxSubplanItems: 20
-      }
-    );
-    const sourcePlan = normalizedPlanState.rootItems
-      .map(sanitizePlanItem)
-      .filter(Boolean)
-      .slice(0, 20);
-
-    const migratedPlan =
-      legacyQuestion && !legacyAnswer
-        ? sourcePlan.map((item) =>
-            item.status === "in_progress"
-              ? {
-                  ...item,
-                  status: "needs_input",
-                  reason: item.reason || legacyQuestion
-                }
-              : item
-          )
-        : sourcePlan;
-
-    const sourceTaskId =
-      stringValue(
-        source.taskId,
-        "",
-        120
+        : Array.isArray(metadataSource.plan)
+          ? metadataSource.plan
+          : Array.isArray(source.plan)
+            ? source.plan
+            : [];
+  const normalizedPlanState = sanitizeLegacyPlanState(planInput, {
+    maxRootItems: 20,
+    maxSubplans: 12,
+    maxSubplanItems: 20
+  });
+  const sourcePlan = normalizedPlanState.rootItems
+    .map(sanitizePlanItem)
+    .filter(Boolean)
+    .slice(0, 20);
+  const migratedPlan = legacyQuestion && !legacyAnswer
+    ? sourcePlan.map((item) => item.status === "in_progress"
+      ? {
+          ...item,
+          status: "needs_input",
+          reason: item.reason || legacyQuestion
+        }
+      : item)
+    : sourcePlan;
+  const sourceTaskId = stringValue(
+    metadataSource.taskId ?? source.taskId,
+    "",
+    120
+  );
+  const legacyStopReason = legacyQuestion && !legacyAnswer
+    ? "needs_input"
+    : normalizeRunStopReason(
+        source.stopReason,
+        status === "aborted" ? "cancelled_by_user" : "completed"
       );
+  const hasLegacyActivity =
+    durationMs > 0 ||
+    sourceToolCalls.length > 0 ||
+    migratedPlan.length > 0 ||
+    Boolean(source.stopReason) ||
+    Boolean(legacyQuestion);
+  const activity = sanitizeActivity(source.activity) ?? (hasLegacyActivity
+    ? createLegacyActivity({
+        messageId: message.id ?? fallbackId,
+        createdAt: message.createdAt,
+        durationMs,
+        toolCalls: sourceToolCalls,
+        plan: migratedPlan,
+        stopReason: legacyStopReason,
+        taskId: sourceTaskId
+      })
+    : null);
+  const derived = deriveLegacyActivityFields(activity);
+  const toolCalls = sourceToolCalls.length > 0 ? sourceToolCalls : derived.toolCalls;
+  const plan = migratedPlan.length > 0 ? migratedPlan : derived.plan;
 
-    const legacyStopReason =
-      legacyQuestion && !legacyAnswer
-        ? "needs_input"
-        : normalizeRunStopReason(
-            source.stopReason,
-            status === "aborted"
-              ? "cancelled_by_user"
-              : "completed"
-          );
+  if (durationMs > 0) message.durationMs = durationMs;
+  else if (activity?.durationMs > 0) message.durationMs = activity.durationMs;
+  if (toolCalls.length > 0) message.toolCalls = toolCalls;
 
-    const hasLegacyActivity =
-      durationMs > 0 ||
-      sourceToolCalls.length > 0 ||
-      migratedPlan.length > 0 ||
-      Boolean(source.stopReason) ||
-      Boolean(legacyQuestion);
+  if (activity) {
+    message.activity = activity;
+    message.stopReason = activity.stopReason;
+  } else {
+    message.stopReason = legacyStopReason;
+  }
 
-    const activity =
-      sanitizeActivity(
-        source.activity
-      ) ??
-      (hasLegacyActivity
-        ? createLegacyActivity({
-            messageId:
-              message.id ?? fallbackId,
-            createdAt:
-              message.createdAt,
-            durationMs,
-            toolCalls:
-              sourceToolCalls,
-            plan: migratedPlan,
-            stopReason:
-              legacyStopReason,
-            taskId:
-              sourceTaskId
-          })
-        : null);
+  const skillRun = sanitizeSkillRun(source.skillRun);
+  if (skillRun) message.skillRun = skillRun;
+  const tokenLedger = sanitizeTokenLedgerSnapshot(source.tokenLedger);
+  if (tokenLedger) message.tokenLedger = tokenLedger;
+  const diffSummary = sanitizeDiffSummary(source.diffSummary);
+  if (diffSummary) message.diffSummary = diffSummary;
 
-    const derived =
-      deriveLegacyActivityFields(
-        activity
-      );
+  const metadata = {};
+  if (plan.length > 0) metadata.plan = plan;
+  if (plan.length > 0 || normalizedPlanState.subplans.length > 0) {
+    metadata.planState = {
+      ...normalizedPlanState,
+      rootItems: migratedPlan.length > 0 ? migratedPlan : plan
+    };
+  }
 
-    const toolCalls =
-      sourceToolCalls.length > 0
-        ? sourceToolCalls
-        : derived.toolCalls;
-    const plan =
-      migratedPlan.length > 0
-        ? migratedPlan
-        : derived.plan;
+  const taskId = activity?.taskId || sourceTaskId || message.id;
+  if (taskId) metadata.taskId = stringValue(taskId, "", 120);
+  const resumedFromMessageId = stringValue(
+    metadataSource.resumedFromMessageId ?? source.resumedFromMessageId,
+    "",
+    100
+  );
+  if (resumedFromMessageId) metadata.resumedFromMessageId = resumedFromMessageId;
+  const legacyExecutionThreadId = stringValue(
+    metadataSource.legacyExecutionThreadId ?? source.executionThreadId,
+    "",
+    120
+  );
+  if (legacyExecutionThreadId) {
+    metadata.legacyExecutionThreadId = legacyExecutionThreadId;
+  }
 
-    if (durationMs > 0) {
-      message.durationMs =
-        durationMs;
-    } else if (
-      activity?.durationMs > 0
-    ) {
-      message.durationMs =
-        activity.durationMs;
-    }
+  const runSource = metadataSource.run && typeof metadataSource.run === "object"
+    ? metadataSource.run
+    : {};
+  const runOutcome = stringValue(
+    runSource.outcome ?? source.runOutcome ?? activity?.outcome,
+    "",
+    60
+  );
+  const runPhase = stringValue(
+    runSource.phase ?? source.runPhase ?? activity?.checkpoint?.phase,
+    "",
+    60
+  );
+  const run = {};
+  if (MESSAGE_RUN_OUTCOMES.has(runOutcome)) run.outcome = runOutcome;
+  if (MESSAGE_RUN_PHASES.has(runPhase)) run.phase = runPhase;
+  run.resumable = booleanValue(
+    runSource.resumable ?? source.runResumable,
+    activity?.resumable === true
+  );
+  if (Object.keys(run).length > 0) metadata.run = run;
+  if (Object.keys(metadata).length > 0) message.metadata = metadata;
 
-    if (toolCalls.length > 0) {
-      message.toolCalls =
-        toolCalls;
-    }
+  return message;
+}
 
-    if (plan.length > 0) {
-      message.plan = plan;
-    }
+export function projectMessageForRead(source) {
+  if (!source || typeof source !== "object") return source;
+  const message = structuredClone(source);
+  const metadata = message.metadata && typeof message.metadata === "object"
+    ? message.metadata
+    : {};
 
-    if (
-      plan.length > 0 ||
-      normalizedPlanState.subplans.length > 0
-    ) {
-      message.planState = {
-        ...normalizedPlanState,
-        rootItems: migratedPlan.length > 0 ? migratedPlan : plan
-      };
-    }
-
-    if (activity) {
-      message.activity =
-        activity;
-      message.taskId =
-        activity.taskId ||
-        sourceTaskId ||
-        message.id;
-      message.stopReason =
-        activity.stopReason;
-    } else {
-      message.stopReason =
-        legacyStopReason;
-    }
-
-    const skillRun = sanitizeSkillRun(source.skillRun);
-    if (skillRun) {
-      message.skillRun = skillRun;
-    }
-
-    const tokenLedger = sanitizeTokenLedgerSnapshot(source.tokenLedger);
-    if (tokenLedger) {
-      message.tokenLedger = tokenLedger;
-    }
-
-    const diffSummary = sanitizeDiffSummary(source.diffSummary);
-    if (diffSummary) {
-      message.diffSummary = diffSummary;
-    }
-
-    const resumedFromMessageId =
-      stringValue(
-        source.resumedFromMessageId,
-        "",
-        100
-      );
-
-    if (resumedFromMessageId) {
-      message.resumedFromMessageId =
-        resumedFromMessageId;
-    }
-
-    const executionThreadId = stringValue(
-      source.executionThreadId,
-      "",
-      120
-    );
-    if (executionThreadId) {
-      message.executionThreadId = executionThreadId;
-    }
-
-    const runOutcome = stringValue(
-      source.runOutcome ?? activity?.outcome,
-      "",
-      60
-    );
-    if (MESSAGE_RUN_OUTCOMES.has(runOutcome)) {
-      message.runOutcome = runOutcome;
-    }
-
-    const runPhase = stringValue(
-      source.runPhase ?? activity?.checkpoint?.phase,
-      "",
-      60
-    );
-    if (MESSAGE_RUN_PHASES.has(runPhase)) {
-      message.runPhase = runPhase;
-    }
-
-    message.runResumable = booleanValue(
-      source.runResumable,
-      activity?.resumable === true
-    );
+  if (Array.isArray(metadata.plan) && metadata.plan.length > 0) {
+    message.plan = structuredClone(metadata.plan);
+  }
+  if (metadata.planState && typeof metadata.planState === "object") {
+    message.planState = structuredClone(metadata.planState);
+  }
+  if (metadata.taskId) message.taskId = metadata.taskId;
+  if (metadata.resumedFromMessageId) {
+    message.resumedFromMessageId = metadata.resumedFromMessageId;
+  }
+  if (metadata.legacyExecutionThreadId) {
+    message.executionThreadId = metadata.legacyExecutionThreadId;
+  }
+  if (metadata.run && typeof metadata.run === "object") {
+    if (metadata.run.outcome) message.runOutcome = metadata.run.outcome;
+    if (metadata.run.phase) message.runPhase = metadata.run.phase;
+    message.runResumable = metadata.run.resumable === true;
   }
 
   return message;
+}
+
+export function projectConversationForRead(source) {
+  if (!source || typeof source !== "object") return source;
+  const conversation = projectLegacyConversationFields(source);
+  conversation.messages = (source.messages ?? []).map(projectMessageForRead);
+  return conversation;
 }
 
 export function sanitizeConversation(
@@ -841,8 +736,7 @@ export function sanitizeConversation(
   const modelSnapshot = sanitizeModelSnapshot(
     source.modelSnapshot
   );
-  const goal = sanitizeGoal(source.goal);
-  const executionPersistence = sanitizeExecutionThreadCollection(source);
+  const legacyAdvanced = sanitizeLegacyAdvancedMetadata(source);
 
   return {
     id,
@@ -868,11 +762,11 @@ export function sanitizeConversation(
         ? modelSnapshot
         : null,
 
-    goal,
-    activeExecutionThreadId: executionPersistence.activeExecutionThreadId,
-    executionThreads: executionPersistence.executionThreads,
-    executionThread: executionPersistence.executionThread,
-    routingDecisions: executionPersistence.routingDecisions,
+    metadata: {
+      schema: "core-lite",
+      version: 1,
+      ...(legacyAdvanced ? { legacyAdvanced } : {})
+    },
 
     title:
       stringValue(

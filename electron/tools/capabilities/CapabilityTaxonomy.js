@@ -192,15 +192,6 @@ const DEFINITIONS = [
     permissions: ["process", "destructive"]
   },
   {
-    id: "agent.plan",
-    title: "维护任务计划",
-    description: "更新当前 Agent Run 的结构化计划和步骤状态。",
-    category: "agent",
-    modes: ["chat", "coding"],
-    risk: "read",
-    permissions: ["agentInternal"]
-  },
-  {
     id: "agent.result.page",
     title: "读取分页工具结果",
     description: "读取当前 Agent Run 中被截断并安全存储的工具结果。",

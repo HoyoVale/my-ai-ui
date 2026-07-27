@@ -17,7 +17,6 @@ const INITIAL_STATUS = {
   startedAt: null,
   lastError: null,
   stopReason: null,
-  plan: [],
   activeToolCalls: [],
   activity: null,
   liveStepText: "",

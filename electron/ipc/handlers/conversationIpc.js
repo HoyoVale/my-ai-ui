@@ -300,14 +300,6 @@ export function registerConversationIpc() {
     }
   );
 
-  ipcMain.handle(
-    IPC_CHANNELS.conversation.SET_GOAL,
-    () => ({
-      ok: false,
-      code: "core-lite-goal-disabled",
-      message: "Core Lite 分支未启用 Goal。"
-    })
-  );
 
   ipcMain.handle(
     IPC_CHANNELS

@@ -132,7 +132,3 @@ export function resolveActiveModelSettings(
   return resolveModelConfig(modelSettings, null);
 }
 
-export function resolveWorkerModelSettings(modelSettings = {}) {
-  const selection = modelSettings.runtimeAssignments?.worker ?? null;
-  return resolveModelConfig(modelSettings, selection);
-}

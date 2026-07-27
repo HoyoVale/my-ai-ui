@@ -11,7 +11,6 @@ export const RUN_STOP_REASONS = Object.freeze({
   BLOCKED: "blocked",
   TOOL_CALL_LIMIT: "tool_call_limit",
   AGENT_STEP_LIMIT: "agent_step_limit",
-  AGENT_SEGMENT_LIMIT: "agent_segment_limit",
   NO_PROGRESS: "no_progress",
   AGENT_RUN_TIMEOUT: "agent_run_timeout",
   TOOL_TIMEOUT: "tool_timeout",
@@ -23,7 +22,6 @@ export const RUN_STOP_REASONS = Object.freeze({
   PERMISSION_DENIED: "permission_denied",
   OUTPUT_LIMIT: "output_limit",
   CONTENT_FILTER: "content_filter",
-  PLAN_INCOMPLETE: "plan_incomplete",
   UNKNOWN: "unknown"
 });
 
@@ -33,6 +31,8 @@ const LEGACY_ALIASES = Object.freeze({
   waiting_for_user:
     RUN_STOP_REASONS.NEEDS_INPUT,
   step_limit:
+    RUN_STOP_REASONS.AGENT_STEP_LIMIT,
+  agent_segment_limit:
     RUN_STOP_REASONS.AGENT_STEP_LIMIT,
   run_timeout:
     RUN_STOP_REASONS.AGENT_RUN_TIMEOUT,
@@ -67,8 +67,6 @@ const TOOL_ERROR_REASON = Object.freeze({
     RUN_STOP_REASONS.PERMISSION_DENIED,
   CANCELLED_BY_USER:
     RUN_STOP_REASONS.CANCELLED_BY_USER,
-  PLAN_STEP_REQUIRED:
-    RUN_STOP_REASONS.PLAN_INCOMPLETE,
   TIMEOUT:
     RUN_STOP_REASONS.TOOL_TIMEOUT,
   INVALID_ARGUMENTS:
@@ -103,7 +101,6 @@ export function normalizeRunStopReason(
 
 const GRACEFUL_BOUNDARY_REASONS = new Set([
   RUN_STOP_REASONS.AGENT_STEP_LIMIT,
-  RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT,
   RUN_STOP_REASONS.TOOL_CALL_LIMIT,
   RUN_STOP_REASONS.AGENT_RUN_TIMEOUT,
   RUN_STOP_REASONS.REPEATED_TOOL_CALL,
@@ -172,8 +169,7 @@ export function isRecoverableRunFailure({
   if ([
     RUN_STOP_REASONS.TOOL_ERROR,
     RUN_STOP_REASONS.TOOL_TIMEOUT,
-    RUN_STOP_REASONS.INVALID_TOOL_ARGUMENTS,
-    RUN_STOP_REASONS.PLAN_INCOMPLETE
+    RUN_STOP_REASONS.INVALID_TOOL_ARGUMENTS
   ].includes(normalized)) {
     const failure = classifyLatestToolFailure(records);
     return failure.found && failure.recoverable;
@@ -200,16 +196,8 @@ export function inferRunStopReason({
   records = [],
   finishReason,
   steps = [],
-  maxSteps = 0,
-  plan = []
+  maxSteps = 0
 } = {}) {
-  const needsInput =
-    Array.isArray(plan) &&
-    plan.some((item) => item?.status === "needs_input");
-
-  if (needsInput) {
-    return RUN_STOP_REASONS.NEEDS_INPUT;
-  }
   const toolReason = stopReasonFromToolRecords(
     records
   );
@@ -237,27 +225,6 @@ export function inferRunStopReason({
 
   if (finishReason === "error") {
     return RUN_STOP_REASONS.MODEL_ERROR;
-  }
-
-  const blockedPlan =
-    Array.isArray(plan) &&
-    plan.some((item) => item?.status === "blocked");
-
-  if (blockedPlan) {
-    return RUN_STOP_REASONS.BLOCKED;
-  }
-
-  const unfinishedPlan =
-    Array.isArray(plan) &&
-    plan.some((item) =>
-      [
-        "pending",
-        "in_progress"
-      ].includes(item?.status)
-    );
-
-  if (unfinishedPlan) {
-    return RUN_STOP_REASONS.PLAN_INCOMPLETE;
   }
 
   return RUN_STOP_REASONS.COMPLETED;

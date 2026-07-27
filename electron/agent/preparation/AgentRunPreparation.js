@@ -158,12 +158,10 @@ function launchRun(runtime, {
   settings
 }) {
   const runArguments = {
-    runId: runtime.activeRun.runId,
-    conversationId: runtime.activeRun.conversationId,
+    session: runtime.activeRun,
     context,
     memories,
-    settings,
-    abortController: runtime.activeRun.abortController
+    settings
   };
 
   if (isE2EMode()) {
@@ -178,8 +176,7 @@ export const agentRunPreparation = {
     content,
     {
       expectedConversationId = "",
-      continueTask = false,
-      threadCommand: _threadCommand = ""
+      continueTask = false
     } = {}
   ) {
     const message = String(content ?? "").trim();

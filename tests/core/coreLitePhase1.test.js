@@ -11,20 +11,27 @@ const root = path.resolve(
 const source = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
-test("Core Lite disables Plan and Goal prompt/tool entrances", () => {
+test("Core Lite physically removes Plan and Goal prompt/tool entrances", () => {
   const prompt = source("electron/context/baseSystemContext.js");
   const assembler = source("electron/context/ContextAssembler.js");
   const registry = source("electron/tools/manifest/createBuiltinToolRegistry.js");
   const defaults = source("src/shared/defaultSettings.js");
   const catalog = source("electron/tools/toolCatalog.js");
+  const session = source("electron/tools/createAgentToolSession.js");
 
   assert.doesNotMatch(prompt, /使用 update_plan|replan_goal|update_step_work/u);
   assert.doesNotMatch(assembler, /persistent goal|goalEnabled|update_plan|replan_goal/u);
-  assert.match(registry, /includePlanTools: !CORE_LITE_MODE/u);
-  assert.match(catalog, /!isCoreLiteDisabledTool\(name\)/u);
-  assert.match(defaults, /update_plan: false/u);
-  assert.match(defaults, /replan_goal: false/u);
-  assert.match(defaults, /update_step_work: false/u);
+  for (const text of [registry, defaults, catalog, session]) {
+    assert.doesNotMatch(text, /update_plan|replan_goal|update_step_work|RunPlanStore|PlanAuthority/u);
+  }
+  for (const relativePath of [
+    "electron/agent/PlanAuthority.js",
+    "electron/agent/planState.js",
+    "electron/agent/orchestration/agentTools.js",
+    "electron/config/coreLite.js"
+  ]) {
+    assert.equal(fs.existsSync(path.join(root, relativePath)), false, relativePath);
+  }
 });
 
 test("Core Lite removes Goal Plan and Platform user interfaces", () => {
@@ -45,6 +52,15 @@ test("Core Lite removes Goal Plan and Platform user interfaces", () => {
   assert.doesNotMatch(contextInspector, /Goal 累计/u);
   assert.doesNotMatch(slash, /platformView|id: "goal"|id: "plan"|id: "agents"/u);
   assert.doesNotMatch(modelPanel, /Worker 模型|多 Agent|worker-model-assignment/u);
+  for (const relativePath of [
+    "src/Conversation/components/GoalPanel.jsx",
+    "src/Conversation/components/PlanDock.jsx",
+    "src/Conversation/components/PlatformDock.jsx",
+    "src/Conversation/styles/plan-goal.css",
+    "src/Conversation/styles/platform.css"
+  ]) {
+    assert.equal(fs.existsSync(path.join(root, relativePath)), false, relativePath);
+  }
 });
 
 test("Core Lite does not register or start Platform Runtime", () => {

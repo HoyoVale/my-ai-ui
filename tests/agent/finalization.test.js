@@ -3,32 +3,23 @@ import assert from "node:assert/strict";
 import {
   createFallbackFinalSummary,
   createFinalizationInstruction,
-  getPlanCompletionState,
   sanitizeFinalizationText,
   shouldRunFinalization
 } from "../../electron/agent/finalization.js";
 import { RUN_STOP_REASONS } from "../../electron/agent/runStopReasons.js";
 
-const completePlan = [
-  { id: "one", title: "Inspect", status: "completed" },
-  { id: "two", title: "Summarize", status: "completed" }
-];
-
 describe("agent finalization phase", () => {
-  it("reserves a final answer after a completed tool-only plan hits the execution step limit", () => {
+  it("reserves a final answer after tool activity hits an execution boundary", () => {
     assert.equal(shouldRunFinalization({
-      plan: completePlan,
       records: [{ name: "calculator", status: "completed" }],
       finishReason: "tool-calls",
       stopReason: RUN_STOP_REASONS.AGENT_STEP_LIMIT,
       finalText: ""
     }), true);
-    assert.equal(getPlanCompletionState(completePlan).isComplete, true);
   });
 
-  it("builds a tool-free finalization instruction from plan and tool results", () => {
+  it("builds a tool-free finalization instruction from tool results", () => {
     const instruction = createFinalizationInstruction({
-      plan: completePlan,
       records: [{
         name: "get_current_time",
         title: "Get current time",
@@ -44,7 +35,6 @@ describe("agent finalization phase", () => {
 
   it("creates a deterministic fallback summary when the model returns no final text", () => {
     const summary = createFallbackFinalSummary({
-      plan: completePlan,
       records: [{
         name: "calculator",
         title: "Calculate",
@@ -53,7 +43,7 @@ describe("agent finalization phase", () => {
       }]
     });
 
-    assert.match(summary, /计划已执行完成/u);
+    assert.match(summary, /工具执行已经结束/u);
     assert.match(summary, /2 \+ 2 = 4/u);
   });
 
@@ -66,11 +56,10 @@ describe("agent finalization phase", () => {
       RUN_STOP_REASONS.NO_PROGRESS,
       RUN_STOP_REASONS.MODEL_RECOVERY
     ];
-    const plan = [{ id: "next", title: "Continue remaining work", status: "in_progress" }];
 
     for (const reason of reasons) {
-      const instruction = createFinalizationInstruction({ plan, executionStopReason: reason });
-      const fallback = createFallbackFinalSummary({ plan, executionStopReason: reason });
+      const instruction = createFinalizationInstruction({ executionStopReason: reason });
+      const fallback = createFallbackFinalSummary({ executionStopReason: reason });
       const sanitized = sanitizeFinalizationText(`Reached the maximum tool limit. ${reason} checkpoint_ready`, reason);
 
       assert.match(instruction, /natural progress handoff/u);
@@ -82,7 +71,6 @@ describe("agent finalization phase", () => {
   });
 
   it("presents a recoverable tool error as a progress handoff", () => {
-    const plan = [{ id: "edit", title: "Retry the edit", status: "in_progress" }];
     const records = [{
       name: "replace_text_in_file",
       status: "failed",
@@ -95,12 +83,10 @@ describe("agent finalization phase", () => {
       }
     }];
     const instruction = createFinalizationInstruction({
-      plan,
       records,
       executionStopReason: RUN_STOP_REASONS.TOOL_ERROR
     });
     const fallback = createFallbackFinalSummary({
-      plan,
       records,
       executionStopReason: RUN_STOP_REASONS.TOOL_ERROR
     });
@@ -111,23 +97,22 @@ describe("agent finalization phase", () => {
     assert.doesNotMatch(fallback, /tool_error/u);
   });
 
-  it("turns the segment boundary into a natural progress handoff", () => {
-    const plan = [
-      { id: "one", title: "Inspect", status: "completed" },
-      { id: "two", title: "Implement continuation", status: "in_progress" }
-    ];
-    const instruction = createFinalizationInstruction({ plan, executionStopReason: RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT });
-    const fallback = createFallbackFinalSummary({ plan, executionStopReason: RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT });
+  it("turns the legacy segment boundary into a natural progress handoff", () => {
+    const instruction = createFinalizationInstruction({
+      executionStopReason: "agent_segment_limit"
+    });
+    const fallback = createFallbackFinalSummary({
+      executionStopReason: "agent_segment_limit"
+    });
     const sanitized = sanitizeFinalizationText(
       "已达到任务分段上限，checkpoint_ready。下一步从 checkpoint 继续。",
-      RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT
+      "agent_segment_limit"
     );
 
     assert.match(instruction, /natural progress handoff/u);
     assert.match(instruction, /recommended next action/u);
     assert.doesNotMatch(fallback, /agent_segment_limit|分段/u);
     assert.match(fallback, /下一步建议/u);
-    assert.match(fallback, /Implement continuation/u);
     assert.doesNotMatch(sanitized, /分段上限|checkpoint/iu);
     assert.match(sanitized, /下一步/u);
   });

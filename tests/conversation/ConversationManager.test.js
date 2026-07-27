@@ -455,10 +455,8 @@ describe(
           message.toolCalls[0].name,
           "read_file"
         );
-        assert.equal(
-          message.plan[0].status,
-          "completed"
-        );
+        assert.equal(Object.hasOwn(message, "plan"), false);
+        assert.equal(Object.hasOwn(message.metadata ?? {}, "plan"), false);
       }
     );
 

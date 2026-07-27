@@ -71,7 +71,7 @@ describe("interrupted run recovery", () => {
     assert.equal(result.recovered, 1);
     assert.equal(message.status, "interrupted");
     assert.equal(message.stopReason, "interrupted");
-    assert.equal(message.plan[0].status, "blocked");
+    assert.equal(Object.hasOwn(message, "plan"), false);
     assert.equal(message.activity.status, "interrupted");
     assert.equal(message.activity.events[0].tool.status, "cancelled");
   });

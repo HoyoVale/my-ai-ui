@@ -27,8 +27,8 @@ test("Skill settings expose dependency and router diagnostics", () => {
 
 test("Agent Runtime preserves advanced Skill selection across run lifecycle", () => {
   const runtime = readAgentRuntimeSource();
-  const checkpoint = read("electron/agent/runCheckpoint.js");
-  const resume = read("electron/agent/checkpointResume.js");
+  const checkpoint = read("electron/agent/CoreLiteCheckpoint.js");
+  const resume = read("electron/agent/CoreLiteCheckpointResume.js");
   assert.match(runtime, /parseSkillCommand/u);
   assert.match(runtime, /previousSkillRun/u);
   assert.match(runtime, /routerSnapshot/u);

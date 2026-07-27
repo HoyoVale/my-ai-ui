@@ -15,9 +15,6 @@ import {
   createAgentToolSession
 } from "../../electron/tools/createAgentToolSession.js";
 import {
-  LongTaskOrchestrator
-} from "../../electron/agent/orchestration/LongTaskOrchestrator.js";
-import {
   ToolApprovalController
 } from "../../electron/tools/security/ToolApprovalController.js";
 import {
@@ -88,100 +85,39 @@ describe("AI SDK Tool loop convergence", () => {
     assert.equal(session.getRecords()[0].status, "completed");
   });
 
-  it("continues a real Tool loop across two bounded segments without plan tools", async () => {
-    let segmentId = "";
+  it("keeps a bounded Tool loop inside one Core Lite run", async () => {
     const session = createAgentToolSession({
-      getSegmentId: () => segmentId,
       taskId: "task",
-      segmentId: "run"
+      runId: "run"
     });
     const model = new MockLanguageModelV4({
       doGenerate: [
         toolCall("calculator-1", "calculator", { expression: "20 + 22" }),
-        toolCall("calculator-2", "calculator", { expression: "40 + 2" }),
-        toolCall("calculator-3", "calculator", { expression: "84 / 2" }),
+        toolCall("calculator-2", "calculator", { expression: "84 / 2" }),
         finalText("The result is 42.")
       ]
-    });
-    const orchestrator = new LongTaskOrchestrator({
-      taskId: "task",
-      runId: "run",
-      maxSegmentSteps: 2,
-      maxSegments: 3
     });
 
     assert.equal("update_plan" in session.tools, false);
 
-    const firstSegment = orchestrator.beginSegment({
-      plan: [],
-      records: session.getRecords()
-    });
-    segmentId = firstSegment.id;
-    const firstResult = await generateText({
+    const result = await generateText({
       model,
       tools: session.tools,
       prompt: "Calculate 20 + 22 and verify the result.",
-      stopWhen: stepCountIs(2)
+      stopWhen: stepCountIs(4)
     });
-    firstResult.steps.forEach((step) => orchestrator.recordStep(step));
-    const firstRecords = session.getRecords();
-    const firstReason = inferRunStopReason({
-      records: firstRecords,
-      finishReason: firstResult.finishReason,
-      steps: firstResult.steps,
-      maxSteps: 2,
-      plan: []
-    });
-    const firstOutcome = orchestrator.completeSegment({
-      stopReason: firstReason,
-      finishReason: firstResult.finishReason,
-      plan: [],
-      records: firstRecords
+    const records = session.getRecords();
+    const reason = inferRunStopReason({
+      records,
+      finishReason: result.finishReason,
+      steps: result.steps,
+      maxSteps: 4
     });
 
-    assert.equal(firstReason, RUN_STOP_REASONS.AGENT_STEP_LIMIT);
-    assert.equal(firstOutcome.decision, "continue");
-
-    const secondSegment = orchestrator.beginSegment({
-      plan: [],
-      records: firstRecords
-    });
-    segmentId = secondSegment.id;
-    const secondResult = await generateText({
-      model,
-      tools: session.tools,
-      prompt: "Continue from the checkpoint and return the result.",
-      stopWhen: stepCountIs(2)
-    });
-    secondResult.steps.forEach((step) => orchestrator.recordStep(step));
-    const finalRecords = session.getRecords();
-    const finalReason = inferRunStopReason({
-      records: finalRecords,
-      finishReason: secondResult.finishReason,
-      steps: secondResult.steps,
-      maxSteps: 2,
-      plan: []
-    });
-    const finalOutcome = orchestrator.completeSegment({
-      stopReason: finalReason,
-      finishReason: secondResult.finishReason,
-      plan: [],
-      records: finalRecords,
-      finalText: secondResult.text
-    });
-
-    assert.equal(secondResult.text, "The result is 42.");
-    assert.equal(finalReason, RUN_STOP_REASONS.COMPLETED);
-    assert.equal(finalOutcome.decision, "complete");
-    assert.equal(finalOutcome.snapshot.segmentCount, 2);
-    assert.equal(
-      finalRecords.find((record) => record.id === "calculator-1")?.segmentId,
-      firstSegment.id
-    );
-    assert.equal(
-      finalRecords.find((record) => record.id === "calculator-3")?.segmentId,
-      secondSegment.id
-    );
+    assert.equal(result.text, "The result is 42.");
+    assert.equal(reason, RUN_STOP_REASONS.COMPLETED);
+    assert.equal(records.length, 2);
+    assert.equal(records.every((record) => record.segmentId === "run"), true);
     await session.closePersistence();
   });
 

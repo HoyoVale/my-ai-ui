@@ -199,7 +199,11 @@ describe(
           });
 
         assert.equal("update_plan" in session.tools, false);
-        assert.deepEqual(session.getPlan(), []);
+        assert.equal("replan_goal" in session.tools, false);
+        assert.equal("update_step_work" in session.tools, false);
+        assert.equal("getPlan" in session, false);
+        assert.equal("getPlanState" in session, false);
+        assert.equal("getStepWork" in session, false);
 
         const result =
           await session.tools

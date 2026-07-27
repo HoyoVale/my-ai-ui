@@ -201,7 +201,7 @@ test("Core Lite 2 continuation only restores core task bindings", () => {
   }
 });
 
-test("Core Lite 2 run loop executes one segment and preserves boundaries", async () => {
+test("Core Lite 2 run loop executes one bounded Run unit", async () => {
   const started = [];
   const completed = [];
   const loop = new CoreLiteRunLoop({
@@ -212,8 +212,8 @@ test("Core Lite 2 run loop executes one segment and preserves boundaries", async
   });
 
   const result = await loop.run({
-    executeSegment: async ({ segment, remainingRunMs }) => {
-      assert.equal(segment.id, "run:run-1");
+    executeRun: async ({ runUnit, remainingRunMs }) => {
+      assert.equal(runUnit.id, "run:run-1");
       assert.equal(remainingRunMs, 9_000);
       return {
         records: [{ id: "tool-1", status: "completed" }],
@@ -224,8 +224,8 @@ test("Core Lite 2 run loop executes one segment and preserves boundaries", async
       runtimeFlavor: "core-lite",
       tools: records
     }),
-    onSegmentStart: ({ segment }) => started.push(segment.id),
-    onSegmentComplete: ({ segment }) => completed.push(segment.id)
+    onRunStart: ({ runUnit }) => started.push(runUnit.id),
+    onRunComplete: ({ runUnit }) => completed.push(runUnit.id)
   });
 
   assert.equal(result.decision, "complete");
@@ -244,7 +244,7 @@ test("Core Lite 2 run loop distinguishes cancellation and timeout", async () => 
     now: () => 1_000,
     signal: controller.signal
   }).run({
-    executeSegment: async () => {
+    executeRun: async () => {
       throw new Error("cancelled run must not execute");
     }
   });
@@ -260,7 +260,7 @@ test("Core Lite 2 run loop distinguishes cancellation and timeout", async () => 
     runDeadline: 500,
     now: () => 1_000
   }).run({
-    executeSegment: async () => {
+    executeRun: async () => {
       throw new Error("timed out run must not execute");
     }
   });

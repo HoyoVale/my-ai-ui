@@ -25,11 +25,10 @@ describe("Tool Runtime cleanup contract", () => {
   });
 
   it("uses natural commentary without a progress tool", () => {
-    const tools = read("../../electron/agent/orchestration/agentTools.js");
+    assert.equal(exists("../../electron/agent/orchestration/agentTools.js"), false);
     const catalog = read("../../electron/tools/toolCatalog.js");
     const prompt = read("../../electron/context/baseSystemContext.js");
 
-    assert.doesNotMatch(tools, /report_progress/u);
     assert.doesNotMatch(catalog, /report_progress/u);
     assert.match(prompt, /自然语言/u);
   });

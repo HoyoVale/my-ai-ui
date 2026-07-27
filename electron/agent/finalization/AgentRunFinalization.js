@@ -95,9 +95,7 @@ export const agentRunFinalization = {
       const guardedResolution = resolveRunOutcome({
         stopReason: effectiveStopReason,
         records: rawRecords,
-        plan: [],
-        finalText: content,
-        goalVerification: null
+        finalText: content
       });
 
       effectiveOutcome = guardedResolution.outcome;
@@ -138,8 +136,6 @@ export const agentRunFinalization = {
     const reconciledFinal = reconcileFinalResponse({
       finalText: sanitizePublicAssistantText(content),
       records: run.toolCalls,
-      plan: [],
-      goalVerification: null,
       diffSummary: run.diffTracker?.snapshot?.() ?? null,
       outcome: state.outcome,
       stopReason: state.executionStopReason,
@@ -332,9 +328,7 @@ export const agentRunFinalization = {
     modelSettings,
     settings,
     records,
-    plan: _plan = [],
     executionStopReason,
-    goalVerification: _goalVerification = null,
     abortController
   }) {
     const maxAttempts =
@@ -354,10 +348,8 @@ export const agentRunFinalization = {
     this.setStatus({ ...this.status });
 
     const instruction = createFinalizationInstruction({
-      plan: [],
       records,
-      executionStopReason,
-      goalVerification: null
+      executionStopReason
     });
 
     for (
@@ -468,15 +460,11 @@ export const agentRunFinalization = {
         const resolution = resolveRunOutcome({
           stopReason: executionStopReason,
           records,
-          plan: [],
-          finalText: normalized,
-          goalVerification: null
+          finalText: normalized
         });
         const reconciled = reconcileFinalResponse({
           finalText: normalized,
           records,
-          plan: [],
-          goalVerification: null,
           diffSummary:
             this.activeRun?.diffTracker?.snapshot?.() ?? null,
           outcome: resolution.outcome,
@@ -501,22 +489,17 @@ export const agentRunFinalization = {
     }
 
     const fallback = createFallbackFinalSummary({
-      plan: [],
       records,
       executionStopReason
     });
     const fallbackResolution = resolveRunOutcome({
       stopReason: executionStopReason,
       records,
-      plan: [],
-      finalText: fallback,
-      goalVerification: null
+      finalText: fallback
     });
     const reconciledFallback = reconcileFinalResponse({
       finalText: fallback,
       records,
-      plan: [],
-      goalVerification: null,
       diffSummary:
         this.activeRun?.diffTracker?.snapshot?.() ?? null,
       outcome: fallbackResolution.outcome,

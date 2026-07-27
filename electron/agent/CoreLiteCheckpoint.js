@@ -7,11 +7,6 @@ function text(value, maxLength = 1200) {
 
 function compactToolRecords(records = [], maxRecords = 16) {
   return (Array.isArray(records) ? records : [])
-    .filter((record) =>
-      !["update_plan", "replan_goal", "update_step_work"].includes(
-        record?.name
-      )
-    )
     .slice(-maxRecords)
     .map((record) => ({
       id: text(record?.id, 120),

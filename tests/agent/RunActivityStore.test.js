@@ -91,17 +91,14 @@ describe("RunActivityStore", () => {
     assert.equal(tool.countsTowardRepeatLimit, false);
   });
 
-  it("records plan revisions and a final needs-input state", () => {
+  it("finalizes a needs-input state without creating plan activity", () => {
     const store = new RunActivityStore({ taskId: "task-2", runId: "run-2", startedAt: 100 });
-    store.recordPlan([{ id: "step-1", title: "Inspect", status: "needs_input", reason: "Need a folder path" }], 110);
+    assert.equal("recordPlan" in store, false);
     const snapshot = store.finalize("needs_input", 130);
 
     assert.equal(snapshot.status, "needs_input");
     assert.equal(snapshot.stopReason, "needs_input");
-    const planEvent = snapshot.events.find((event) => event.type === "plan");
-    assert.equal(Boolean(planEvent), true);
-    assert.equal(planEvent.rootRevision, 1);
-    assert.equal(planEvent.scope, "root");
+    assert.equal(snapshot.events.some((event) => event.type === "plan"), false);
     assert.equal(snapshot.events.some((event) => event.type === "question"), false);
   });
 

@@ -1,8 +1,4 @@
 import {
-  getPlanCompletionState
-} from "./finalization.js";
-
-import {
   classifyToolFailureHistory
 } from "./ToolErrorClassifier.js";
 
@@ -31,17 +27,12 @@ const TOOL_FAILURE_REASONS = new Set([
 
 export function resolveEffectiveStopReason({
   stopReason,
-  records = [],
-  plan = []
+  records = []
 } = {}) {
   const normalized = normalizeRunStopReason(stopReason);
   const failures = classifyToolFailureHistory(records);
 
   if (TOOL_FAILURE_REASONS.has(normalized) && !failures.hasActive) {
-    const planState = getPlanCompletionState(plan);
-    if (planState.hasNeedsInput) return RUN_STOP_REASONS.NEEDS_INPUT;
-    if (planState.hasBlocked) return RUN_STOP_REASONS.BLOCKED;
-    if (planState.hasUnfinished) return RUN_STOP_REASONS.PLAN_INCOMPLETE;
     return RUN_STOP_REASONS.COMPLETED;
   }
 
@@ -51,21 +42,15 @@ export function resolveEffectiveStopReason({
 export function resolveRunOutcome({
   stopReason,
   records = [],
-  plan = [],
   finalText = "",
-  goalVerification = null,
   gracefulBoundary = isGracefulRunBoundary
 } = {}) {
   const effectiveStopReason = resolveEffectiveStopReason({
     stopReason,
-    records,
-    plan
+    records
   });
-  const planState = getPlanCompletionState(plan);
   const completionEvidence = buildCompletionEvidence({
-    records,
-    plan,
-    goalVerification
+    records
   });
 
   let outcome;
@@ -89,15 +74,11 @@ export function resolveRunOutcome({
     String(finalText ?? "").trim()
   ) {
     outcome = RUN_OUTCOMES.COMPLETED;
-  } else if (planState.hasNeedsInput) {
+  } else if (effectiveStopReason === RUN_STOP_REASONS.NEEDS_INPUT) {
     outcome = RUN_OUTCOMES.NEEDS_INPUT;
-  } else if (planState.hasBlocked) {
+  } else if (effectiveStopReason === RUN_STOP_REASONS.BLOCKED) {
     outcome = RUN_OUTCOMES.BLOCKED;
-  } else if (
-    effectiveStopReason === RUN_STOP_REASONS.COMPLETED ||
-    planState.hasUnfinished ||
-    goalVerification?.verified === false
-  ) {
+  } else if (effectiveStopReason === RUN_STOP_REASONS.COMPLETED) {
     outcome = RUN_OUTCOMES.CONTINUABLE;
   } else {
     outcome = RUN_OUTCOMES.FAILED;
@@ -106,7 +87,6 @@ export function resolveRunOutcome({
   return {
     outcome,
     stopReason: effectiveStopReason,
-    planState,
     toolFailures: completionEvidence.failures,
     completionEvidence,
     claimValidation: validateCompletionClaims({

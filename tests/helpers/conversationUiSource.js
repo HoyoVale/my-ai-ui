@@ -57,8 +57,6 @@ export function readConversationStyles() {
     "styles/task-panel.css",
     "styles/activity.css",
     "styles/navigation.css",
-    "styles/plan-goal.css",
-    "styles/platform.css",
     "styles/approval.css",
     "styles/responsive.css",
     "styles/diff-command.css",

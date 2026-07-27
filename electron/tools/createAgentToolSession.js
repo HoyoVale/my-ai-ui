@@ -38,10 +38,6 @@ import {
 } from "../runtime/runtimeCircuitBreakers.js";
 
 import {
-  RunPlanStore
-} from "../agent/orchestration/agentTools.js";
-
-import {
   resolveEnabledToolCatalog,
   resolveToolMode
 } from "./toolCatalog.js";
@@ -58,20 +54,14 @@ import {
   resolveCapabilitySet
 } from "./capabilities/CapabilityResolver.js";
 
-import {
-  CORE_LITE_MODE
-} from "../config/coreLite.js";
-
 export function createAgentToolSession({
   activeModel = null,
   getAgentStatus = null,
   getSegmentId = null,
   abortSignal = null,
   onRecord = null,
-  onPlanChange = null,
   activityStore = null,
   settings = {},
-  initialPlan = [],
   resultStoreDirectory = "",
   taskId = "",
   runId = "",
@@ -84,25 +74,17 @@ export function createAgentToolSession({
   capabilityRequest = null,
   onFileMutation = null
 } = {}) {
-  const planStore =
-    new RunPlanStore(
-      CORE_LITE_MODE ? [] : initialPlan,
-      {
-        onChange: CORE_LITE_MODE ? null : onPlanChange,
-        rootPlanId:
-          !CORE_LITE_MODE && initialPlan && typeof initialPlan === "object" && !Array.isArray(initialPlan)
-            ? initialPlan.rootPlanId ?? ""
-            : "",
-        runId
-      }
-    );
+  const runtimePartitionId = String(
+    segmentId || runId || ""
+  ).trim();
+
   const resultStore =
     new ToolResultStore({
       storageDirectory:
         resultStoreDirectory,
       taskId,
       workspaceId,
-      segmentId: getSegmentId ? "" : segmentId
+      segmentId: getSegmentId ? "" : runtimePartitionId
     });
   const runtimeDirectory = resultStoreDirectory
     ? path.join(resultStoreDirectory, "runtime")
@@ -142,7 +124,6 @@ export function createAgentToolSession({
   const registry = createBuiltinToolRegistry({
     activeModel,
     getAgentStatus,
-    getPlan: () => planStore.get(),
     settings,
     workspaceSettings,
     includeWorkspaceDefinitions: hasWorkspace,
@@ -150,8 +131,7 @@ export function createAgentToolSession({
     continuityReadCacheDirectory: resultStoreDirectory
       ? path.join(resultStoreDirectory, "continuity-read-cache")
       : "",
-    resultStore,
-    planStore
+    resultStore
   });
 
   registry.registerMany(externalDefinitions);
@@ -199,27 +179,13 @@ export function createAgentToolSession({
         abortSignal,
         taskId,
         workspaceId,
-        segmentId,
+        segmentId: runtimePartitionId,
         mode: sessionMode,
         subprocessSupervisor,
         onFileMutation
       },
       policyEngine: new ToolPolicyEngine({
         authorize: async (request) => {
-          const permission = CORE_LITE_MODE
-            ? { ok: true }
-            : planStore.canRunTool(
-                request.definition.name,
-                request.input
-              );
-          if (permission?.ok === false) {
-            return {
-              decision: "deny",
-              code: permission.code,
-              message: permission.message,
-              details: permission.details
-            };
-          }
           const capabilityDecision = enforceCapabilityApproval
             ? capabilityResolution.toolDecisions[request.definition.name] ?? null
             : null;
@@ -232,35 +198,26 @@ export function createAgentToolSession({
         }
       }),
       getRecordMetadata: ({ definition } = {}) => {
-        const active = CORE_LITE_MODE
-          ? null
-          : planStore.getExecutionState().active;
         let batch = activityStore?.getActiveBatch?.() ?? null;
 
         if (!batch) {
           batch = activityStore?.beginBatch?.(
-            active?.title ??
             definition?.title ??
             definition?.name ??
             "工具执行"
           ) ?? null;
         }
 
-        return {
-          batch,
-          planStep: active
-            ? { id: active.id, title: active.title }
-            : null
-        };
+        return { batch };
       },
       eventStore: new ToolEventStore({
         storageFile:
           toolSettings.runtime?.saveToolHistory !== false &&
           resultStoreDirectory &&
-          segmentId
+          runtimePartitionId
             ? path.join(
                 resultStoreDirectory,
-                `tool-events-${String(segmentId).replace(/[^a-zA-Z0-9_-]/g, "_")}.jsonl`
+                `tool-events-${runtimePartitionId.replace(/[^a-zA-Z0-9_-]/g, "_")}.jsonl`
               )
             : ""
       }),
@@ -327,7 +284,7 @@ export function createAgentToolSession({
             input,
             {
               ...(options ?? {}),
-              segmentId: getSegmentId?.() || segmentId
+              segmentId: getSegmentId?.() || runtimePartitionId
             }
           ),
         {
@@ -337,12 +294,6 @@ export function createAgentToolSession({
       ),
     getRecords: () =>
       runtime.getRecords(),
-    getPlan: () =>
-      planStore.get(),
-    getPlanState: () =>
-      planStore.getState(),
-    getStepWork: (rootStepId = "") =>
-      planStore.getStepWork(rootStepId),
     getResultEntries: () =>
       resultStore.list(),
     getCallCount: () =>

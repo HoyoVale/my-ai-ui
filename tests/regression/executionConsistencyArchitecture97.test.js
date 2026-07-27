@@ -11,15 +11,8 @@ const preparation = readAgentRuntimeSource("preparation");
 const execution = readAgentRuntimeSource("execution");
 const finalization = readAgentRuntimeSource("finalization");
 const persistence = readAgentRuntimeSource("persistence");
-const manager = fs.readFileSync(
-  new URL(
-    "../../electron/conversation/services/ConversationExecutionService.js",
-    import.meta.url
-  ),
-  "utf8"
-);
 
-it("routes Core Lite execution through extracted lifecycle boundaries", () => {
+it("routes Core Lite execution through one lightweight Run lifecycle", () => {
   assert.match(facade, /agentRunPreparation/u);
   assert.match(facade, /agentRunExecution/u);
   assert.match(facade, /agentRunFinalization/u);
@@ -27,19 +20,22 @@ it("routes Core Lite execution through extracted lifecycle boundaries", () => {
   assert.match(preparation, /new AgentRunSession/u);
   assert.match(preparation, /resolveCoreLiteCheckpointContinuation/u);
   assert.match(execution, /new CoreLiteRunLoop/u);
+  assert.match(execution, /executeModelLoop/u);
   assert.match(finalization, /PublicTextStreamSanitizer/u);
   assert.match(persistence, /createCoreLiteRunCheckpoint/u);
 
-  for (const source of [preparation, execution, finalization, persistence]) {
+  for (const source of [facade, preparation, execution, finalization, persistence]) {
     assert.doesNotMatch(
       source,
-      /resolveExecutionThreadContinuation|beginExecutionThread|finishExecutionThread|recordExecutionThreadCheckpoint/u
+      /ExecutionThread|RunEngine|LongTaskOrchestrator|SegmentExecutionLoop|resolveExecutionThreadContinuation|beginExecutionThread|finishExecutionThread|recordExecutionThreadCheckpoint|executeAgentSegment/u
     );
   }
 
-  assert.match(
-    manager,
-    /recordExecutionThreadCheckpoint/u,
-    "Dormant advanced conversation compatibility remains until Core Lite 3."
+  assert.equal(
+    fs.existsSync(new URL(
+      "../../electron/conversation/services/ConversationExecutionService.js",
+      import.meta.url
+    )),
+    false
   );
 });

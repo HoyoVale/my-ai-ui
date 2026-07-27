@@ -118,32 +118,6 @@ const CHANNELS = Object.freeze({
   AGENT_RESET_CIRCUIT_BREAKER:
     "agent-reset-circuit-breaker",
 
-  PLATFORM_GET_STATE:
-    "platform-get-state",
-
-  PLATFORM_GET_RUN:
-    "platform-get-run",
-
-  PLATFORM_CONTROL_JOB:
-    "platform-control-job",
-
-  PLATFORM_RESOLVE_APPROVAL:
-    "platform-resolve-approval",
-
-  PLATFORM_PROVIDE_INPUT:
-    "platform-provide-input",
-
-  PLATFORM_SIGNAL_EXTERNAL:
-    "platform-signal-external",
-
-  PLATFORM_CONTROL_NOTIFICATION:
-    "platform-control-notification",
-
-  PLATFORM_VIEW_REQUESTED:
-    "platform-view-requested",
-
-  PLATFORM_CHANGED:
-    "platform-changed",
 
   CONVERSATION_GET_STATE:
     "conversation-get-state",
@@ -168,9 +142,6 @@ const CHANNELS = Object.freeze({
 
   CONVERSATION_SET_SKILL:
     "conversation-set-skill",
-
-  CONVERSATION_SET_GOAL:
-    "conversation-set-goal",
 
   CONVERSATION_SELECT:
     "conversation-select",
@@ -641,88 +612,6 @@ const api = Object.freeze({
     );
   },
 
-  getPlatformState: () => {
-    return ipcRenderer.invoke(
-      CHANNELS.PLATFORM_GET_STATE
-    );
-  },
-
-  getPlatformRun: (platformRunId) => {
-    return ipcRenderer.invoke(
-      CHANNELS.PLATFORM_GET_RUN,
-      { platformRunId: String(platformRunId ?? "") }
-    );
-  },
-
-  controlPlatformJob: (request = {}) => {
-    return ipcRenderer.invoke(
-      CHANNELS.PLATFORM_CONTROL_JOB,
-      {
-        jobId: String(request.jobId ?? ""),
-        action: String(request.action ?? "")
-      }
-    );
-  },
-
-  resolvePlatformApproval: (request = {}) => {
-    return ipcRenderer.invoke(
-      CHANNELS.PLATFORM_RESOLVE_APPROVAL,
-      {
-        approvalId: String(request.approvalId ?? ""),
-        decision: String(request.decision ?? ""),
-        note: String(request.note ?? "")
-      }
-    );
-  },
-
-  providePlatformJobInput: (request = {}) => {
-    return ipcRenderer.invoke(
-      CHANNELS.PLATFORM_PROVIDE_INPUT,
-      {
-        jobId: String(request.jobId ?? ""),
-        value: request.value ?? ""
-      }
-    );
-  },
-
-  signalPlatformExternal: (request = {}) => {
-    return ipcRenderer.invoke(
-      CHANNELS.PLATFORM_SIGNAL_EXTERNAL,
-      {
-        jobId: String(request.jobId ?? ""),
-        key: String(request.key ?? ""),
-        payload: request.payload && typeof request.payload === "object" ? request.payload : null
-      }
-    );
-  },
-
-  controlPlatformNotification: (request = {}) => {
-    return ipcRenderer.invoke(
-      CHANNELS.PLATFORM_CONTROL_NOTIFICATION,
-      {
-        notificationId: String(request.notificationId ?? ""),
-        action: String(request.action ?? "")
-      }
-    );
-  },
-
-  onPlatformChanged: (callback) => {
-    if (typeof callback !== "function") return () => {};
-    const listener = (_event, state) => callback(state);
-    ipcRenderer.on(CHANNELS.PLATFORM_CHANGED, listener);
-    return () => {
-      ipcRenderer.removeListener(CHANNELS.PLATFORM_CHANGED, listener);
-    };
-  },
-
-  onPlatformViewRequested: (callback) => {
-    return subscribe(
-      CHANNELS.PLATFORM_VIEW_REQUESTED,
-      callback,
-      (view) => String(view ?? "")
-    );
-  },
-
   getToolRuntimeRecovery: (taskId) => {
     return ipcRenderer.invoke(
       CHANNELS.AGENT_GET_RUNTIME_RECOVERY,
@@ -960,27 +849,6 @@ const api = Object.freeze({
     );
   },
 
-  setConversationGoal: (input = {}) => {
-    return ipcRenderer.invoke(
-      CHANNELS.CONVERSATION_SET_GOAL,
-      {
-        conversationId: String(input.conversationId ?? ""),
-        objective: String(input.objective ?? ""),
-        criteria: Array.isArray(input.criteria)
-          ? input.criteria.slice(0, 12).map((criterion) => ({
-              id: String(criterion?.id ?? ""),
-              text: String(criterion?.text ?? ""),
-              verificationKind: String(criterion?.verificationKind ?? "auto"),
-              manualSatisfied: criterion?.manualSatisfied === true
-            }))
-          : [],
-        autoContinue: input.autoContinue !== false,
-        status: ["active", "paused"].includes(input.status)
-          ? input.status
-          : "active"
-      }
-    );
-  },
 
   selectConversation: (
     conversationId

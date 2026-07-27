@@ -26,18 +26,13 @@ describe("runtime tool hardening", () => {
         toolRuntimeDiagnostics: { leaseOwner: "secret-owner" },
         checkpoint: { raw: true }
       }),
-      getPlan: () => Array.from({ length: 40 }, (_, index) => ({
-        id: `step-${index}`,
-        title: `Step ${index}`,
-        status: index === 0 ? "in_progress" : "pending"
-      })),
       settings: { tools: { mode: "chat" } }
     }).find((definition) => definition.name === "get_agent_status");
 
     const result = await tool.execute({});
     assert.equal(result.state, "running");
-    assert.equal(result.plan.length, 30);
-    assert.equal(result.planTruncated, true);
+    assert.equal("plan" in result, false);
+    assert.equal("planTruncated" in result, false);
     assert.equal("activity" in result, false);
     assert.equal("activeToolCalls" in result, false);
     assert.equal("toolRuntimeDiagnostics" in result, false);

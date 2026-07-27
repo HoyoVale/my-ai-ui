@@ -5,8 +5,8 @@ import {
   compactRunStepContext
 } from "../../electron/agent/contextCompaction.js";
 import {
-  createRunCheckpoint
-} from "../../electron/agent/runCheckpoint.js";
+  createCoreLiteRunCheckpoint
+} from "../../electron/agent/CoreLiteCheckpoint.js";
 
 describe("long Tool-flow context compaction", () => {
   it("keeps recent complete response messages and replaces older details with a checkpoint", () => {
@@ -17,7 +17,7 @@ describe("long Tool-flow context compaction", () => {
       role: index % 2 === 0 ? "assistant" : "tool",
       content: "x".repeat(500)
     }));
-    const checkpoint = createRunCheckpoint({
+    const checkpoint = createCoreLiteRunCheckpoint({
       plan: [{ id: "one", title: "Inspect", status: "completed" }]
     });
 
@@ -41,7 +41,7 @@ describe("long Tool-flow context compaction", () => {
     const result = compactRunStepContext({
       initialMessages: [{ role: "user", content: "short" }],
       responseMessages: [],
-      checkpoint: createRunCheckpoint(),
+      checkpoint: createCoreLiteRunCheckpoint(),
       contextTokenBudget: 64000,
       outputReserve: 4000
     });

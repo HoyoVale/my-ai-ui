@@ -1,44 +1,33 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
+import { ConversationManager } from "../../electron/conversation/ConversationManager.js";
 import {
-  createEmptyConversationData
+  createEmptyConversationData,
+  sanitizeConversationData
 } from "../../electron/conversation/conversationSchema.js";
 
-import {
-  ConversationManager
-} from "../../electron/conversation/ConversationManager.js";
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 class MemoryStore {
   constructor(data = createEmptyConversationData()) {
-    this.data = structuredClone(data);
+    this.data = sanitizeConversationData(data);
   }
-
-  load() {
-    return structuredClone(this.data);
-  }
-
+  load() { return structuredClone(this.data); }
   save(data) {
-    this.data = structuredClone(data);
+    this.data = sanitizeConversationData(data);
     return this.load();
   }
 }
 
-function createManager(store, start = 100) {
-  let now = start;
-  let id = 0;
+function createManager(store) {
   return new ConversationManager({
     store,
-    now: () => ++now,
-    createId: () => `id-${++id}`,
-    getWorkspaceById: (workspaceId) => workspaceId === "workspace-1"
-      ? {
-          id: "workspace-1",
-          name: "Workspace",
-          rootPath: "/workspace",
-          canonicalPath: "/workspace"
-        }
-      : null,
+    now: () => 500,
+    createId: () => "new-id",
     getSettings: () => ({
       conversation: {
         maxConversations: 100,
@@ -50,83 +39,101 @@ function createManager(store, start = 100) {
   });
 }
 
-describe("ExecutionThread persistence", () => {
-  it("persists one ordinary task thread and recovers an interrupted run", () => {
-    const store = new MemoryStore();
-    const first = createManager(store, 100);
-    const conversation = first.create({
-      mode: "coding",
-      workspaceId: "workspace-1"
+describe("Legacy execution history compatibility", () => {
+  it("migrates old threads into inert metadata and preserves the read projection", () => {
+    const store = new MemoryStore({
+      version: 23,
+      currentConversationId: "conversation-1",
+      conversations: [{
+        id: "conversation-1",
+        title: "Legacy thread",
+        createdAt: 1,
+        updatedAt: 2,
+        messages: [],
+        activeExecutionThreadId: "thread-1",
+        executionThreads: [{
+          id: "thread-1",
+          taskId: "task-1",
+          objective: "历史任务",
+          status: "completed",
+          createdAt: 1,
+          updatedAt: 2
+        }]
+      }]
     });
+    const manager = createManager(store);
+    const conversation = manager.getConversation("conversation-1");
 
-    const begun = first.beginExecutionThread({
-      conversationId: conversation.id,
-      threadId: "thread-1",
-      taskId: "task-1",
-      objective: "Fix the scene test",
-      mode: "coding",
-      workspaceId: "workspace-1",
-      runId: "run-1",
-      planState: {
-        rootPlanId: "thread-1:root",
-        rootItems: [{ id: "fix", title: "Fix test", status: "in_progress" }]
-      }
-    });
-    assert.equal(begun.ok, true);
-    assert.equal(begun.thread.goalId, "");
-
-    const saved = first.recordExecutionThreadCheckpoint({
-      conversationId: conversation.id,
-      threadId: "thread-1",
-      runId: "run-1",
-      checkpoint: {
-        executionThreadId: "thread-1",
-        taskId: "task-1",
-        runId: "run-1"
-      }
-    });
-    assert.equal(saved.ok, true);
-
-    const reloaded = createManager(store, 500);
-    const recovered = reloaded.getConversation(conversation.id).executionThread;
-    assert.equal(recovered.id, "thread-1");
-    assert.equal(recovered.taskId, "task-1");
-    assert.equal(recovered.goalId, "");
-    assert.equal(recovered.status, "waiting");
-    assert.equal(recovered.stopReason, "interrupted");
-    assert.equal(recovered.resumable, true);
-    assert.equal(recovered.checkpoint.executionThreadId, "thread-1");
+    assert.equal(conversation.executionThread.id, "thread-1");
+    assert.equal(conversation.executionThreads.length, 1);
+    assert.equal(Object.hasOwn(store.data.conversations[0], "executionThreads"), false);
+    assert.equal(
+      store.data.conversations[0].metadata.legacyAdvanced.execution.executionThreads[0].id,
+      "thread-1"
+    );
   });
 
-  it("keeps a completed thread stable across reloads", () => {
-    const store = new MemoryStore();
-    const first = createManager(store, 100);
-    const conversation = first.create({
-      mode: "coding",
-      workspaceId: "workspace-1"
-    });
-    first.beginExecutionThread({
-      conversationId: conversation.id,
-      threadId: "thread-2",
-      taskId: "task-2",
-      objective: "Complete tests",
-      mode: "coding",
-      runId: "run-2"
-    });
-    const finished = first.finishExecutionThread({
-      conversationId: conversation.id,
-      threadId: "thread-2",
-      outcome: "completed",
-      stopReason: "completed",
-      lastAssistantMessageId: "assistant-2"
-    });
-    assert.equal(finished.ok, true);
+  it("removes every Execution Thread API from ConversationManager", () => {
+    const manager = createManager(new MemoryStore());
+    for (const method of [
+      "beginExecutionThread",
+      "recordExecutionThreadCheckpoint",
+      "finishExecutionThread",
+      "listExecutionThreads",
+      "selectExecutionThread",
+      "recordProviderContinuation",
+      "recordThreadRoutingDecision"
+    ]) {
+      assert.equal(method in manager, false, method);
+    }
+    assert.equal(
+      fs.existsSync(path.join(
+        root,
+        "electron/conversation/services/ConversationExecutionService.js"
+      )),
+      false
+    );
+  });
 
-    const reloaded = createManager(store, 500);
-    const thread = reloaded.getConversation(conversation.id).executionThread;
-    assert.equal(thread.id, "thread-2");
-    assert.equal(thread.status, "completed");
-    assert.equal(thread.lastAssistantMessageId, "assistant-2");
-    assert.equal(thread.resumable, false);
+  it("keeps historical execution snapshots stable across JSON round trips", () => {
+    const initial = sanitizeConversationData({
+      version: 23,
+      currentConversationId: "conversation-1",
+      conversations: [{
+        id: "conversation-1",
+        title: "Legacy thread",
+        createdAt: 1,
+        updatedAt: 2,
+        messages: [],
+        activeExecutionThreadId: "thread-1",
+        executionThreads: [{
+          id: "thread-1",
+          taskId: "task-1",
+          objective: "历史任务",
+          status: "waiting",
+          checkpoint: { stopReason: "interrupted" },
+          createdAt: 1,
+          updatedAt: 2
+        }],
+        routingDecisions: [{
+          id: "decision-1",
+          command: "resume",
+          action: "resume",
+          state: "applied",
+          conversationId: "conversation-1",
+          targetThreadId: "thread-1",
+          createdAt: 2
+        }]
+      }]
+    });
+    const restored = sanitizeConversationData(
+      JSON.parse(JSON.stringify(initial))
+    );
+    const legacy = restored.conversations[0].metadata.legacyAdvanced.execution;
+
+    assert.equal(legacy.readOnly, undefined);
+    assert.equal(legacy.executionThreads[0].checkpoint.stopReason, "interrupted");
+    assert.equal(legacy.routingDecisions[0].id, "decision-1");
+    assert.equal(Object.hasOwn(restored.conversations[0], "executionThreads"), false);
   });
 });

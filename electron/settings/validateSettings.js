@@ -1,11 +1,6 @@
 import path from "node:path";
 
 import {
-  WORKER_RUNTIME_DEFAULTS,
-  WORKER_RUNTIME_LIMITS
-} from "../../src/shared/runtimeDefaults.js";
-
-import {
   cloneDefaultSettings
 } from "./defaultSettings.js";
 
@@ -928,52 +923,9 @@ function sanitizeModelSettings(
       ? requestedProvider
       : Object.keys(providers)[0] ?? "";
 
-  const sanitizeRuntimeAssignment = (value) => {
-    const providerId = nonEmptyStringValue(value?.providerId, "", 80);
-    const modelConfigId = nonEmptyStringValue(value?.modelConfigId, "", 120);
-    const provider = providers[providerId];
-    if (!provider?.models?.some((item) => item.id === modelConfigId)) {
-      return null;
-    }
-    return { providerId, modelConfigId };
-  };
-
   return {
     activeProvider,
-    providers,
-    runtimeAssignments: {
-      worker: sanitizeRuntimeAssignment(
-        sourceModel.runtimeAssignments?.worker
-      ),
-      maxConcurrency: integerValue(
-        sourceModel.runtimeAssignments?.maxConcurrency,
-        defaults.runtimeAssignments?.maxConcurrency ??
-          WORKER_RUNTIME_DEFAULTS.maxConcurrency,
-        WORKER_RUNTIME_LIMITS.maxConcurrency.min,
-        WORKER_RUNTIME_LIMITS.maxConcurrency.max
-      ),
-      tokenBudget: integerValue(
-        sourceModel.runtimeAssignments?.tokenBudget,
-        defaults.runtimeAssignments?.tokenBudget ??
-          WORKER_RUNTIME_DEFAULTS.tokenBudget,
-        WORKER_RUNTIME_LIMITS.tokenBudget.min,
-        WORKER_RUNTIME_LIMITS.tokenBudget.max
-      ),
-      stepBudget: integerValue(
-        sourceModel.runtimeAssignments?.stepBudget,
-        defaults.runtimeAssignments?.stepBudget ??
-          WORKER_RUNTIME_DEFAULTS.stepBudget,
-        WORKER_RUNTIME_LIMITS.stepBudget.min,
-        WORKER_RUNTIME_LIMITS.stepBudget.max
-      ),
-      timeBudgetMinutes: integerValue(
-        sourceModel.runtimeAssignments?.timeBudgetMinutes,
-        defaults.runtimeAssignments?.timeBudgetMinutes ??
-          WORKER_RUNTIME_DEFAULTS.timeBudgetMinutes,
-        WORKER_RUNTIME_LIMITS.timeBudgetMinutes.min,
-        WORKER_RUNTIME_LIMITS.timeBudgetMinutes.max
-      )
-    }
+    providers
   };
 }
 

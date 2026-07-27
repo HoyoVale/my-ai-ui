@@ -113,11 +113,22 @@ describe(
         );
 
         assert.equal(
-          channels
-            .conversation
-            .SET_GOAL,
-          "conversation-set-goal"
+          Object.hasOwn(channels.conversation, "SET_GOAL"),
+          false
         );
+      }
+    );
+
+    it(
+      "does not expose retired Platform channels",
+      () => {
+        assert.equal(Object.hasOwn(channels, "platform"), false);
+
+        const preload = fs.readFileSync(
+          new URL("../../electron/preload/preload.cjs", import.meta.url),
+          "utf8"
+        );
+        assert.doesNotMatch(preload, /getPlatformState|controlPlatformJob|onPlatformChanged/u);
       }
     );
 

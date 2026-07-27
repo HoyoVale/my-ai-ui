@@ -118,35 +118,6 @@ const IPC_CHANNELS =
         "agent-reset-circuit-breaker"
     }),
 
-    platform: Object.freeze({
-      GET_STATE:
-        "platform-get-state",
-
-      GET_RUN:
-        "platform-get-run",
-
-      CONTROL_JOB:
-        "platform-control-job",
-
-      RESOLVE_APPROVAL:
-        "platform-resolve-approval",
-
-      PROVIDE_INPUT:
-        "platform-provide-input",
-
-      SIGNAL_EXTERNAL:
-        "platform-signal-external",
-
-      CONTROL_NOTIFICATION:
-        "platform-control-notification",
-
-      VIEW_REQUESTED:
-        "platform-view-requested",
-
-      CHANGED:
-        "platform-changed"
-    }),
-
     conversation: Object.freeze({
       GET_STATE:
         "conversation-get-state",
@@ -171,9 +142,6 @@ const IPC_CHANNELS =
 
       SET_SKILL:
         "conversation-set-skill",
-
-      SET_GOAL:
-        "conversation-set-goal",
 
       SELECT:
         "conversation-select",

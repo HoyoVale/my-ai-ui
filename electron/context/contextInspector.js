@@ -100,8 +100,7 @@ export function inspectConversationContext(
     budget: context.budget,
     usage: {
       latestRun,
-      conversation: conversationUsage,
-      goal: conversation.goal?.usage ?? null
+      conversation: conversationUsage
     },
     metadata:
       context.metadata,

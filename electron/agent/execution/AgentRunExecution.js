@@ -56,8 +56,7 @@ import {
 } from "../runStopReasons.js";
 
 import {
-  inferLiveStepRole,
-  LIVE_STEP_ROLES
+  inferLiveStepRole
 } from "../stepText.js";
 
 import {
@@ -81,10 +80,6 @@ import {
 } from "../RunStateMachine.js";
 
 import {
-  RunEngine
-} from "../RunEngine.js";
-
-import {
   createAgentStreamTimeout
 } from "../agentStreamTimeout.js";
 
@@ -96,6 +91,33 @@ import {
   getTaskResultDirectory,
   settleResultValue
 } from "../AgentRuntimeInternals.js";
+
+function resolveRunInvocation(runtime, options = {}) {
+  const session = options.session ?? runtime.activeRun;
+  const runId = String(
+    session?.runId ?? options.runId ?? ""
+  ).trim();
+  const conversationId = String(
+    session?.conversationId ?? options.conversationId ?? ""
+  ).trim();
+  const abortController =
+    session?.abortController ?? options.abortController;
+
+  if (!session || !runId || !conversationId || !abortController) {
+    const error = new Error(
+      "Core Lite execution requires an active AgentRunSession."
+    );
+    error.code = "AGENT_RUN_SESSION_REQUIRED";
+    throw error;
+  }
+
+  return {
+    session,
+    runId,
+    conversationId,
+    abortController
+  };
+}
 
 function runtimeFinishEvent(outcome) {
   if (outcome === RUN_OUTCOMES.COMPLETED) {
@@ -116,14 +138,19 @@ function runtimeFinishEvent(outcome) {
 }
 
 export const agentRunExecution = {
-  async runE2EMessage({
-    runId,
-    conversationId,
-    context,
-    memories,
-    settings,
-    abortController
-  }) {
+  async runE2EMessage(options = {}) {
+    const {
+      context,
+      memories,
+      settings
+    } = options;
+    const {
+      session,
+      runId,
+      conversationId,
+      abortController
+    } = resolveRunInvocation(this, options);
+
     try {
       startResponseStream();
 
@@ -139,9 +166,9 @@ export const agentRunExecution = {
             runSettings,
             abortController.signal
           );
-        this.activeRun.approvalController =
+        session.approvalController =
           approvalController;
-        this.activeRun.toolSecurity =
+        session.toolSecurity =
           approvalController.securitySnapshot();
 
         const toolSession = createAgentToolSession({
@@ -154,20 +181,20 @@ export const agentRunExecution = {
           },
           authorizeTool: (request) =>
             approvalController.authorize(request),
-          activityStore: this.activeRun.activityStore,
+          activityStore: session.activityStore,
           settings: runSettings,
           resultStoreDirectory: getTaskResultDirectory(
-            this.activeRun.taskId
+            session.taskId
           ),
-          taskId: this.activeRun.taskId,
+          taskId: session.taskId,
           runId,
-          workspaceId: this.activeRun.workspaceId ?? "",
-          mode: this.activeRun.mode ?? "chat",
-          segmentId: this.activeRun.currentSegmentId,
+          workspaceId: session.workspaceId ?? "",
+          mode: session.mode ?? "chat",
+          segmentId: session.currentSegmentId,
           capabilityRequest:
-            this.activeRun.skillRuntime?.capabilityRequest ?? null
+            session.skillRuntime?.capabilityRequest ?? null
         });
-        this.activeRun.toolSession = toolSession;
+        session.toolSession = toolSession;
 
         if (!toolSession.tools.write_text_file) {
           const error = new Error(
@@ -195,7 +222,7 @@ export const agentRunExecution = {
 
         const assistantText =
           `E2E_TOOL_WRITE_OK:${writeResult.data.path}`;
-        this.activeRun.finalText = assistantText;
+        session.finalText = assistantText;
         appendResponseChunk(assistantText);
         this.finalizeRun({
           runId,
@@ -217,9 +244,9 @@ export const agentRunExecution = {
             return;
           }
 
-          this.activeRun.currentStepText += textPart;
-          this.activeRun.finalText =
-            this.activeRun.currentStepText;
+          session.currentStepText += textPart;
+          session.finalText =
+            session.currentStepText;
           appendResponseChunk(textPart);
           this.setStatus({ ...this.status });
         }
@@ -238,7 +265,7 @@ export const agentRunExecution = {
       }
 
       const assistantText =
-        this.activeRun.finalText.trim();
+        session.finalText.trim();
       this.finalizeRun({
         runId,
         conversationId,
@@ -274,10 +301,10 @@ export const agentRunExecution = {
     }
   },
 
-  async executeAgentSegment({
+  async executeModelLoop({
     runId,
-    segment,
-    segmentSystem,
+    runUnit,
+    systemPrompt,
     context,
     runtime,
     modelSettings,
@@ -291,7 +318,7 @@ export const agentRunExecution = {
     this.assertProviderAvailable(runtime);
     const result = streamText({
       model: runtime.model,
-      system: segmentSystem,
+      system: systemPrompt,
       messages: context.messages,
       tools: toolSession.tools,
       stopWhen: stepCountIs(maxSteps),
@@ -345,7 +372,7 @@ export const agentRunExecution = {
         return {
           messages: compacted.messages,
           instructions: [
-            segmentSystem,
+            systemPrompt,
             compacted.checkpointInstruction,
             "Earlier tool details were compacted to protect the context budget. Use saved tool results and receipts; do not repeat completed work."
           ].filter(Boolean).join("\n\n")
@@ -363,10 +390,10 @@ export const agentRunExecution = {
         this.activeRun.stepNumber =
           Number(stepNumber) || 0;
         const stepId =
-          `${segment.id}:step:${this.activeRun.stepNumber}`;
+          `${runUnit.id}:step:${this.activeRun.stepNumber}`;
         this.activeRun.toolSession?.beginStep?.({
           stepId,
-          segmentId: segment.id
+          segmentId: runUnit.id
         });
         void this.activeRun.toolSession?.recordRuntimeEvent?.(
           "MODEL_STEP_STARTED",
@@ -374,7 +401,7 @@ export const agentRunExecution = {
             stepId,
             stepNumber: this.activeRun.stepNumber
           },
-          { runId, segmentId: segment.id }
+          { runId, segmentId: runUnit.id }
         );
         this.setStatus({ ...this.status });
       },
@@ -420,11 +447,10 @@ export const agentRunExecution = {
       records,
       finishReason,
       steps,
-      maxSteps,
-      plan: []
+      maxSteps
     });
     const segmentRecords = records.filter(
-      (record) => record?.segmentId === segment.id
+      (record) => record?.segmentId === runUnit.id
     );
     const batchFailed = hasActiveToolFailures(
       segmentRecords
@@ -438,19 +464,23 @@ export const agentRunExecution = {
       records,
       finishReason,
       steps,
-      plan: [],
       executionStopReason,
       finalText: this.activeRun.finalText
     };
   },
 
-  async runMessage({
-    runId,
-    conversationId,
-    context,
-    settings,
-    abortController
-  }) {
+  async runMessage(options = {}) {
+    const {
+      context,
+      settings
+    } = options;
+    const {
+      session,
+      runId,
+      conversationId,
+      abortController
+    } = resolveRunInvocation(this, options);
+
     let runtime = null;
     try {
       const runSettings = settings ?? getSettings();
@@ -482,9 +512,9 @@ export const agentRunExecution = {
           runSettings,
           abortController.signal
         );
-      this.activeRun.approvalController =
+      session.approvalController =
         approvalController;
-      this.activeRun.toolSecurity =
+      session.toolSecurity =
         approvalController.securitySnapshot();
 
       const toolSession = createAgentToolSession({
@@ -494,43 +524,43 @@ export const agentRunExecution = {
         abortSignal: abortController.signal,
         onRecord: (record) => {
           approvalController.markToolRecord(record);
-          this.activeRun?.tokenLedger?.recordTool(record);
+          session?.tokenLedger?.recordTool(record);
           this.upsertToolRecord(runId, record);
         },
         authorizeTool: (request) =>
           approvalController.authorize(request),
-        activityStore: this.activeRun.activityStore,
+        activityStore: session.activityStore,
         settings: runSettings,
         resultStoreDirectory: getTaskResultDirectory(
-          this.activeRun.taskId
+          session.taskId
         ),
-        taskId: this.activeRun.taskId,
+        taskId: session.taskId,
         runId,
-        workspaceId: this.activeRun.workspaceId ?? "",
-        mode: this.activeRun.mode ?? "chat",
+        workspaceId: session.workspaceId ?? "",
+        mode: session.mode ?? "chat",
         getSegmentId: () =>
-          this.activeRun.currentSegmentId,
-        segmentId: this.activeRun.currentSegmentId,
+          session.currentSegmentId,
+        segmentId: session.currentSegmentId,
         capabilityRequest:
-          this.activeRun.skillRuntime?.capabilityRequest ?? null,
+          session.skillRuntime?.capabilityRequest ?? null,
         onFileMutation: (mutation) => {
           if (!this.isCurrentRun(runId)) {
             return;
           }
-          this.activeRun.diffTracker?.record?.(mutation);
+          session.diffTracker?.record?.(mutation);
           this.setStatus({ ...this.status });
         }
       });
 
-      this.activeRun.toolSession = toolSession;
-      this.activeRun.tokenLedger?.setToolDefinitions(
+      session.toolSession = toolSession;
+      session.tokenLedger?.setToolDefinitions(
         toolSession.definitions
       );
 
-      if (this.activeRun.skillRun) {
+      if (session.skillRun) {
         const resolution = toolSession.capabilityResolution;
-        this.activeRun.skillRun = {
-          ...this.activeRun.skillRun,
+        session.skillRun = {
+          ...session.skillRun,
           selectedToolNames: [
             ...(resolution?.selectedToolNames ?? [])
           ],
@@ -538,22 +568,22 @@ export const agentRunExecution = {
             ...(resolution?.missingRequired ?? [])
           ]
         };
-        this.activeRun.activityStore?.recordSkill({
-          skill: this.activeRun.skillRuntime.skill,
-          skills: this.activeRun.skillRuntime.skills,
-          source: this.activeRun.skillRuntime.source,
-          router: this.activeRun.skillRuntime.router,
+        session.activityStore?.recordSkill({
+          skill: session.skillRuntime.skill,
+          skills: session.skillRuntime.skills,
+          source: session.skillRuntime.source,
+          router: session.skillRuntime.router,
           status: "running",
           selectedToolNames:
-            this.activeRun.skillRun.selectedToolNames,
+            session.skillRun.selectedToolNames,
           missingRequired:
-            this.activeRun.skillRun.missingRequired
+            session.skillRun.missingRequired
         });
         if (
-          this.activeRun.skillRun.missingRequired.length > 0
+          session.skillRun.missingRequired.length > 0
         ) {
           const error = new Error(
-            `Skill 缺少必需能力：${this.activeRun.skillRun.missingRequired.join(", ")}`
+            `Skill 缺少必需能力：${session.skillRun.missingRequired.join(", ")}`
           );
           error.code = "SKILL_CAPABILITY_MISSING";
           throw error;
@@ -563,15 +593,15 @@ export const agentRunExecution = {
       await toolSession.recordRuntimeEvent?.(
         "RUN_STARTED",
         {
-          objective: this.activeRun.objective,
+          objective: session.objective,
           continuationCount:
-            this.activeRun.continuationCount,
+            session.continuationCount,
           skillId:
-            this.activeRun.skillRuntime?.skill?.id ?? "",
+            session.skillRuntime?.skill?.id ?? "",
           skillIds:
-            this.activeRun.skillRuntime?.rootSkillIds ?? [],
+            session.skillRuntime?.rootSkillIds ?? [],
           skillSource:
-            this.activeRun.skillRuntime?.source ?? "none",
+            session.skillRuntime?.source ?? "none",
           runtimeFlavor: "core-lite"
         },
         { runId }
@@ -580,7 +610,7 @@ export const agentRunExecution = {
       const runtimeRecovery =
         toolSession.getRuntimeRecovery?.();
       if (runtimeRecovery?.unresolvedCount > 0) {
-        this.activeRun.activityStore?.recordRecovery(
+        session.activityStore?.recordRecovery(
           runtimeRecovery
         );
       }
@@ -615,51 +645,45 @@ export const agentRunExecution = {
         runtimeSettings.runTimeoutMs ??
         modelSettings.timeoutMs;
       const runDeadline =
-        this.activeRun.startedAt + runTimeoutMs;
+        session.startedAt + runTimeoutMs;
       const runLoop = new CoreLiteRunLoop({
-        runId,
-        objective: this.activeRun.objective,
+        session,
         runDeadline,
-        signal: abortController.signal,
         isActive: () => this.isCurrentRun(runId)
       });
-      const runEngine = new RunEngine({
-        segmentLoop: runLoop
-      });
 
-      const engineResult = await runEngine.run({
-        segmentCallbacks: {
-          getPlan: () => [],
+      const runResult = await runLoop.runToCompletion({
+        callbacks: {
           getRecords: () => toolSession.getRecords(),
           createCheckpoint: () =>
             this.buildActiveCheckpoint(),
-          onSegmentStart: async ({ segment }) => {
-            this.activeRun.currentSegmentId = segment.id;
+          onRunStart: async ({ runUnit }) => {
+            session.currentSegmentId = runUnit.id;
             await toolSession.recordRuntimeEvent?.(
               "SEGMENT_STARTED",
               {
                 segmentIndex: 1,
-                objective: this.activeRun.objective,
+                objective: session.objective,
                 runtimeFlavor: "core-lite"
               },
-              { runId, segmentId: segment.id }
+              { runId, segmentId: runUnit.id }
             );
             this.markRunExecuting();
             this.persistActiveRunCheckpoint({
               status: "running"
             });
-            this.activeRun.activityStore?.recordProgress({
+            session.activityStore?.recordProgress({
               title: "开始执行任务",
               status: "running"
             });
           },
-          executeSegment: ({
-            segment,
+          executeRun: ({
+            runUnit,
             remainingRunMs
-          }) => this.executeAgentSegment({
+          }) => this.executeModelLoop({
             runId,
-            segment,
-            segmentSystem: context.system,
+            runUnit,
+            systemPrompt: context.system,
             context,
             runtime,
             modelSettings,
@@ -672,30 +696,30 @@ export const agentRunExecution = {
             defaultToolTimeoutMs:
               runtimeSettings.defaultTimeoutMs
           }),
-          onSegmentComplete: async ({
-            segment,
-            segmentOutcome,
+          onRunComplete: async ({
+            runUnit,
+            runOutcome,
             checkpoint
           }) => {
             const completed =
-              segmentOutcome.stopReason ===
+              runOutcome.stopReason ===
               RUN_STOP_REASONS.COMPLETED;
-            this.activeRun.activityStore?.recordProgress({
+            session.activityStore?.recordProgress({
               title: completed
                 ? "任务执行完成"
                 : "当前进展已整理",
               status: completed ? "completed" : "failed",
-              stopReason: segmentOutcome.stopReason
+              stopReason: runOutcome.stopReason
             });
             await toolSession.recordRuntimeEvent?.(
               "SEGMENT_COMMITTED",
               {
-                decision: segmentOutcome.decision,
-                stopReason: segmentOutcome.stopReason,
+                decision: runOutcome.decision,
+                stopReason: runOutcome.stopReason,
                 checkpointStored: Boolean(checkpoint),
                 runtimeFlavor: "core-lite"
               },
-              { runId, segmentId: segment.id }
+              { runId, segmentId: runUnit.id }
             );
             if (checkpoint) {
               await toolSession.storeRuntimeCheckpoint?.(
@@ -705,17 +729,14 @@ export const agentRunExecution = {
                     toolSession.getRuntimeRecovery?.(),
                   ...toolSession.getRuntimeCursor?.()
                 },
-                { runId, segmentId: segment.id }
+                { runId, segmentId: runUnit.id }
               );
             }
           }
         },
-        getFinalText: () =>
-          this.activeRun?.finalText ?? "",
+        getFinalText: () => session.finalText,
         setFinalText: (value) => {
-          if (this.activeRun) {
-            this.activeRun.finalText = value;
-          }
+          session.finalText = value;
         },
         appendFinalText: (value) => {
           appendResponseChunk(value);
@@ -724,7 +745,7 @@ export const agentRunExecution = {
           if (!this.isCurrentRun(runId)) {
             return;
           }
-          this.activeRun.toolCalls = records;
+          session.toolCalls = records;
         },
         runFinalization: ({
           records,
@@ -736,16 +757,14 @@ export const agentRunExecution = {
           modelSettings,
           settings: runSettings,
           records,
-          plan: [],
           executionStopReason,
-          goalVerification: null,
           abortController
         })
       });
 
       if (
         abortController.signal.aborted ||
-        engineResult.cancelled
+        runResult.cancelled
       ) {
         await this.finishCancelledRun({
           runId,
@@ -766,10 +785,10 @@ export const agentRunExecution = {
         );
       }
       await toolSession.recordRuntimeEvent?.(
-        runtimeFinishEvent(engineResult.outcome),
+        runtimeFinishEvent(runResult.outcome),
         {
-          outcome: engineResult.outcome,
-          stopReason: engineResult.executionStopReason,
+          outcome: runResult.outcome,
+          stopReason: runResult.executionStopReason,
           runtimeFlavor: "core-lite"
         },
         { runId }
@@ -779,10 +798,10 @@ export const agentRunExecution = {
         runId,
         conversationId,
         executionStopReason:
-          engineResult.executionStopReason,
-        outcome: engineResult.outcome,
+          runResult.executionStopReason,
+        outcome: runResult.outcome,
         content:
-          engineResult.finalText || "任务已处理完成。"
+          runResult.finalText || "任务已处理完成。"
       });
     } catch (error) {
       this.noteProviderFailure(runtime, error);
@@ -805,8 +824,8 @@ export const agentRunExecution = {
       }
 
       const records =
-        this.activeRun.toolSession?.getRecords?.() ??
-        this.activeRun.toolCalls ?? [];
+        session.toolSession?.getRecords?.() ??
+        session.toolCalls ?? [];
       const hasRecoverableState = records.some(
         (record) => record?.status === "completed"
       );
@@ -815,27 +834,26 @@ export const agentRunExecution = {
         : RUN_STOP_REASONS.MODEL_ERROR;
 
       if (hasRecoverableState) {
-        this.activeRun.toolCalls = records;
-        this.activeRun.activityStore?.recordProgress({
+        session.toolCalls = records;
+        session.activityStore?.recordProgress({
           title: "当前进展已整理",
           status: "completed",
           stopReason: executionStopReason
         });
         const fallback = createFallbackFinalSummary({
-          plan: [],
           records,
           executionStopReason
         });
         const recoveryCheckpoint =
           this.buildActiveCheckpoint();
         if (recoveryCheckpoint) {
-          await this.activeRun.toolSession
+          await session.toolSession
             ?.storeRuntimeCheckpoint?.(
               recoveryCheckpoint,
               { runId }
             );
         }
-        await this.activeRun.toolSession
+        await session.toolSession
           ?.recordRuntimeEvent?.(
             "RUN_INTERRUPTED",
             {
@@ -859,7 +877,7 @@ export const agentRunExecution = {
         return;
       }
 
-      await this.activeRun.toolSession
+      await session.toolSession
         ?.recordRuntimeEvent?.(
           "RUN_FAILED",
           {
@@ -873,7 +891,7 @@ export const agentRunExecution = {
       const failedCheckpoint =
         this.buildActiveCheckpoint();
       if (failedCheckpoint) {
-        await this.activeRun.toolSession
+        await session.toolSession
           ?.storeRuntimeCheckpoint?.(
             failedCheckpoint,
             { runId }

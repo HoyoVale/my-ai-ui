@@ -354,7 +354,6 @@ export class AgentRuntime {
           ?.stopReason ??
         this.status.stopReason ??
         null,
-      plan: [],
       activeToolCalls:
         this.activeRun
           ?.toolSession
@@ -789,7 +788,6 @@ export class AgentRuntime {
         taskId: normalizedTaskId,
         startedAt: message.activity?.startedAt ?? message.createdAt,
         stopReason: message.stopReason ?? message.activity?.stopReason ?? "",
-        plan: [],
         activeToolCalls: message.toolCalls ?? [],
         activity: message.activity ?? null,
         liveStepText: "",
@@ -1005,8 +1003,8 @@ export class AgentRuntime {
     return agentRunFinalization.runFinalization.call(this, options);
   }
 
-  async executeAgentSegment(options) {
-    return agentRunExecution.executeAgentSegment.call(this, options);
+  async executeModelLoop(options) {
+    return agentRunExecution.executeModelLoop.call(this, options);
   }
 
   async runMessage(options) {

@@ -7,12 +7,6 @@ const RECOVERABLE_TOOL_CODES = new Set([
   "RESULT_TOO_LARGE",
   "TOOL_RESULT_TOO_LARGE",
   "REPEATED_TOOL_CALL",
-  "PLAN_STEP_REQUIRED",
-  "PLAN_ROOT_STEP_NOT_FOUND",
-  "PLAN_ROOT_STEP_NOT_ACTIVE",
-  "PLAN_REPLAN_REQUIRED",
-  "PLAN_REPLAN_REASON_REQUIRED",
-  "PLAN_REPLAN_ASSUMPTION_REQUIRED",
   "TEXT_NOT_FOUND",
   "SEARCH_PATH_NOT_DIRECTORY",
   "FILE_TOO_LARGE",
@@ -82,10 +76,6 @@ export function toolAttemptKey(record = {}) {
     "inspect_path"
   ].includes(name)) {
     return `${name}:${normalizedPath(input)}`;
-  }
-
-  if (["update_plan", "replan_goal", "update_step_work"].includes(name)) {
-    return `plan-control:${name}`;
   }
 
   let serialized = "";

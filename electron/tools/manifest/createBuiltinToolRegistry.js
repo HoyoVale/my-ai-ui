@@ -3,9 +3,8 @@ import {
 } from "../core/ToolRegistry.js";
 
 import {
-  RunPlanStore,
-  createAgentToolDefinitions
-} from "../../agent/orchestration/agentTools.js";
+  createAgentUtilityToolDefinitions
+} from "../runtime/agentUtilityTools.js";
 
 import {
   createDateTimeToolDefinitions
@@ -35,10 +34,6 @@ import {
   getBuiltinToolPresentation
 } from "./builtinToolPresentation.js";
 
-import {
-  CORE_LITE_MODE
-} from "../../config/coreLite.js";
-
 function withPresentation(definitions = []) {
   return definitions.map((definition) => ({
     ...definition,
@@ -54,19 +49,15 @@ export function registerBuiltinToolDefinitions(
   {
     activeModel = null,
     getAgentStatus = null,
-    getPlan = null,
     settings = {},
     workspaceSettings = settings.tools?.workspace ?? {},
     includeWorkspaceDefinitions = false,
     includeWorkspaceInfo = includeWorkspaceDefinitions,
     continuityReadCacheDirectory = "",
-    resultStore = null,
-    planStore = null
+    resultStore = null
   } = {}
 ) {
   const target = registry ?? new ToolRegistry();
-  const effectivePlanStore = planStore ?? new RunPlanStore();
-
   target
     .registerMany(
       withPresentation(createDateTimeToolDefinitions()),
@@ -81,7 +72,6 @@ export function registerBuiltinToolDefinitions(
       withPresentation(createRuntimeToolDefinitions({
         activeModel,
         getAgentStatus,
-        getPlan: getPlan ?? (() => effectivePlanStore.get()),
         settings,
         includeWorkspaceInfo
       })),
@@ -140,10 +130,8 @@ export function registerBuiltinToolDefinitions(
       }
     )
     .registerMany(
-      withPresentation(createAgentToolDefinitions({
-        resultStore,
-        planStore: effectivePlanStore,
-        includePlanTools: !CORE_LITE_MODE
+      withPresentation(createAgentUtilityToolDefinitions({
+        resultStore
       })),
       {
         source: "builtin.agent",

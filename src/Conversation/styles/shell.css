@@ -137,26 +137,6 @@
     );
 }
 
-.conversation-goal-toggle {
-  position: relative;
-}
-
-.conversation-goal-toggle > span {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 5px;
-  height: 5px;
-  border: 1px solid var(--conversation-topbar);
-  border-radius: 999px;
-  background: var(--conversation-accent);
-}
-
-.conversation-goal-toggle.is-paused,
-.conversation-goal-toggle.is-completed {
-  color: var(--conversation-soft);
-}
-
 .conversation-window-controls {
   gap: 2px;
   margin-left: 4px;

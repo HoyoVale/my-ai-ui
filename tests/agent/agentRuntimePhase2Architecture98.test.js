@@ -28,7 +28,7 @@ describe("AgentRuntime phase 2 architecture", () => {
 
     assert.match(preparation, /startMessage\(/u);
     assert.match(preparation, /regenerateMessage\(/u);
-    assert.match(execution, /executeAgentSegment\(/u);
+    assert.match(execution, /executeModelLoop\(/u);
     assert.match(execution, /runMessage\(/u);
     assert.match(finalization, /finalizeRun\(/u);
     assert.match(finalization, /runFinalization\(/u);

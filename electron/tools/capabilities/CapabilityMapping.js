@@ -34,9 +34,6 @@ const BUILTIN_CAPABILITY_MAP = Object.freeze({
   git_inspect: ["git.read.status", "git.read.diff"],
   run_project_script: ["process.execute"],
   run_workspace_command: ["process.execute"],
-  update_plan: ["agent.plan"],
-  replan_goal: ["agent.plan"],
-  update_step_work: ["agent.plan"],
   read_tool_result: ["agent.result.page"]
 });
 

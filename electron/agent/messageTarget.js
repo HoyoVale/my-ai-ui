@@ -5,16 +5,14 @@ export function normalizeAgentMessageRequest(input) {
       expectedConversationId: String(
         input.expectedConversationId ?? ""
       ).trim(),
-      continueTask: input.continueTask === true,
-      threadCommand: String(input.threadCommand ?? "").trim()
+      continueTask: input.continueTask === true
     };
   }
 
   return {
     content: String(input ?? ""),
     expectedConversationId: "",
-    continueTask: false,
-    threadCommand: ""
+    continueTask: false
   };
 }
 

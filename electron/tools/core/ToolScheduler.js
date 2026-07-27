@@ -4,12 +4,6 @@ import {
   ToolConcurrencyGuard
 } from "./ToolConcurrencyGuard.js";
 
-const PLAN_TOOLS = new Set([
-  "update_plan",
-  "replan_goal",
-  "update_step_work"
-]);
-
 const PATH_READ_TOOLS = new Set([
   "read_text_file",
   "stat_path",
@@ -62,16 +56,6 @@ function pathResource(context, value, mode) {
 
 function resourcesForTool(definition = {}, input = {}, context = {}) {
   const name = String(definition.name ?? "");
-  if (PLAN_TOOLS.has(name)) {
-    return {
-      barrier: true,
-      resources: [{
-        key: "__global__",
-        mode: "exclusive"
-      }]
-    };
-  }
-
   if (PATH_READ_TOOLS.has(name)) {
     return {
       resources: [pathResource(context, input.path, "shared")]

@@ -13,21 +13,9 @@ import {
   resolveToolProfileId
 } from "../toolCatalog.js";
 
-const MAX_PUBLIC_PLAN_ITEMS = 30;
 const MAX_OBJECTIVE_LENGTH = 500;
 
-function compactPlan(plan) {
-  return (Array.isArray(plan) ? plan : [])
-    .slice(0, MAX_PUBLIC_PLAN_ITEMS)
-    .map((item, index) => ({
-      id: String(item?.id ?? `step-${index + 1}`).slice(0, 80),
-      title: String(item?.title ?? item?.step ?? "").slice(0, 200),
-      status: String(item?.status ?? "pending").slice(0, 40),
-      reason: String(item?.reason ?? "").slice(0, 300)
-    }));
-}
-
-function compactAgentStatus(status, { activeModel, plan, toolProfile }) {
+function compactAgentStatus(status, { activeModel, toolProfile }) {
   const source = status && typeof status === "object" ? status : {};
   const objective = String(
     source.objective ?? source.currentObjective ?? ""
@@ -74,9 +62,6 @@ function compactAgentStatus(status, { activeModel, plan, toolProfile }) {
           maxOutputTokens: activeModel.maxOutputTokens
         }
       : null,
-    plan: compactPlan(plan),
-    planTruncated:
-      Array.isArray(plan) && plan.length > MAX_PUBLIC_PLAN_ITEMS,
     toolProfile
   };
 }
@@ -104,13 +89,6 @@ const agentStatusOutputSchema = z.object({
     contextTokenBudget: z.number().optional(),
     maxOutputTokens: z.number().optional()
   }).nullable(),
-  plan: z.array(z.object({
-    id: z.string(),
-    title: z.string(),
-    status: z.string(),
-    reason: z.string()
-  })),
-  planTruncated: z.boolean(),
   toolProfile: z.string()
 });
 
@@ -119,7 +97,6 @@ export function createRuntimeToolDefinitions({
   getAgentStatus = () => ({
     state: "unknown"
   }),
-  getPlan = () => [],
   settings = {},
   includeWorkspaceInfo = null
 } = {}) {
@@ -159,18 +136,15 @@ export function createRuntimeToolDefinitions({
       name: "get_agent_status",
       title: "Get agent status",
       description:
-        "Get a compact public summary of the current agent run, selected model, plan, and stop state. Raw activity events, tool inputs and outputs, prompts, checkpoints, and runtime diagnostics are intentionally omitted.",
+        "Get a compact public summary of the current agent run, selected model, and stop state. Raw activity events, tool inputs and outputs, prompts, checkpoints, and runtime diagnostics are intentionally omitted.",
       inputSchema: z.object({}),
       outputSchema: agentStatusOutputSchema,
       async execute() {
         const status = typeof getAgentStatus === "function"
           ? getAgentStatus()
           : { state: "unknown" };
-        const plan = typeof getPlan === "function" ? getPlan() : [];
-
         return compactAgentStatus(status, {
           activeModel,
-          plan,
           toolProfile: resolveToolProfileId(toolSettings)
         });
       }

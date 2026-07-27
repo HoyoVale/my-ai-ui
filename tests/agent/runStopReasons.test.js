@@ -15,11 +15,11 @@ describe("run stop reasons", () => {
     assert.equal(normalizeRunStopReason("user_input_required"), RUN_STOP_REASONS.NEEDS_INPUT);
     assert.equal(normalizeRunStopReason("waiting_for_user"), RUN_STOP_REASONS.NEEDS_INPUT);
     assert.equal(normalizeRunStopReason("step_limit"), RUN_STOP_REASONS.AGENT_STEP_LIMIT);
+    assert.equal(normalizeRunStopReason("agent_segment_limit"), RUN_STOP_REASONS.AGENT_STEP_LIMIT);
     assert.equal(normalizeRunStopReason("aborted"), RUN_STOP_REASONS.CANCELLED_BY_USER);
   });
 
-  it("prioritizes plan input requirements and concrete tool failures", () => {
-    assert.equal(inferRunStopReason({ plan: [{ id: "folder", title: "Choose folder", status: "needs_input" }] }), RUN_STOP_REASONS.NEEDS_INPUT);
+  it("prioritizes concrete tool failures", () => {
     assert.equal(inferRunStopReason({ records: [{ result: { error: { code: "TOOL_TIMEOUT" } } }] }), RUN_STOP_REASONS.TOOL_TIMEOUT);
   });
 
@@ -35,7 +35,6 @@ describe("run stop reasons", () => {
   it("maps internal execution boundaries to a resumable checkpoint state", () => {
     for (const reason of [
       RUN_STOP_REASONS.AGENT_STEP_LIMIT,
-      RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT,
       RUN_STOP_REASONS.TOOL_CALL_LIMIT,
       RUN_STOP_REASONS.AGENT_RUN_TIMEOUT,
       RUN_STOP_REASONS.REPEATED_TOOL_CALL,
@@ -47,13 +46,11 @@ describe("run stop reasons", () => {
     }
   });
 
-  it("does not report completion while planned work remains", () => {
-    assert.equal(inferRunStopReason({ finishReason: "stop", plan: [{ id: "one", title: "Work", status: "pending" }] }), RUN_STOP_REASONS.PLAN_INCOMPLETE);
-  });
-
-  it("treats missing input and blocked plans as explicit terminal states", () => {
-    assert.equal(inferRunStopReason({ plan: [{ id: "one", title: "Input", status: "needs_input" }] }), RUN_STOP_REASONS.NEEDS_INPUT);
-    assert.equal(inferRunStopReason({ plan: [{ id: "one", title: "Blocked", status: "blocked" }] }), RUN_STOP_REASONS.BLOCKED);
+  it("ignores legacy plan metadata when resolving a run boundary", () => {
+    assert.equal(inferRunStopReason({
+      finishReason: "stop",
+      plan: [{ id: "one", title: "Work", status: "pending" }]
+    }), RUN_STOP_REASONS.COMPLETED);
   });
 
   it("distinguishes recoverable tool mistakes from fatal tool failures", () => {

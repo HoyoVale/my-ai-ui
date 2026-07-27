@@ -792,15 +792,32 @@ async function main() {
     );
 
     await inputField.fill("/go");
-    await input
-      .locator('[data-testid="input-slash-command-goal"]')
-      .click();
-    await input
-      .locator('[data-testid="input-context-menu-panel"]')
-      .waitFor({ state: "visible" });
-    await input
-      .locator('[data-testid="input-goal-criteria"]')
-      .waitFor({ state: "visible" });
+    await slashMenu.waitFor({ state: "visible" });
+    assert.equal(
+      Boolean((await slashMenu.textContent())?.includes("/goal")),
+      false,
+      "Core Lite 不应重新暴露已删除的 /goal 命令"
+    );
+    assert.equal(
+      Number(await slashMenu.getAttribute("data-command-count")) || 0,
+      0,
+      "输入 /go 时不应匹配任何已删除的 Goal 命令"
+    );
+
+    await inputField.fill("/mo");
+    const modelSlashCommand = input.locator(
+      '[data-testid="input-slash-command-model"]'
+    );
+    await modelSlashCommand.waitFor({ state: "visible" });
+    await modelSlashCommand.click();
+    const contextMenuPanel = input.locator(
+      '[data-testid="input-context-menu-panel"]'
+    );
+    await contextMenuPanel.waitFor({ state: "visible" });
+    assert.ok(
+      (await contextMenuPanel.textContent()).includes("模型"),
+      "/model 应打开现有模型选择页"
+    );
     assert.equal(await inputField.inputValue(), "");
     await input.keyboard.press("Escape");
 
@@ -960,147 +977,6 @@ async function main() {
       ),
       4
     );
-
-    await conversation
-      .locator('[data-testid="conversation-goal-toggle"]')
-      .click();
-
-    const goalPanel = conversation.locator(
-      '[data-testid="conversation-goal-panel"]'
-    );
-    await goalPanel.waitFor({ state: "visible" });
-
-    await goalPanel
-      .locator('[data-testid="conversation-goal-objective"]')
-      .fill("E2E Goal：保持当前会话可用，并通过验证。");
-    await goalPanel
-      .locator('[data-testid="conversation-goal-criteria"]')
-      .fill("E2E 测试全部通过\n人工确认 Goal 面板可用");
-    assert.equal(
-      await goalPanel.locator('[data-testid="conversation-goal-auto-continue"]').isChecked(),
-      true
-    );
-    await goalPanel
-      .locator('[data-testid="conversation-goal-save"]')
-      .click();
-    await waitForText(
-      goalPanel.locator(".conversation-inspector__header"),
-      "进行中"
-    );
-
-    const manualCriterionButton =
-      goalPanel
-        .locator(
-          '[data-testid="conversation-goal-manual-toggle"]'
-        )
-        .filter({
-          hasText: "确认完成"
-        });
-
-    await manualCriterionButton.waitFor({
-      state: "visible"
-    });
-
-    const goalLayout =
-      await goalPanel.evaluate(
-        (panel) => {
-          const scroll = panel.querySelector(
-            ".conversation-goal-panel__scroll"
-          );
-          const footer = panel.querySelector(
-            ".conversation-goal-panel__footer"
-          );
-          const manualButton = panel.querySelector(
-            '[data-testid="conversation-goal-manual-toggle"]'
-          );
-          const buttonRect =
-            manualButton
-              ?.getBoundingClientRect();
-          const scrollRect =
-            scroll?.getBoundingClientRect();
-          const footerRect =
-            footer?.getBoundingClientRect();
-
-          return {
-            buttonWidth:
-              buttonRect?.width ?? 0,
-            buttonHeight:
-              buttonRect?.height ?? 0,
-            buttonWhiteSpace:
-              manualButton
-                ? getComputedStyle(
-                    manualButton
-                  ).whiteSpace
-                : "",
-            regionsDoNotOverlap:
-              Boolean(
-                scrollRect &&
-                footerRect &&
-                scrollRect.bottom <=
-                  footerRect.top + 1
-              ),
-            footerInsidePanel:
-              Boolean(
-                footerRect &&
-                footerRect.bottom <=
-                  panel
-                    .getBoundingClientRect()
-                    .bottom + 1
-              )
-          };
-        }
-      );
-
-    assert.ok(
-      goalLayout.buttonWidth >= 56,
-      `Goal 人工确认按钮不应被状态圆点样式压成竖排：${JSON.stringify(goalLayout)}`
-    );
-    assert.ok(
-      goalLayout.buttonHeight <= 30,
-      `Goal 人工确认按钮应保持单行高度：${JSON.stringify(goalLayout)}`
-    );
-    assert.equal(
-      goalLayout.buttonWhiteSpace,
-      "nowrap"
-    );
-    assert.equal(
-      goalLayout.regionsDoNotOverlap,
-      true,
-      "Goal 底部操作栏不应覆盖滚动内容"
-    );
-    assert.equal(
-      goalLayout.footerInsidePanel,
-      true,
-      "Goal 底部操作栏必须始终留在面板内"
-    );
-
-    await goalPanel
-      .locator('[data-testid="conversation-goal-pause"]')
-      .click();
-    await waitForText(
-      goalPanel.locator(".conversation-inspector__header"),
-      "已暂停"
-    );
-
-    await goalPanel
-      .locator('[data-testid="conversation-goal-save"]')
-      .click();
-    await waitForText(
-      goalPanel.locator(".conversation-inspector__header"),
-      "进行中"
-    );
-
-    await goalPanel
-      .locator('[data-testid="conversation-goal-clear"]')
-      .click();
-    await waitForText(
-      goalPanel.locator(".conversation-inspector__header"),
-      "未设置"
-    );
-    await conversation
-      .locator('[data-testid="conversation-goal-toggle"]')
-      .click();
-    await goalPanel.waitFor({ state: "hidden" });
 
     const currentHistoryItem =
       conversation.locator(

@@ -43,55 +43,8 @@ export function sanitizeFinalizationText(
     .trim();
 }
 
-export function getPlanCompletionState(
-  plan = []
-) {
-  const items = Array.isArray(plan)
-    ? plan
-    : [];
-  const unfinished = items.filter(
-    (item) =>
-      [
-        "pending",
-        "in_progress"
-      ].includes(item?.status)
-  );
-  const blocked = items.filter(
-    (item) =>
-      item?.status === "blocked"
-  );
-  const needsInput = items.filter(
-    (item) =>
-      item?.status === "needs_input"
-  );
-  const cancelled = items.filter(
-    (item) =>
-      item?.status === "cancelled"
-  );
-
-  return {
-    hasPlan: items.length > 0,
-    isComplete:
-      items.length > 0 &&
-      unfinished.length === 0 &&
-      blocked.length === 0 &&
-      needsInput.length === 0 &&
-      cancelled.length === 0,
-    hasUnfinished:
-      unfinished.length > 0,
-    hasBlocked:
-      blocked.length > 0,
-    hasNeedsInput:
-      needsInput.length > 0,
-    hasCancelled:
-      cancelled.length > 0,
-    items
-  };
-}
-
 export function shouldRunFinalization({
   finalText = "",
-  plan = [],
   records = [],
   finishReason = "",
   stopReason = ""
@@ -100,18 +53,12 @@ export function shouldRunFinalization({
     return false;
   }
 
-  const hasWork =
-    Array.isArray(records) &&
-    records.length > 0;
-  const planState =
-    getPlanCompletionState(plan);
+  const hasWork = Array.isArray(records) && records.length > 0;
   const toolOnlyStop =
     finishReason === "tool-calls" ||
     [
       RUN_STOP_REASONS.AGENT_STEP_LIMIT,
-      RUN_STOP_REASONS.PLAN_INCOMPLETE,
       RUN_STOP_REASONS.COMPLETED,
-      RUN_STOP_REASONS.AGENT_SEGMENT_LIMIT,
       RUN_STOP_REASONS.TOOL_CALL_LIMIT,
       RUN_STOP_REASONS.AGENT_RUN_TIMEOUT,
       RUN_STOP_REASONS.REPEATED_TOOL_CALL,
@@ -121,32 +68,7 @@ export function shouldRunFinalization({
       RUN_STOP_REASONS.BLOCKED
     ].includes(stopReason);
 
-  return Boolean(
-    toolOnlyStop &&
-    (hasWork || planState.hasPlan)
-  );
-}
-
-function summarizePlan(plan = []) {
-  if (!Array.isArray(plan) || plan.length === 0) {
-    return "No explicit plan was created.";
-  }
-
-  return plan
-    .slice(0, 20)
-    .map((item, index) => {
-      const status = text(
-        item?.status,
-        40
-      ) || "pending";
-      const title = text(
-        item?.title,
-        240
-      ) || `Step ${index + 1}`;
-
-      return `${index + 1}. [${status}] ${title}`;
-    })
-    .join("\n");
+  return Boolean(toolOnlyStop && hasWork);
 }
 
 function summarizeRecords(records = []) {
@@ -155,9 +77,6 @@ function summarizeRecords(records = []) {
   }
 
   return records
-    .filter((record) =>
-      !["update_plan", "replan_goal", "update_step_work"].includes(record?.name)
-    )
     .slice(-20)
     .map((record, index) => {
       const title = text(
@@ -191,59 +110,35 @@ function summarizeRecords(records = []) {
         ? `- ${title} (${status}): ${detail}`
         : `- ${title} (${status})`;
     })
-    .join("\n") ||
-    "Only internal plan/progress tools were used.";
+    .join("\n");
 }
 
 export function createFinalizationInstruction({
-  plan = [],
   records = [],
-  executionStopReason = "",
-  goalVerification = null
+  executionStopReason = ""
 } = {}) {
   const isContinuationBoundary =
-    isGracefulRunBoundary(
-      executionStopReason
-    ) || isRecoverableRunFailure({
+    isGracefulRunBoundary(executionStopReason) ||
+    isRecoverableRunFailure({
       stopReason: executionStopReason,
       records
     });
-  const planState =
-    getPlanCompletionState(plan);
-  const completionNote = planState.hasNeedsInput
+  const completionNote = executionStopReason === RUN_STOP_REASONS.NEEDS_INPUT
     ? "The task needs additional user input. Clearly state the exact missing input and stop; do not guess."
-    : planState.isComplete
-      ? "The execution plan is complete."
-      : planState.hasUnfinished ||
-        planState.hasBlocked ||
-        planState.hasCancelled
-        ? "The execution plan is not fully complete. Clearly state what remains or is blocked."
-        : "No explicit execution plan is active.";
-  const missingEvidence = (goalVerification?.checks ?? [])
-    .filter((item) => item?.passed !== true)
-    .map((item) => `- ${text(item?.detail, 300)}`)
-    .slice(0, 10);
-  const verificationNote = goalVerification?.verified === false
-    ? [
-        "The runtime completion verifier did not accept the goal as complete. Do not claim full completion.",
-        missingEvidence.length > 0
-          ? `Missing completion evidence:\n${missingEvidence.join("\n")}`
-          : "Required completion evidence is still missing."
-      ].join("\n")
-    : goalVerification?.verified === true
-      ? "The runtime completion verifier accepted the available completion evidence."
-      : "";
+    : executionStopReason === RUN_STOP_REASONS.BLOCKED
+      ? "The task is blocked. Clearly state the blocker and what would unblock it."
+      : "Judge completion only from the user request and verified tool results.";
+
   return [
     "[Finalization phase]",
     completionNote,
-    verificationNote,
     "Generate the final user-facing answer now.",
-    "Do not call tools, create another plan, or ask another question.",
+    "Do not call tools, create a plan, or ask another question unless the task explicitly requires missing user input.",
     isContinuationBoundary
       ? "This is a natural progress handoff, not an error. Summarize the work completed so far, the important results, what remains, and one concrete recommended next action. End naturally so the user can ask you to continue."
       : "Summarize what was completed, the important results, and any remaining limitations.",
     "Only claim that installation, tests, builds, or the whole task succeeded when the tool summaries contain a matching completed command with a successful exit status.",
-    "If a tool failed, the plan is unfinished, or verification is missing, state that clearly and do not describe the task as complete.",
+    "If a tool failed or verification is missing, state that clearly and do not describe the task as complete.",
     "Do not repeat the activity log verbatim.",
     isContinuationBoundary
       ? "Never mention segments, checkpoints, internal execution counts, budgets, limits, stop reasons, or that the runtime paused."
@@ -252,9 +147,6 @@ export function createFinalizationInstruction({
       ? `Execution stop reason before finalization: ${text(executionStopReason, 80)}`
       : "",
     "",
-    "Plan state:",
-    summarizePlan(plan),
-    "",
     "Tool result summaries:",
     summarizeRecords(records)
   ].filter((line) => line !== "")
@@ -262,23 +154,12 @@ export function createFinalizationInstruction({
 }
 
 export function createFallbackFinalSummary({
-  plan = [],
   records = [],
-  executionStopReason = "",
-  goalVerification = null
+  executionStopReason = ""
 } = {}) {
-  const planState =
-    getPlanCompletionState(plan);
-  const completed = planState.items.filter(
-    (item) =>
-      item?.status === "completed"
-  );
   const summaries = Array.isArray(records)
     ? records
-        .filter((record) =>
-          record?.status === "completed" &&
-          !["update_plan", "replan_goal", "update_step_work"].includes(record?.name)
-        )
+        .filter((record) => record?.status === "completed")
         .map((record) =>
           text(
             record?.result?.summary ??
@@ -290,38 +171,11 @@ export function createFallbackFinalSummary({
         .filter(Boolean)
         .slice(-6)
     : [];
-
-  const lines = [];
-
-  if (goalVerification?.verified === false) {
-    lines.push("计划步骤已经结束，但目标尚未通过完成验证。");
-  } else if (planState.isComplete) {
-    lines.push("计划已执行完成。");
-  } else if (completed.length > 0) {
-    lines.push(
-      `已完成 ${completed.length}/${planState.items.length} 个计划步骤。`
-    );
-  } else {
-    lines.push("本次工具执行已经结束。");
-  }
+  const lines = ["本次工具执行已经结束。"];
 
   if (summaries.length > 0) {
     lines.push("主要结果：");
-    lines.push(
-      ...summaries.map((item) =>
-        `- ${item}`
-      )
-    );
-  }
-
-  const missingEvidence = (goalVerification?.checks ?? [])
-    .filter((item) => item?.passed !== true)
-    .map((item) => text(item?.detail, 240))
-    .filter(Boolean)
-    .slice(0, 4);
-  if (missingEvidence.length > 0) {
-    lines.push("仍需完成：");
-    lines.push(...missingEvidence.map((item) => `- ${item}`));
+    lines.push(...summaries.map((item) => `- ${item}`));
   }
 
   const isContinuationBoundary =
@@ -333,29 +187,14 @@ export function createFallbackFinalSummary({
 
   if (
     executionStopReason &&
-    executionStopReason !==
-      RUN_STOP_REASONS.COMPLETED &&
-    !planState.isComplete &&
+    executionStopReason !== RUN_STOP_REASONS.COMPLETED &&
     !isContinuationBoundary
   ) {
-    lines.push(
-      `任务未完全结束：${executionStopReason}。`
-    );
+    lines.push(`任务未完全结束：${executionStopReason}。`);
   }
 
-  if (
-    isContinuationBoundary &&
-    (!planState.isComplete || goalVerification?.verified === false)
-  ) {
-    const nextStep = planState.items.find(
-      (item) => ["in_progress", "pending", "blocked"].includes(item?.status)
-    );
-
-    lines.push(
-      nextStep?.title
-        ? `下一步建议：继续处理“${text(nextStep.title, 180)}”。`
-        : "下一步建议：继续完成尚未结束的工作。"
-    );
+  if (isContinuationBoundary) {
+    lines.push("下一步建议：继续完成尚未结束的工作。");
   }
 
   return sanitizeFinalizationText(

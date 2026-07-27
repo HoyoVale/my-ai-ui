@@ -85,9 +85,7 @@ export function registerAgentIpc() {
             expectedConversationId:
               request.expectedConversationId,
             continueTask:
-              request.continueTask,
-            threadCommand:
-              request.threadCommand
+              request.continueTask
           }
         );
     }

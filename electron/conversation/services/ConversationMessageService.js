@@ -1,6 +1,19 @@
 import { buildShortTermContext } from "../contextBuilder.js";
-import { interruptPlanState } from "../../agent/planState.js";
 import * as internals from "../ConversationManagerInternals.js";
+import {
+  projectMessageForRead
+} from "../conversationSchema.js";
+
+function ensureMetadata(message) {
+  if (!message.metadata || typeof message.metadata !== "object") {
+    message.metadata = {};
+  }
+  return message.metadata;
+}
+
+function messageTaskId(message) {
+  return String(message?.metadata?.taskId ?? message?.activity?.taskId ?? "");
+}
 
 export const ConversationMessageService = {
   appendMessage({
@@ -10,12 +23,9 @@ export const ConversationMessageService = {
     status = "complete",
     durationMs = 0,
     toolCalls = [],
-    plan = [],
-    planState = null,
     stopReason = "",
     resumedFromMessageId = "",
     taskId = "",
-    executionThreadId = "",
     activity = null,
     skillRun = null,
     tokenLedger = null,
@@ -26,28 +36,28 @@ export const ConversationMessageService = {
   }) {
     const data =
       this.ensureLoaded();
-  
+
     const conversation =
       data.conversations.find(
         (item) =>
           item.id ===
           conversationId
       );
-  
+
     if (!conversation) {
       throw new Error(
         "Conversation not found."
       );
     }
-  
+
     const normalizedContent =
       String(content ?? "")
         .trim();
-  
+
     const canStoreEmptyAssistant =
       role === "assistant" &&
       Boolean(activity);
-  
+
     if (
       !normalizedContent &&
       !canStoreEmptyAssistant
@@ -56,10 +66,10 @@ export const ConversationMessageService = {
         "Message content is empty."
       );
     }
-  
+
     const timestamp =
       this.now();
-  
+
     const message = {
       id: this.createId(),
       role,
@@ -70,18 +80,15 @@ export const ConversationMessageService = {
       pinnedToContext: false,
       createdAt: timestamp
     };
-  
+
     this.applyAssistantMetadata(
       message,
       {
         durationMs,
         toolCalls,
-        plan,
-        planState,
         stopReason,
         resumedFromMessageId,
         taskId,
-        executionThreadId,
         activity,
         skillRun,
         tokenLedger,
@@ -91,17 +98,17 @@ export const ConversationMessageService = {
         runResumable
       }
     );
-  
+
     conversation.messages.push(
       message
     );
-  
+
     conversation.updatedAt =
       timestamp;
-  
+
     const settings =
       this.getConversationSettings();
-  
+
     if (
       role === "user" &&
       settings.autoTitle &&
@@ -113,19 +120,17 @@ export const ConversationMessageService = {
           normalizedContent
         );
     }
-  
+
     data.conversations.sort(
       (left, right) =>
         right.updatedAt -
         left.updatedAt
     );
-  
+
     this.prune();
     this.commit();
-  
-    return internals.clone(
-      message
-    );
+
+    return projectMessageForRead(message);
   },
 
   prepareRegeneration({
@@ -136,7 +141,7 @@ export const ConversationMessageService = {
       this.getConversation(
         conversationId
       );
-  
+
     if (!conversation) {
       return {
         ok: false,
@@ -144,18 +149,18 @@ export const ConversationMessageService = {
         message: "会话不存在。"
       };
     }
-  
+
     const targetIndex =
       conversation.messages.findIndex(
         (message) =>
           message.id === messageId
       );
-  
+
     const target =
       conversation.messages[
         targetIndex
       ];
-  
+
     if (
       !target ||
       target.role !== "assistant"
@@ -166,7 +171,7 @@ export const ConversationMessageService = {
         message: "找不到可重新生成的回复。"
       };
     }
-  
+
     if (
       targetIndex !==
       conversation.messages.length - 1
@@ -177,12 +182,12 @@ export const ConversationMessageService = {
         message: "当前仅支持重新生成最后一条助手回复。"
       };
     }
-  
+
     const userMessage =
       conversation.messages[
         targetIndex - 1
       ];
-  
+
     if (
       !userMessage ||
       userMessage.role !== "user"
@@ -193,15 +198,15 @@ export const ConversationMessageService = {
         message: "找不到对应的用户消息。"
       };
     }
-  
+
     const contextConversation =
       internals.clone(conversation);
-  
+
     contextConversation.messages.splice(
       targetIndex,
       1
     );
-  
+
     return {
       ok: true,
       conversation:
@@ -220,12 +225,9 @@ export const ConversationMessageService = {
     status = "complete",
     durationMs = 0,
     toolCalls = [],
-    plan = [],
-    planState = null,
     stopReason = "",
     resumedFromMessageId = "",
     taskId = "",
-    executionThreadId = "",
     activity = null,
     skillRun = null,
     tokenLedger = null,
@@ -239,7 +241,7 @@ export const ConversationMessageService = {
       this.findMutableConversation(
         conversationId
       );
-  
+
     if (!conversation) {
       return {
         ok: false,
@@ -247,13 +249,13 @@ export const ConversationMessageService = {
         message: "会话不存在。"
       };
     }
-  
+
     const message =
       conversation.messages.find(
         (item) =>
           item.id === messageId
       );
-  
+
     if (
       !message ||
       message.role !== "assistant"
@@ -264,14 +266,14 @@ export const ConversationMessageService = {
         message: "助手回复不存在。"
       };
     }
-  
+
     const normalizedContent =
       String(content ?? "")
         .trim();
-  
+
     const canStoreEmptyAssistant =
       Boolean(activity);
-  
+
     if (
       !normalizedContent &&
       !canStoreEmptyAssistant
@@ -282,43 +284,33 @@ export const ConversationMessageService = {
         message: "回复内容为空。"
       };
     }
-  
+
     message.content =
       normalizedContent;
     message.status = status;
-  
+
     if (!preserveCreatedAt) {
       message.createdAt =
         this.now();
     }
-  
+
     delete message.durationMs;
     delete message.toolCalls;
-    delete message.plan;
-    delete message.planState;
+    delete message.metadata;
     delete message.stopReason;
-    delete message.resumedFromMessageId;
-    delete message.taskId;
-    delete message.executionThreadId;
     delete message.activity;
     delete message.skillRun;
     delete message.tokenLedger;
     delete message.diffSummary;
-    delete message.runOutcome;
-    delete message.runPhase;
-    delete message.runResumable;
-  
+
     this.applyAssistantMetadata(
       message,
       {
         durationMs,
         toolCalls,
-        plan,
-        planState,
         stopReason,
         resumedFromMessageId,
         taskId,
-        executionThreadId,
         activity,
         skillRun,
         tokenLedger,
@@ -328,12 +320,12 @@ export const ConversationMessageService = {
         runResumable
       }
     );
-  
+
     conversation.updatedAt =
       preserveCreatedAt
         ? this.now()
         : message.createdAt;
-  
+
     this.ensureLoaded()
       .conversations
       .sort(
@@ -341,12 +333,12 @@ export const ConversationMessageService = {
           right.updatedAt -
           left.updatedAt
       );
-  
+
     this.commit();
-  
+
     return {
       ok: true,
-      message: internals.clone(message)
+      message: projectMessageForRead(message)
     };
   },
 
@@ -355,12 +347,9 @@ export const ConversationMessageService = {
     {
       durationMs = 0,
       toolCalls = [],
-      plan = [],
-      planState = null,
       stopReason = "",
       resumedFromMessageId = "",
       taskId = "",
-      executionThreadId = "",
       activity = null,
       skillRun = null,
       tokenLedger = null,
@@ -375,7 +364,7 @@ export const ConversationMessageService = {
     ) {
       return;
     }
-  
+
     const normalizedDuration =
       Math.max(
         0,
@@ -383,14 +372,14 @@ export const ConversationMessageService = {
           Number(durationMs) || 0
         )
       );
-  
-  
-  
+
+
+
     if (normalizedDuration > 0) {
       message.durationMs =
         normalizedDuration;
     }
-  
+
     if (
       Array.isArray(toolCalls) &&
       toolCalls.length > 0
@@ -398,39 +387,25 @@ export const ConversationMessageService = {
       message.toolCalls =
         internals.clone(toolCalls);
     }
-  
-    if (
-      Array.isArray(plan) &&
-      plan.length > 0
-    ) {
-      message.plan = internals.clone(plan);
-    }
-  
-    if (planState && typeof planState === "object") {
-      message.planState = internals.clone(planState);
-    }
-  
+
+    const metadata = ensureMetadata(message);
+
     if (stopReason) {
       message.stopReason =
         String(stopReason);
     }
-  
-  
-  
+
+
+
     if (resumedFromMessageId) {
-      message.resumedFromMessageId =
-        String(resumedFromMessageId);
+      metadata.resumedFromMessageId = String(resumedFromMessageId);
     }
-  
+
     if (taskId) {
-      message.taskId =
-        String(taskId);
+      metadata.taskId = String(taskId);
     }
-  
-    if (executionThreadId) {
-      message.executionThreadId = String(executionThreadId);
-    }
-  
+
+
     if (
       activity &&
       typeof activity === "object"
@@ -438,31 +413,27 @@ export const ConversationMessageService = {
       message.activity =
         internals.clone(activity);
     }
-  
+
     if (
       skillRun &&
       typeof skillRun === "object"
     ) {
       message.skillRun = internals.clone(skillRun);
     }
-  
+
     if (tokenLedger && typeof tokenLedger === "object") {
       message.tokenLedger = internals.clone(tokenLedger);
     }
-  
+
     if (diffSummary && typeof diffSummary === "object" && diffSummary.empty !== true) {
       message.diffSummary = internals.clone(diffSummary);
     }
 
-    if (runOutcome) {
-      message.runOutcome = String(runOutcome);
-    }
-
-    if (runPhase) {
-      message.runPhase = String(runPhase);
-    }
-
-    message.runResumable = runResumable === true;
+    metadata.run = {
+      ...(runOutcome ? { outcome: String(runOutcome) } : {}),
+      ...(runPhase ? { phase: String(runPhase) } : {}),
+      resumable: runResumable === true
+    };
   },
 
   recoverInterruptedRuns({ runtimeRecoveries = [] } = {}) {
@@ -476,24 +447,24 @@ export const ConversationMessageService = {
         : Object.entries(runtimeRecoveries ?? {})
     );
     let recovered = 0;
-  
+
     for (const conversation of data.conversations) {
       for (const message of conversation.messages) {
         if (message.role !== "assistant") {
           continue;
         }
-  
+
         const activity = message.activity;
-        const runtimeDecision = recoveryMap.get(String(message.taskId ?? ""));
+        const runtimeDecision = recoveryMap.get(messageTaskId(message));
         const unfinished =
           ["running", "cancelling"].includes(message.status) ||
           ["running", "cancelling", "resumed"].includes(activity?.status) ||
           runtimeDecision?.applyToConversation === true;
-  
+
         if (!unfinished) {
           continue;
         }
-  
+
         const activityStatus = String(
           runtimeDecision?.activityStatus ?? "interrupted"
         );
@@ -507,29 +478,17 @@ export const ConversationMessageService = {
           runtimeDecision?.title ?? "执行被中断"
         );
         const recoveryCalls = runtimeDecision?.recovery?.calls ?? [];
-  
+
         message.status = messageStatus;
         message.stopReason = stopReason;
-        message.runOutcome = String(
-          runtimeDecision?.outcome ?? "interrupted"
-        );
-        message.runPhase = String(
-          runtimeDecision?.phase ?? "interrupted"
-        );
-        message.runResumable =
-          runtimeDecision?.resumable !== false;
-  
-        const interruptionReason =
-          runtimeDecision?.recovery?.unresolvedCount > 0
-            ? "请先处理尚未确认的工具操作"
-            : "应用退出导致执行中断";
-        const interruptedPlanState = interruptPlanState(
-          message.planState ?? message.plan ?? [],
-          interruptionReason
-        );
-        message.planState = interruptedPlanState;
-        message.plan = interruptedPlanState.rootItems;
-  
+        const metadata = ensureMetadata(message);
+        metadata.run = {
+          outcome: String(runtimeDecision?.outcome ?? "interrupted"),
+          phase: String(runtimeDecision?.phase ?? "interrupted"),
+          resumable: runtimeDecision?.resumable !== false
+        };
+
+
         if (activity && typeof activity === "object") {
           activity.status = activityStatus;
           activity.outcome = runtimeDecision?.outcome ?? "interrupted";
@@ -540,7 +499,7 @@ export const ConversationMessageService = {
             0,
             timestamp - Number(activity.startedAt || timestamp)
           );
-  
+
           activity.checkpoint = {
             ...(activity.checkpoint ?? {}),
             ...(runtimeDecision?.checkpoint ?? {}),
@@ -553,20 +512,14 @@ export const ConversationMessageService = {
               runtimeDecision?.recovery ??
               activity.checkpoint?.toolRuntime ??
               null,
-            updatedAt: timestamp,
-            plan: internals.clone(message.plan ?? activity.checkpoint?.plan ?? []),
-            planState: internals.clone(
-              message.planState ??
-              activity.checkpoint?.planState ??
-              message.plan ?? []
-            )
+            updatedAt: timestamp
           };
-  
+
           const events = Array.isArray(activity.events)
             ? activity.events
             : [];
           let statusEventFound = false;
-  
+
           activity.events = events.map((event) => {
             if (event.type === "tool" && ["queued", "running", "retrying"].includes(event.status)) {
               const callId = String(
@@ -580,7 +533,7 @@ export const ConversationMessageService = {
                 (callId && call.callId === callId) ||
                 (!callId && toolName && call.toolName === toolName)
               );
-  
+
               if (unresolved) {
                 return {
                   ...event,
@@ -608,7 +561,7 @@ export const ConversationMessageService = {
                   }
                 };
               }
-  
+
               return {
                 ...event,
                 status: "cancelled",
@@ -629,18 +582,7 @@ export const ConversationMessageService = {
                 }
               };
             }
-  
-            if (event.type === "plan" && Array.isArray(event.plan)) {
-              return {
-                ...event,
-                status: runtimeDecision?.recovery?.unresolvedCount > 0
-                  ? "attention"
-                  : "failed",
-                updatedAt: timestamp,
-                plan: internals.clone(message.plan ?? event.plan)
-              };
-            }
-  
+
             if (event.type === "status") {
               statusEventFound = true;
               return {
@@ -651,10 +593,10 @@ export const ConversationMessageService = {
                 updatedAt: timestamp
               };
             }
-  
+
             return event;
           });
-  
+
           if (!statusEventFound) {
             activity.events.push({
               id: `run:${activity.runId || message.id}`,
@@ -668,16 +610,16 @@ export const ConversationMessageService = {
             });
           }
         }
-  
+
         conversation.updatedAt = timestamp;
         recovered += 1;
       }
     }
-  
+
     if (recovered > 0) {
       this.commit();
     }
-  
+
     return {
       ok: true,
       recovered
@@ -691,20 +633,20 @@ export const ConversationMessageService = {
       this.getConversation(
         conversationId
       );
-  
+
     if (!conversation) {
       return [];
     }
-  
+
     return buildShortTermContext({
       messages:
         conversation.messages,
-  
+
       maxTurns:
         this
           .getConversationSettings()
           .contextTurns,
-  
+
       contextStartAfterMessageId:
         conversation
           .contextStartAfterMessageId
@@ -718,7 +660,7 @@ export const ConversationMessageService = {
       this.findMutableConversation(
         conversationId
       );
-  
+
     if (!conversation) {
       return {
         ok: false,
@@ -726,17 +668,17 @@ export const ConversationMessageService = {
         message: "会话不存在。"
       };
     }
-  
+
     conversation
       .contextStartAfterMessageId =
       conversation.messages.at(-1)
         ?.id ?? null;
-  
+
     conversation.updatedAt =
       this.now();
-  
+
     this.commit();
-  
+
     return {
       ok: true,
       contextStartAfterMessageId:
@@ -755,7 +697,7 @@ export const ConversationMessageService = {
       this.findMutableConversation(
         conversationId
       );
-  
+
     if (!conversation) {
       return {
         ok: false,
@@ -763,13 +705,13 @@ export const ConversationMessageService = {
         message: "会话不存在。"
       };
     }
-  
+
     const message =
       conversation.messages.find(
         (item) =>
           item.id === messageId
       );
-  
+
     if (!message) {
       return {
         ok: false,
@@ -777,20 +719,20 @@ export const ConversationMessageService = {
         message: "消息不存在。"
       };
     }
-  
+
     if (
       typeof includeInContext ===
       "boolean"
     ) {
       message.includeInContext =
         includeInContext;
-  
+
       if (!includeInContext) {
         message.pinnedToContext =
           false;
       }
     }
-  
+
     if (
       typeof pinnedToContext ===
       "boolean" &&
@@ -799,15 +741,15 @@ export const ConversationMessageService = {
       message.pinnedToContext =
         pinnedToContext;
     }
-  
+
     conversation.updatedAt =
       this.now();
-  
+
     this.commit();
-  
+
     return {
       ok: true,
-      message: internals.clone(message)
+      message: projectMessageForRead(message)
     };
   }
 };

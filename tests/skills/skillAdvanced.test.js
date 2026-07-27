@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createCheckpointContinuationState } from "../../electron/agent/checkpointResume.js";
-import { createRunCheckpoint } from "../../electron/agent/runCheckpoint.js";
+import { createCoreLiteContinuationState } from "../../electron/agent/CoreLiteCheckpointResume.js";
+import { createCoreLiteRunCheckpoint } from "../../electron/agent/CoreLiteCheckpoint.js";
 import { sanitizeActivity } from "../../electron/conversation/activitySchema.js";
 import { SkillRegistry } from "../../electron/skills/SkillRegistry.js";
 import { SkillStore } from "../../electron/skills/SkillStore.js";
@@ -234,7 +234,7 @@ test("install rejects a dependency cycle before replacing registry state", () =>
 
 
 test("Skill command and router provenance survive checkpoint continuation", () => {
-  const checkpoint = createRunCheckpoint({
+  const checkpoint = createCoreLiteRunCheckpoint({
     taskId: "skill-task",
     runId: "skill-run",
     skillIds: ["debug"],
@@ -249,7 +249,7 @@ test("Skill command and router provenance survive checkpoint continuation", () =
   assert.equal(checkpoint.version, 5);
   assert.equal(checkpoint.skillSource, "router");
 
-  const continuation = createCheckpointContinuationState({
+  const continuation = createCoreLiteContinuationState({
     checkpoint,
     messageId: "assistant-message"
   });

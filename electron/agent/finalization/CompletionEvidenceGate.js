@@ -1,8 +1,4 @@
 import {
-  getPlanCompletionState
-} from "../finalization.js";
-
-import {
   classifyToolFailureHistory
 } from "../ToolErrorClassifier.js";
 
@@ -151,8 +147,6 @@ function changedFiles(diffSummary) {
 
 export function buildCompletionEvidence({
   records = [],
-  plan = [],
-  goalVerification = null,
   diffSummary = null
 } = {}) {
   const normalizedRecords = Array.isArray(records) ? records : [];
@@ -160,8 +154,6 @@ export function buildCompletionEvidence({
   const openRecords = normalizedRecords.filter((record) =>
     OPEN_RECORD_STATUSES.has(String(record?.status ?? ""))
   );
-  const planState = getPlanCompletionState(plan);
-  const goalVerified = goalVerification?.verified !== false;
   const build = latestCommandEvidence(normalizedRecords, "build");
   const tests = latestCommandEvidence(normalizedRecords, "test");
   const install = latestCommandEvidence(normalizedRecords, "install");
@@ -169,16 +161,12 @@ export function buildCompletionEvidence({
   return {
     canComplete: Boolean(
       !failures.hasActive &&
-      openRecords.length === 0 &&
-      goalVerified &&
-      (!planState.hasPlan || planState.isComplete)
+      openRecords.length === 0
     ),
     failures,
     openRecordIds: openRecords
       .map((record) => compact(record?.id, 160))
       .filter(Boolean),
-    planState,
-    goalVerified,
     commands: {
       build,
       tests,
@@ -255,19 +243,6 @@ function failureSummary(evidence, lastError = "") {
   return { message, command };
 }
 
-function remainingPlanItems(planState) {
-  return planState.items
-    .filter((item) => ![
-      "completed",
-      "skipped",
-      "superseded",
-      "cancelled"
-    ].includes(item?.status))
-    .map((item) => compact(item?.title, 240))
-    .filter(Boolean)
-    .slice(0, 6);
-}
-
 export function createEvidenceBackedSummary({
   evidence,
   outcome = "",
@@ -294,12 +269,6 @@ export function createEvidenceBackedSummary({
     if (failure.message) lines.push(`- ${failure.message}`);
   }
 
-  const remaining = remainingPlanItems(resolved.planState);
-  if (remaining.length > 0) {
-    lines.push("", "尚未完成");
-    lines.push(...remaining.map((item) => `- ${item}`));
-  }
-
   if (resolved.changedFiles.length > 0) {
     lines.push("", "已产生的文件改动");
     lines.push(...resolved.changedFiles.map((item) => `- ${item}`));
@@ -315,8 +284,6 @@ export function createEvidenceBackedSummary({
 export function reconcileFinalResponse({
   finalText = "",
   records = [],
-  plan = [],
-  goalVerification = null,
   diffSummary = null,
   outcome = "",
   stopReason = "",
@@ -324,8 +291,6 @@ export function reconcileFinalResponse({
 } = {}) {
   const evidence = buildCompletionEvidence({
     records,
-    plan,
-    goalVerification,
     diffSummary
   });
   const validation = validateCompletionClaims({

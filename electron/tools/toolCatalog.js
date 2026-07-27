@@ -3,13 +3,8 @@ import {
   BUILTIN_TOOL_PRESENTATION
 } from "./manifest/builtinToolPresentation.js";
 
-import {
-  isCoreLiteDisabledTool
-} from "../config/coreLite.js";
-
 export const SAFE_TOOL_CATALOG = Object.freeze(
   Object.entries(BUILTIN_TOOL_PRESENTATION)
-    .filter(([name]) => !isCoreLiteDisabledTool(name))
     .map(([name, item]) => ({
       name,
       title: item.title,

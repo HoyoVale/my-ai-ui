@@ -20,7 +20,6 @@ const SOURCE_PRIORITY = Object.freeze({
 });
 
 const RUNTIME_SUPPORT_CAPABILITIES = Object.freeze([
-  "agent.plan",
   "agent.result.page"
 ]);
 

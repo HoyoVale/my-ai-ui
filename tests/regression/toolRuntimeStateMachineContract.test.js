@@ -40,17 +40,19 @@ describe("Tool Runtime state-machine refactor contract", () => {
     );
   });
 
-  it("owns the single Core Lite segment outside AgentRuntime", () => {
+  it("owns the single Core Lite run outside AgentRuntime", () => {
     const execution = readAgentRuntimeSource("execution");
     const loop = read(
       "../../electron/agent/execution/CoreLiteRunLoop.js"
     );
 
     assert.match(execution, /new CoreLiteRunLoop/u);
-    assert.match(execution, /executeAgentSegment/u);
+    assert.match(execution, /runLoop\.runToCompletion/u);
+    assert.match(execution, /executeModelLoop/u);
+    assert.doesNotMatch(execution, /new RunEngine|segmentCallbacks/u);
     assert.doesNotMatch(execution, /while\s*\(true\)/u);
-    assert.match(loop, /const segment = \{/u);
-    assert.match(loop, /await executeSegment\(/u);
+    assert.match(loop, /const runUnit = \{/u);
+    assert.match(loop, /const execution = await executeRun\(/u);
     assert.doesNotMatch(loop, /while\s*\(/u);
     assert.doesNotMatch(loop, /orchestrator/u);
   });

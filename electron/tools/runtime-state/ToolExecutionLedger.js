@@ -388,14 +388,11 @@ export class ToolExecutionLedger {
           ? "needs_reconciliation"
           : String(latestRunEvent?.payload?.stopReason ?? "interrupted"),
       updatedAt: Number(latest?.timestamp) || Date.now(),
-      plan: [],
       tools: [],
       counts: {
         tools: recovery.totalCalls,
         completedTools: recovery.receiptCount,
         failedTools: 0,
-        completedPlanSteps: 0,
-        totalPlanSteps: 0,
         contextCompactions: 0
       },
       toolRuntime: recovery,

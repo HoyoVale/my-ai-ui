@@ -1,6 +1,6 @@
 # Electron Desktop Agent
 
-当前版本已经完成本地桌面 Agent 主链路与 Coding 多 Agent 工程闭环：
+当前版本已经收敛为本地桌面 Core Lite Agent 主链路：
 
 ```text
 Input Window
@@ -31,10 +31,9 @@ Input Window
 - 新建、切换、删除和清空会话
 - 中止回复保存策略
 - 自动化回归测试
-- Goal、Platform Kernel、隔离 Worktree 与有界多 Agent Supervisor
-- 主模型与 Worker 模型独立配置
-- 集成队列、独立 Reviewer 与安全发布
-- 可恢复后台 Job、预算、资源租约、Artifact 与日志中心
+- 单次 Agent Run、工具审批、取消与检查点恢复
+- Chat / Coding 会话与显式工作区边界
+- Tool Runtime、MCP、Skill 与 Memory 基础能力
 - MCP 与 Custom HTTP Tool
 
 暂未加入：
@@ -76,7 +75,7 @@ npm run electron
    - 最大输出 Tokens
    - Temperature 与超时
 4. Base URL 与 API Key 由同一 Provider 下的模型共享。
-5. 在顶部分别选择“主模型”和“Worker 模型”，设置 1–4 个 Worker 并发数及 Token、步骤、时间预算。
+5. 选择当前主模型。
 6. 打开 Input 窗口发送消息。
 
 也可以在项目根目录 `.env` 中配置开发环境回退：
@@ -101,7 +100,7 @@ Ollama              本地原生 Ollama API
 OpenAI-compatible   LM Studio、LiteLLM 与自建网关
 ```
 
-Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 决定主模型；`runtimeAssignments.worker` 独立决定多 Agent Worker。旧版单模型设置会自动迁移，未配置 Worker 时会安全跟随主模型。
+Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 决定当前主模型。旧版单模型设置会自动迁移；已经废弃的 Worker Runtime 配置在加载时会被忽略。
 
 Provider SDK、运行时解析和扩展步骤见 [`docs/MODEL_PROVIDERS.md`](docs/MODEL_PROVIDERS.md)。
 
@@ -114,10 +113,12 @@ Provider SDK、运行时解析和扩展步骤见 [`docs/MODEL_PROVIDERS.md`](doc
 ```text
 electron/agent/
 ├─ AgentRuntime.js
-├─ RunEngine.js
+├─ AgentRunSession.js
 ├─ RunStateMachine.js
-├─ GoalCompletionVerifier.js
-├─ orchestration/
+├─ execution/
+│  ├─ AgentRunExecution.js
+│  └─ CoreLiteRunLoop.js
+├─ finalization/
 ├─ providers/
 ├─ agentErrors.js
 └─ modelFactory.js
@@ -299,8 +300,6 @@ GitHub Actions：
 ```powershell
 npm ci
 npm run check
-npm run test:e2e:platform-crash
-npm run test:e2e:worktree-crash
 npm run test:e2e:runtime-crash
 npm run test:e2e:runtime-write-crash
 npm run test:benchmark
@@ -309,7 +308,7 @@ npm run test:e2e:electron-runtime-crash
 npm run test:e2e
 ```
 
-Linux 的 Electron 测试通过 `xvfb-run` 启动真实窗口；Windows 使用原生桌面会话。E2E 覆盖输入、会话、模型、Goal、工具审批、流式回复和关键布局断言。视觉质量与截图语义验收仍属于后续 Visual Verification 范围。
+Linux 的 Electron 测试通过 `xvfb-run` 启动真实窗口；Windows 使用原生桌面会话。E2E 覆盖输入、会话、模型、工具审批、流式回复和关键布局断言。视觉质量与截图语义验收仍属于后续 Visual Verification 范围。
 
 ## 独立会话窗口
 
@@ -487,18 +486,14 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - 每轮请求的实时运行环境注入
 - [第一版低风险工具系统](docs/SAFE_TOOLS.md)
 - [Tool 与 Skill 开发路线](docs/TOOL_AND_SKILL_DEVELOPMENT_PLAN.md)
-- [Platform Kernel 与 Multi-Agent 路线](docs/PLATFORM_KERNEL_AND_MULTI_AGENT_PLAN.md)
-- [Verification Loop 3.0（84）](docs/VERIFICATION_LOOP_84.md)
-- [Local Platform 83](docs/LOCAL_PLATFORM_83.md)
-- [Integration & Review 82](docs/INTEGRATION_REVIEW_82.md)
 
-工具运行时当前提供时间、计算、运行状态、任务计划、Tool Read 2.0 工作区读取、经用户批准的原子文件写入、MCP 与 Custom HTTP Tool。普通设置通过 `Chat / Coding` 两种工作模式与工作区完成配置；开启 `Setting → General → Developer mode` 后，才显示 Tool Runtime、Toolset、单工具 description、三态覆盖、安全诊断和恢复信息。Conversation 使用轻量工具活动卡片、Approval 卡片和持久化计划展示工具过程；运行环境注入位于 `Setting → AI → Context`。任意 Shell 与未授权外部写入仍保持关闭。
+工具运行时当前提供时间、计算、运行状态、Tool Read 2.0 工作区读取、经用户批准的原子文件写入、MCP 与 Custom HTTP Tool。普通设置通过 `Chat / Coding` 两种工作模式与工作区完成配置；开启 `Setting → General → Developer mode` 后，才显示 Tool Runtime、Toolset、单工具 description、三态覆盖、安全诊断和恢复信息。Conversation 使用轻量工具活动卡片和 Approval 卡片展示工具过程；运行环境注入位于 `Setting → AI → Context`。任意 Shell 与未授权外部写入仍保持关闭。
 
 ### Tool Runtime 1.2
 
 当前工具运行时进一步支持：
 
-- Conversation 实时工具活动与计划状态；
+- Conversation 实时工具活动与运行状态；
 - 长任务达到内部边界后生成阶段总结，用户明确继续时继承原任务；
 - 大型工具结果自动保存并通过 `read_tool_result` 分页读取；
 - 标准化 Agent 停止原因；

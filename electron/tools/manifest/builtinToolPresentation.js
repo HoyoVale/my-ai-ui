@@ -34,7 +34,7 @@ export const BUILTIN_TOOLSET_MANIFEST = Object.freeze([
   {
     id: "agent.internal",
     title: "Agent 内部",
-    description: "维护任务计划、进度和大型结果引用。",
+    description: "提供 Agent 内部使用的大型结果分页读取。",
     riskLabel: "内部",
     userVisible: false,
     order: 50
@@ -186,21 +186,6 @@ export const BUILTIN_TOOL_PRESENTATION = Object.freeze({
     toolset: "workspace.exec",
     title: "运行工作区命令",
     description: "仅运行开发者明确允许的可执行文件，并提供超时、取消、输出上限和进程树终止。"
-  },
-  update_plan: {
-    toolset: "agent.internal",
-    title: "更新总计划",
-    description: "创建根任务计划或推进现有稳定步骤状态；不能修改顶层结构。"
-  },
-  replan_goal: {
-    toolset: "agent.internal",
-    title: "重规划目标",
-    description: "在明确说明失败假设和原因后调整未完成的顶层计划结构，并保留已完成步骤与根计划身份。"
-  },
-  update_step_work: {
-    toolset: "agent.internal",
-    title: "更新内部子计划",
-    description: "更新当前总计划步骤的内部执行拆分；不显示在普通计划栏，也不影响任务完成判断。"
   },
   read_tool_result: {
     toolset: "agent.internal",

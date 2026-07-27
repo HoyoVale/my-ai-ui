@@ -26,8 +26,7 @@ test("capability taxonomy is unique, stable and covers the planned foundation", 
     "workspace.file.read",
     "workspace.file.modify",
     "git.read.diff",
-    "external.write",
-    "agent.plan"
+    "external.write"
   ]) {
     assert.ok(ids.includes(id), `missing capability ${id}`);
   }

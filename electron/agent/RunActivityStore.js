@@ -51,33 +51,6 @@ function canonicalToolStatus(status) {
   return "completed";
 }
 
-function planEventStatus(items) {
-  if (
-    items.some((item) =>
-      ["blocked", "failed", "error"].includes(item?.status)
-    )
-  ) {
-    return "failed";
-  }
-
-  if (
-    items.length > 0 &&
-    items.every((item) =>
-      [
-        "completed",
-        "complete",
-        "skipped",
-        "cancelled",
-        "superseded"
-      ].includes(item?.status)
-    )
-  ) {
-    return "completed";
-  }
-
-  return "running";
-}
-
 function commentaryPhase(value) {
   if (["before_tools", "between_tools", "after_tools"].includes(value)) {
     return value;
@@ -108,11 +81,9 @@ export class RunActivityStore {
       Number(maxEvents) || 600
     );
     this.eventsOmitted = 0;
-    this.planRevision = 0;
     this.commentaryRevision = 0;
     this.batchRevision = 0;
     this.progressRevision = 0;
-    this.lastPlanSignature = "";
     this.activeBatchId = "";
     this.checkpoint = null;
 
@@ -435,49 +406,6 @@ export class RunActivityStore {
     });
   }
 
-  recordPlan(
-    items,
-    timestamp = Date.now(),
-    change = null
-  ) {
-    const plan = Array.isArray(items)
-      ? clone(items)
-      : [];
-    const signature = JSON.stringify(plan);
-
-    if (signature === this.lastPlanSignature) {
-      return null;
-    }
-
-    this.lastPlanSignature = signature;
-    this.planRevision += 1;
-
-    return this.upsertEvent({
-      id: `plan:${this.runId}:${this.planRevision}`,
-      type: "plan",
-      status: planEventStatus(plan),
-      title:
-        this.planRevision === 1
-          ? `制定了一个 ${plan.length} 步计划`
-          : "更新了任务计划",
-      batchId: this.activeBatchId,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      reason:
-        String(
-          change?.reason ?? ""
-        ).trim(),
-      revision:
-        Number(change?.revision) ||
-        this.planRevision,
-      rootRevision:
-        Number(change?.rootRevision) ||
-        this.planRevision,
-      scope:
-        String(change?.scope ?? "root").trim() || "root",
-      plan
-    });
-  }
 
   recordSkill({
     skill,

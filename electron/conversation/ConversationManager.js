@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 
 import { ConversationStateService } from "./services/ConversationStateService.js";
-import { ConversationExecutionService } from "./services/ConversationExecutionService.js";
 import { ConversationMessageService } from "./services/ConversationMessageService.js";
 import { ConversationToolRecoveryService } from "./services/ConversationToolRecoveryService.js";
 
@@ -32,9 +31,9 @@ export class ConversationManager {
         "ConversationManager requires a store."
       );
     }
-  
+
     this.store = store;
-  
+
     this.getSettings =
       typeof getSettings ===
         "function"
@@ -47,7 +46,7 @@ export class ConversationManager {
               saveAbortedReplies: true
             }
           });
-  
+
     this.now = now;
     this.createId =
       createId;
@@ -62,7 +61,7 @@ export class ConversationManager {
     this.onChange =
       onChange;
     this.completionAuthority = completionAuthority;
-  
+
     this.data = null;
   }
 
@@ -128,90 +127,6 @@ export class ConversationManager {
 
   rename(...args) {
     return ConversationStateService.rename.apply(this, args);
-  }
-
-  beginExecutionThread(...args) {
-    return ConversationExecutionService.beginExecutionThread.apply(this, args);
-  }
-
-  recordExecutionThreadCheckpoint(...args) {
-    return ConversationExecutionService.recordExecutionThreadCheckpoint.apply(this, args);
-  }
-
-  finishExecutionThread(...args) {
-    return ConversationExecutionService.finishExecutionThread.apply(this, args);
-  }
-
-  listExecutionThreads(...args) {
-    return ConversationExecutionService.listExecutionThreads.apply(this, args);
-  }
-
-  selectExecutionThread(...args) {
-    return ConversationExecutionService.selectExecutionThread.apply(this, args);
-  }
-
-  recordProviderContinuation(...args) {
-    return ConversationExecutionService.recordProviderContinuation.apply(this, args);
-  }
-
-  recordThreadRoutingDecision(...args) {
-    return ConversationExecutionService.recordThreadRoutingDecision.apply(this, args);
-  }
-
-  setGoal(...args) {
-    return ConversationExecutionService.setGoal.apply(this, args);
-  }
-
-  completeGoal(...args) {
-    return ConversationExecutionService.completeGoal.apply(this, args);
-  }
-
-  linkGoalPlatformRun(...args) {
-    return ConversationExecutionService.linkGoalPlatformRun.apply(this, args);
-  }
-
-  beginGoalRun(...args) {
-    return ConversationExecutionService.beginGoalRun.apply(this, args);
-  }
-
-  transitionGoal(...args) {
-    return ConversationExecutionService.transitionGoal.apply(this, args);
-  }
-
-  heartbeatGoal(...args) {
-    return ConversationExecutionService.heartbeatGoal.apply(this, args);
-  }
-
-  recordGoalCheckpoint(...args) {
-    return ConversationExecutionService.recordGoalCheckpoint.apply(this, args);
-  }
-
-  recordGoalWorkingState(...args) {
-    return ConversationExecutionService.recordGoalWorkingState.apply(this, args);
-  }
-
-  recordGoalTokenUsage(...args) {
-    return ConversationExecutionService.recordGoalTokenUsage.apply(this, args);
-  }
-
-  recordGoalPlan(...args) {
-    return ConversationExecutionService.recordGoalPlan.apply(this, args);
-  }
-
-  replanGoal(...args) {
-    return ConversationExecutionService.replanGoal.apply(this, args);
-  }
-
-  finishGoalRun(...args) {
-    return ConversationExecutionService.finishGoalRun.apply(this, args);
-  }
-
-  mutateGoalRuntime(...args) {
-    return ConversationExecutionService.mutateGoalRuntime.apply(this, args);
-  }
-
-  recordGoalVerification(...args) {
-    return ConversationExecutionService.recordGoalVerification.apply(this, args);
   }
 
   select(...args) {

@@ -300,7 +300,7 @@ describe(
       }
     );
 
-    it("keeps an independent Worker assignment and clamps its concurrency", () => {
+    it("drops retired Worker runtime assignments from persisted settings", () => {
       const settings = sanitizeSettings({
         model: {
           activeProvider: "main",
@@ -309,7 +309,10 @@ describe(
               providerId: "worker",
               modelConfigId: "worker-model"
             },
-            maxConcurrency: 99
+            maxConcurrency: 99,
+            tokenBudget: 999999,
+            stepBudget: 99,
+            timeBudgetMinutes: 99
           },
           providers: {
             main: {
@@ -327,31 +330,11 @@ describe(
                 maxOutputTokens: 4096,
                 timeoutMs: 60000
               }]
-            },
-            worker: {
-              id: "worker",
-              configured: true,
-              type: "openai-compatible",
-              name: "Worker",
-              baseURL: "https://worker.invalid/v1",
-              activeModelId: "worker-model",
-              models: [{
-                id: "worker-model",
-                name: "Worker",
-                modelId: "worker",
-                contextTokenBudget: 32000,
-                maxOutputTokens: 2048,
-                timeoutMs: 60000
-              }]
             }
           }
         }
       });
-      assert.deepEqual(settings.model.runtimeAssignments.worker, {
-        providerId: "worker",
-        modelConfigId: "worker-model"
-      });
-      assert.equal(settings.model.runtimeAssignments.maxConcurrency, 4);
+      assert.equal(Object.hasOwn(settings.model, "runtimeAssignments"), false);
     });
   }
 );

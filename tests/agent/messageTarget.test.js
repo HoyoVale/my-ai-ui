@@ -21,14 +21,12 @@ describe(
           normalizeAgentMessageRequest({
             content: " hello ",
             expectedConversationId: " session-coding ",
-            continueTask: true,
-            threadCommand: " resume "
+            continueTask: true
           }),
           {
             content: " hello ",
             expectedConversationId: "session-coding",
-            continueTask: true,
-            threadCommand: "resume"
+            continueTask: true
           }
         );
       }
@@ -42,8 +40,7 @@ describe(
           {
             content: "hello",
             expectedConversationId: "",
-            continueTask: false,
-            threadCommand: ""
+            continueTask: false
           }
         );
       }

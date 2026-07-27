@@ -1,63 +1,19 @@
 import { normalizeSessionMode, resolveModelBinding } from "../sessionContext.js";
 import { createSkillSnapshots } from "../../skills/skillSnapshot.js";
-import { recoverInterruptedGoal } from "../../goal/GoalRuntime.js";
-import {
-  recoverExecutionThreadCollection
-} from "../../execution-model/ExecutionPersistence.js";
-import {
-  threadRoutingDecisionStore
-} from "../../execution-model/ThreadRoutingDecisionStore.js";
 import * as internals from "../ConversationManagerInternals.js";
+import {
+  projectConversationForRead
+} from "../conversationSchema.js";
+import {
+  getLegacyAdvancedMetadata
+} from "../legacyConversationCompatibility.js";
 
 export const ConversationStateService = {
   ensureLoaded() {
     if (!this.data) {
-      this.data =
-        this.store.load();
-  
-      const timestamp = this.now();
-      let recovered = false;
-      for (const conversation of this.data.conversations) {
-        for (const decision of conversation.routingDecisions ?? []) {
-          threadRoutingDecisionStore.record(decision);
-        }
-        const result = recoverInterruptedGoal(
-          conversation.goal,
-          { now: timestamp }
-        );
-        if (result.changed) {
-          conversation.goal = result.goal;
-          conversation.updatedAt = Math.max(
-            conversation.updatedAt,
-            timestamp
-          );
-          recovered = true;
-        }
-        const threadRecovery = recoverExecutionThreadCollection(
-          conversation,
-          { now: timestamp }
-        );
-        if (threadRecovery.changed) {
-          conversation.activeExecutionThreadId =
-            threadRecovery.activeExecutionThreadId;
-          conversation.executionThreads =
-            threadRecovery.executionThreads;
-          conversation.executionThread =
-            threadRecovery.executionThread;
-          conversation.routingDecisions =
-            threadRecovery.routingDecisions;
-          conversation.updatedAt = Math.max(
-            conversation.updatedAt,
-            timestamp
-          );
-          recovered = true;
-        }
-      }
-      if (recovered) {
-        this.data = this.store.save(this.data);
-      }
+      this.data = this.store.load();
     }
-  
+
     return this.data;
   },
 
@@ -198,7 +154,7 @@ export const ConversationStateService = {
         );
   
     return conversation
-      ? internals.clone(conversation)
+      ? projectConversationForRead(conversation)
       : null;
   },
 
@@ -312,11 +268,10 @@ export const ConversationStateService = {
       skillIds: normalizedSkillIds,
       skillSnapshots: normalizedSkillSnapshots,
       skillRoutingMode: skillRoutingMode === "auto" ? "auto" : "manual",
-      goal: null,
-      activeExecutionThreadId: null,
-      executionThreads: [],
-      executionThread: null,
-      routingDecisions: [],
+      metadata: {
+        schema: "core-lite",
+        version: 1
+      },
       title:
         String(title)
           .trim()
@@ -339,9 +294,7 @@ export const ConversationStateService = {
     this.prune();
     this.commit();
   
-    return internals.clone(
-      conversation
-    );
+    return projectConversationForRead(conversation);
   },
 
   findRecentConversation({
@@ -420,7 +373,7 @@ export const ConversationStateService = {
       return {
         ...selected,
         created: false,
-        conversation: internals.clone(existing)
+        conversation: projectConversationForRead(existing)
       };
     }
   
@@ -488,32 +441,12 @@ export const ConversationStateService = {
   
     conversation.modelSelection = binding.selection;
     conversation.modelSnapshot = binding.snapshot;
-    conversation.executionThreads = (conversation.executionThreads ?? [])
-      .map((thread) => {
-        const continuation = thread.providerContinuation;
-        if (
-          !continuation ||
-          (continuation.providerId === binding.selection.providerId &&
-            continuation.modelConfigId === binding.selection.modelConfigId)
-        ) {
-          return thread;
-        }
-        return {
-          ...thread,
-          providerContinuation: null,
-          revision: Math.max(1, Number(thread.revision) || 1) + 1,
-          updatedAt: this.now()
-        };
-      });
-    conversation.executionThread = conversation.executionThreads.find(
-      (thread) => thread.id === conversation.activeExecutionThreadId
-    ) ?? conversation.executionThread ?? null;
     conversation.updatedAt = this.now();
     this.commit();
   
     return {
       ok: true,
-      conversation: internals.clone(conversation)
+      conversation: projectConversationForRead(conversation)
     };
   },
 
@@ -561,7 +494,7 @@ export const ConversationStateService = {
     conversation.updatedAt = this.now();
     this.commit();
   
-    return { ok: true, conversation: internals.clone(conversation) };
+    return { ok: true, conversation: projectConversationForRead(conversation) };
   },
 
   switchWorkspace(workspaceId = null) {
@@ -849,6 +782,7 @@ export const ConversationStateService = {
     const liveWorkspace = this.getWorkspaceById(
       conversation.workspaceId
     );
+    const legacyAdvanced = getLegacyAdvancedMetadata(conversation);
   
     return {
       id: conversation.id,
@@ -872,7 +806,9 @@ export const ConversationStateService = {
       skillRoutingMode:
         conversation.skillRoutingMode === "auto" ? "auto" : "manual",
       goal:
-        conversation.goal ? internals.clone(conversation.goal) : null,
+        internals.clone(legacyAdvanced?.goal ?? null),
+      legacyAdvancedReadOnly:
+        Boolean(legacyAdvanced),
       workspaceAvailable:
         conversation.workspaceId
           ? Boolean(liveWorkspace && !liveWorkspace.missing)

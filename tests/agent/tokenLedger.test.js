@@ -8,11 +8,6 @@ import {
 } from "../../electron/agent/TokenLedger.js";
 
 import {
-  recordGoalTokenUsage,
-  upsertGoal
-} from "../../electron/goal/GoalRuntime.js";
-
-import {
   sanitizeMessage
 } from "../../electron/conversation/conversationSchema.js";
 
@@ -104,30 +99,7 @@ describe("Token Ledger", () => {
     assert.equal(message.tokenLedger.entries.length, 160);
   });
 
-  it("deduplicates Goal totals by run id", () => {
-    const created = upsertGoal(null, {
-      objective: "Build the scene",
-      criteria: ["Tests pass"]
-    }, {
-      now: 10,
-      createId: () => "goal-1"
-    });
-    const ledger = {
-      runId: "run-1",
-      provider: { totalTokens: 500, inputTokens: 400, outputTokens: 100 },
-      estimated: { toolResultTokens: 80, totalInputTokens: 480 },
-      tools: { callCount: 3, resultCount: 3, cacheReuseCount: 1 }
-    };
-    const first = recordGoalTokenUsage(created.goal, ledger, { now: 20 });
-    const second = recordGoalTokenUsage(first.goal, ledger, { now: 30 });
 
-    assert.equal(first.goal.usage.runCount, 1);
-    assert.equal(first.goal.usage.provider.totalTokens, 500);
-    assert.equal(first.goal.usage.tools.callCount, 3);
-    assert.equal(second.changed, true);
-    assert.equal(second.goal.usage.runCount, 1);
-    assert.equal(second.goal.usage.provider.totalTokens, 500);
-  });
 
   it("aggregates conversation runs without raw entry duplication", () => {
     const aggregate = aggregateTokenLedgers([
