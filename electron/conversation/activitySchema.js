@@ -3,6 +3,10 @@ import {
   runStatusFromStopReason
 } from "../agent/runStopReasons.js";
 
+import {
+  sanitizeRunTerminalPresentation
+} from "../agent/RunTerminalPresentation.js";
+
 function stringValue(
   value,
   fallback = "",
@@ -725,6 +729,7 @@ export function sanitizeActivity(source) {
       status === "checkpoint_ready"
         ? "partial"
         : "terminal",
+    terminal: sanitizeRunTerminalPresentation(source.terminal),
     checkpoint:
       sanitizeCheckpoint(
         source.checkpoint

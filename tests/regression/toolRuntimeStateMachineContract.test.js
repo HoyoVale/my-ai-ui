@@ -57,18 +57,20 @@ describe("Tool Runtime state-machine refactor contract", () => {
     assert.doesNotMatch(loop, /orchestrator/u);
   });
 
-  it("routes Activity finalization and active-run cleanup through finalizeRun only", () => {
+  it("routes terminalization through one settlement owner and one resource cleanup", () => {
     const runtime = readAgentRuntimeSource();
-    const activityFinalizeCalls =
-      runtime.match(/activityStore\?\.finalize\(/gu) ?? [];
-    const activeRunCleanup =
-      runtime.match(/this\.activeRun\s*=\s*null/gu) ?? [];
+    const finalization = read(
+      "../../electron/agent/finalization/AgentRunFinalization.js"
+    );
 
-    assert.equal(activityFinalizeCalls.length, 1);
-    assert.equal(activeRunCleanup.length, 2);
-    assert.match(
+    assert.match(finalization, /run\.beginSettlement\?\./u);
+    assert.match(finalization, /settlement\.accepted === false/u);
+    assert.match(finalization, /await run\.disposeResources\?\./u);
+    assert.match(finalization, /run\.lifecycle\?\.completeSettlement/u);
+    assert.match(finalization, /activityStore\?\.finalize\(/u);
+    assert.doesNotMatch(
       runtime,
-      /finalizeRun\([\s\S]*activityStore\?\.finalize\([\s\S]*this\.activeRun\s*=\s*null/u
+      /activeRun\?\.toolSession\?\.closePersistence/u
     );
   });
 });

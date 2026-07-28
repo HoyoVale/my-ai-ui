@@ -36,6 +36,10 @@ import {
 } from "./tools/runtime-state/RuntimeRecoveryManager.js";
 
 import {
+  agentRuntime
+} from "./agent/AgentRuntime.js";
+
+import {
   createPetWindow
 } from "./windows/pet/petWindow.js";
 
@@ -142,19 +146,34 @@ app.on(
     persistenceFlushInProgress = true;
     destroyTray();
 
-    void Promise.all([
-      flushAllPersistenceQueues(),
-      mcpClientManager.closeAll()
-    ])
-      .then(([result]) => {
+    void (async () => {
+      try {
+        await agentRuntime.shutdown({
+          reason: "app-quit",
+          timeoutMs: 8000
+        });
+
+        const [result] = await Promise.all([
+          flushAllPersistenceQueues({
+            maxAttempts: 3,
+            retryDelayMs: 50,
+            attemptTimeoutMs: 2000
+          }),
+          mcpClientManager.closeAll()
+        ]);
         if (!result.ok) {
+          const timeoutDetail = result.timedOutCount
+            ? `，其中 ${result.timedOutCount} 次等待达到超时边界`
+            : "";
           console.warn(
-            `应用退出前仍有 ${result.pendingCount} 个持久化队列未写入。`
+            `应用退出前仍有 ${result.pendingCount} 个持久化队列未写入${timeoutDetail}。`
           );
         }
-      })
-      .finally(() => {
+      } catch (error) {
+        console.warn("应用退出清理失败：", error);
+      } finally {
         app.quit();
-      });
+      }
+    })();
   }
 );

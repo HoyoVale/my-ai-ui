@@ -58,6 +58,10 @@ import {
 } from "../CoreLiteCheckpointResume.js";
 
 import {
+  inspectCoreLiteCheckpointRecovery
+} from "../CoreLiteCheckpointRecovery.js";
+
+import {
   appendTaskContinuationToContext,
   getActiveCredentialError
 } from "../AgentRuntimeInternals.js";
@@ -134,7 +138,15 @@ function createSession({
     resumeInPlace,
     startedAt,
     contextCompactionCount:
-      continuationState?.contextCompactionCount ?? 0
+      continuationState?.contextCompactionCount ?? 0,
+    checkpointVersion:
+      continuationState?.checkpointVersion ?? 0,
+    reportedReceiptIds:
+      continuationState?.reportedReceiptIds ?? [],
+    partialResponse:
+      continuationState?.partialResponse ?? "",
+    partialResponseRole:
+      continuationState?.partialResponseRole ?? "none"
   });
 }
 
@@ -171,6 +183,24 @@ function launchRun(runtime, {
   }
 }
 
+function rejectCredential(runtime, credentialError) {
+  startResponseStream();
+  appendResponseChunk(`⚠ ${credentialError}`);
+  endResponseStream();
+  runtime.setStatus({
+    state: "error",
+    runId: null,
+    conversationId: null,
+    startedAt: null,
+    lastError: credentialError
+  });
+  return {
+    ok: false,
+    code: "missing-api-key",
+    message: credentialError
+  };
+}
+
 export const agentRunPreparation = {
   startMessage(
     content,
@@ -180,6 +210,14 @@ export const agentRunPreparation = {
     } = {}
   ) {
     const message = String(content ?? "").trim();
+
+    if (this.shuttingDown) {
+      return {
+        ok: false,
+        code: "runtime-shutting-down",
+        message: "应用正在退出，无法开始新的任务。"
+      };
+    }
 
     if (!message) {
       return {
@@ -193,10 +231,15 @@ export const agentRunPreparation = {
       conversationManager.getCurrentConversation();
 
     if (this.activeRun) {
+      const lifecycleState =
+        this.activeRun.lifecycle?.snapshot?.().state ?? "active";
+      const settling = lifecycleState !== "active";
       return {
         ok: false,
-        code: "busy",
-        message: "当前回复尚未结束，请先停止生成。"
+        code: settling ? "run-settling" : "busy",
+        message: settling
+          ? "上一项任务正在完成资源清理，请稍候。"
+          : "当前回复尚未结束，请先停止生成。"
       };
     }
 
@@ -206,35 +249,6 @@ export const agentRunPreparation = {
     );
     if (initialTargetError) {
       return initialTargetError;
-    }
-
-    const credentialBinding =
-      resolveConversationExecutionContext({
-        settings: getSettings(),
-        conversation: initialConversation
-      });
-    const credentialError = isE2EMode()
-      ? null
-      : getActiveCredentialError(
-          credentialBinding.settings.model
-        );
-
-    if (credentialError) {
-      startResponseStream();
-      appendResponseChunk(`⚠ ${credentialError}`);
-      endResponseStream();
-      this.setStatus({
-        state: "error",
-        runId: null,
-        conversationId: null,
-        startedAt: null,
-        lastError: credentialError
-      });
-      return {
-        ok: false,
-        code: "missing-api-key",
-        message: credentialError
-      };
     }
 
     let conversation;
@@ -267,6 +281,13 @@ export const agentRunPreparation = {
       continuationState = createCoreLiteContinuationState(
         checkpointContinuation
       );
+      if (continueTask === true && !continuationState) {
+        return {
+          ok: false,
+          code: "checkpoint-not-found",
+          message: "当前会话没有可继续的检查点。"
+        };
+      }
 
       let skillCommand = null;
       if (!continuationState) {
@@ -286,12 +307,34 @@ export const agentRunPreparation = {
       }
 
       const settingsSnapshot = getSettings();
+      if (continuationState) {
+        const readiness = inspectCoreLiteCheckpointRecovery({
+          checkpoint: checkpointContinuation?.checkpoint,
+          settings: settingsSnapshot
+        });
+        if (!readiness.ok) {
+          return readiness;
+        }
+        continuationState = {
+          ...continuationState,
+          recoveryReadiness: readiness
+        };
+      }
+
       const preparedExecution =
         resolveConversationExecutionContext({
           settings: settingsSnapshot,
           conversation,
           overrides: continuationState ?? {}
         });
+      const credentialError = isE2EMode()
+        ? null
+        : getActiveCredentialError(
+            preparedExecution.settings.model
+          );
+      if (credentialError) {
+        return rejectCredential(this, credentialError);
+      }
       const boundSkillIds =
         preparedExecution.conversation.skillIds ??
         (preparedExecution.conversation.skillId
@@ -432,11 +475,24 @@ export const agentRunPreparation = {
     conversationId,
     messageId
   } = {}) {
-    if (this.activeRun) {
+    if (this.shuttingDown) {
       return {
         ok: false,
-        code: "busy",
-        message: "当前回复尚未结束，请先停止生成。"
+        code: "runtime-shutting-down",
+        message: "应用正在退出，无法重新生成。"
+      };
+    }
+
+    if (this.activeRun) {
+      const lifecycleState =
+        this.activeRun.lifecycle?.snapshot?.().state ?? "active";
+      const settling = lifecycleState !== "active";
+      return {
+        ok: false,
+        code: settling ? "run-settling" : "busy",
+        message: settling
+          ? "上一项任务正在完成资源清理，请稍候。"
+          : "当前回复尚未结束，请先停止生成。"
       };
     }
 

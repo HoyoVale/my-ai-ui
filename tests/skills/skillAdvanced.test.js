@@ -5,7 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import { createCoreLiteContinuationState } from "../../electron/agent/CoreLiteCheckpointResume.js";
-import { createCoreLiteRunCheckpoint } from "../../electron/agent/CoreLiteCheckpoint.js";
+import {
+  CORE_LITE_RUN_CHECKPOINT_VERSION,
+  createCoreLiteRunCheckpoint
+} from "../../electron/agent/CoreLiteCheckpoint.js";
 import { sanitizeActivity } from "../../electron/conversation/activitySchema.js";
 import { SkillRegistry } from "../../electron/skills/SkillRegistry.js";
 import { SkillStore } from "../../electron/skills/SkillStore.js";
@@ -246,7 +249,7 @@ test("Skill command and router provenance survive checkpoint continuation", () =
       selected: { id: "debug", name: "Debug", score: 10, reasons: ["关键词：debug"] }
     }
   });
-  assert.equal(checkpoint.version, 5);
+  assert.equal(checkpoint.version, CORE_LITE_RUN_CHECKPOINT_VERSION);
   assert.equal(checkpoint.skillSource, "router");
 
   const continuation = createCoreLiteContinuationState({
@@ -264,6 +267,6 @@ test("Skill command and router provenance survive checkpoint continuation", () =
     checkpoint,
     events: []
   });
-  assert.equal(activity.checkpoint.version, 5);
+  assert.equal(activity.checkpoint.version, CORE_LITE_RUN_CHECKPOINT_VERSION);
   assert.equal(activity.checkpoint.skillSource, "router");
 });

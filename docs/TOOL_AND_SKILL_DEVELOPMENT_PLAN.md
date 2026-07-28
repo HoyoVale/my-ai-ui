@@ -1,7 +1,7 @@
 # Tool 与 Skill 开发路线
 
-> 基线：`my-ai-ui(70)`  
-> 当前阶段：Tool V3 与 Diff UI 已实施；Plan 分层待讨论  
+> 基线：`my-ai-ui(70)`
+> 当前阶段：Tool V3 与 Diff UI 已实施；Plan 分层待讨论
 > 原则：先稳定系统工具与能力协议，再建设 Skill；Skill 不能绕过 Tool Runtime、工作区边界或用户批准。
 
 ## 一、总体路线

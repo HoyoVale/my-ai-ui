@@ -18,16 +18,19 @@ import {
 } from "../agent/TokenLedger.js";
 
 import {
+  sanitizeRunTerminalPresentation
+} from "../agent/RunTerminalPresentation.js";
+
+import {
   createSkillSnapshot,
   createSkillSnapshots
 } from "../skills/skillSnapshot.js";
 
 import {
-  projectLegacyConversationFields,
   sanitizeLegacyAdvancedMetadata
 } from "./legacyConversationCompatibility.js";
 
-const STORE_VERSION = 24;
+const STORE_VERSION = 25;
 
 const MESSAGE_RUN_OUTCOMES = new Set([
   "running",
@@ -452,16 +455,24 @@ export function sanitizeMessage(
   const sourceToolCalls = Array.isArray(source.toolCalls)
     ? source.toolCalls.map(sanitizeToolCall).filter(Boolean).slice(0, 100)
     : [];
+  const legacyHistorySource =
+    metadataSource.legacyHistory && typeof metadataSource.legacyHistory === "object"
+      ? metadataSource.legacyHistory
+      : {};
   const planInput =
-    metadataSource.planState && typeof metadataSource.planState === "object"
-      ? metadataSource.planState
-      : source.planState && typeof source.planState === "object"
-        ? source.planState
-        : Array.isArray(metadataSource.plan)
-          ? metadataSource.plan
-          : Array.isArray(source.plan)
-            ? source.plan
-            : [];
+    legacyHistorySource.planState && typeof legacyHistorySource.planState === "object"
+      ? legacyHistorySource.planState
+      : metadataSource.planState && typeof metadataSource.planState === "object"
+        ? metadataSource.planState
+        : source.planState && typeof source.planState === "object"
+          ? source.planState
+          : Array.isArray(legacyHistorySource.plan)
+            ? legacyHistorySource.plan
+            : Array.isArray(metadataSource.plan)
+              ? metadataSource.plan
+              : Array.isArray(source.plan)
+                ? source.plan
+                : [];
   const normalizedPlanState = sanitizeLegacyPlanState(planInput, {
     maxRootItems: 20,
     maxSubplans: 12,
@@ -531,9 +542,10 @@ export function sanitizeMessage(
   if (diffSummary) message.diffSummary = diffSummary;
 
   const metadata = {};
-  if (plan.length > 0) metadata.plan = plan;
+  const legacyHistory = {};
+  if (plan.length > 0) legacyHistory.plan = plan;
   if (plan.length > 0 || normalizedPlanState.subplans.length > 0) {
-    metadata.planState = {
+    legacyHistory.planState = {
       ...normalizedPlanState,
       rootItems: migratedPlan.length > 0 ? migratedPlan : plan
     };
@@ -548,12 +560,17 @@ export function sanitizeMessage(
   );
   if (resumedFromMessageId) metadata.resumedFromMessageId = resumedFromMessageId;
   const legacyExecutionThreadId = stringValue(
-    metadataSource.legacyExecutionThreadId ?? source.executionThreadId,
+    legacyHistorySource.executionThreadId ??
+      metadataSource.legacyExecutionThreadId ??
+      source.executionThreadId,
     "",
     120
   );
   if (legacyExecutionThreadId) {
-    metadata.legacyExecutionThreadId = legacyExecutionThreadId;
+    legacyHistory.executionThreadId = legacyExecutionThreadId;
+  }
+  if (Object.keys(legacyHistory).length > 0) {
+    metadata.legacyHistory = legacyHistory;
   }
 
   const runSource = metadataSource.run && typeof metadataSource.run === "object"
@@ -576,45 +593,26 @@ export function sanitizeMessage(
     runSource.resumable ?? source.runResumable,
     activity?.resumable === true
   );
+  const terminal = sanitizeRunTerminalPresentation(
+    runSource.terminal ?? activity?.terminal
+  );
+  if (terminal) run.terminal = terminal;
   if (Object.keys(run).length > 0) metadata.run = run;
   if (Object.keys(metadata).length > 0) message.metadata = metadata;
 
   return message;
 }
 
-export function projectMessageForRead(source) {
-  if (!source || typeof source !== "object") return source;
-  const message = structuredClone(source);
-  const metadata = message.metadata && typeof message.metadata === "object"
-    ? message.metadata
-    : {};
-
-  if (Array.isArray(metadata.plan) && metadata.plan.length > 0) {
-    message.plan = structuredClone(metadata.plan);
-  }
-  if (metadata.planState && typeof metadata.planState === "object") {
-    message.planState = structuredClone(metadata.planState);
-  }
-  if (metadata.taskId) message.taskId = metadata.taskId;
-  if (metadata.resumedFromMessageId) {
-    message.resumedFromMessageId = metadata.resumedFromMessageId;
-  }
-  if (metadata.legacyExecutionThreadId) {
-    message.executionThreadId = metadata.legacyExecutionThreadId;
-  }
-  if (metadata.run && typeof metadata.run === "object") {
-    if (metadata.run.outcome) message.runOutcome = metadata.run.outcome;
-    if (metadata.run.phase) message.runPhase = metadata.run.phase;
-    message.runResumable = metadata.run.resumable === true;
-  }
-
-  return message;
+export function projectMessageSnapshot(source) {
+  return source && typeof source === "object"
+    ? structuredClone(source)
+    : source;
 }
 
-export function projectConversationForRead(source) {
+export function projectConversationSnapshot(source) {
   if (!source || typeof source !== "object") return source;
-  const conversation = projectLegacyConversationFields(source);
-  conversation.messages = (source.messages ?? []).map(projectMessageForRead);
+  const conversation = structuredClone(source);
+  conversation.messages = (source.messages ?? []).map(projectMessageSnapshot);
   return conversation;
 }
 

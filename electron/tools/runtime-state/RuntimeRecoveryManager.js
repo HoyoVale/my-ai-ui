@@ -219,7 +219,7 @@ export class RuntimeRecoveryManager {
       if (nextCheckpoint && decision.applyToConversation) {
         storedCheckpoint = await ledger.storeCheckpoint(nextCheckpoint, {
           runId: identity.runId,
-          segmentId: nextCheckpoint.committedSegmentId
+          scopeId: nextCheckpoint.committedRunUnitId
         });
       }
 

@@ -8,6 +8,7 @@ const PROJECT_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "..");
 const FORBIDDEN_PATHS = Object.freeze([
   "electron/goal",
   "electron/execution-model",
+  "electron/platform",
   "electron/agent/ExecutionThread.js",
   "electron/agent/GoalCompletionVerifier.js",
   "electron/agent/PlanAuthority.js",
@@ -18,53 +19,51 @@ const FORBIDDEN_PATHS = Object.freeze([
   "electron/agent/runCheckpoint.js",
   "electron/config/coreLite.js",
   "electron/conversation/services/ConversationExecutionService.js",
-  "electron/platform",
+  "electron/ipc/handlers/platformIpc.js",
+  "src/shared/runtimeDefaults.js",
   "src/Conversation/components/GoalPanel.jsx",
   "src/Conversation/components/PlanDock.jsx",
   "src/Conversation/components/PlatformDock.jsx",
   "src/Conversation/styles/plan-goal.css",
   "src/Conversation/styles/platform.css",
-  "electron/ipc/handlers/platformIpc.js",
-
+  "tests/goal",
+  "tests/execution-model",
   "tests/platform",
+  "tests/e2e/goal-runtime-crash-recovery.mjs",
   "tests/e2e/platform-kernel-crash-recovery.mjs",
   "tests/e2e/worktree-runtime-crash-recovery.mjs",
   "tests/e2e/multi-agent-supervisor-crash-recovery.mjs",
   "tests/e2e/long-running-agent-crash-recovery.mjs",
-  "tests/fixtures/long-running-agent-crash-worker.mjs",
-  "tests/regression/localPlatform83.test.js",
-  "tests/regression/longRunningAgent91.test.js",
-  "tests/regression/verificationLoop84.test.js",
-  "tests/regression/worktreeMultiAgent81.test.js",
-  "src/shared/runtimeDefaults.js",
-  "docs/PLATFORM_KERNEL_AND_MULTI_AGENT_PLAN.md",
-  "docs/LOCAL_PLATFORM_83.md",
-  "docs/LONG_RUNNING_AGENT_91.md",
-  "docs/MULTI_AGENT_SUPERVISOR_90.md",
-  "docs/WORKTREE_MULTI_AGENT_80_81.md",
-  "docs/INTEGRATION_REVIEW_82.md",
-  "docs/VERIFICATION_LOOP_84.md",
-  "docs/CORE_RUNTIME_REFACTOR_PHASE3_100.md",
-  "tests/goal",
-  "tests/execution-model",
-  "tests/e2e/goal-runtime-crash-recovery.mjs",
   "tests/fixtures/goal-runtime-crash-worker.mjs",
-  "temp.log",
-  "test-results",
-  "playwright-report"
+  "tests/fixtures/long-running-agent-crash-worker.mjs",
+  "tests/conversation/conversationGoal.test.js",
+  "tests/conversation/executionThreadPersistence97.test.js",
+  "tests/conversation/planCore2Persistence.test.js",
+  "tests/regression/segmentContinuationContract.test.js",
+  "tests/regression/executionConsistencyArchitecture97.test.js",
+  "tests/regression/platformKernel79.test.js",
+  "tests/regression/coreLiteHistoricalPlanViewContract.test.js",
+  "docs/GOAL_V2_AND_SLASH_COMMANDS_78.md",
+  "docs/PLAN_CORE_2_0_71.md",
+  "docs/PLAN_UI_2_0_72.md",
+  "docs/CONTINUITY_PLAN_AUTHORITY_93.md",
+  "docs/EXECUTION_CONSISTENCY_CORE_ARCHITECTURE_97.md",
+  "docs/EXECUTION_MODEL_2_ARCHITECTURE_PLAN.md",
+  "docs/EXECUTION_MODEL_2_PHASE_A_102.md",
+  "docs/EXECUTION_MODEL_2_PHASE_B_103.md",
+  "docs/EXECUTION_MODEL_2_PHASE_C_104.md",
+  "docs/EXECUTION_MODEL_2_PHASE_D_105.md",
+  "docs/EXECUTION_MODEL_2_PHASE_E_106.md",
+  "docs/EXECUTION_MODEL_2_PHASE_F_107.md",
+  "docs/EXECUTION_MODEL_2_PHASE_G_108.md",
+  "docs/EXECUTION_RUNTIME_STABILITY_P0_109.md",
+  "docs/EXECUTION_RUNTIME_STABILITY_PLAN.md",
+  "temp.log"
 ]);
 
-const FORBIDDEN_TEST_TOKENS = Object.freeze([
+const RETIRED_SURFACE_TOKENS = Object.freeze([
   "input-slash-command-goal",
-  "input-goal-criteria"
-]);
-
-const SCAN_FILES = Object.freeze([
-  "tests/e2e/conversation-flow.cjs",
-  "package.json"
-]);
-
-const FORBIDDEN_PLATFORM_SURFACE_TOKENS = Object.freeze([
+  "input-goal-criteria",
   "platform-get-state",
   "platform-control-job",
   "platform-changed",
@@ -79,12 +78,7 @@ const FORBIDDEN_PLATFORM_SURFACE_TOKENS = Object.freeze([
   "onPlatformViewRequested"
 ]);
 
-const PLATFORM_SURFACE_FILES = Object.freeze([
-  "electron/shared/ipcChannels.cjs",
-  "electron/preload/preload.cjs"
-]);
-
-const RETIRED_PLATFORM_TOKENS = Object.freeze([
+const RETIRED_RUNTIME_TOKENS = Object.freeze([
   "PlatformKernel",
   "MultiAgentSupervisor",
   "LongRunningAgentService",
@@ -98,12 +92,39 @@ const RETIRED_PLATFORM_TOKENS = Object.freeze([
   "WORKER_RUNTIME_LIMITS"
 ]);
 
-const RETIRED_PLATFORM_SCAN_FILES = Object.freeze([
+const RETIRED_READ_ALIAS_TOKENS = Object.freeze([
+  "projectLegacyConversationFields",
+  "projectConversationForRead",
+  "projectMessageForRead",
+  "legacyAdvancedReadOnly",
+  "currentSegmentId",
+  "maxNoProgressSegments",
+  "maxSegments"
+]);
+
+const SURFACE_SCAN_FILES = Object.freeze([
+  "tests/e2e/conversation-flow.cjs",
+  "electron/shared/ipcChannels.cjs",
+  "electron/preload/preload.cjs"
+]);
+
+const RUNTIME_SCAN_FILES = Object.freeze([
   "package.json",
   ".github/workflows/ci.yml",
   "src/shared/defaultSettings.js",
   "electron/settings/validateSettings.js",
   "electron/settings/modelSettings.js"
+]);
+
+const ALIAS_SCAN_FILES = Object.freeze([
+  "electron/conversation/conversationSchema.js",
+  "electron/conversation/services/ConversationStateService.js",
+  "electron/agent/AgentRunSession.js",
+  "electron/agent/AgentRuntime.js",
+  "electron/agent/execution/AgentRunExecution.js",
+  "src/Setting/panels/ToolPanel.jsx",
+  "src/shared/defaultSettings.js",
+  "electron/settings/validateSettings.js"
 ]);
 
 function exists(relativePath) {
@@ -112,6 +133,21 @@ function exists(relativePath) {
 
 function read(relativePath) {
   return fs.readFileSync(path.join(PROJECT_ROOT, relativePath), "utf8");
+}
+
+function scanTokens(errors, files, tokens, label) {
+  for (const relativePath of files) {
+    if (!exists(relativePath)) {
+      errors.push(`required ${label} target is missing: ${relativePath}`);
+      continue;
+    }
+    const text = read(relativePath);
+    for (const token of tokens) {
+      if (text.includes(token)) {
+        errors.push(`${relativePath} still references retired ${label}: ${token}`);
+      }
+    }
+  }
 }
 
 export function verifyCoreLiteTree() {
@@ -123,42 +159,32 @@ export function verifyCoreLiteTree() {
     }
   }
 
-  for (const relativePath of SCAN_FILES) {
-    if (!exists(relativePath)) {
-      errors.push(`required verification target is missing: ${relativePath}`);
-      continue;
-    }
-    const text = read(relativePath);
-    for (const token of FORBIDDEN_TEST_TOKENS) {
-      if (text.includes(token)) {
-        errors.push(`${relativePath} still references retired selector: ${token}`);
-      }
-    }
-  }
+  scanTokens(errors, SURFACE_SCAN_FILES, RETIRED_SURFACE_TOKENS, "surface");
+  scanTokens(errors, RUNTIME_SCAN_FILES, RETIRED_RUNTIME_TOKENS, "runtime");
+  scanTokens(errors, ALIAS_SCAN_FILES, RETIRED_READ_ALIAS_TOKENS, "active alias");
 
-  for (const relativePath of PLATFORM_SURFACE_FILES) {
+  for (const relativePath of [
+    "electron/conversation/legacyGoalSnapshot.js",
+    "electron/conversation/legacyPlanSnapshot.js",
+    "electron/conversation/legacyExecutionSnapshot.js",
+    "electron/conversation/legacyConversationCompatibility.js",
+    "electron/windows/response/ResponseStreamReplayBuffer.js",
+    "tests/stress/runtimeFaultInjection.test.js",
+    "tests/performance/core-lite-lifecycle-soak.mjs",
+    "tests/e2e/electron-release-candidate.cjs",
+    "tests/e2e/helpers/electronHarness.cjs",
+    "tests/e2e/helpers/releaseCandidateReport.cjs",
+    "tests/agent/e2eLongStreamDriver.test.js",
+    "tests/release/releaseCandidateSummary.test.js",
+    "scripts/create-release-candidate-summary.mjs",
+    "docs/CORE_LITE_ARCHITECTURE.md",
+    "docs/LEGACY_HISTORY_COMPATIBILITY.md",
+    "docs/CORE_LITE_PHASE4_7_129.md",
+    "docs/CORE_LITE_PHASE4_8_130.md",
+    "docs/CORE_LITE_RELEASE_CANDIDATE.md"
+  ]) {
     if (!exists(relativePath)) {
-      errors.push(`required Platform surface target is missing: ${relativePath}`);
-      continue;
-    }
-    const text = read(relativePath);
-    for (const token of FORBIDDEN_PLATFORM_SURFACE_TOKENS) {
-      if (text.includes(token)) {
-        errors.push(`${relativePath} still exposes retired Platform surface: ${token}`);
-      }
-    }
-  }
-
-  for (const relativePath of RETIRED_PLATFORM_SCAN_FILES) {
-    if (!exists(relativePath)) {
-      errors.push(`required retired Platform scan target is missing: ${relativePath}`);
-      continue;
-    }
-    const text = read(relativePath);
-    for (const token of RETIRED_PLATFORM_TOKENS) {
-      if (text.includes(token)) {
-        errors.push(`${relativePath} still references retired Platform runtime: ${token}`);
-      }
+      errors.push(`required compatibility contract is missing: ${relativePath}`);
     }
   }
 
@@ -170,11 +196,49 @@ export function verifyCoreLiteTree() {
   if (!scripts["archive:source"]) {
     errors.push("package.json is missing archive:source");
   }
+  if (!scripts["test:core-lite"]) {
+    errors.push("package.json is missing test:core-lite");
+  }
+  for (const scriptName of [
+    "test:core-lite4.7",
+    "test:stress:core-lite4.7",
+    "test:soak:core-lite4.7",
+    "test:core-lite4.8",
+    "test:stress:core-lite4.8",
+    "test:soak:core-lite4.8",
+    "test:e2e:electron-rc",
+    "report:core-lite4.8"
+  ]) {
+    if (!scripts[scriptName]) {
+      errors.push(`package.json is missing ${scriptName}`);
+    }
+  }
 
-  return {
-    ok: errors.length === 0,
-    errors
-  };
+  const workflow = read(".github/workflows/ci.yml");
+  if (!workflow.includes("npm run test:stress:core-lite4.8")) {
+    errors.push("CI is missing the Core Lite 4.8 stress gate");
+  }
+  if (!workflow.includes("npm run test:e2e:electron-rc")) {
+    errors.push("CI is missing the Core Lite 4.8 Electron release gate");
+  }
+  if (!workflow.includes("--require-platforms=linux,win32")) {
+    errors.push("CI is missing the cross-platform release summary gate");
+  }
+
+  const gitignore = read(".gitignore");
+  const archiveScript = read("scripts/create-source-archive.mjs");
+  for (const generatedPath of ["test-results/", "playwright-report/"]) {
+    if (!gitignore.includes(generatedPath)) {
+      errors.push(`.gitignore must exclude generated output: ${generatedPath}`);
+    }
+  }
+  for (const generatedName of ["test-results", "playwright-report"]) {
+    if (!archiveScript.includes(`"${generatedName}"`)) {
+      errors.push(`source archive must exclude generated output: ${generatedName}`);
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {

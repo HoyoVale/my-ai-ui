@@ -128,7 +128,7 @@ describe("structured Response activity flow", () => {
     assert.match(conversation, /displayedFinalText/u);
   });
 
-  it("publishes finalization only after public text and completion evidence are reconciled", () => {
+  it("streams sanitized finalization text and keeps evidence reconciliation authoritative", () => {
     const finalization = read(
       "../../electron/agent/finalization/AgentRunFinalization.js"
     );
@@ -136,10 +136,10 @@ describe("structured Response activity flow", () => {
     assert.doesNotMatch(finalization, /bufferProgressHandoff/u);
     assert.match(finalization, /const publicStream\s*=\s*new PublicTextStreamSanitizer\(\);/u);
     assert.match(finalization, /const publicChunk\s*=\s*publicStream\.push\(textPart\);/u);
+    assert.match(finalization, /finalStream\.append\(publicChunk\)/u);
     assert.match(finalization, /const reconciled = reconcileFinalResponse\(\{/u);
-    assert.match(finalization, /this\.activeRun\.finalText = publicText;/u);
-    assert.match(finalization, /appendResponseChunk\(publicText\);/u);
-    assert.doesNotMatch(finalization, /appendResponseChunk\(publicChunk\);/u);
+    assert.match(finalization, /finalStream\.commit\(publicText\)/u);
+    assert.doesNotMatch(finalization, /appendResponseChunk\(publicText\);/u);
     assert.doesNotMatch(finalization, /appendResponseChunk\(textPart\);/u);
   });
 

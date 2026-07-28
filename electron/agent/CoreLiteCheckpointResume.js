@@ -179,6 +179,27 @@ export function createCoreLiteContinuationState(continuation) {
       nonNegativeInteger(checkpoint.continuationCount) + 1,
     contextCompactionCount: nonNegativeInteger(
       checkpoint.counts?.contextCompactions
+    ),
+    checkpointVersion: nonNegativeInteger(checkpoint.version),
+    reportedReceiptIds: Array.isArray(checkpoint.reportedReceiptIds)
+      ? [...new Set(
+          checkpoint.reportedReceiptIds
+            .map((value) => String(value ?? "").trim())
+            .filter(Boolean)
+        )]
+      : [],
+    unresolvedCallIds: Array.isArray(checkpoint.unresolvedCallIds)
+      ? [...new Set(
+          checkpoint.unresolvedCallIds
+            .map((value) => String(value ?? "").trim())
+            .filter(Boolean)
+        )]
+      : [],
+    partialResponse: String(checkpoint.partialResponse ?? ""),
+    partialResponseRole: ["none", "commentary", "final"].includes(
+      checkpoint.partialResponseRole
     )
+      ? checkpoint.partialResponseRole
+      : "none"
   };
 }

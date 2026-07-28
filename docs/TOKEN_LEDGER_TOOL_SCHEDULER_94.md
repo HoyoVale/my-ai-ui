@@ -1,6 +1,6 @@
 # Token Ledger 与 Tool Scheduler 1.0
 
-> 实施基线：`my-ai-ui(93)`  
+> 实施基线：`my-ai-ui(93)`
 > 对应阶段：Agent Runtime Integration P1
 
 ## 1. 目标

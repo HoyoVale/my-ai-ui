@@ -49,6 +49,9 @@ const IPC_CHANNELS =
       STREAM_CHUNK:
         "response-stream-chunk",
 
+      STREAM_REPLACE:
+        "response-stream-replace",
+
       STREAM_END:
         "response-stream-end",
 

@@ -1,4 +1,4 @@
-name: Tool Runtime Soak
+name: Core Lite Runtime Soak
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   runtime-soak:
-    name: Runtime soak and benchmark
+    name: Core Lite lifecycle soak and benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 50
 
@@ -33,7 +33,21 @@ jobs:
       - name: Runtime benchmark
         run: npm run test:benchmark
 
-      - name: Runtime soak
+      - name: Core Lite lifecycle soak
         env:
-          TOOL_RUNTIME_SOAK_MINUTES: ${{ github.event.inputs.minutes || '30' }}
-        run: npm run test:soak
+          SOAK_MINUTES: ${{ github.event.inputs.minutes || '30' }}
+          CORE_LITE_STRESS_REPORT: test-results/core-lite-4.8/scheduled-soak.json
+        run: |
+          node tests/performance/core-lite-lifecycle-soak.mjs \
+            --seconds=$((SOAK_MINUTES * 60)) \
+            --iterations=500000 \
+            --subprocess-every=500
+
+      - name: Upload soak report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-lite-4.8-scheduled-soak
+          path: test-results/core-lite-4.8/
+          if-no-files-found: error
+          retention-days: 30

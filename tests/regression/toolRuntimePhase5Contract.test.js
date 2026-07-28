@@ -64,6 +64,8 @@ test("phase 5 CI runs crash recovery, benchmarks, and a scheduled soak", () => {
   assert.match(ci, /test:e2e:runtime-write-crash/u);
   assert.match(ci, /test:e2e:electron-runtime-crash/u);
   assert.match(ci, /test:benchmark/u);
-  assert.match(soak, /test:soak/u);
+  assert.match(soak, /core-lite-lifecycle-soak\.mjs/u);
+  assert.match(soak, /CORE_LITE_STRESS_REPORT/u);
+  assert.match(soak, /upload-artifact@v4/u);
   assert.match(soak, /schedule:/u);
 });

@@ -14,6 +14,10 @@ import {
   resolveSkillDependencyGraph
 } from "./SkillDependencies.js";
 
+import {
+  reportSkillNotifyError
+} from "./SkillNotification.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -28,7 +32,8 @@ export class SkillRegistry {
     getRootDirectory,
     now = () => Date.now(),
     createId = () => crypto.randomUUID(),
-    onChange = () => {}
+    onChange = () => {},
+    onNotifyError = reportSkillNotifyError
   }) {
     if (!store || typeof getRootDirectory !== "function") {
       throw new TypeError("SkillRegistry requires store and getRootDirectory.");
@@ -38,6 +43,9 @@ export class SkillRegistry {
     this.now = now;
     this.createId = createId;
     this.onChange = onChange;
+    this.onNotifyError = typeof onNotifyError === "function"
+      ? onNotifyError
+      : reportSkillNotifyError;
     this.data = null;
     this.revision = 0;
   }
@@ -63,7 +71,7 @@ export class SkillRegistry {
     try {
       this.onChange(state);
     } catch (error) {
-      console.warn("广播 Skill 状态失败：", error);
+      this.onNotifyError(error);
     }
   }
 

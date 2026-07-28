@@ -12,6 +12,9 @@ import {
   RuntimeRecoveryManager
 } from "../../electron/tools/runtime-state/RuntimeRecoveryManager.js";
 import {
+  RUNTIME_CHECKPOINT_SCHEMA_VERSION
+} from "../../electron/tools/runtime-state/RuntimeCheckpointSchema.js";
+import {
   ToolExecutionLedger
 } from "../../electron/tools/runtime-state/ToolExecutionLedger.js";
 
@@ -75,7 +78,10 @@ test("startup recovery classifies an uncertain write and rebuilds its snapshot",
   assert.equal(decision.phase, "reconciling");
   assert.equal(decision.recovery.needsReconciliation, 1);
   assert.equal(decision.checkpoint.unresolvedCallIds[0], "call-1");
-  assert.equal(decision.checkpoint.version, 3);
+  assert.equal(
+    decision.checkpoint.version,
+    RUNTIME_CHECKPOINT_SCHEMA_VERSION
+  );
 
   const reopened = new ToolExecutionLedger({
     directory: runtimeDirectory,

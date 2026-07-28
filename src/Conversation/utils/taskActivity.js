@@ -406,12 +406,16 @@ export function getPlanStats(plan = []) {
 }
 
 function normalizePlanStateForView(source, fallbackPlan = []) {
+  const legacyHistory =
+    source?.metadata?.legacyHistory && typeof source.metadata.legacyHistory === "object"
+      ? source.metadata.legacyHistory
+      : {};
   const candidate =
-    source?.planState && typeof source.planState === "object"
-      ? source.planState
-      : source?.activity?.checkpoint?.planState &&
-          typeof source.activity.checkpoint.planState === "object"
-        ? source.activity.checkpoint.planState
+    legacyHistory.planState && typeof legacyHistory.planState === "object"
+      ? legacyHistory.planState
+      : source?.activity?.checkpoint?.legacyPlanState &&
+          typeof source.activity.checkpoint.legacyPlanState === "object"
+        ? source.activity.checkpoint.legacyPlanState
         : null;
 
   const rootItems = Array.isArray(candidate?.rootItems)
@@ -451,8 +455,7 @@ const STOP_REASON_LABELS = Object.freeze({
   cancelled_by_user: "已取消",
   needs_input: "需要补充信息",
   blocked: "任务被阻塞",
-  agent_segment_limit: "当前进展已整理",
-  no_progress: "连续分段没有新进展",
+  no_progress: "连续步骤没有新进展",
   tool_call_limit: "达到工具调用上限",
   agent_step_limit: "达到任务步骤上限",
   agent_run_timeout: "任务运行超时",
@@ -464,7 +467,6 @@ const STOP_REASON_LABELS = Object.freeze({
   permission_denied: "权限不足",
   output_limit: "达到输出上限",
   content_filter: "内容被安全策略拦截",
-  plan_incomplete: "计划尚未执行完成",
   interrupted: "执行被应用关闭中断",
   unknown: "任务已结束"
 });
@@ -483,9 +485,13 @@ function legacyEvents(source) {
   );
   let sequence = 0;
 
-  const legacyPlan = Array.isArray(source?.planState?.rootItems)
-    ? source.planState.rootItems
-    : source?.plan;
+  const legacyHistory =
+    source?.metadata?.legacyHistory && typeof source.metadata.legacyHistory === "object"
+      ? source.metadata.legacyHistory
+      : {};
+  const legacyPlan = Array.isArray(legacyHistory.planState?.rootItems)
+    ? legacyHistory.planState.rootItems
+    : legacyHistory.plan;
 
   if (Array.isArray(legacyPlan) && legacyPlan.length > 0) {
     events.push({
@@ -570,8 +576,10 @@ export function findTaskMessage(
     [...messages].reverse().find((message) => {
       return Boolean(
         message.activity ||
-        (Array.isArray(message.planState?.rootItems) && message.planState.rootItems.length > 0) ||
-        (Array.isArray(message.plan) && message.plan.length > 0) ||
+        (Array.isArray(message.metadata?.legacyHistory?.planState?.rootItems) &&
+          message.metadata.legacyHistory.planState.rootItems.length > 0) ||
+        (Array.isArray(message.metadata?.legacyHistory?.plan) &&
+          message.metadata.legacyHistory.plan.length > 0) ||
         (Array.isArray(message.toolCalls) && message.toolCalls.length > 0)
       );
     }) ??
@@ -689,6 +697,11 @@ export function createActivitySnapshot(
     lastSource?.stopReason ??
     ""
   ).trim();
+  const terminal =
+    lastSource?.metadata?.run?.terminal ??
+    lastSource?.activity?.terminal ??
+    lastSource?.terminal ??
+    null;
   const durationMs = sources.reduce(
     (total, item) =>
       total + Number(
@@ -703,7 +716,7 @@ export function createActivitySnapshot(
   );
   const fallbackPlan =
     latestPlanEvent?.plan ??
-    lastSource?.plan ??
+    lastSource?.metadata?.legacyHistory?.plan ??
     [];
   const planState = normalizePlanStateForView(
     lastSource,
@@ -732,6 +745,7 @@ export function createActivitySnapshot(
     "cancelling"
   ].includes(lastSource?.state);
   const failed =
+    terminal?.kind === "failure" ||
     planStats.blocked ||
     toolCalls.some(
       (toolCall) =>
@@ -739,6 +753,7 @@ export function createActivitySnapshot(
     ) ||
     ["failed"].includes(lastSource?.activity?.status);
   const aborted =
+    terminal?.kind === "cancelled" ||
     lastSource?.status === "aborted" ||
     ["stopping", "cancelling"].includes(lastSource?.state) ||
     lastSource?.activity?.status === "cancelled" ||
@@ -748,6 +763,7 @@ export function createActivitySnapshot(
     );
 
   const interrupted =
+    terminal?.kind === "continuable" ||
     lastSource?.status === "interrupted" ||
     lastSource?.activity?.status === "interrupted" ||
     stopReason === "interrupted";
@@ -794,6 +810,7 @@ export function createActivitySnapshot(
     batches,
     durationMs,
     stopReason,
+    terminal,
     runtimeRecovery,
     runtimeDiagnostics,
     providerRuntimeDiagnostics,

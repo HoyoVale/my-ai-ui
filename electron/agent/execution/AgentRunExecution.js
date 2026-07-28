@@ -30,7 +30,8 @@ import {
 
 import {
   formatAgentError,
-  isAbortError
+  isCancellationRequested,
+  throwIfAborted
 } from "../agentErrors.js";
 
 import {
@@ -76,7 +77,8 @@ import {
 } from "../finalization.js";
 
 import {
-  RUN_OUTCOMES
+  RUN_OUTCOMES,
+  recoveryOutcomeFromSnapshot
 } from "../RunStateMachine.js";
 
 import {
@@ -86,6 +88,15 @@ import {
 import {
   CoreLiteRunLoop
 } from "./CoreLiteRunLoop.js";
+
+import {
+  resolveProviderRetry,
+  waitForProviderRetry
+} from "../ProviderRetryPolicy.js";
+
+import {
+  resolveRunTerminalPresentation
+} from "../RunTerminalPresentation.js";
 
 import {
   getTaskResultDirectory,
@@ -137,6 +148,7 @@ function runtimeFinishEvent(outcome) {
   return "RUN_FAILED";
 }
 
+
 export const agentRunExecution = {
   async runE2EMessage(options = {}) {
     const {
@@ -166,8 +178,9 @@ export const agentRunExecution = {
             runSettings,
             abortController.signal
           );
-        session.approvalController =
-          approvalController;
+        session.attachApprovalController(
+          approvalController
+        );
         session.toolSecurity =
           approvalController.securitySnapshot();
 
@@ -190,11 +203,11 @@ export const agentRunExecution = {
           runId,
           workspaceId: session.workspaceId ?? "",
           mode: session.mode ?? "chat",
-          segmentId: session.currentSegmentId,
+          scopeId: session.currentRunUnitId,
           capabilityRequest:
             session.skillRuntime?.capabilityRequest ?? null
         });
-        session.toolSession = toolSession;
+        session.attachToolSession(toolSession);
 
         if (!toolSession.tools.write_text_file) {
           const error = new Error(
@@ -224,7 +237,7 @@ export const agentRunExecution = {
           `E2E_TOOL_WRITE_OK:${writeResult.data.path}`;
         session.finalText = assistantText;
         appendResponseChunk(assistantText);
-        this.finalizeRun({
+        await this.finalizeRun({
           runId,
           conversationId,
           executionStopReason: RUN_STOP_REASONS.COMPLETED,
@@ -266,7 +279,7 @@ export const agentRunExecution = {
 
       const assistantText =
         session.finalText.trim();
-      this.finalizeRun({
+      await this.finalizeRun({
         runId,
         conversationId,
         executionStopReason: RUN_STOP_REASONS.COMPLETED,
@@ -275,8 +288,10 @@ export const agentRunExecution = {
       });
     } catch (error) {
       if (
-        abortController.signal.aborted ||
-        isAbortError(error)
+        isCancellationRequested(
+          session,
+          abortController.signal
+        )
       ) {
         await this.finishCancelledRun({
           runId,
@@ -287,15 +302,14 @@ export const agentRunExecution = {
 
       if (this.isCurrentRun(runId)) {
         const friendlyMessage = formatAgentError(error);
-        const errorText = `⚠ ${friendlyMessage}`;
-        appendResponseChunk(errorText);
-        this.finalizeRun({
+        await this.finalizeRun({
           runId,
           conversationId,
           executionStopReason: RUN_STOP_REASONS.MODEL_ERROR,
           outcome: RUN_OUTCOMES.FAILED,
-          content: errorText,
-          lastError: friendlyMessage
+          content: "",
+          lastError: friendlyMessage,
+          error
         });
       }
     }
@@ -315,158 +329,251 @@ export const agentRunExecution = {
     approvalTimeoutMs,
     defaultToolTimeoutMs
   }) {
-    this.assertProviderAvailable(runtime);
-    const result = streamText({
-      model: runtime.model,
-      system: systemPrompt,
-      messages: context.messages,
-      tools: toolSession.tools,
-      stopWhen: stepCountIs(maxSteps),
-      ...runtime.requestOptions,
-      abortSignal: abortController.signal,
-      timeout: createAgentStreamTimeout({
-        modelTimeoutMs: modelSettings.timeoutMs,
-        remainingRunMs,
-        approvalTimeoutMs,
-        defaultToolTimeoutMs,
-        hasApprovalGatedTools: toolSession.definitions.some(
-          (definition) => [
-            "local_write",
-            "remote_write",
-            "destructive"
-          ].includes(definition.runtimeContract?.effect)
-        )
-      }),
-      prepareStep: ({
-        stepNumber,
-        initialMessages,
-        responseMessages
-      }) => {
-        if (
-          stepNumber < 4 ||
-          !this.isCurrentRun(runId)
-        ) {
-          return undefined;
-        }
+    const retryDeadline = Number.isFinite(Number(remainingRunMs))
+      ? Date.now() + Math.max(0, Number(remainingRunMs))
+      : Infinity;
+    const maxProviderAttempts = Math.max(
+      1,
+      Math.min(6, (Number(modelSettings.maxRetries) || 0) + 1)
+    );
 
-        const compacted = compactRunStepContext({
-          initialMessages,
-          responseMessages,
-          checkpoint: this.buildActiveCheckpoint(),
-          contextTokenBudget:
-            modelSettings.contextTokenBudget,
-          outputReserve:
-            modelSettings.maxOutputTokens ?? 4096
-        });
+    for (
+      let attempt = 1;
+      attempt <= maxProviderAttempts;
+      attempt += 1
+    ) {
+      throwIfAborted(abortController.signal);
+      const recordsBeforeAttempt = toolSession.getRecords().length;
+      let publicOutputStarted = false;
 
-        if (!compacted.compacted) {
-          return undefined;
-        }
+      try {
+        this.assertProviderAvailable(runtime);
+        const currentRemainingMs = Number.isFinite(retryDeadline)
+          ? Math.max(0, retryDeadline - Date.now())
+          : remainingRunMs;
+        const result = streamText({
+          model: runtime.model,
+          system: systemPrompt,
+          messages: context.messages,
+          tools: toolSession.tools,
+          stopWhen: stepCountIs(maxSteps),
+          ...runtime.requestOptions,
+          maxRetries: 0,
+          abortSignal: abortController.signal,
+          timeout: createAgentStreamTimeout({
+            modelTimeoutMs: modelSettings.timeoutMs,
+            remainingRunMs: currentRemainingMs,
+            approvalTimeoutMs,
+            defaultToolTimeoutMs,
+            hasApprovalGatedTools: toolSession.definitions.some(
+              (definition) => [
+                "local_write",
+                "remote_write",
+                "destructive"
+              ].includes(definition.runtimeContract?.effect)
+            )
+          }),
+          prepareStep: ({
+            stepNumber,
+            initialMessages,
+            responseMessages
+          }) => {
+            if (
+              stepNumber < 4 ||
+              !this.isCurrentRun(runId)
+            ) {
+              return undefined;
+            }
 
-        this.activeRun.contextCompactionCount += 1;
-        this.activeRun.tokenLedger?.recordCompaction(compacted);
-        this.persistActiveRunCheckpoint({
-          status: "running"
-        });
+            const compacted = compactRunStepContext({
+              initialMessages,
+              responseMessages,
+              checkpoint: this.buildActiveCheckpoint(),
+              contextTokenBudget:
+                modelSettings.contextTokenBudget,
+              outputReserve:
+                modelSettings.maxOutputTokens ?? 4096
+            });
 
-        return {
-          messages: compacted.messages,
-          instructions: [
-            systemPrompt,
-            compacted.checkpointInstruction,
-            "Earlier tool details were compacted to protect the context budget. Use saved tool results and receipts; do not repeat completed work."
-          ].filter(Boolean).join("\n\n")
-        };
-      },
-      onStepStart: ({ stepNumber }) => {
-        if (!this.isCurrentRun(runId)) {
-          return;
-        }
+            if (!compacted.compacted) {
+              return undefined;
+            }
 
-        this.activeRun.currentStepText = "";
-        this.activeRun.liveStepRole = inferLiveStepRole({
-          records: toolSession.getRecords()
-        });
-        this.activeRun.stepNumber =
-          Number(stepNumber) || 0;
-        const stepId =
-          `${runUnit.id}:step:${this.activeRun.stepNumber}`;
-        this.activeRun.toolSession?.beginStep?.({
-          stepId,
-          segmentId: runUnit.id
-        });
-        void this.activeRun.toolSession?.recordRuntimeEvent?.(
-          "MODEL_STEP_STARTED",
-          {
-            stepId,
-            stepNumber: this.activeRun.stepNumber
+            this.activeRun.contextCompactionCount += 1;
+            this.activeRun.tokenLedger?.recordCompaction(compacted);
+            this.persistActiveRunCheckpoint({
+              status: "running"
+            });
+
+            return {
+              messages: compacted.messages,
+              instructions: [
+                systemPrompt,
+                compacted.checkpointInstruction,
+                "Earlier tool details were compacted to protect the context budget. Use saved tool results and receipts; do not repeat completed work."
+              ].filter(Boolean).join("\n\n")
+            };
           },
-          { runId, segmentId: runUnit.id }
-        );
-        this.setStatus({ ...this.status });
-      },
-      onStepEnd: (step) => {
-        this.handleStepEnd(runId, step);
-      },
-      onError: ({ error }) => {
-        console.error("模型流式请求错误：", error);
-      }
-    });
+          onStepStart: ({ stepNumber }) => {
+            if (!this.isCurrentRun(runId)) {
+              return;
+            }
 
-    const publicStream = new PublicTextStreamSanitizer();
-    for await (const textPart of result.textStream) {
-      if (!this.isCurrentRun(runId)) {
-        break;
-      }
+            this.activeRun.currentStepText = "";
+            this.activeRun.liveStepRole = inferLiveStepRole({
+              records: toolSession.getRecords()
+            });
+            this.activeRun.stepNumber =
+              Number(stepNumber) || 0;
+            const stepId =
+              `${runUnit.id}:attempt:${attempt}:step:${this.activeRun.stepNumber}`;
+            this.activeRun.toolSession?.beginStep?.({
+              stepId,
+              scopeId: runUnit.id
+            });
+            void this.activeRun.toolSession?.recordRuntimeEvent?.(
+              "MODEL_STEP_STARTED",
+              {
+                stepId,
+                stepNumber: this.activeRun.stepNumber,
+                providerAttempt: attempt
+              },
+              { runId, scopeId: runUnit.id }
+            );
+            this.setStatus({ ...this.status });
+          },
+          onStepEnd: (step) => {
+            this.handleStepEnd(runId, step);
+          }
+        });
 
-      if (textPart) {
-        const publicChunk = publicStream.push(textPart);
-        if (publicChunk) {
-          this.activeRun.currentStepText += publicChunk;
-          appendResponseChunk(publicChunk);
-          this.setStatus({ ...this.status });
+        const publicStream = new PublicTextStreamSanitizer();
+        for await (const textPart of result.textStream) {
+          throwIfAborted(abortController.signal);
+          if (!this.isCurrentRun(runId)) {
+            break;
+          }
+
+          if (textPart) {
+            publicOutputStarted = true;
+            const publicChunk = publicStream.push(textPart);
+            if (publicChunk) {
+              this.activeRun.currentStepText += publicChunk;
+              appendResponseChunk(publicChunk);
+              this.setStatus({ ...this.status });
+            }
+          }
         }
+        throwIfAborted(abortController.signal);
+        const finalPublicChunk = publicStream.flush();
+        if (finalPublicChunk && this.isCurrentRun(runId)) {
+          publicOutputStarted = true;
+          this.activeRun.currentStepText += finalPublicChunk;
+          appendResponseChunk(finalPublicChunk);
+        }
+
+        throwIfAborted(abortController.signal);
+        const records = toolSession.getRecords();
+        const finishReason = await settleResultValue(
+          result.finishReason,
+          "unknown"
+        );
+        const steps = await settleResultValue(
+          result.steps,
+          []
+        );
+        const executionStopReason = inferRunStopReason({
+          records,
+          finishReason,
+          steps,
+          maxSteps
+        });
+        const runUnitRecords = records.filter(
+          (record) => record?.segmentId === runUnit.id
+        );
+        const batchFailed = hasActiveToolFailures(
+          runUnitRecords
+        );
+        this.activeRun.activityStore?.closeBatch(
+          batchFailed ? "failed" : "completed"
+        );
+
+        this.noteProviderSuccess(runtime);
+        return {
+          records,
+          finishReason,
+          steps,
+          executionStopReason,
+          finalText: this.activeRun.finalText,
+          providerAttempts: attempt
+        };
+      } catch (error) {
+        const cancellationRequested = isCancellationRequested(
+          this.activeRun,
+          abortController.signal
+        );
+        if (cancellationRequested) {
+          throw error;
+        }
+
+        const classification = this.noteProviderFailure(runtime, error, {
+          cancellationRequested
+        });
+        const recordsAfterAttempt = toolSession.getRecords();
+        const decision = resolveProviderRetry({
+          error,
+          attempt,
+          maxRetries: modelSettings.maxRetries,
+          cancellationRequested,
+          publicOutputStarted,
+          toolActivityStarted:
+            recordsAfterAttempt.length > recordsBeforeAttempt,
+          remainingMs: Number.isFinite(retryDeadline)
+            ? Math.max(0, retryDeadline - Date.now())
+            : Infinity
+        });
+
+        if (!decision.retry) {
+          if (error && typeof error === "object") {
+            error.providerFailureRecorded = true;
+            error.providerClassification = classification;
+            if (!error.code) error.code = classification.code;
+            error.retryable = classification.retryable;
+          }
+          throw error;
+        }
+
+        this.activeRun.providerRetryCount =
+          Math.max(0, Number(this.activeRun.providerRetryCount) || 0) + 1;
+        this.activeRun.activityStore?.recordProgress({
+          title: `模型服务暂时不可用，正在进行第 ${decision.nextAttempt} 次尝试`,
+          status: "retrying"
+        });
+        await toolSession.recordRuntimeEvent?.(
+          "PROVIDER_RETRY_SCHEDULED",
+          {
+            attempt,
+            nextAttempt: decision.nextAttempt,
+            maxAttempts: decision.maxAttempts,
+            delayMs: decision.delayMs,
+            category: classification.category,
+            code: classification.code
+          },
+          { runId, scopeId: runUnit.id }
+        );
+        this.persistActiveRunCheckpoint({ status: "running" });
+        this.setStatus({ ...this.status });
+        await waitForProviderRetry(
+          decision.delayMs,
+          abortController.signal
+        );
       }
     }
-    const finalPublicChunk = publicStream.flush();
-    if (finalPublicChunk && this.isCurrentRun(runId)) {
-      this.activeRun.currentStepText += finalPublicChunk;
-      appendResponseChunk(finalPublicChunk);
-    }
 
-    const records = toolSession.getRecords();
-    const finishReason = await settleResultValue(
-      result.finishReason,
-      "unknown"
-    );
-    const steps = await settleResultValue(
-      result.steps,
-      []
-    );
-    const executionStopReason = inferRunStopReason({
-      records,
-      finishReason,
-      steps,
-      maxSteps
-    });
-    const segmentRecords = records.filter(
-      (record) => record?.segmentId === runUnit.id
-    );
-    const batchFailed = hasActiveToolFailures(
-      segmentRecords
-    );
-    this.activeRun.activityStore?.closeBatch(
-      batchFailed ? "failed" : "completed"
-    );
-
-    this.noteProviderSuccess(runtime);
-    return {
-      records,
-      finishReason,
-      steps,
-      executionStopReason,
-      finalText: this.activeRun.finalText
-    };
+    const error = new Error("Provider retry attempts were exhausted.");
+    error.code = "PROVIDER_RETRY_EXHAUSTED";
+    error.retryable = false;
+    throw error;
   },
 
   async runMessage(options = {}) {
@@ -506,14 +613,16 @@ export const agentRunExecution = {
           .getToolDefinitions(runSettings)
       ];
 
+      throwIfAborted(abortController.signal);
       const approvalController =
         this.createToolApprovalController(
           runId,
           runSettings,
           abortController.signal
         );
-      session.approvalController =
-        approvalController;
+      session.attachApprovalController(
+        approvalController
+      );
       session.toolSecurity =
         approvalController.securitySnapshot();
 
@@ -538,9 +647,9 @@ export const agentRunExecution = {
         runId,
         workspaceId: session.workspaceId ?? "",
         mode: session.mode ?? "chat",
-        getSegmentId: () =>
-          session.currentSegmentId,
-        segmentId: session.currentSegmentId,
+        getScopeId: () =>
+          session.currentRunUnitId,
+        scopeId: session.currentRunUnitId,
         capabilityRequest:
           session.skillRuntime?.capabilityRequest ?? null,
         onFileMutation: (mutation) => {
@@ -552,7 +661,7 @@ export const agentRunExecution = {
         }
       });
 
-      session.toolSession = toolSession;
+      session.attachToolSession(toolSession);
       session.tokenLedger?.setToolDefinitions(
         toolSession.definitions
       );
@@ -590,12 +699,72 @@ export const agentRunExecution = {
         }
       }
 
+      await toolSession.reconcileRuntime?.();
+      const runtimeRecovery =
+        toolSession.getRuntimeRecovery?.();
+      const runtimeCursor =
+        toolSession.getRuntimeCursor?.() ?? {};
+      session.reportedReceiptIds = [
+        ...new Set([
+          ...(session.reportedReceiptIds ?? []),
+          ...(runtimeCursor.reportedReceiptIds ?? [])
+        ])
+      ];
+
+      if (runtimeRecovery?.unresolvedCount > 0) {
+        session.activityStore?.recordRecovery(
+          runtimeRecovery
+        );
+        const recoveryOutcome =
+          recoveryOutcomeFromSnapshot(runtimeRecovery) ||
+          RUN_OUTCOMES.UNKNOWN;
+        const recoveryTerminal = resolveRunTerminalPresentation({
+          outcome: recoveryOutcome,
+          stopReason: RUN_STOP_REASONS.INTERRUPTED,
+          resumable: true,
+          runtimeRecovery
+        });
+        const recoveryText = recoveryTerminal.message;
+        const checkpoint = this.buildActiveCheckpoint();
+        if (checkpoint) {
+          await toolSession.storeRuntimeCheckpoint?.(
+            checkpoint,
+            { runId, scopeId: session.currentRunUnitId }
+          );
+        }
+        await toolSession.recordRuntimeEvent?.(
+          "RUN_RESUME_BLOCKED",
+          {
+            outcome: recoveryOutcome,
+            unresolvedTools: runtimeRecovery.unresolvedCount,
+            runtimeFlavor: "core-lite"
+          },
+          { runId, reason: "tool_recovery_required" }
+        );
+        startResponseStream();
+        appendResponseChunk(recoveryText);
+        await this.finalizeRun({
+          runId,
+          conversationId,
+          executionStopReason: RUN_STOP_REASONS.INTERRUPTED,
+          outcome: recoveryOutcome,
+          content: recoveryText
+        });
+        return;
+      }
+
       await toolSession.recordRuntimeEvent?.(
-        "RUN_STARTED",
+        session.continuationCount > 0
+          ? "RUN_RESUMED"
+          : "RUN_STARTED",
         {
           objective: session.objective,
           continuationCount:
             session.continuationCount,
+          reportedReceiptCount:
+            session.reportedReceiptIds.length,
+          checkpointVersion:
+            session.checkpointVersion,
           skillId:
             session.skillRuntime?.skill?.id ?? "",
           skillIds:
@@ -606,14 +775,6 @@ export const agentRunExecution = {
         },
         { runId }
       );
-      await toolSession.reconcileRuntime?.();
-      const runtimeRecovery =
-        toolSession.getRuntimeRecovery?.();
-      if (runtimeRecovery?.unresolvedCount > 0) {
-        session.activityStore?.recordRecovery(
-          runtimeRecovery
-        );
-      }
 
       const activeCapabilityContext =
         buildCapabilityContext({
@@ -658,15 +819,15 @@ export const agentRunExecution = {
           createCheckpoint: () =>
             this.buildActiveCheckpoint(),
           onRunStart: async ({ runUnit }) => {
-            session.currentSegmentId = runUnit.id;
+            session.currentRunUnitId = runUnit.id;
             await toolSession.recordRuntimeEvent?.(
-              "SEGMENT_STARTED",
+              "RUN_UNIT_STARTED",
               {
-                segmentIndex: 1,
+                runUnitIndex: 1,
                 objective: session.objective,
                 runtimeFlavor: "core-lite"
               },
-              { runId, segmentId: runUnit.id }
+              { runId, scopeId: runUnit.id }
             );
             this.markRunExecuting();
             this.persistActiveRunCheckpoint({
@@ -712,14 +873,14 @@ export const agentRunExecution = {
               stopReason: runOutcome.stopReason
             });
             await toolSession.recordRuntimeEvent?.(
-              "SEGMENT_COMMITTED",
+              "RUN_UNIT_COMMITTED",
               {
                 decision: runOutcome.decision,
                 stopReason: runOutcome.stopReason,
                 checkpointStored: Boolean(checkpoint),
                 runtimeFlavor: "core-lite"
               },
-              { runId, segmentId: runUnit.id }
+              { runId, scopeId: runUnit.id }
             );
             if (checkpoint) {
               await toolSession.storeRuntimeCheckpoint?.(
@@ -729,7 +890,7 @@ export const agentRunExecution = {
                     toolSession.getRuntimeRecovery?.(),
                   ...toolSession.getRuntimeCursor?.()
                 },
-                { runId, segmentId: runUnit.id }
+                { runId, scopeId: runUnit.id }
               );
             }
           }
@@ -794,7 +955,7 @@ export const agentRunExecution = {
         { runId }
       );
 
-      this.finalizeRun({
+      await this.finalizeRun({
         runId,
         conversationId,
         executionStopReason:
@@ -804,10 +965,20 @@ export const agentRunExecution = {
           runResult.finalText || "任务已处理完成。"
       });
     } catch (error) {
-      this.noteProviderFailure(runtime, error);
+      let providerClassification = error?.providerClassification ?? null;
+      if (!error?.providerFailureRecorded) {
+        providerClassification = this.noteProviderFailure(runtime, error, {
+          cancellationRequested: isCancellationRequested(
+            session,
+            abortController.signal
+          )
+        });
+      }
       if (
-        abortController.signal.aborted ||
-        isAbortError(error)
+        isCancellationRequested(
+          session,
+          abortController.signal
+        )
       ) {
         await this.finishCancelledRun({
           runId,
@@ -867,7 +1038,7 @@ export const agentRunExecution = {
 
         startResponseStream();
         appendResponseChunk(fallback);
-        this.finalizeRun({
+        await this.finalizeRun({
           runId,
           conversationId,
           executionStopReason,
@@ -898,16 +1069,16 @@ export const agentRunExecution = {
           );
       }
 
-      const errorText = `⚠ ${friendlyMessage}`;
       startResponseStream();
-      appendResponseChunk(errorText);
-      this.finalizeRun({
+      await this.finalizeRun({
         runId,
         conversationId,
         executionStopReason,
         outcome: RUN_OUTCOMES.FAILED,
-        content: errorText,
-        lastError: friendlyMessage
+        content: "",
+        lastError: friendlyMessage,
+        error,
+        providerClassification
       });
     }
   }

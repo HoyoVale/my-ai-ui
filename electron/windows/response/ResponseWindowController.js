@@ -25,6 +25,14 @@ import {
   getResponseMetrics
 } from "./responseConstants.js";
 
+import {
+  ResponseStreamReplayBuffer
+} from "./ResponseStreamReplayBuffer.js";
+
+import {
+  ownsResponseWindow
+} from "./responseWindowOwnership.js";
+
 function clamp(
   value,
   min,
@@ -41,11 +49,9 @@ export class ResponseWindowController {
     this.window = null;
 
     this.ready = false;
-    this.streamActive = false;
-    this.dismissed = false;
-    this.hasContent = false;
-
     this.pendingMessages = [];
+    this.maxPendingMessages = 32;
+    this.streamReplay = new ResponseStreamReplayBuffer();
 
     this.attachedPet = null;
     this.petMoveHandler = null;
@@ -103,7 +109,7 @@ export class ResponseWindowController {
         settings
       );
 
-    this.window =
+    const responseWindow =
       createBaseWindow({
         x: placement.x,
         y: placement.y,
@@ -158,18 +164,22 @@ export class ResponseWindowController {
         }
       });
 
+    this.window = responseWindow;
     this.ready = false;
     this.currentSide =
       placement.side;
 
-    this.window
+    responseWindow
       .webContents
       .on(
         "did-start-loading",
         () => {
           if (
-            !this.window ||
-            this.window.isDestroyed()
+            !ownsResponseWindow(
+              this.window,
+              responseWindow
+            ) ||
+            responseWindow.isDestroyed()
           ) {
             return;
           }
@@ -183,7 +193,7 @@ export class ResponseWindowController {
         }
       );
 
-    this.window.loadURL(
+    responseWindow.loadURL(
       getRendererUrl(
         "/response"
       )
@@ -191,16 +201,14 @@ export class ResponseWindowController {
 
     this.attachToPet(pet);
 
-    this.window.on(
+    responseWindow.on(
       "closed",
       () => {
-        this.clearAutoClose();
-        this.detachFromPet();
-        this.resetAfterClose();
+        this.handleWindowClosed(responseWindow);
       }
     );
 
-    return this.window;
+    return responseWindow;
   }
 
   resize(requestedSize) {
@@ -334,15 +342,16 @@ export class ResponseWindowController {
   startStream() {
     const window = this.open();
 
-    if (!window) {
-      return;
-    }
-
     this.clearAutoClose();
 
     this.streamActive = true;
     this.dismissed = false;
     this.hasContent = false;
+    this.streamReplay.start();
+
+    if (!window) {
+      return;
+    }
 
     /*
      * 每次新回复都从最小逻辑尺寸开始。
@@ -393,9 +402,15 @@ export class ResponseWindowController {
 
     if (!this.streamActive) {
       this.startStream();
+    } else if (
+      !this.window ||
+      this.window.isDestroyed()
+    ) {
+      this.open();
     }
 
     this.hasContent = true;
+    this.streamReplay.append(chunk);
 
     this.send(
       IPC_CHANNELS
@@ -413,12 +428,42 @@ export class ResponseWindowController {
     this.revealForStream();
   }
 
-  endStream() {
-    if (!this.window) {
+  replaceText(value) {
+    if (this.dismissed) {
       return;
     }
 
+    const text = String(value ?? "");
+    if (!this.streamActive && text) {
+      this.startStream();
+    } else if (
+      text &&
+      (!this.window || this.window.isDestroyed())
+    ) {
+      this.open();
+    }
+
+    this.hasContent = Boolean(text);
+    this.streamReplay.replace(text);
+    this.send(
+      IPC_CHANNELS
+        .response
+        .STREAM_REPLACE,
+      text
+    );
+
+    if (text) {
+      this.revealForStream();
+    }
+  }
+
+  endStream() {
     this.streamActive = false;
+    this.streamReplay.end();
+
+    if (!this.window) {
+      return;
+    }
 
     this.send(
       IPC_CHANNELS
@@ -436,6 +481,7 @@ export class ResponseWindowController {
 
     this.streamActive = false;
     this.hasContent = false;
+    this.streamReplay.clear();
 
     this.send(
       IPC_CHANNELS
@@ -464,6 +510,7 @@ export class ResponseWindowController {
 
     this.dismissed = true;
     this.hasContent = false;
+    this.streamReplay.clear();
 
     this.send(
       IPC_CHANNELS
@@ -506,6 +553,7 @@ export class ResponseWindowController {
 
     this.ready = true;
 
+    this.replayStreamState();
     this.flushPendingMessages();
 
     this.send(
@@ -528,20 +576,85 @@ export class ResponseWindowController {
     }
 
     if (!this.ready) {
-      this.pendingMessages.push({
-        channel,
-        args
-      });
-
+      this.queuePendingMessage(channel, args);
       return;
     }
 
-    this.window
-      .webContents
-      .send(
+    if (!this.sendNow(channel, args)) {
+      if (
+        this.window &&
+        !this.window.isDestroyed()
+      ) {
+        this.ready = false;
+        this.queuePendingMessage(channel, args);
+      }
+    }
+  }
+
+  queuePendingMessage(channel, args) {
+    if (
+      this.streamReplay.isStreamChannel(
         channel,
-        ...args
+        IPC_CHANNELS.response
+      )
+    ) {
+      return;
+    }
+
+    const existingIndex = this.pendingMessages.findIndex(
+      (message) => message.channel === channel
+    );
+    if (existingIndex >= 0) {
+      this.pendingMessages.splice(existingIndex, 1);
+    }
+    this.pendingMessages.push({ channel, args });
+    if (this.pendingMessages.length > this.maxPendingMessages) {
+      this.pendingMessages.splice(
+        0,
+        this.pendingMessages.length - this.maxPendingMessages
       );
+    }
+  }
+
+  replayStreamState() {
+    if (
+      !this.window ||
+      this.window.isDestroyed() ||
+      !this.ready
+    ) {
+      return false;
+    }
+
+    const messages = this.streamReplay.replayMessages(
+      IPC_CHANNELS.response
+    );
+    for (const message of messages) {
+      if (!this.sendNow(message.channel, message.args)) {
+        this.ready = false;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  sendNow(channel, args) {
+    if (
+      !this.window ||
+      this.window.isDestroyed() ||
+      this.window.webContents.isDestroyed()
+    ) {
+      return false;
+    }
+
+    try {
+      this.window.webContents.send(channel, ...args);
+      return true;
+    } catch (error) {
+      if (!this.window.webContents.isDestroyed()) {
+        console.warn("发送 Response 流消息失败：", error);
+      }
+      return false;
+    }
   }
 
   flushPendingMessages() {
@@ -558,16 +671,18 @@ export class ResponseWindowController {
 
     this.pendingMessages = [];
 
-    for (
-      const message
-      of messages
-    ) {
-      this.window
-        .webContents
-        .send(
-          message.channel,
-          ...message.args
-        );
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      if (!this.sendNow(message.channel, message.args)) {
+        if (
+          this.window &&
+          !this.window.isDestroyed()
+        ) {
+          this.ready = false;
+          this.pendingMessages.push(...messages.slice(index));
+        }
+        break;
+      }
     }
   }
 
@@ -683,6 +798,13 @@ export class ResponseWindowController {
   }
 
   attachToPet(pet) {
+    /*
+     * A destroyed Response window can be replaced by the next stream chunk
+     * before Electron dispatches the old window's `closed` event. Remove the
+     * previous attachment first so a stale close cannot leave duplicate pet
+     * listeners behind.
+     */
+    this.detachFromPet();
     this.attachedPet = pet;
 
     this.petMoveHandler = () => {
@@ -755,6 +877,28 @@ export class ResponseWindowController {
     this.petClosedHandler = null;
   }
 
+  handleWindowClosed(closedWindow) {
+    /*
+     * Ignore stale close callbacks. A new Response window may already own the
+     * controller while the old BrowserWindow is finishing its asynchronous
+     * close lifecycle. Resetting shared state here would orphan the new window
+     * and redirect the remaining stream into yet another window.
+     */
+    if (
+      !ownsResponseWindow(
+        this.window,
+        closedWindow
+      )
+    ) {
+      return false;
+    }
+
+    this.clearAutoClose();
+    this.detachFromPet();
+    this.resetAfterClose();
+    return true;
+  }
+
   resetAfterClose() {
     const metrics =
       getResponseMetrics(
@@ -764,10 +908,6 @@ export class ResponseWindowController {
     this.window = null;
 
     this.ready = false;
-    this.streamActive = false;
-    this.dismissed = false;
-    this.hasContent = false;
-
     this.pendingMessages = [];
 
     this.currentSide = "right";

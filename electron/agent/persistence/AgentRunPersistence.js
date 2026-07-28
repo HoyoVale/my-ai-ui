@@ -86,6 +86,19 @@ export const agentRunPersistence = {
       toolRuntime:
         this.activeRun.toolSession
           ?.getRuntimeRecovery?.() ?? null,
+      reportedReceiptIds:
+        this.activeRun.reportedReceiptIds ?? [],
+      partialResponse:
+        this.activeRun.cancellation?.requested === true &&
+        this.activeRun.runtimePreferences?.saveAbortedReplies === false
+          ? ""
+          : resolveActiveRunText(this.activeRun),
+      partialResponseRole:
+        this.activeRun.finalText
+          ? "final"
+          : this.activeRun.currentStepText
+            ? "commentary"
+            : "none",
       snapshotSource:
         "core-lite-agent-run-session",
       ...runtimeCursor
@@ -135,7 +148,8 @@ export const agentRunPersistence = {
   },
 
   persistActiveRunCheckpoint({
-    status = "running"
+    status = "running",
+    content = undefined
   } = {}) {
     if (
       !this.activeRun ||
@@ -150,7 +164,9 @@ export const agentRunPersistence = {
 
     return this.persistAssistantResponse({
       conversationId: this.activeRun.conversationId,
-      content: resolveActiveRunText(this.activeRun),
+      content: content === undefined
+        ? resolveActiveRunText(this.activeRun)
+        : String(content ?? ""),
       status
     });
   },
@@ -240,14 +256,14 @@ export const agentRunPersistence = {
       },
       {
         runId,
-        segmentId: this.activeRun.currentSegmentId
+        scopeId: this.activeRun.currentRunUnitId
       }
     );
 
     this.activeRun.currentStepText = "";
     this.activeRun.liveStepRole = LIVE_STEP_ROLES.NONE;
     this.activeRun.toolSession?.endStep?.(
-      `${this.activeRun.currentSegmentId}:step:${this.activeRun.stepNumber}`
+      `${this.activeRun.currentRunUnitId}:step:${this.activeRun.stepNumber}`
     );
 
     this.persistActiveRunCheckpoint({
@@ -262,7 +278,8 @@ export const agentRunPersistence = {
     status = "complete",
     runOutcome = "",
     runPhase = "",
-    runResumable = false
+    runResumable = false,
+    runTerminal = null
   }) {
     if (!this.activeRun) {
       return null;
@@ -321,7 +338,9 @@ export const agentRunPersistence = {
         this.activeRun.stateMachine?.snapshot?.().phase ||
         ""
       ),
-      runResumable: runResumable === true
+      runResumable: runResumable === true,
+      runTerminal:
+        runTerminal ?? this.activeRun.terminal ?? null
     };
 
     if (this.activeRun.replaceMessageId) {

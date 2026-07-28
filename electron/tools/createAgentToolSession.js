@@ -54,10 +54,32 @@ import {
   resolveCapabilitySet
 } from "./capabilities/CapabilityResolver.js";
 
+async function waitForToolSchedulerIdle(
+  scheduler,
+  { timeoutMs = 2500, intervalMs = 10 } = {}
+) {
+  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+  while (true) {
+    const snapshot = scheduler?.snapshot?.() ?? {};
+    if (
+      Number(snapshot.active ?? 0) === 0 &&
+      Number(snapshot.queued ?? 0) === 0
+    ) {
+      return true;
+    }
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, Math.max(1, Number(intervalMs) || 10));
+    });
+  }
+}
+
 export function createAgentToolSession({
   activeModel = null,
   getAgentStatus = null,
-  getSegmentId = null,
+  getScopeId = null,
   abortSignal = null,
   onRecord = null,
   activityStore = null,
@@ -67,7 +89,7 @@ export function createAgentToolSession({
   runId = "",
   workspaceId = "",
   mode = null,
-  segmentId = "",
+  scopeId = "",
   faultInjector = null,
   externalDefinitions = [],
   authorizeTool = null,
@@ -75,8 +97,25 @@ export function createAgentToolSession({
   onFileMutation = null
 } = {}) {
   const runtimePartitionId = String(
-    segmentId || runId || ""
+    scopeId || runId || ""
   ).trim();
+  const sessionAbortController = new AbortController();
+  const onParentAbort = () => {
+    if (!sessionAbortController.signal.aborted) {
+      sessionAbortController.abort(
+        abortSignal?.reason ?? "parent-abort"
+      );
+    }
+  };
+  if (abortSignal?.aborted) {
+    onParentAbort();
+  } else {
+    abortSignal?.addEventListener(
+      "abort",
+      onParentAbort,
+      { once: true }
+    );
+  }
 
   const resultStore =
     new ToolResultStore({
@@ -84,7 +123,7 @@ export function createAgentToolSession({
         resultStoreDirectory,
       taskId,
       workspaceId,
-      segmentId: getSegmentId ? "" : runtimePartitionId
+      segmentId: getScopeId ? "" : runtimePartitionId
     });
   const runtimeDirectory = resultStoreDirectory
     ? path.join(resultStoreDirectory, "runtime")
@@ -176,7 +215,7 @@ export function createAgentToolSession({
   const executor =
     new ToolExecutor({
       context: {
-        abortSignal,
+        abortSignal: sessionAbortController.signal,
         taskId,
         workspaceId,
         segmentId: runtimePartitionId,
@@ -267,6 +306,22 @@ export function createAgentToolSession({
     definitions: capabilityDefinitions,
     executor
   });
+  let quiescePromise = null;
+  let closePromise = null;
+  const quiesce = (reason = "session-close") => {
+    if (quiescePromise) {
+      return quiescePromise;
+    }
+    quiescePromise = (async () => {
+      abortSignal?.removeEventListener("abort", onParentAbort);
+      if (!sessionAbortController.signal.aborted) {
+        sessionAbortController.abort(reason);
+      }
+      await subprocessSupervisor.terminateAll(reason);
+      return waitForToolSchedulerIdle(executor.scheduler);
+    })();
+    return quiescePromise;
+  };
 
   return {
     definitions:
@@ -284,7 +339,7 @@ export function createAgentToolSession({
             input,
             {
               ...(options ?? {}),
-              segmentId: getSegmentId?.() || runtimePartitionId
+              segmentId: getScopeId?.() || runtimePartitionId
             }
           ),
         {
@@ -331,6 +386,7 @@ export function createAgentToolSession({
       executor.beginStep(scope),
     endStep: (stepId) =>
       executor.endStep(stepId),
+    quiesce,
     flushPersistence: async () => {
       await Promise.all([
         executor.eventStore.flush(),
@@ -338,13 +394,19 @@ export function createAgentToolSession({
       ]);
       return true;
     },
-    closePersistence: async () => {
-      await subprocessSupervisor.terminateAll("session-close");
-      const results = await Promise.all([
-        executor.eventStore.close(),
-        executionLedger.close()
-      ]);
-      return results.every((result) => result !== false);
+    closePersistence: () => {
+      if (closePromise) {
+        return closePromise;
+      }
+      closePromise = (async () => {
+        await quiesce("session-close");
+        const results = await Promise.all([
+          executor.eventStore.close(),
+          executionLedger.close()
+        ]);
+        return results.every((result) => result !== false);
+      })();
+      return closePromise;
     }
   };
 }

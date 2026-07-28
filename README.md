@@ -100,9 +100,23 @@ Ollama              本地原生 Ollama API
 OpenAI-compatible   LM Studio、LiteLLM 与自建网关
 ```
 
-Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 决定当前主模型。旧版单模型设置会自动迁移；已经废弃的 Worker Runtime 配置在加载时会被忽略。
+Provider 保存共享的 Base URL、凭据模式和 API Key；每个 Provider 可以保存多个模型配置。每个模型独立保存 Model ID、上下文 Token 上限、最大输出 Tokens、Temperature 和超时。`activeProvider` 与 `activeModelId` 决定当前主模型。旧版单模型设置会自动迁移；已废弃的高级 Runtime 字段在加载时会被忽略且不会重新写回。
 
 Provider SDK、运行时解析和扩展步骤见 [`docs/MODEL_PROVIDERS.md`](docs/MODEL_PROVIDERS.md)。
+
+
+## Core Lite 架构边界
+
+当前生产架构和术语以以下文档为准：
+
+- [`docs/CORE_LITE_ARCHITECTURE.md`](docs/CORE_LITE_ARCHITECTURE.md)
+- [`docs/LEGACY_HISTORY_COMPATIBILITY.md`](docs/LEGACY_HISTORY_COMPATIBILITY.md)
+
+历史 Goal、Plan 和 Execution Thread 只作为有界只读数据保存在 metadata 中，普通读取 API 不再恢复旧顶层字段。
+
+最终回复流式与证据核验边界见 [`docs/CORE_LITE_PHASE4_1_123.md`](docs/CORE_LITE_PHASE4_1_123.md)。独立 Finalization 会逐块更新 Response 与 Conversation；若最终证据核验修正结论，Renderer 会原子替换临时文本，不会追加重复答案。
+
+运行生命周期的压力与故障注入边界见 [`docs/CORE_LITE_PHASE4_7_129.md`](docs/CORE_LITE_PHASE4_7_129.md)。真实 Electron 发布门槛见 [`docs/CORE_LITE_PHASE4_8_130.md`](docs/CORE_LITE_PHASE4_8_130.md) 与 [`docs/CORE_LITE_RELEASE_CANDIDATE.md`](docs/CORE_LITE_RELEASE_CANDIDATE.md)。4.8 会在 Windows/Linux 中执行长回复、窗口销毁重建、应用退出重启和报告汇总；长时间 soak 仍保持为显式命令，不拖慢普通开发循环。
 
 ## 全局字体与窗口密度
 
@@ -236,6 +250,31 @@ electron/conversation/
 npm test
 ```
 
+运行 Core Lite 4.8 发布候选契约与短压力门槛：
+
+```powershell
+npm run test:core-lite4.8
+npm run test:stress:core-lite4.8
+```
+
+运行真实 Electron 窗口、退出与重启故障注入：
+
+```powershell
+npm run test:e2e:electron-rc
+```
+
+生成当前平台的发布候选汇总：
+
+```powershell
+npm run report:core-lite4.8
+```
+
+运行三十分钟本地 soak：
+
+```powershell
+npm run test:soak:core-lite4.8
+```
+
 监听模式：
 
 ```powershell
@@ -305,10 +344,11 @@ npm run test:e2e:runtime-write-crash
 npm run test:benchmark
 npm run test:electron
 npm run test:e2e:electron-runtime-crash
+npm run test:e2e:electron-rc
 npm run test:e2e
 ```
 
-Linux 的 Electron 测试通过 `xvfb-run` 启动真实窗口；Windows 使用原生桌面会话。E2E 覆盖输入、会话、模型、工具审批、流式回复和关键布局断言。视觉质量与截图语义验收仍属于后续 Visual Verification 范围。
+Linux 的 Electron 测试通过 `xvfb-run` 启动真实窗口；Windows 使用原生桌面会话。E2E 覆盖输入、会话、模型、工具审批、流式回复、窗口销毁重建、应用退出重启和关键布局断言。每个平台都会上传 JSON 报告与失败截图，最终 CI Job 汇总 Windows/Linux 证据。视觉质量与截图语义验收仍属于后续 Visual Verification 范围。
 
 ## 独立会话窗口
 
@@ -343,11 +383,13 @@ npm run test:e2e
 → 验证完整消息
 ```
 
-失败截图保存在：
+失败截图和 Core Lite 4.8 机器可读报告保存在：
 
 ```text
-test-results/
+test-results/core-lite-4.8/
 ```
+
+`test-results/` 会被 Git 与源码归档器排除，不属于源码树。
 
 ## Linux Electron sandbox
 
@@ -498,3 +540,24 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - 大型工具结果自动保存并通过 `read_tool_result` 分页读取；
 - 标准化 Agent 停止原因；
 - Setting 设置项不再显示标题下方的重复说明文字，开发者工具 description 保留。
+
+
+### Core Lite 4 Runtime stability
+
+- Final responses stream incrementally and can be atomically replaced after evidence reconciliation.
+- Stop requests are idempotent and share one AbortSignal across model generation, Tool execution, approval waits and finalization.
+- Cancelled partial replies follow the Conversation setting, while uncertain Tool effects are preserved as recovery work instead of being reported as a clean cancellation.
+- A run interrupted during cancellation is recovered as cancelled and non-resumable unless Tool receipts require reconciliation.
+- Provider retries are Runtime-owned and occur only before public output or Tool activity; SDK-internal retries are disabled.
+- Provider and Tool errors share explicit retry categories, exponential backoff, `Retry-After` handling, cancellation authority and circuit-breaker boundaries.
+- Authentication, quota, invalid-request, conflict, permission and uncertain-side-effect failures are never blindly retried.
+- Checkpoint continuation validates runtime version, unresolved Tool effects, Coding workspace identity, model identity, Skill snapshots and credentials before appending a new user message.
+- Task-scoped Tool receipts and Journal state are reconciled before a resumed Provider loop starts; unresolved effects block continuation instead of being repeated.
+- Checkpoint v6 preserves bounded partial public output and restores it after an interrupted application process.
+- Every terminal exit resolves through one public terminal contract with a stable code, title, message, suggested action and resumable flag; raw Provider and Tool diagnostics remain developer-only.
+- Response, Conversation, Activity and persisted Message metadata use the same terminal presentation, including startup recovery and post-reconciliation state changes.
+- Each Run has one lifecycle settlement owner, so cancellation, timeout, Provider failure, Tool failure and normal completion cannot terminalize the same run twice.
+- Tool approval, Tool scheduler work, supervised subprocesses, persistence handles and window listeners are released through one idempotent cleanup scope.
+- Application quit waits for the active Agent Run to settle before flushing global persistence and closing MCP clients.
+- Real Electron release-candidate tests repeatedly reload and recreate Renderer windows, restart the application with one persisted profile, and verify active-stream shutdown recovery.
+- Windows and Linux lifecycle/Electron reports are aggregated into one hashed release-candidate summary before the candidate is considered publishable.

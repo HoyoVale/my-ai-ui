@@ -66,6 +66,7 @@
 }
 
 .conversation-task-state-mark.is-failed,
+.conversation-task-state-mark.is-attention,
 .conversation-task-state-mark.is-continuable {
   color: var(--conversation-danger);
 }

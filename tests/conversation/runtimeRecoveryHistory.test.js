@@ -186,4 +186,38 @@ test("ConversationManager keeps only the latest recovery record for a task", () 
   const latestAfter = after.find((message) => message.id === latestMessage.id);
   assert.equal(oldAfter.activity.checkpoint.toolRuntime.calls[0].callId, "call-old");
   assert.equal(latestAfter.activity.checkpoint.toolRuntime.needsReconciliation, 1);
+  assert.deepEqual(
+    latestAfter.activity.checkpoint.unresolvedCallIds,
+    ["call-latest"]
+  );
+
+  const resolved = manager.updateToolRuntimeRecovery({
+    taskId: "task-shared",
+    recovery: {
+      version: 2,
+      totalCalls: 1,
+      unresolvedCount: 0,
+      needsConfirmation: 0,
+      needsReconciliation: 0,
+      calls: [{
+        callId: "call-latest",
+        toolName: "remote.write",
+        recovery: "resolved",
+        state: "reported",
+        hasReceipt: true,
+        receiptId: "receipt-latest",
+        actions: []
+      }]
+    }
+  });
+  assert.equal(resolved.ok, true);
+
+  const finalMessage = manager
+    .getConversation(conversation.id)
+    .messages.find((message) => message.id === latestMessage.id);
+  assert.deepEqual(finalMessage.activity.checkpoint.unresolvedCallIds, []);
+  assert.deepEqual(
+    finalMessage.activity.checkpoint.reportedReceiptIds,
+    ["receipt-latest"]
+  );
 });

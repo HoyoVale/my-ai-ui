@@ -150,4 +150,39 @@ describe("interrupted run recovery", () => {
     );
   });
 
+  it("restores checkpoint partial output when the running message was empty", () => {
+    const manager = createManager();
+    const conversation = manager.create();
+    manager.appendMessage({
+      conversationId: conversation.id,
+      role: "assistant",
+      content: "",
+      status: "running",
+      taskId: "task-partial",
+      activity: {
+        version: 3,
+        taskId: "task-partial",
+        runId: "run-partial",
+        status: "running",
+        startedAt: 1000,
+        checkpoint: {
+          version: 6,
+          taskId: "task-partial",
+          runId: "run-partial",
+          partialResponse: "已经生成的部分回复。",
+          partialResponseRole: "final",
+          resumable: true
+        },
+        events: []
+      }
+    });
+
+    manager.recoverInterruptedRuns();
+    const message = manager.getConversation(conversation.id).messages[0];
+
+    assert.equal(message.status, "interrupted");
+    assert.equal(message.content, "已经生成的部分回复。");
+    assert.equal(message.activity.checkpoint.partialResponseRole, "final");
+  });
+
 });

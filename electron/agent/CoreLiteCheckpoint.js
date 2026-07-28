@@ -1,8 +1,14 @@
+export const CORE_LITE_RUN_CHECKPOINT_VERSION = 6;
+
 function text(value, maxLength = 1200) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
+}
+
+function boundedPublicText(value, maxLength = 8000) {
+  return String(value ?? "").replace(/\r\n/g, "\n").slice(0, maxLength);
 }
 
 function compactToolRecords(records = [], maxRecords = 16) {
@@ -107,9 +113,11 @@ export function createCoreLiteRunCheckpoint({
   toolRuntime = null,
   journalSequence = 0,
   journalChecksum = "",
-  committedSegmentId = "",
+  committedRunUnitId = "",
   reportedReceiptIds = [],
   unresolvedCallIds = [],
+  partialResponse = "",
+  partialResponseRole = "none",
   snapshotSource = "core-lite-agent-run-session",
   updatedAt = Date.now()
 } = {}) {
@@ -127,7 +135,7 @@ export function createCoreLiteRunCheckpoint({
     .map((call) => call.callId);
 
   return {
-    version: 5,
+    version: CORE_LITE_RUN_CHECKPOINT_VERSION,
     runtimeFlavor: "core-lite",
     taskId: text(taskId, 120),
     workspaceId: text(workspaceId, 120),
@@ -207,13 +215,21 @@ export function createCoreLiteRunCheckpoint({
       Math.round(Number(journalSequence) || 0)
     ),
     journalChecksum: text(journalChecksum, 128),
-    committedSegmentId: text(committedSegmentId, 120),
+    committedRunUnitId: text(committedRunUnitId, 120),
     reportedReceiptIds: [...new Set([
       ...(Array.isArray(reportedReceiptIds)
         ? reportedReceiptIds
         : []),
       ...runtimeReportedReceiptIds
     ].map((value) => text(value, 120)).filter(Boolean))].slice(0, 200),
+    partialResponse: boundedPublicText(partialResponse),
+    partialResponseRole: [
+      "none",
+      "commentary",
+      "final"
+    ].includes(partialResponseRole)
+      ? partialResponseRole
+      : "none",
     unresolvedCallIds: [...new Set([
       ...(Array.isArray(unresolvedCallIds)
         ? unresolvedCallIds
@@ -255,8 +271,14 @@ export function createCoreLiteCheckpointInstruction(checkpoint) {
     checkpoint.continuationCount
       ? `Continuation number: ${checkpoint.continuationCount}`
       : "",
+    checkpoint.reportedReceiptIds?.length
+      ? `Verified tool receipts already recorded: ${checkpoint.reportedReceiptIds.length}`
+      : "",
     toolLines.length > 0
       ? `Recent tool results:\n${toolLines.join("\n")}`
+      : "",
+    checkpoint.partialResponse
+      ? `Previous partial public response (continue from it without repeating completed wording verbatim):\n${checkpoint.partialResponse}`
       : "",
     checkpoint.toolRuntime?.unresolvedCount > 0
       ? `Unresolved tool effects: ${checkpoint.toolRuntime.unresolvedCount}. Do not repeat them automatically; request reconciliation or user confirmation as indicated by the saved state.`

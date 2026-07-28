@@ -97,10 +97,9 @@ export function createUserTaskViewModel(
   const failed = snapshot?.failed === true;
   const aborted = snapshot?.aborted === true;
   const running = live || snapshot?.running === true;
-  const continuable = interrupted || [
-    "agent_segment_limit",
-    "plan_incomplete",
-    "needs_input"
+  const terminal = snapshot?.terminal ?? null;
+  const continuable = terminal?.resumable === true || interrupted || [
+    "agent_step_limit"
   ].includes(snapshot?.stopReason);
 
   if (stopping) {
@@ -124,17 +123,26 @@ export function createUserTaskViewModel(
   if (continuable) {
     return {
       state: "continuable",
-      label: interrupted ? "任务已中断" : "任务可以继续",
-      detail: stopReasonLabel(snapshot?.stopReason || "interrupted"),
+      label: terminal?.title || (interrupted ? "任务已中断" : "任务可以继续"),
+      detail: terminal?.message || stopReasonLabel(snapshot?.stopReason || "interrupted"),
       canContinue: true
+    };
+  }
+
+  if (terminal?.kind === "attention") {
+    return {
+      state: "attention",
+      label: terminal.title || "需要处理",
+      detail: terminal.message || stopReasonLabel(snapshot?.stopReason),
+      canContinue: false
     };
   }
 
   if (failed) {
     return {
       state: "failed",
-      label: "处理遇到问题",
-      detail: stopReasonLabel(snapshot?.stopReason),
+      label: terminal?.title || "处理遇到问题",
+      detail: terminal?.message || stopReasonLabel(snapshot?.stopReason),
       canContinue: false
     };
   }
@@ -142,18 +150,18 @@ export function createUserTaskViewModel(
   if (aborted) {
     return {
       state: "cancelled",
-      label: "任务已取消",
-      detail: "",
+      label: terminal?.title || "任务已取消",
+      detail: terminal?.message || "",
       canContinue: false
     };
   }
 
   return {
     state: "completed",
-    label: durationMs > 0
+    label: terminal?.title || (durationMs > 0
       ? `处理了 ${formatTaskDuration(durationMs)}`
-      : "处理完成",
-    detail: "",
+      : "处理完成"),
+    detail: terminal?.message || "",
     canContinue: false
   };
 }

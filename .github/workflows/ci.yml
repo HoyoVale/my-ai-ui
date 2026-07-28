@@ -37,9 +37,17 @@ jobs:
       - name: Lint, unit tests and build
         run: npm run check
 
+      - name: Core Lite lifecycle fault injection
+        run: npm run test:stress:core-lite4.8
 
-
-
+      - name: Upload lifecycle stress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-lite-4.8-lifecycle-${{ matrix.os }}
+          path: test-results/core-lite-4.8/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Tool Runtime crash recovery matrix
         run: npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash
@@ -94,6 +102,7 @@ jobs:
           - windows-latest
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -117,6 +126,18 @@ jobs:
         if: runner.os == 'Windows'
         run: npm run test:e2e:electron-runtime-crash
 
+      - name: Real Electron release candidate (Linux)
+        if: runner.os == 'Linux'
+        env:
+          CORE_LITE_48_REPORT_DIR: test-results/core-lite-4.8/${{ runner.os }}
+        run: xvfb-run -a npm run test:e2e:electron-rc
+
+      - name: Real Electron release candidate (Windows)
+        if: runner.os == 'Windows'
+        env:
+          CORE_LITE_48_REPORT_DIR: test-results/core-lite-4.8/${{ runner.os }}
+        run: npm run test:e2e:electron-rc
+
       - name: Playwright Electron E2E (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:e2e
@@ -125,10 +146,50 @@ jobs:
         if: runner.os == 'Windows'
         run: npm run test:e2e
 
-      - name: Upload E2E failure screenshots
-        if: failure()
+      - name: Upload Electron release candidate reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-failure-${{ matrix.os }}
+          name: core-lite-4.8-electron-${{ matrix.os }}
           path: test-results/
-          if-no-files-found: ignore
+          if-no-files-found: warn
+          retention-days: 14
+
+  release-candidate:
+    name: Core Lite 4.8 release candidate
+    needs:
+      - core
+      - electron-smoke
+      - electron-e2e
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download release evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: core-lite-4.8-*
+          path: artifacts
+
+      - name: Build release candidate summary
+        run: >-
+          node scripts/create-release-candidate-summary.mjs
+          --root=artifacts
+          --output=test-results/core-lite-4.8/release-candidate-summary.json
+          --require-platforms=linux,win32
+
+      - name: Upload release candidate summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-lite-4.8-release-candidate-summary
+          path: test-results/core-lite-4.8/release-candidate-summary.json
+          if-no-files-found: error
+          retention-days: 30

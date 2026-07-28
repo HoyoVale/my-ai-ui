@@ -41,6 +41,14 @@ export function appendResponseChunk(
   );
 }
 
+export function replaceResponseText(
+  text
+) {
+  controller.replaceText(
+    text
+  );
+}
+
 export function endResponseStream() {
   controller.endStream();
 }

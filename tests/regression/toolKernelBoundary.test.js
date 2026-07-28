@@ -41,14 +41,10 @@ describe("Tool Runtime Kernel dependency boundary", () => {
       rendererRuntime.maxFinalizationAttempts,
       electronRuntime.maxFinalizationAttempts
     );
-    assert.equal(
-      rendererRuntime.maxSegments,
-      electronRuntime.maxSegments
-    );
-    assert.equal(
-      rendererRuntime.maxNoProgressSegments,
-      electronRuntime.maxNoProgressSegments
-    );
+    assert.equal(Object.hasOwn(rendererRuntime, "maxSegments"), false);
+    assert.equal(Object.hasOwn(electronRuntime, "maxSegments"), false);
+    assert.equal(Object.hasOwn(rendererRuntime, "maxNoProgressSegments"), false);
+    assert.equal(Object.hasOwn(electronRuntime, "maxNoProgressSegments"), false);
     assert.equal(
       rendererRuntime.finalizationTimeoutMs,
       electronRuntime.finalizationTimeoutMs

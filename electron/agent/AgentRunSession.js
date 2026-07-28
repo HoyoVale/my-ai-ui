@@ -6,6 +6,10 @@ import {
   LIVE_STEP_ROLES
 } from "./stepText.js";
 
+import {
+  RunLifecycleCoordinator
+} from "./RunLifecycleCoordinator.js";
+
 export const AGENT_RUN_SESSION_VERSION = 1;
 
 function clone(value) {
@@ -73,7 +77,11 @@ export class AgentRunSession {
     replaceMessageId = null,
     resumeInPlace = false,
     startedAt = Date.now(),
-    contextCompactionCount = 0
+    contextCompactionCount = 0,
+    checkpointVersion = 0,
+    reportedReceiptIds = [],
+    partialResponse = "",
+    partialResponseRole = "none"
   } = {}) {
     if (!String(runId ?? "").trim()) {
       throw new Error("AgentRunSession requires runId.");
@@ -118,6 +126,9 @@ export class AgentRunSession {
         runtimePreferences.saveToolHistory !== false
     };
     this.abortController = abortController;
+    this.lifecycle = new RunLifecycleCoordinator({
+      runId: this.runId
+    });
     this.activityStore = activityStore;
     this.diffTracker = diffTracker;
     this.tokenLedger = tokenLedger;
@@ -128,7 +139,7 @@ export class AgentRunSession {
       Number(startedAt) || Date.now()
     );
 
-    this.currentSegmentId = `run:${this.runId}`;
+    this.currentRunUnitId = `run:${this.runId}`;
     this.currentStepText = "";
     this.liveStepRole = LIVE_STEP_ROLES.NONE;
     this.finalText = "";
@@ -139,16 +150,107 @@ export class AgentRunSession {
     this.toolSecurity = null;
     this.approvalController = null;
     this.completionEvidence = null;
+    this.terminal = null;
+    this.finalizationFailure = null;
     this.finalizationAttemptCount = 0;
+    this.providerRetryCount = 0;
+    this.cancellation = {
+      requested: false,
+      requestedAt: null,
+      reason: "",
+      settledAt: null
+    };
+    this.cancellationCompletion = null;
     this.contextCompactionCount = Math.max(
       0,
       Math.round(Number(contextCompactionCount) || 0)
     );
+    this.checkpointVersion = Math.max(
+      0,
+      Math.round(Number(checkpointVersion) || 0)
+    );
+    this.reportedReceiptIds = [
+      ...new Set(
+        (Array.isArray(reportedReceiptIds) ? reportedReceiptIds : [])
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
+      )
+    ];
+    this.resumedPartialResponse = String(partialResponse ?? "");
+    this.resumedPartialResponseRole = [
+      "none",
+      "commentary",
+      "final"
+    ].includes(partialResponseRole)
+      ? partialResponseRole
+      : "none";
 
     this.stateMachine = new RunStateMachine({
       startedAt: this.startedAt
     });
     this.applyState(this.stateMachine.snapshot());
+  }
+
+  attachApprovalController(controller) {
+    this.approvalController = controller ?? null;
+    if (!controller) {
+      this.lifecycle.removeResource("approval-controller");
+      return false;
+    }
+    return this.lifecycle.registerResource(
+      "approval-controller",
+      () => controller.close?.(),
+      { priority: 100, timeoutMs: 1000 }
+    );
+  }
+
+  attachToolSession(toolSession) {
+    this.toolSession = toolSession ?? null;
+    if (!toolSession) {
+      this.lifecycle.removeResource("tool-session");
+      return false;
+    }
+    return this.lifecycle.registerResource(
+      "tool-session",
+      () => toolSession.closePersistence?.(),
+      { priority: 50, timeoutMs: 8000 }
+    );
+  }
+
+  beginSettlement(source) {
+    return this.lifecycle.beginSettlement(source);
+  }
+
+  waitForSettlement() {
+    return this.lifecycle.waitForSettlement();
+  }
+
+  disposeResources(reason) {
+    return this.lifecycle.dispose(reason);
+  }
+
+  requestCancellation(
+    reason = "user-stop",
+    requestedAt = Date.now()
+  ) {
+    if (this.cancellation.requested) {
+      return false;
+    }
+
+    this.cancellation = {
+      ...this.cancellation,
+      requested: true,
+      requestedAt: Math.max(0, Number(requestedAt) || Date.now()),
+      reason: String(reason ?? "user-stop")
+    };
+    return true;
+  }
+
+  markCancellationSettled(settledAt = Date.now()) {
+    this.cancellation = {
+      ...this.cancellation,
+      settledAt: Math.max(0, Number(settledAt) || Date.now())
+    };
   }
 
   applyState(state) {
@@ -180,13 +282,26 @@ export class AgentRunSession {
       startedAt: this.startedAt,
       mode: this.mode,
       workspaceId: this.workspaceId,
-      currentSegmentId: this.currentSegmentId,
+      currentRunUnitId: this.currentRunUnitId,
       stepNumber: this.stepNumber,
+      providerRetryCount: this.providerRetryCount,
+      finalizationAttemptCount: this.finalizationAttemptCount,
+      checkpointVersion: this.checkpointVersion,
+      reportedReceiptCount: this.reportedReceiptIds.length,
+      resumedPartialResponseRole: this.resumedPartialResponseRole,
       phase: this.phase,
       outcome: this.outcome,
       stopReason: this.stopReason,
       resumable: this.resumable,
-      publicStatus: this.publicStatus
+      publicStatus: this.publicStatus,
+      terminal: clone(this.terminal),
+      lifecycle: this.lifecycle.snapshot(),
+      cancellation: {
+        requested: this.cancellation.requested,
+        requestedAt: this.cancellation.requestedAt,
+        reason: this.cancellation.reason,
+        settledAt: this.cancellation.settledAt
+      }
     };
   }
 }

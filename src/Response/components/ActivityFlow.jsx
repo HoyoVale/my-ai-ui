@@ -120,6 +120,20 @@ export function ResponseActivityFlow({
     );
 
   const events = visibleEvents(snapshot);
+  const terminal = status?.terminal ?? snapshot.terminal ?? null;
+  const terminalKind = String(terminal?.kind ?? "");
+  const terminalIcon = terminalKind === "failure" || terminalKind === "attention"
+    ? "warning"
+    : terminalKind === "cancelled"
+      ? "minus"
+      : "check";
+  const terminalClass = terminalKind === "failure"
+    ? " is-error"
+    : terminalKind === "attention" || terminalKind === "continuable"
+      ? " is-attention"
+      : terminalKind === "cancelled"
+        ? " is-cancelled"
+        : "";
   const hasPlan =
     snapshot.planStats.total > 0;
   const hasLiveText =
@@ -131,13 +145,17 @@ export function ResponseActivityFlow({
       data-testid="response-activity-flow"
     >
       <div className="response-activity__header">
-        <span className={streaming ? "response-activity__pulse" : "response-activity__done"}>
+        <span className={
+          streaming
+            ? "response-activity__pulse"
+            : `response-activity__done${terminalClass}`
+        }>
           {!streaming && (
-            <ConversationIcon name="check" size={11} />
+            <ConversationIcon name={terminalIcon} size={11} />
           )}
         </span>
         <strong>
-          {streaming ? "正在处理" : "处理完成"}
+          {streaming ? "正在处理" : terminal?.title || "处理完成"}
         </strong>
         {hasPlan && (
           <small>

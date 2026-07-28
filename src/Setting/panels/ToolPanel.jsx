@@ -563,14 +563,8 @@ export function ToolPanel({
           >
             <summary>Runtime 诊断与保险丝</summary>
             <div className="settings-disclosure__body">
-              <SettingRow title="单段最大步骤">
+              <SettingRow title="单次运行最大步骤">
                 <Slider value={settings.runtime.maxSteps} min={1} max={32} unit=" 步" onChange={(maxSteps) => updateRuntime({ maxSteps })} />
-              </SettingRow>
-              <SettingRow title="最大任务分段">
-                <Slider value={settings.runtime.maxSegments} min={1} max={100} unit=" 段" onChange={(maxSegments) => updateRuntime({ maxSegments })} />
-              </SettingRow>
-              <SettingRow title="无进展分段限制">
-                <Slider value={settings.runtime.maxNoProgressSegments} min={1} max={10} unit=" 段" onChange={(maxNoProgressSegments) => updateRuntime({ maxNoProgressSegments })} />
               </SettingRow>
               <SettingRow title="最终总结尝试">
                 <Slider value={settings.runtime.maxFinalizationAttempts} min={1} max={3} unit=" 次" onChange={(maxFinalizationAttempts) => updateRuntime({ maxFinalizationAttempts })} />

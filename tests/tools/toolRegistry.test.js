@@ -40,7 +40,7 @@ describe("ToolRegistry foundation", () => {
     assert.equal(registered.retryPolicy.maxAttempts, 2);
     assert.deepEqual(
       registered.retryPolicy.retryOn,
-      ["TEMPORARY_FAILURE"]
+      ["TEMPORARY_FAILURE", "RATE_LIMITED"]
     );
   });
 

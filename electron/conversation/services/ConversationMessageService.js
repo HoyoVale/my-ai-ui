@@ -1,8 +1,13 @@
 import { buildShortTermContext } from "../contextBuilder.js";
 import * as internals from "../ConversationManagerInternals.js";
 import {
-  projectMessageForRead
+  projectMessageSnapshot
 } from "../conversationSchema.js";
+
+import {
+  resolveRunTerminalPresentation,
+  sanitizeRunTerminalPresentation
+} from "../../agent/RunTerminalPresentation.js";
 
 function ensureMetadata(message) {
   if (!message.metadata || typeof message.metadata !== "object") {
@@ -32,7 +37,8 @@ export const ConversationMessageService = {
     diffSummary = null,
     runOutcome = "",
     runPhase = "",
-    runResumable = false
+    runResumable = false,
+    runTerminal = null
   }) {
     const data =
       this.ensureLoaded();
@@ -95,7 +101,8 @@ export const ConversationMessageService = {
         diffSummary,
         runOutcome,
         runPhase,
-        runResumable
+        runResumable,
+        runTerminal
       }
     );
 
@@ -130,7 +137,7 @@ export const ConversationMessageService = {
     this.prune();
     this.commit();
 
-    return projectMessageForRead(message);
+    return projectMessageSnapshot(message);
   },
 
   prepareRegeneration({
@@ -235,6 +242,7 @@ export const ConversationMessageService = {
     runOutcome = "",
     runPhase = "",
     runResumable = false,
+    runTerminal = null,
     preserveCreatedAt = false
   }) {
     const conversation =
@@ -317,7 +325,8 @@ export const ConversationMessageService = {
         diffSummary,
         runOutcome,
         runPhase,
-        runResumable
+        runResumable,
+        runTerminal
       }
     );
 
@@ -338,7 +347,7 @@ export const ConversationMessageService = {
 
     return {
       ok: true,
-      message: projectMessageForRead(message)
+      message: projectMessageSnapshot(message)
     };
   },
 
@@ -356,7 +365,8 @@ export const ConversationMessageService = {
       diffSummary = null,
       runOutcome = "",
       runPhase = "",
-      runResumable = false
+      runResumable = false,
+      runTerminal = null
     } = {}
   ) {
     if (
@@ -405,7 +415,6 @@ export const ConversationMessageService = {
       metadata.taskId = String(taskId);
     }
 
-
     if (
       activity &&
       typeof activity === "object"
@@ -429,10 +438,12 @@ export const ConversationMessageService = {
       message.diffSummary = internals.clone(diffSummary);
     }
 
+    const terminal = sanitizeRunTerminalPresentation(runTerminal);
     metadata.run = {
       ...(runOutcome ? { outcome: String(runOutcome) } : {}),
       ...(runPhase ? { phase: String(runPhase) } : {}),
-      resumable: runResumable === true
+      resumable: runResumable === true,
+      ...(terminal ? { terminal } : {})
     };
   },
 
@@ -456,44 +467,103 @@ export const ConversationMessageService = {
 
         const activity = message.activity;
         const runtimeDecision = recoveryMap.get(messageTaskId(message));
+        const previousRun = message.metadata?.run ?? {};
+        const cancellationPending =
+          previousRun.phase === "cancelling" ||
+          activity?.status === "cancelling";
         const unfinished =
           ["running", "cancelling"].includes(message.status) ||
           ["running", "cancelling", "resumed"].includes(activity?.status) ||
+          cancellationPending ||
           runtimeDecision?.applyToConversation === true;
 
         if (!unfinished) {
           continue;
         }
 
+        const fallbackDecision = cancellationPending
+          ? {
+              activityStatus: "cancelled",
+              messageStatus: "aborted",
+              stopReason: "cancelled_by_user",
+              title: "任务已取消",
+              outcome: "cancelled",
+              phase: "cancelled",
+              resumable: false
+            }
+          : {
+              activityStatus: "interrupted",
+              messageStatus: "interrupted",
+              stopReason: "interrupted",
+              title: "执行被中断",
+              outcome: "interrupted",
+              phase: "interrupted",
+              resumable: true
+            };
+        const resolvedDecision = {
+          ...fallbackDecision,
+          ...(runtimeDecision ?? {})
+        };
         const activityStatus = String(
-          runtimeDecision?.activityStatus ?? "interrupted"
+          resolvedDecision.activityStatus
         );
         const messageStatus = String(
-          runtimeDecision?.messageStatus ?? "interrupted"
+          resolvedDecision.messageStatus
         );
         const stopReason = String(
-          runtimeDecision?.stopReason ?? "interrupted"
+          resolvedDecision.stopReason
         );
-        const statusTitle = String(
-          runtimeDecision?.title ?? "执行被中断"
+        const terminal = resolveRunTerminalPresentation({
+          outcome: resolvedDecision.outcome,
+          stopReason,
+          resumable: resolvedDecision.resumable === true,
+          runtimeRecovery: runtimeDecision?.recovery ?? null
+        });
+        const statusTitle = terminal.title || String(
+          resolvedDecision.title
         );
         const recoveryCalls = runtimeDecision?.recovery?.calls ?? [];
+        const recoveredCheckpoint = {
+          ...(activity?.checkpoint ?? {}),
+          ...(runtimeDecision?.checkpoint ?? {})
+        };
+        const savedPartialResponse = String(
+          recoveredCheckpoint.partialResponse ?? ""
+        );
 
         message.status = messageStatus;
         message.stopReason = stopReason;
+        if (
+          resolvedDecision.outcome !== "cancelled" &&
+          !String(message.content ?? "").trim() &&
+          savedPartialResponse.trim()
+        ) {
+          message.content = savedPartialResponse;
+        }
+        if (
+          resolvedDecision.outcome === "cancelled" &&
+          !String(message.content ?? "").includes("本次任务已取消")
+        ) {
+          message.content = [
+            String(message.content ?? "").trim(),
+            "本次任务已取消。"
+          ].filter(Boolean).join("\n\n");
+        }
         const metadata = ensureMetadata(message);
         metadata.run = {
-          outcome: String(runtimeDecision?.outcome ?? "interrupted"),
-          phase: String(runtimeDecision?.phase ?? "interrupted"),
-          resumable: runtimeDecision?.resumable !== false
+          outcome: String(resolvedDecision.outcome),
+          phase: String(resolvedDecision.phase),
+          resumable: resolvedDecision.resumable === true,
+          terminal
         };
 
 
         if (activity && typeof activity === "object") {
           activity.status = activityStatus;
-          activity.outcome = runtimeDecision?.outcome ?? "interrupted";
-          activity.resumable = runtimeDecision?.resumable !== false;
+          activity.outcome = resolvedDecision.outcome;
+          activity.resumable = resolvedDecision.resumable === true;
           activity.stopReason = stopReason;
+          activity.terminal = terminal;
           activity.endedAt = timestamp;
           activity.durationMs = Math.max(
             0,
@@ -501,11 +571,10 @@ export const ConversationMessageService = {
           );
 
           activity.checkpoint = {
-            ...(activity.checkpoint ?? {}),
-            ...(runtimeDecision?.checkpoint ?? {}),
-            phase: runtimeDecision?.phase ?? "interrupted",
-            outcome: runtimeDecision?.outcome ?? "interrupted",
-            resumable: runtimeDecision?.resumable !== false,
+            ...recoveredCheckpoint,
+            phase: resolvedDecision.phase,
+            outcome: resolvedDecision.outcome,
+            resumable: resolvedDecision.resumable === true,
             publicStatus: messageStatus,
             stopReason,
             toolRuntime:
@@ -574,8 +643,12 @@ export const ConversationMessageService = {
                     ok: false,
                     error: {
                       type: "CANCELLED",
-                      code: "APP_INTERRUPTED",
-                      message: "应用退出导致工具执行中断。",
+                      code: cancellationPending
+                        ? "USER_CANCELLED"
+                        : "APP_INTERRUPTED",
+                      message: cancellationPending
+                        ? "用户取消了任务。"
+                        : "应用退出导致工具执行中断。",
                       retryable: false
                     }
                   }
@@ -749,7 +822,7 @@ export const ConversationMessageService = {
 
     return {
       ok: true,
-      message: projectMessageForRead(message)
+      message: projectMessageSnapshot(message)
     };
   }
 };

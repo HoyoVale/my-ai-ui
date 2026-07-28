@@ -27,6 +27,7 @@ const PUBLIC_STATUS_FIELDS = Object.freeze([
   "executionStopReason",
   "resumable",
   "publicStatus",
+  "terminal",
   "replaceMessageId",
   "stepNumber"
 ]);
@@ -179,17 +180,6 @@ function publicRuntime(runtime) {
   };
 }
 
-function compactPlan(plan = []) {
-  return (Array.isArray(plan) ? plan : []).map((item, index) => ({
-    id: String(item?.id ?? `plan-${index}`),
-    title: String(item?.title ?? item?.step ?? "未命名步骤").slice(0, 240),
-    status: String(item?.status ?? "pending"),
-    reason: item?.reason
-      ? String(item.reason).slice(0, 300)
-      : ""
-  }));
-}
-
 export function projectToolRecord(
   record,
   { developerMode = false } = {}
@@ -220,7 +210,6 @@ export function projectToolRecord(
     input: publicInput(record.input),
     commandPreview: publicCommandPreview(record.commandPreview),
     result: publicResult(record.result),
-    planStep: clone(record.planStep),
     queuedAt: record.queuedAt,
     startedAt: record.startedAt,
     endedAt: record.endedAt,
@@ -450,7 +439,6 @@ export function projectResponseStatus(status) {
     pendingApproval: publicApproval(source.pendingApproval),
     toolSecurity: publicToolSecurity(source.toolSecurity),
     skillRun: publicSkillRun(source.skillRun),
-    plan: compactPlan(source.plan),
     activity: projectActivitySnapshot(source.activity, {
       maxEvents: 30
     }),
@@ -480,7 +468,6 @@ export function projectConversationStatus(status) {
     pendingApproval: publicApproval(source.pendingApproval),
     toolSecurity: publicToolSecurity(source.toolSecurity),
     skillRun: publicSkillRun(source.skillRun),
-    plan: compactPlan(source.plan),
     activeToolCalls: (source.activeToolCalls ?? [])
       .slice(-80)
       .map((record) => projectToolRecord(record)),

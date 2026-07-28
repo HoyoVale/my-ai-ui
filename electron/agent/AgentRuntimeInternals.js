@@ -78,7 +78,13 @@ export function appendTaskContinuationToContext(
     resumedFromMessageId:
       continuationState.resumedFromMessageId,
     continuationCount:
-      continuationState.continuationCount
+      continuationState.continuationCount,
+    checkpointVersion:
+      continuationState.checkpointVersion,
+    reportedReceiptCount:
+      continuationState.reportedReceiptIds?.length ?? 0,
+    resumedPartialResponse:
+      Boolean(continuationState.partialResponse)
   };
 
   return context;

@@ -112,6 +112,18 @@ function codeOf(value) {
   ).trim();
 }
 
+function retryAfterMsOf(value) {
+  const direct = Number(
+    value?.error?.retryAfterMs ??
+    value?.retryAfterMs ??
+    value?.error?.details?.retryAfterMs ??
+    value?.details?.retryAfterMs
+  );
+  return Number.isFinite(direct) && direct > 0
+    ? Math.round(direct)
+    : 0;
+}
+
 export function classifyToolError(
   value,
   {
@@ -126,7 +138,6 @@ export function classifyToolError(
   ].includes(String(abortSignal?.reason?.code ?? ""));
   const cancelled = Boolean(
     (abortSignal?.aborted && !abortedForTimeout) ||
-    value?.name === "AbortError" ||
     [
       "ABORT_ERR",
       "CANCELLED",
@@ -196,10 +207,10 @@ export function classifyToolError(
         .TEMPORARY_FAILURE;
   }
 
-  const inferredRetryable =
-    type ===
-      TOOL_ERROR_TYPES
-        .TEMPORARY_FAILURE;
+  const inferredRetryable = [
+    TOOL_ERROR_TYPES.TEMPORARY_FAILURE,
+    TOOL_ERROR_TYPES.RATE_LIMITED
+  ].includes(type);
   const explicitlyRetryable =
     typeof retryable === "boolean"
       ? retryable
@@ -238,7 +249,8 @@ export function classifyToolError(
     }[type] ?? "internal",
     message: messageOf(value),
     retryable:
-      retryableType && explicitlyRetryable
+      retryableType && explicitlyRetryable,
+    retryAfterMs: retryAfterMsOf(value)
   };
 }
 
@@ -283,5 +295,15 @@ export function shouldRetryToolError(
     policy.retryOn?.includes(
       classified.code
     )
+  );
+}
+
+export function toolRetryDelayMs(classified, policy, attempt) {
+  const base = Math.max(0, Number(policy?.backoffMs) || 0);
+  const retryNumber = Math.max(1, Number(attempt) || 1);
+  const exponential = Math.min(5000, base * (2 ** Math.max(0, retryNumber - 1)));
+  return Math.max(
+    exponential,
+    Math.max(0, Number(classified?.retryAfterMs) || 0)
   );
 }

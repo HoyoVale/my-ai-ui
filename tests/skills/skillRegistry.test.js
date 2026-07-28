@@ -74,12 +74,14 @@ test("Skill Registry keeps committed state when a broadcast listener fails", () 
     const source = path.join(temp, "source");
     const root = path.join(temp, "skills");
     createPackage(source);
+    const listenerErrors = [];
     const registry = new SkillRegistry({
       store: new SkillStore({ getFilePath: () => path.join(root, "registry.json") }),
       getRootDirectory: () => root,
       onChange: () => {
         throw new Error("renderer closed");
-      }
+      },
+      onNotifyError: (error) => listenerErrors.push(error)
     });
 
     const installed = registry.installFromDirectory(source);
@@ -87,6 +89,8 @@ test("Skill Registry keeps committed state when a broadcast listener fails", () 
     assert.equal(registry.getState().available, 1);
     assert.equal(registry.getState().revision, 1);
     assert.equal(fs.existsSync(path.join(root, "review", "SKILL.md")), true);
+    assert.equal(listenerErrors.length, 1);
+    assert.equal(listenerErrors[0].message, "renderer closed");
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }

@@ -190,6 +190,14 @@ export function useResponseStream() {
         }
       );
 
+    const offReplace =
+      api?.onResponseReplace?.(
+        (value) => {
+          setStreaming(true);
+          setText(String(value ?? ""));
+        }
+      );
+
     const offEnd =
       api?.onResponseEnd?.(
         () => {
@@ -227,6 +235,7 @@ export function useResponseStream() {
       offText?.();
       offStart?.();
       offChunk?.();
+      offReplace?.();
       offEnd?.();
       offClear?.();
       offSide?.();

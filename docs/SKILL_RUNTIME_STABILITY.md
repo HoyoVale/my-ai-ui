@@ -1,6 +1,6 @@
 # Skill Runtime 稳定化审查
 
-> 基线：`my-ai-ui(65)`  
+> 基线：`my-ai-ui(65)`
 > 范围：现有声明式 Skill Runtime；不包含自动路由、Skill 组合、依赖、远程安装、Marketplace 或可执行脚本。
 
 ## 1. 权威状态

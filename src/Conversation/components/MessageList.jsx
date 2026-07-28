@@ -110,20 +110,12 @@ export function ConversationMessageList({
         liveActivity?.activity?.events ?? [];
       const lastEvent =
         events.at?.(-1) ?? null;
-      const plan =
-        liveActivity?.plan ?? [];
-
       return [
         liveActivity?.runId ?? "",
         liveActivity?.state ?? "",
         events.length,
         lastEvent?.updatedAt ?? "",
         lastEvent?.status ?? "",
-        plan
-          .map((item) =>
-            `${item.id}:${item.status}`
-          )
-          .join("|"),
         String(
           liveActivity?.liveStepText ?? ""
         ).length,

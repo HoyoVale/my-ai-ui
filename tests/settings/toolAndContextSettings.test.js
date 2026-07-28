@@ -144,12 +144,12 @@ describe(
           32
         );
         assert.equal(
-          settings.tools.runtime.maxSegments,
-          100
+          Object.hasOwn(settings.tools.runtime, "maxSegments"),
+          false
         );
         assert.equal(
-          settings.tools.runtime.maxNoProgressSegments,
-          10
+          Object.hasOwn(settings.tools.runtime, "maxNoProgressSegments"),
+          false
         );
         assert.equal(
           settings.tools.mode,

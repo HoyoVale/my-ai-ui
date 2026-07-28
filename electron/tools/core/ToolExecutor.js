@@ -16,7 +16,8 @@ import {
 import {
   TOOL_ERROR_TYPES,
   classifyToolError,
-  shouldRetryToolError
+  shouldRetryToolError,
+  toolRetryDelayMs
 } from "./toolErrors.js";
 import {
   isUnsafeToolEffect,
@@ -338,11 +339,12 @@ export class ToolExecutor {
 
   beginStep({
     stepId = "",
+    scopeId = "",
     segmentId = ""
   } = {}) {
     const normalizedStepId =
       String(stepId ?? "").trim() ||
-      `${String(segmentId ?? this.context.segmentId ?? "run").trim() || "run"}:step`;
+      `${String(scopeId || segmentId || this.context.segmentId || "run").trim() || "run"}:step`;
 
     return this.scopeBudget.beginStep(normalizedStepId);
   }
@@ -501,7 +503,6 @@ export class ToolExecutor {
       taskId,
       segmentId,
       batch: recordMetadata.batch ?? null,
-      planStep: recordMetadata.planStep ?? null,
       input,
       queuedAt,
       startedAt: null,
@@ -1101,7 +1102,8 @@ export class ToolExecutor {
               type: classified.type,
               category: categoryForType(classified.type),
               message: classified.message,
-              retryable: classified.retryable
+              retryable: classified.retryable,
+              retryAfterMs: classified.retryAfterMs
             }
           };
 
@@ -1123,7 +1125,10 @@ export class ToolExecutor {
                 recovery: "retrying"
               }
             });
-            await wait(retryPolicy.backoffMs * attempt, abortSignal);
+            await wait(
+              toolRetryDelayMs(classified, retryPolicy, attempt),
+              abortSignal
+            );
             continue;
           }
 
@@ -1281,7 +1286,10 @@ export class ToolExecutor {
             : errorMessage(error),
           classified.retryable,
           classified.type,
-          categoryForType(classified.type)
+          categoryForType(classified.type),
+          classified.retryAfterMs > 0
+            ? { retryAfterMs: classified.retryAfterMs }
+            : undefined
         );
 
         if (shouldRetryToolError(classified, retryPolicy, attempt)) {
@@ -1302,7 +1310,10 @@ export class ToolExecutor {
               recovery: "retrying"
             }
           });
-          await wait(retryPolicy.backoffMs * attempt, abortSignal);
+          await wait(
+            toolRetryDelayMs(classified, retryPolicy, attempt),
+            abortSignal
+          );
           continue;
         }
 

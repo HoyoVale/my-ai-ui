@@ -28,14 +28,38 @@ function wait(
 ) {
   return new Promise(
     (resolve, reject) => {
-      const timer =
-        setTimeout(
-          resolve,
-          milliseconds
+      let settled = false;
+      let timer = null;
+
+      const cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+
+        signal?.removeEventListener(
+          "abort",
+          abort
         );
+      };
+
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        cleanup();
+        resolve();
+      };
 
       const abort = () => {
-        clearTimeout(timer);
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        cleanup();
 
         const error =
           new Error(
@@ -59,6 +83,11 @@ function wait(
         {
           once: true
         }
+      );
+
+      timer = setTimeout(
+        finish,
+        milliseconds
       );
     }
   );
@@ -159,6 +188,21 @@ export function buildE2EResponse(
     ].join("\n");
   }
 
+  if (latest.startsWith("e2e-long-stream")) {
+    const lines = Array.from(
+      { length: 180 },
+      (_, index) =>
+        `E2E_LONG_STREAM_LINE_${String(index + 1).padStart(3, "0")}:` +
+        " renderer-reload-window-recreate-persistence-check"
+    );
+
+    return [
+      `E2E_LONG_STREAM_BEGIN:${latest}`,
+      ...lines,
+      `E2E_LONG_STREAM_END:${latest}`
+    ].join("\n");
+  }
+
   return (
     `E2E_REPLY_${userMessages.length}:` +
     latest
@@ -179,11 +223,45 @@ export async function streamE2EResponse({
       contextMetadata
     );
 
+  const latest = [...messages]
+    .reverse()
+    .find((message) => message?.role === "user")
+    ?.content ?? "";
+
+  const longStream =
+    latest.startsWith("e2e-long-stream");
+
+  const requestedChunkCount = Number(
+    process.env.XIXI_E2E_LONG_STREAM_CHUNKS
+  );
+
+  const chunkCount = longStream
+    ? Math.max(
+        24,
+        Number.isFinite(requestedChunkCount)
+          ? Math.min(500, Math.round(requestedChunkCount))
+          : 180
+      )
+    : 3;
+
+  const requestedDelay = Number(
+    process.env.XIXI_E2E_LONG_STREAM_DELAY_MS
+  );
+
+  const chunkDelayMs = longStream
+    ? Math.max(
+        1,
+        Number.isFinite(requestedDelay)
+          ? Math.min(250, Math.round(requestedDelay))
+          : 15
+      )
+    : 35;
+
   const chunkSize =
     Math.max(
       1,
       Math.ceil(
-        text.length / 3
+        text.length / chunkCount
       )
     );
 
@@ -193,7 +271,7 @@ export async function streamE2EResponse({
     index += chunkSize
   ) {
     await wait(
-      35,
+      chunkDelayMs,
       signal
     );
 

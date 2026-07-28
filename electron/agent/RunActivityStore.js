@@ -74,6 +74,7 @@ export class RunActivityStore {
     this.outcome = "running";
     this.resumable = false;
     this.stopReason = "";
+    this.terminal = null;
     this.events = [];
     this.sequence = 0;
     this.maxEvents = Math.max(
@@ -336,7 +337,7 @@ export class RunActivityStore {
 
     if (!batch) {
       batch = this.beginBatch(
-        record.planStep?.title ?? record.title ?? record.name,
+        record.title ?? record.name,
         record.queuedAt ?? record.startedAt ?? timestamp
       );
     }
@@ -388,10 +389,6 @@ export class RunActivityStore {
           record.meta === undefined
             ? undefined
             : clone(record.meta),
-        planStep:
-          record.planStep === undefined
-            ? undefined
-            : clone(record.planStep),
         queuedAt: record.queuedAt,
         startedAt: record.startedAt,
         endedAt: record.endedAt,
@@ -581,13 +578,17 @@ export class RunActivityStore {
     {
       status = "",
       outcome = "",
-      resumable = false
+      resumable = false,
+      terminal = null
     } = {}
   ) {
     this.stopReason = normalizeRunStopReason(stopReason);
     this.status = String(status || runStatusFromStopReason(this.stopReason));
     this.outcome = String(outcome || this.status);
     this.resumable = resumable === true;
+    this.terminal = terminal && typeof terminal === "object"
+      ? clone(terminal)
+      : null;
     this.endedAt = nowValue(endedAt);
 
     if (this.activeBatchId) {
@@ -617,9 +618,11 @@ export class RunActivityStore {
           ? "completed"
           : this.status,
       title:
-        this.status === "checkpoint_ready"
-          ? "当前进展已整理"
-          : this.status,
+        this.terminal?.title || (
+          this.status === "checkpoint_ready"
+            ? "当前进展已整理"
+            : this.status
+        ),
       stopReason: this.stopReason,
       category: "runtime",
       activityVisibility: "developer",
@@ -647,6 +650,7 @@ export class RunActivityStore {
       durationMs: Math.max(0, currentEnd - this.startedAt),
       stopReason: this.stopReason,
       resumable,
+      terminal: this.terminal ? clone(this.terminal) : null,
       completionState:
         resumable ? "partial" : "terminal",
       checkpoint:

@@ -41,10 +41,8 @@ function compact(value, limit = 1200) {
     .slice(0, limit);
 }
 
-function finalTextValue(value, limit = 12000) {
-  return String(value ?? "")
-    .trim()
-    .slice(0, limit);
+function finalTextValue(value) {
+  return String(value ?? "").trim();
 }
 
 function hasPositiveClaimMatch(text, patterns) {

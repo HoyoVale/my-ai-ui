@@ -420,8 +420,6 @@ export function buildSdkRequestOptions(
     maxOutputTokens:
       modelSettings
         .maxOutputTokens,
-    maxRetries:
-      modelSettings.maxRetries,
     providerOptions
   };
 }

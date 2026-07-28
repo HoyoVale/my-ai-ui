@@ -26,7 +26,7 @@ import {
   RUN_STOP_REASONS
 } from "../../electron/agent/runStopReasons.js";
 import {
-  projectMessageForRead,
+  projectMessageSnapshot,
   sanitizeMessage
 } from "../../electron/conversation/conversationSchema.js";
 
@@ -142,7 +142,7 @@ describe("Stability P0 truth consistency", () => {
   });
 
   it("persists delivery completion separately from a failed Run outcome", () => {
-    const message = projectMessageForRead(sanitizeMessage({
+    const message = projectMessageSnapshot(sanitizeMessage({
       id: "assistant-1",
       role: "assistant",
       content: "构建验证失败。",
@@ -166,8 +166,8 @@ describe("Stability P0 truth consistency", () => {
       createdAt: 2
     }, 2, "assistant-1"));
     assert.equal(message.status, "complete");
-    assert.equal(message.runOutcome, "failed");
-    assert.equal(message.runPhase, "failed");
+    assert.equal(message.metadata.run.outcome, "failed");
+    assert.equal(message.metadata.run.phase, "failed");
   });
 
   it("revalidates a proposed completed outcome at the final authority boundary", () => {

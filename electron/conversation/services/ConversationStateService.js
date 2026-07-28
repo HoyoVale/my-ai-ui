@@ -2,11 +2,8 @@ import { normalizeSessionMode, resolveModelBinding } from "../sessionContext.js"
 import { createSkillSnapshots } from "../../skills/skillSnapshot.js";
 import * as internals from "../ConversationManagerInternals.js";
 import {
-  projectConversationForRead
+  projectConversationSnapshot
 } from "../conversationSchema.js";
-import {
-  getLegacyAdvancedMetadata
-} from "../legacyConversationCompatibility.js";
 
 export const ConversationStateService = {
   ensureLoaded() {
@@ -22,18 +19,18 @@ export const ConversationStateService = {
       workspaceId === null
         ? null
         : String(workspaceId ?? "").trim() || null;
-  
+
     if (!normalizedId) {
       return {
         workspaceId: null,
         workspaceSnapshot: null
       };
     }
-  
+
     const workspace = this.getWorkspaceById(
       normalizedId
     );
-  
+
     if (!workspace || workspace.missing) {
       const error = new Error(
         workspace?.missing
@@ -43,7 +40,7 @@ export const ConversationStateService = {
       error.code = "workspace-not-found";
       throw error;
     }
-  
+
     return {
       workspaceId: workspace.id,
       workspaceSnapshot:
@@ -57,7 +54,7 @@ export const ConversationStateService = {
       (conversation) =>
         conversation.id === data.currentConversationId
     );
-  
+
     return current?.workspaceId ?? null;
   },
 
@@ -67,32 +64,32 @@ export const ConversationStateService = {
       (conversation) =>
         conversation.id === data.currentConversationId
     );
-  
+
     return current?.mode ?? "chat";
   },
 
   getState() {
     const data =
       this.ensureLoaded();
-  
+
     const current =
       data.conversations.find(
         (conversation) =>
           conversation.id ===
           data.currentConversationId
       ) ?? null;
-  
+
     return {
       currentConversationId:
         data.currentConversationId,
-  
+
       currentConversation:
         current
           ? this.toSummary(
               current
             )
           : null,
-  
+
       currentWorkspaceId:
         current?.workspaceId ?? null,
       currentWorkspace:
@@ -113,7 +110,7 @@ export const ConversationStateService = {
         internals.clone(current?.skillSnapshots ?? (current?.skillSnapshot ? [current.skillSnapshot] : [])),
       currentSkillRoutingMode:
         current?.skillRoutingMode === "auto" ? "auto" : "manual",
-  
+
       totalConversations:
         data.conversations.length
     };
@@ -128,7 +125,7 @@ export const ConversationStateService = {
     const normalizedMode = mode === undefined
       ? null
       : normalizeSessionMode(mode, "chat");
-  
+
     return this
       .ensureLoaded()
       .conversations
@@ -152,16 +149,16 @@ export const ConversationStateService = {
           (item) =>
             item.id === id
         );
-  
+
     return conversation
-      ? projectConversationForRead(conversation)
+      ? projectConversationSnapshot(conversation)
       : null;
   },
 
   getCurrentConversation() {
     const data =
       this.ensureLoaded();
-  
+
     if (
       data.currentConversationId
     ) {
@@ -169,12 +166,12 @@ export const ConversationStateService = {
         this.getConversation(
           data.currentConversationId
         );
-  
+
       if (current) {
         return current;
       }
     }
-  
+
     return this.create();
   },
 
@@ -209,7 +206,7 @@ export const ConversationStateService = {
       this.resolveWorkspaceBinding(
         inheritedWorkspaceId
       );
-  
+
     if (resolvedMode === "coding" && !binding.workspaceId) {
       const error = new Error(
         "Coding 会话必须先绑定工作区。"
@@ -217,14 +214,14 @@ export const ConversationStateService = {
       error.code = "coding-workspace-required";
       throw error;
     }
-  
+
     const modelBinding = resolveModelBinding(
       this.getSettings().model,
       modelSelection === undefined
         ? current?.modelSelection ?? null
         : modelSelection
     );
-  
+
     const normalizedSkillIds = [
       ...new Set(
         (Array.isArray(skillIds)
@@ -248,10 +245,10 @@ export const ConversationStateService = {
     const normalizedSkillSnapshot = normalizedSkillSnapshots.find(
       (snapshot) => snapshot.id === normalizedSkillId
     ) ?? null;
-  
+
     const timestamp =
       this.now();
-  
+
     const conversation = {
       id: this.createId(),
       mode: resolvedMode,
@@ -277,24 +274,24 @@ export const ConversationStateService = {
           .trim()
           .slice(0, 80) ||
         "新会话",
-  
+
       contextStartAfterMessageId: null,
       createdAt: timestamp,
       updatedAt: timestamp,
       messages: []
     };
-  
+
     data.conversations.unshift(
       conversation
     );
-  
+
     data.currentConversationId =
       conversation.id;
-  
+
     this.prune();
     this.commit();
-  
-    return projectConversationForRead(conversation);
+
+    return projectConversationSnapshot(conversation);
   },
 
   findRecentConversation({
@@ -306,27 +303,27 @@ export const ConversationStateService = {
     const normalizedWorkspaceId = workspaceId === null
       ? null
       : String(workspaceId ?? "").trim() || null;
-  
+
     return this.ensureLoaded().conversations
       .filter((conversation) => {
         if (conversation.mode !== resolvedMode) {
           return false;
         }
-  
+
         if (
           hasWorkspace &&
           (conversation.workspaceId ?? null) !== normalizedWorkspaceId
         ) {
           return false;
         }
-  
+
         if (resolvedMode === "coding" && !hasWorkspace) {
           const workspace = this.getWorkspaceById(
             conversation.workspaceId
           );
           return Boolean(workspace && !workspace.missing);
         }
-  
+
         return true;
       })
       .sort(
@@ -340,7 +337,7 @@ export const ConversationStateService = {
     workspaceId = undefined
   } = {}) {
     const resolvedMode = normalizeSessionMode(mode, this.currentMode());
-  
+
     if (resolvedMode === "coding" && workspaceId === null) {
       return {
         ok: false,
@@ -348,7 +345,7 @@ export const ConversationStateService = {
         message: "Coding 会话必须先选择工作区。"
       };
     }
-  
+
     if (workspaceId !== undefined && workspaceId !== null) {
       try {
         this.resolveWorkspaceBinding(workspaceId);
@@ -362,21 +359,21 @@ export const ConversationStateService = {
         };
       }
     }
-  
+
     const existing = this.findRecentConversation({
       mode: resolvedMode,
       workspaceId
     });
-  
+
     if (existing) {
       const selected = this.select(existing.id);
       return {
         ...selected,
         created: false,
-        conversation: projectConversationForRead(existing)
+        conversation: projectConversationSnapshot(existing)
       };
     }
-  
+
     if (resolvedMode === "coding" && workspaceId === undefined) {
       return {
         ok: false,
@@ -384,7 +381,7 @@ export const ConversationStateService = {
         message: "尚无 Coding 会话，请先选择工作区。"
       };
     }
-  
+
     try {
       const conversation = this.create({
         mode: resolvedMode,
@@ -392,7 +389,7 @@ export const ConversationStateService = {
           ? workspaceId ?? null
           : workspaceId
       });
-  
+
       return {
         ok: true,
         created: true,
@@ -417,7 +414,7 @@ export const ConversationStateService = {
     const conversation = this.findMutableConversation(
       conversationId || this.ensureLoaded().currentConversationId
     );
-  
+
     if (!conversation) {
       return {
         ok: false,
@@ -425,12 +422,12 @@ export const ConversationStateService = {
         message: "会话不存在。"
       };
     }
-  
+
     const binding = resolveModelBinding(
       this.getSettings().model,
       { providerId, modelConfigId }
     );
-  
+
     if (!binding.selection) {
       return {
         ok: false,
@@ -438,15 +435,15 @@ export const ConversationStateService = {
         message: "模型不存在或已被移除。"
       };
     }
-  
+
     conversation.modelSelection = binding.selection;
     conversation.modelSnapshot = binding.snapshot;
     conversation.updatedAt = this.now();
     this.commit();
-  
+
     return {
       ok: true,
-      conversation: projectConversationForRead(conversation)
+      conversation: projectConversationSnapshot(conversation)
     };
   },
 
@@ -460,11 +457,11 @@ export const ConversationStateService = {
     const conversation = this.findMutableConversation(
       conversationId || this.ensureLoaded().currentConversationId
     );
-  
+
     if (!conversation) {
       return { ok: false, code: "conversation-not-found", message: "会话不存在。" };
     }
-  
+
     const inputSkills = Array.isArray(skills)
       ? skills
       : skill
@@ -478,7 +475,7 @@ export const ConversationStateService = {
           .filter((id) => snapshots.some((snapshot) => snapshot.id === id))
       )
     ].slice(0, 4);
-  
+
     conversation.skillIds = rootIds;
     conversation.skillSnapshots = snapshots;
     conversation.skillId = rootIds[0] ?? null;
@@ -490,11 +487,11 @@ export const ConversationStateService = {
     } else if (!conversation.skillRoutingMode) {
       conversation.skillRoutingMode = "manual";
     }
-  
+
     conversation.updatedAt = this.now();
     this.commit();
-  
-    return { ok: true, conversation: projectConversationForRead(conversation) };
+
+    return { ok: true, conversation: projectConversationSnapshot(conversation) };
   },
 
   switchWorkspace(workspaceId = null) {
@@ -519,7 +516,7 @@ export const ConversationStateService = {
       this.findMutableConversation(
         conversationId
       );
-  
+
     if (!conversation) {
       return {
         ok: false,
@@ -527,13 +524,13 @@ export const ConversationStateService = {
         message: "会话不存在。"
       };
     }
-  
+
     const normalizedTitle =
       String(title ?? "")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 80);
-  
+
     if (!normalizedTitle) {
       return {
         ok: false,
@@ -541,12 +538,12 @@ export const ConversationStateService = {
         message: "会话名称不能为空。"
       };
     }
-  
+
     conversation.title =
       normalizedTitle;
-  
+
     this.commit();
-  
+
     return {
       ok: true,
       conversation:
@@ -559,14 +556,14 @@ export const ConversationStateService = {
   select(id) {
     const data =
       this.ensureLoaded();
-  
+
     const exists =
       data.conversations.some(
         (conversation) =>
           conversation.id ===
           id
       );
-  
+
     if (!exists) {
       return {
         ok: false,
@@ -574,12 +571,12 @@ export const ConversationStateService = {
           "conversation-not-found"
       };
     }
-  
+
     data.currentConversationId =
       id;
-  
+
     this.commit();
-  
+
     return {
       ok: true,
       conversation:
@@ -590,16 +587,16 @@ export const ConversationStateService = {
   delete(id) {
     const data =
       this.ensureLoaded();
-  
+
     const previousLength =
       data.conversations.length;
-  
+
     data.conversations =
       data.conversations.filter(
         (conversation) =>
           conversation.id !== id
       );
-  
+
     if (
       data.conversations.length ===
       previousLength
@@ -610,7 +607,7 @@ export const ConversationStateService = {
           "conversation-not-found"
       };
     }
-  
+
     if (
       data.currentConversationId ===
       id
@@ -619,9 +616,9 @@ export const ConversationStateService = {
         data.conversations[0]?.id ??
         null;
     }
-  
+
     this.commit();
-  
+
     return {
       ok: true
     };
@@ -630,14 +627,14 @@ export const ConversationStateService = {
   clearAll() {
     const data =
       this.ensureLoaded();
-  
+
     data.currentConversationId =
       null;
-  
+
     data.conversations = [];
-  
+
     this.commit();
-  
+
     return {
       ok: true
     };
@@ -656,26 +653,26 @@ export const ConversationStateService = {
   getConversationSettings() {
     const settings =
       this.getSettings();
-  
+
     return {
       contextTurns:
         settings
           ?.conversation
           ?.contextTurns ??
         8,
-  
+
       maxConversations:
         settings
           ?.conversation
           ?.maxConversations ??
         100,
-  
+
       autoTitle:
         settings
           ?.conversation
           ?.autoTitle ??
         true,
-  
+
       saveAbortedReplies:
         settings
           ?.conversation
@@ -687,7 +684,7 @@ export const ConversationStateService = {
   prune() {
     const data =
       this.ensureLoaded();
-  
+
     const maxConversations =
       Math.max(
         1,
@@ -695,23 +692,23 @@ export const ConversationStateService = {
           .getConversationSettings()
           .maxConversations
       );
-  
+
     if (
       data.conversations.length <=
       maxConversations
     ) {
       return;
     }
-  
+
     const current =
       data.currentConversationId;
-  
+
     const kept =
       data.conversations.slice(
         0,
         maxConversations
       );
-  
+
     if (
       current &&
       !kept.some(
@@ -726,7 +723,7 @@ export const ConversationStateService = {
             conversation.id ===
             current
         );
-  
+
       if (currentConversation) {
         kept[
           kept.length - 1
@@ -734,7 +731,7 @@ export const ConversationStateService = {
           currentConversation;
       }
     }
-  
+
     data.conversations =
       kept;
   },
@@ -742,7 +739,7 @@ export const ConversationStateService = {
   reconcileSettings() {
     const data = this.ensureLoaded();
     const modelSettings = this.getSettings().model;
-  
+
     for (const conversation of data.conversations) {
       const requestedBinding = resolveModelBinding(
         modelSettings,
@@ -756,7 +753,7 @@ export const ConversationStateService = {
     }
     this.prune();
     this.commit();
-  
+
     return this.getState();
   },
 
@@ -765,7 +762,7 @@ export const ConversationStateService = {
       this.store.save(
         this.data
       );
-  
+
     this.onChange(
       this.getState()
     );
@@ -778,12 +775,10 @@ export const ConversationStateService = {
       conversation
         .messages
         .at(-1);
-  
+
     const liveWorkspace = this.getWorkspaceById(
       conversation.workspaceId
     );
-    const legacyAdvanced = getLegacyAdvancedMetadata(conversation);
-  
     return {
       id: conversation.id,
       mode: conversation.mode ?? "chat",
@@ -805,10 +800,6 @@ export const ConversationStateService = {
         internals.clone(conversation.skillSnapshots ?? (conversation.skillSnapshot ? [conversation.skillSnapshot] : [])),
       skillRoutingMode:
         conversation.skillRoutingMode === "auto" ? "auto" : "manual",
-      goal:
-        internals.clone(legacyAdvanced?.goal ?? null),
-      legacyAdvancedReadOnly:
-        Boolean(legacyAdvanced),
       workspaceAvailable:
         conversation.workspaceId
           ? Boolean(liveWorkspace && !liveWorkspace.missing)

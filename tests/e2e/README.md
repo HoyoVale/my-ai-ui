@@ -29,3 +29,16 @@ The E2E flow also verifies:
 - excluding another message from context
 - reading the Token budget
 - resetting recent context while preserving history
+
+## Core Lite 4.8 release-candidate flow
+
+```powershell
+npm run test:e2e:electron-rc
+```
+
+The release flow streams a deterministic long response while Response and
+Conversation windows are reloaded, closed and recreated. It then restarts the
+application with the same temporary `userData`, verifies completed-message
+persistence, shuts down during another active stream, restarts again and checks
+the run is persisted as cancelled and non-resumable. Reports and failure
+screenshots are written below `test-results/core-lite-4.8/`.

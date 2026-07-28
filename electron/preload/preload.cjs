@@ -49,6 +49,9 @@ const CHANNELS = Object.freeze({
   RESPONSE_STREAM_CHUNK:
     "response-stream-chunk",
 
+  RESPONSE_STREAM_REPLACE:
+    "response-stream-replace",
+
   RESPONSE_STREAM_END:
     "response-stream-end",
 
@@ -508,6 +511,19 @@ const api = Object.freeze({
       callback,
       (chunk) =>
         String(chunk ?? "")
+    );
+  },
+
+  onResponseReplace: (
+    callback
+  ) => {
+    return subscribe(
+      CHANNELS
+        .RESPONSE_STREAM_REPLACE,
+
+      callback,
+      (text) =>
+        String(text ?? "")
     );
   },
 

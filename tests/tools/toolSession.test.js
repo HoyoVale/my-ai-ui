@@ -228,11 +228,6 @@ describe(
           "completed"
         );
         assert.equal(
-          session.getRecords()[0]
-            .planStep,
-          null
-        );
-        assert.equal(
           records.some(
             (record) =>
               record.status ===

@@ -92,7 +92,7 @@ function normalizeRetryPolicy(
         .map(String)
         .filter(Boolean)
     : safeToRetry
-      ? ["TEMPORARY_FAILURE"]
+      ? ["TEMPORARY_FAILURE", "RATE_LIMITED"]
       : [];
 
   return {

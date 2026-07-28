@@ -657,6 +657,21 @@
     );
 }
 
+.response-activity__done.is-error {
+  color: var(--conversation-danger, #b42318);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.response-activity__done.is-attention {
+  color: var(--conversation-warning, #a15c00);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.response-activity__done.is-cancelled {
+  color: var(--bubble-dim);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
 .response-activity__progress {
   height: 2px;
   overflow: hidden;

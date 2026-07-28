@@ -494,7 +494,7 @@ function ModelConfiguration({
             />
           </SettingRow>
 
-          <SettingRow title="失败重试">
+          <SettingRow title="模型失败重试">
             <Slider
               value={model.maxRetries}
               min={0}

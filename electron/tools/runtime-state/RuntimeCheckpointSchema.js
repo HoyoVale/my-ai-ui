@@ -3,7 +3,7 @@ import {
   withoutRuntimeIntegrity
 } from "./runtimeIntegrity.js";
 
-export const RUNTIME_CHECKPOINT_SCHEMA_VERSION = 3;
+export const RUNTIME_CHECKPOINT_SCHEMA_VERSION = 4;
 
 function string(value, maxLength = 240) {
   return String(value ?? "").trim().slice(0, maxLength);
@@ -63,8 +63,11 @@ export function migrateRuntimeCheckpoint(source, { verify = true } = {}) {
       source.journalChecksum ?? source.recoveryCursor?.journalChecksum,
       128
     ),
-    committedSegmentId: string(
-      source.committedSegmentId ?? source.recoveryCursor?.committedSegmentId,
+    committedRunUnitId: string(
+      source.committedRunUnitId ??
+        source.committedSegmentId ??
+        source.recoveryCursor?.committedRunUnitId ??
+        source.recoveryCursor?.committedSegmentId,
       120
     ),
     reportedReceiptIds: strings(
@@ -79,6 +82,7 @@ export function migrateRuntimeCheckpoint(source, { verify = true } = {}) {
   };
 
   delete migrated.recoveryCursor;
+  delete migrated.committedSegmentId;
   delete migrated.integrity;
 
   migrated.integrity = {

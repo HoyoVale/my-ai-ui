@@ -1,4 +1,28 @@
-# 自动化测试分层
+# Testing
+
+## Stable Core Lite checks
+
+```powershell
+npm run verify:core-lite-tree
+npm run test:core-lite
+npm run test:core-lite4.1
+npm run test:core-lite4.2
+npm run test:core-lite4.3
+npm run test:core-lite4.4
+npm run test:core-lite4.5
+npm run test:core-lite4.6
+npm run test:core-lite4.7
+npm run test:core-lite4.8
+npm run test:stress:core-lite4.8
+npm run test:e2e:electron-rc
+npm run report:core-lite4.8
+npm run check
+npm run check:full
+```
+
+`test:core-lite` is the stable architecture contract. `test:core-lite4.1` covers incremental final-response delivery and authoritative replacement. `test:core-lite4.2` covers idempotent stop requests, model/Tool/approval cancellation, partial-reply persistence, cancellation recovery and terminal-state consistency. `test:core-lite4.3` covers Provider/Tool error classification, safe retry gates, backoff, circuit breakers and Skill subscriber disconnects. `test:core-lite4.4` covers checkpoint validation, Tool receipt reconciliation, model/workspace binding and partial-output recovery. `test:core-lite4.5` covers the single terminal presentation shared by Response, Conversation, recovery and persistence. `test:core-lite4.6` covers single-owner terminalization, bounded resource cleanup, shutdown ordering, Renderer close races and supervised subprocess release. `test:core-lite4.7` adds deterministic in-process fault injection. `test:core-lite4.8` verifies the real Electron release harness, long-stream listener cleanup and report contracts. `test:stress:core-lite4.8` is the short CI pressure gate; `test:soak:core-lite4.8` is the explicit thirty-minute local soak. Historical phase-numbered
+test scripts have been removed so deleted Goal, Plan, Execution and Platform
+implementations cannot become an accidental test dependency.
 
 ## 1. 纯逻辑与回归
 
@@ -67,6 +91,59 @@ Vite 端口 4173
 - 验证 Conversation 与 Response 的 LaTeX 渲染
 - 停用记忆后验证不再注入
 
+## 4.7 生命周期压力与故障注入
+
+快速确定性测试：
+
+```powershell
+npm run test:core-lite4.7
+```
+
+三秒 CI 压力门槛：
+
+```powershell
+npm run test:stress:core-lite4.7
+```
+
+十分钟本地 soak：
+
+```powershell
+npm run test:soak:core-lite4.7
+```
+
+覆盖并发终态所有权、Renderer 反复重载、异步广播失败、持久化永久挂起、Abort 监听竞态和重复子进程终止。长时间 soak 不放入普通 `npm test`，避免日常开发与 Pull Request 被无意义拖长。
+
+
+## 4.8 真实 Electron 发布候选门槛
+
+```powershell
+npm run test:core-lite4.8
+npm run test:e2e:electron-rc
+```
+
+真实 Electron 用例在同一个临时 `userData` 上验证：
+
+- 多秒最终回复持续流式输出；
+- Response reload 后从主进程快照恢复；
+- Response 与 Conversation BrowserWindow 销毁后只重建一个实例；
+- 正常退出后完整回答仍存在；
+- 生成中退出后重启为 cancelled、不可继续的终态；
+- 重启后新 Run 不受旧监听器或旧窗口影响。
+
+报告写入：
+
+```text
+test-results/core-lite-4.8/
+```
+
+CI 总结 Job 会下载 Windows/Linux 两侧的生命周期和 Electron 报告，并执行：
+
+```powershell
+node scripts/create-release-candidate-summary.mjs --require-platforms=linux,win32
+```
+
+本地 `npm run check:full` 完成后会运行 `npm run report:core-lite4.8`，要求当前平台的两类报告都已通过。
+
 ## 5. GitHub Actions
 
 CI 分为三个独立 Job：
@@ -77,7 +154,7 @@ Electron smoke
 Electron E2E
 ```
 
-每个 Job 都分别在 Ubuntu 与 Windows 运行。E2E 失败截图会上传为 Actions artifact。
+前三个 Job 分别在 Ubuntu 与 Windows 运行；第四个 Job 聚合两侧报告并生成发布候选汇总。E2E 诊断、截图、压力报告和最终 summary 都会上传为 Actions artifact。
 
 ## Personality 与 ContextAssembler
 
@@ -99,6 +176,10 @@ Tool Runtime 重构增加以下 Node 测试类别：
 - Receipt 持久化和重启重放；
 - 不确定远程写入的 reconciliation；
 - Runtime Checkpoint；
+- Checkpoint 工作区与模型身份校验；
+- 未决 Tool Receipt 阻止自动续跑；
+- 部分回复在崩溃恢复后的还原；
+- 未来版本和不可恢复检查点的拒绝；
 - 普通/开发者状态投影；
 - 状态广播合并；
 - Activity/Event 有界投影；

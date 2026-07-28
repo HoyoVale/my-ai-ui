@@ -290,8 +290,6 @@ export const FALLBACK_SETTINGS = {
     profile: "workspace",
     runtime: {
       maxSteps: 6,
-      maxSegments: 24,
-      maxNoProgressSegments: 3,
       maxFinalizationAttempts: 1,
       finalizationTimeoutMs: 30000,
       maxToolCalls: 100,

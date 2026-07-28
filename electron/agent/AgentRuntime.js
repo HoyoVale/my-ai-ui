@@ -53,9 +53,12 @@ import {
 } from "./modelFactory.js";
 
 import {
-  formatAgentError,
-  isAbortError
+  formatAgentError
 } from "./agentErrors.js";
+
+import {
+  classifyProviderError
+} from "./ProviderErrorClassifier.js";
 
 import {
   createAgentToolSession
@@ -160,39 +163,43 @@ function providerCircuitKey(runtime) {
   ].filter(Boolean).join(":");
 }
 
-function shouldCountProviderFailure(error) {
-  if (!error || isAbortError(error)) {
+function safeWebContentsSend(webContents, channel, ...args) {
+  if (!webContents || webContents.isDestroyed?.()) {
     return false;
   }
-
-  const status = Number(
-    error?.statusCode ?? error?.status ?? error?.response?.status ?? 0
-  );
-  const code = String(error?.code ?? error?.cause?.code ?? "").toUpperCase();
-
-  if ([400, 401, 403, 404, 422].includes(status)) {
-    return false;
-  }
-
-  if (status === 408 || status === 429 || status >= 500) {
+  try {
+    webContents.send(channel, ...args);
     return true;
+  } catch (error) {
+    if (!webContents.isDestroyed?.()) {
+      console.warn("发送 Agent 状态失败：", error);
+    }
+    return false;
   }
+}
 
-  return [
-    "ECONNRESET",
-    "ECONNREFUSED",
-    "ETIMEDOUT",
-    "ENOTFOUND",
-    "EAI_AGAIN",
-    "UND_ERR_CONNECT_TIMEOUT"
-  ].includes(code) || /timeout|temporar|unavailable|network|rate limit/i.test(
-    String(error?.message ?? "")
-  );
+function waitForPromise(promise, timeoutMs, code) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error("Agent Runtime shutdown timed out.");
+      error.code = code;
+      reject(error);
+    }, Math.max(1, Number(timeoutMs) || 1));
+  });
+  return Promise.race([Promise.resolve(promise), timeout])
+    .finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    });
 }
 
 export class AgentRuntime {
   constructor() {
     this.activeRun = null;
+    this.shuttingDown = false;
+    this.shutdownPromise = null;
 
     this.status = {
       state: "idle",
@@ -203,6 +210,7 @@ export class AgentRuntime {
     };
     this.statusRevision = 0;
     this.windowStatusState = new Map();
+    this.windowStatusCleanup = new Map();
     this.statusBroadcaster = new CoalescedStatusBroadcaster({
       intervalMs: 40,
       publish: () => this.publishStatus()
@@ -228,14 +236,22 @@ export class AgentRuntime {
     }
   }
 
-  noteProviderFailure(runtime, error) {
+  noteProviderFailure(
+    runtime,
+    error,
+    { cancellationRequested = false } = {}
+  ) {
+    const classification = classifyProviderError(error, {
+      cancellationRequested
+    });
     const key = providerCircuitKey(runtime);
     if (key) {
       providerCircuitBreakers.recordFailure(key, error, {
-        counted: shouldCountProviderFailure(error),
+        counted: classification.countsTowardCircuit,
         label: `${runtime?.descriptor?.providerName ?? "模型服务"} · ${runtime?.descriptor?.modelName ?? runtime?.descriptor?.modelId ?? "模型"}`
       });
     }
+    return classification;
   }
 
   createToolApprovalController(runId, settings, abortSignal) {
@@ -365,8 +381,8 @@ export class AgentRuntime {
         developerMode
           ? this.activeRun?.snapshot?.() ?? null
           : null,
-      currentSegmentId:
-        this.activeRun?.currentSegmentId ?? "",
+      currentRunUnitId:
+        this.activeRun?.currentRunUnitId ?? "",
       activity:
         this.activeRun
           ?.activityStore
@@ -412,9 +428,15 @@ export class AgentRuntime {
       publicStatus:
         this.activeRun
           ?.publicStatus ?? "complete",
+      terminal:
+        this.activeRun
+          ?.terminal ?? this.status.terminal ?? null,
       finalizationAttemptCount:
         this.activeRun
           ?.finalizationAttemptCount ?? 0,
+      providerRetryCount:
+        this.activeRun
+          ?.providerRetryCount ?? 0,
       contextCompactionCount:
         this.activeRun
           ?.contextCompactionCount ?? 0,
@@ -490,7 +512,7 @@ export class AgentRuntime {
     );
   }
 
-  finalizeRun(options = {}) {
+  async finalizeRun(options = {}) {
     return agentRunFinalization.finalizeRun.call(this, options);
   }
 
@@ -619,7 +641,7 @@ export class AgentRuntime {
       runId: `recovery-${crypto.randomUUID()}`,
       workspaceId: execution.conversation.workspaceId ?? "",
       mode: execution.metadata.mode,
-      segmentId: "recovery",
+      scopeId: "recovery",
       capabilityRequest: skillRuntime.capabilityRequest
     });
 
@@ -871,7 +893,8 @@ export class AgentRuntime {
   }
 
   stop() {
-    if (!this.activeRun) {
+    const run = this.activeRun;
+    if (!run) {
       return {
         ok: false,
         code: "idle",
@@ -880,32 +903,139 @@ export class AgentRuntime {
       };
     }
 
+    const lifecycleState =
+      run.lifecycle?.snapshot?.().state ?? "active";
+    if (lifecycleState !== "active") {
+      return {
+        ok: true,
+        code: run.cancellation?.requested === true
+          ? "already-cancelling"
+          : "run-settling",
+        alreadyStopping: true,
+        runId: run.runId
+      };
+    }
+
+    const accepted = typeof run.requestCancellation === "function"
+      ? run.requestCancellation("user-stop")
+      : !run.abortController.signal.aborted;
+
+    if (!accepted) {
+      return {
+        ok: true,
+        code: "already-cancelling",
+        alreadyStopping: true,
+        runId: run.runId
+      };
+    }
+
     this.requestRunCancellation();
-    this.activeRun.activityStore
-      ?.markStatus(
-        "cancelling",
-        { title: "正在取消" }
-      );
+    run.activityStore?.markStatus(
+      "cancelling",
+      { title: "正在取消" }
+    );
     this.persistActiveRunCheckpoint({
-      status: "running"
+      status: "running",
+      content: run.runtimePreferences
+        ?.saveAbortedReplies !== false
+          ? resolveActiveRunText(run)
+          : ""
     });
 
     this.setStatus({
       ...this.status,
       state: "cancelling"
-    });
+    }, { immediate: true });
 
-    this.activeRun
-      .abortController
-      .abort(
-        "user-stop"
-      );
+    if (!run.abortController.signal.aborted) {
+      run.abortController.abort("user-stop");
+    }
 
     return {
       ok: true,
-      runId:
-        this.activeRun.runId
+      code: "cancellation-requested",
+      alreadyStopping: false,
+      runId: run.runId
     };
+  }
+
+  shutdown({
+    reason = "app-quit",
+    timeoutMs = 8000
+  } = {}) {
+    if (this.shutdownPromise) {
+      return this.shutdownPromise;
+    }
+
+    this.shuttingDown = true;
+    this.shutdownPromise = (async () => {
+      const run = this.activeRun;
+      if (run) {
+        run.requestCancellation?.(reason);
+        this.requestRunCancellation();
+        run.activityStore?.markStatus(
+          "cancelling",
+          { title: "正在结束运行" }
+        );
+        if (!run.abortController.signal.aborted) {
+          run.abortController.abort(reason);
+        }
+
+        try {
+          await waitForPromise(
+            run.waitForSettlement(),
+            timeoutMs,
+            "AGENT_SHUTDOWN_TIMEOUT"
+          );
+        } catch (error) {
+          console.warn(
+            "等待 Agent Run 自行结束超时，将强制收尾：",
+            error
+          );
+          if (this.activeRun === run) {
+            try {
+              await waitForPromise(
+                this.finalizeRun({
+                  runId: run.runId,
+                  conversationId: run.conversationId,
+                  executionStopReason: "cancelled_by_user",
+                  outcome: "cancelled",
+                  content: ""
+                }),
+                2500,
+                "AGENT_FORCE_FINALIZATION_TIMEOUT"
+              );
+            } catch (forceError) {
+              console.warn(
+                "强制收尾仍未完成，将直接释放运行资源：",
+                forceError
+              );
+              try {
+                await waitForPromise(
+                  run.disposeResources?.("shutdown-force"),
+                  2500,
+                  "AGENT_FORCE_CLEANUP_TIMEOUT"
+                );
+              } catch (cleanupError) {
+                console.warn(
+                  "强制释放运行资源超时：",
+                  cleanupError
+                );
+              }
+              if (this.activeRun === run) {
+                this.activeRun = null;
+              }
+            }
+          }
+        }
+      }
+
+      this.statusBroadcaster.close({ flush: false });
+      this.clearStatusWebContents();
+      return { ok: true };
+    })();
+
+    return this.shutdownPromise;
   }
 
   async testConnection(
@@ -1018,10 +1148,41 @@ export class AgentRuntime {
     );
   }
 
+  trackStatusWebContents(webContents) {
+    if (
+      !webContents ||
+      webContents.isDestroyed?.() ||
+      this.windowStatusCleanup.has(webContents.id)
+    ) {
+      return;
+    }
+
+    const cleanup = () => {
+      this.windowStatusState.delete(webContents.id);
+      this.windowStatusCleanup.delete(webContents.id);
+    };
+    webContents.once?.("destroyed", cleanup);
+    this.windowStatusCleanup.set(webContents.id, {
+      webContents,
+      cleanup
+    });
+  }
+
+  clearStatusWebContents() {
+    for (const { webContents, cleanup } of this.windowStatusCleanup.values()) {
+      if (!webContents.isDestroyed?.()) {
+        webContents.removeListener?.("destroyed", cleanup);
+      }
+    }
+    this.windowStatusCleanup.clear();
+    this.windowStatusState.clear();
+  }
+
   getSnapshotForWebContents(webContents) {
     const target = projectionTargetForWebContents(webContents);
     const envelope = this.getSnapshot(target);
     if (webContents && !webContents.isDestroyed?.()) {
+      this.trackStatusWebContents(webContents);
       this.windowStatusState.set(webContents.id, {
         target,
         revision: envelope.revision,
@@ -1052,6 +1213,7 @@ export class AgentRuntime {
       }
 
       const webContents = window.webContents;
+      this.trackStatusWebContents(webContents);
       const windowId = webContents.id;
       const target = projectionTargetForWebContents(webContents);
       const projected = projectAgentSnapshot(rawStatus, { target });
@@ -1060,6 +1222,7 @@ export class AgentRuntime {
       const runChanged = String(previous?.runId ?? "") !== String(projected.runId ?? "");
       const targetChanged = previousState?.target !== target;
       const shouldSnapshot = !previous || runChanged || targetChanged;
+      let deliveryOk = true;
 
       liveWindowIds.add(windowId);
 
@@ -1068,7 +1231,8 @@ export class AgentRuntime {
           revision,
           target
         });
-        webContents.send(
+        deliveryOk = safeWebContentsSend(
+          webContents,
           IPC_CHANNELS.agent.SNAPSHOT_CHANGED,
           envelope
         );
@@ -1077,10 +1241,11 @@ export class AgentRuntime {
           revision,
           target
         })) {
-          webContents.send(
+          deliveryOk = safeWebContentsSend(
+            webContents,
             IPC_CHANNELS.agent.TEXT_CHUNK,
             textEvent
-          );
+          ) && deliveryOk;
         }
 
         const patch = createAgentStatusPatch(previous, projected, {
@@ -1088,10 +1253,11 @@ export class AgentRuntime {
           target
         });
         if (patch) {
-          webContents.send(
+          deliveryOk = safeWebContentsSend(
+            webContents,
             IPC_CHANNELS.agent.STATUS_PATCH,
             patch
-          );
+          ) && deliveryOk;
         }
       }
 
@@ -1106,17 +1272,22 @@ export class AgentRuntime {
          * Keep old preload builds functional without restoring token-by-token
          * full snapshots. Legacy listeners receive only run/lifecycle changes.
          */
-        webContents.send(
+        deliveryOk = safeWebContentsSend(
+          webContents,
           IPC_CHANNELS.agent.STATUS_CHANGED,
           projected
-        );
+        ) && deliveryOk;
       }
 
-      this.windowStatusState.set(windowId, {
-        target,
-        revision,
-        status: projected
-      });
+      if (deliveryOk) {
+        this.windowStatusState.set(windowId, {
+          target,
+          revision,
+          status: projected
+        });
+      } else {
+        this.windowStatusState.delete(windowId);
+      }
     }
 
     for (const windowId of this.windowStatusState.keys()) {

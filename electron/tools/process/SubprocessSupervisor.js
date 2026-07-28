@@ -215,7 +215,10 @@ export class SubprocessSupervisor {
       command: executable,
       startedAt: Date.now(),
       terminating: false,
-      reason: ""
+      reason: "",
+      terminationPromise: null,
+      forceKillIssued: false,
+      requestTermination: null
     };
     const childKey = child.pid ?? Symbol("pending-subprocess");
     this.children.set(childKey, entry);
@@ -246,32 +249,65 @@ export class SubprocessSupervisor {
     let forceId = null;
     let terminatedBy = "";
 
-    const requestTermination = async (reason) => {
-      if (entry.terminating || child.exitCode !== null || child.signalCode !== null) {
-        return;
+    const issueForceKill = () => {
+      if (
+        entry.forceKillIssued ||
+        child.exitCode !== null ||
+        child.signalCode !== null
+      ) {
+        return Promise.resolve(false);
       }
-      entry.terminating = true;
-      entry.reason = reason;
-      terminatedBy = reason;
-      await terminateProcessTree(child, {
+      entry.forceKillIssued = true;
+      return terminateProcessTree(child, {
         platform: this.platform,
-        force: false,
+        force: true,
         spawnProcess: this.spawnProcess
       });
-      forceId = setTimeout(() => {
-        void terminateProcessTree(child, {
+    };
+
+    const requestTermination = (reason, { force = false } = {}) => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        return Promise.resolve(false);
+      }
+
+      entry.terminating = true;
+      entry.reason ||= String(reason || "shutdown");
+      terminatedBy ||= entry.reason;
+
+      if (force) {
+        return issueForceKill();
+      }
+      if (entry.terminationPromise) {
+        return entry.terminationPromise;
+      }
+
+      entry.terminationPromise = (async () => {
+        await terminateProcessTree(child, {
           platform: this.platform,
-          force: true,
+          force: false,
           spawnProcess: this.spawnProcess
         });
-      }, graceMs);
-      forceId.unref?.();
+        if (graceMs === 0) {
+          await issueForceKill();
+        } else {
+          forceId = setTimeout(() => {
+            void issueForceKill();
+          }, graceMs);
+          forceId.unref?.();
+        }
+        return true;
+      })();
+      return entry.terminationPromise;
     };
+    entry.requestTermination = requestTermination;
 
     const onAbort = () => {
       void requestTermination("abort");
     };
     abortSignal?.addEventListener("abort", onAbort, { once: true });
+    if (abortSignal?.aborted) {
+      onAbort();
+    }
 
     if (timeoutMs > 0) {
       timeoutId = setTimeout(() => {
@@ -307,8 +343,8 @@ export class SubprocessSupervisor {
         stderrTruncated: stderr.truncated,
         pid: child.pid,
         durationMs: Math.max(0, Date.now() - entry.startedAt),
-        terminated: Boolean(terminatedBy),
-        terminationReason: terminatedBy
+        terminated: Boolean(terminatedBy || entry.reason),
+        terminationReason: terminatedBy || entry.reason
       };
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
@@ -320,10 +356,13 @@ export class SubprocessSupervisor {
 
   async terminateAll(reason = "shutdown") {
     const entries = [...this.children.values()];
-    await Promise.all(entries.map(async (entry) => {
+    await Promise.allSettled(entries.map((entry) => {
+      if (typeof entry.requestTermination === "function") {
+        return entry.requestTermination(reason, { force: true });
+      }
       entry.terminating = true;
-      entry.reason = reason;
-      await terminateProcessTree(entry.child, {
+      entry.reason ||= String(reason || "shutdown");
+      return terminateProcessTree(entry.child, {
         platform: this.platform,
         force: true,
         spawnProcess: this.spawnProcess

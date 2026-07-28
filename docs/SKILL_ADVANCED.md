@@ -1,7 +1,7 @@
 # Skill Advanced
 
-> 实施版本：my-ai-ui 66  
-> 范围：`/skill-id` 临时调用、保守自动路由、多 Skill 组合、声明式依赖  
+> 实施版本：my-ai-ui 66
+> 范围：`/skill-id` 临时调用、保守自动路由、多 Skill 组合、声明式依赖
 > 不包含：远程安装、Marketplace、自动更新、可执行脚本或脚本沙箱
 
 ## 一、设计目标

@@ -42,7 +42,7 @@ function visibleTimelineEvents(snapshot, developerMode = false) {
 }
 
 function TaskStateMark({ state }) {
-  const icon = state === "failed"
+  const icon = ["failed", "attention"].includes(state)
     ? "warning"
     : state === "cancelled"
       ? "minus"

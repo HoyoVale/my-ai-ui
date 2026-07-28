@@ -7,6 +7,40 @@ function delayValue(value, fallback = 150) {
     : fallback;
 }
 
+function boundedTimeout(value, fallback = 2000) {
+  const normalized = Math.round(Number(value));
+  return Number.isFinite(normalized)
+    ? Math.max(1, normalized)
+    : fallback;
+}
+
+function wait(milliseconds) {
+  if (milliseconds <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function withTimeout(promise, timeoutMs, code) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error("Persistence flush timed out.");
+      error.code = code;
+      reject(error);
+    }, boundedTimeout(timeoutMs));
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout])
+    .finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    });
+}
+
 export class AsyncPersistenceQueue {
   constructor({
     write,
@@ -36,12 +70,14 @@ export class AsyncPersistenceQueue {
     this.timer = null;
     this.drainPromise = null;
     this.closed = false;
+    this.writeCount = 0;
+    this.failureCount = 0;
     registeredQueues.add(this);
   }
 
   enqueue(value, { immediate = false } = {}) {
     if (this.closed) {
-      return;
+      return false;
     }
 
     this.pending = value;
@@ -49,11 +85,11 @@ export class AsyncPersistenceQueue {
 
     if (immediate || this.delayMs === 0) {
       void this.flush();
-      return;
+      return true;
     }
 
     if (this.timer) {
-      return;
+      return true;
     }
 
     this.timer = setTimeout(() => {
@@ -61,6 +97,22 @@ export class AsyncPersistenceQueue {
       void this.flush();
     }, this.delayMs);
     this.timer.unref?.();
+    return true;
+  }
+
+  isIdle() {
+    return !this.hasPending && !this.drainPromise;
+  }
+
+  snapshot() {
+    return {
+      closed: this.closed,
+      pending: this.hasPending,
+      writing: Boolean(this.drainPromise),
+      timerActive: Boolean(this.timer),
+      writeCount: this.writeCount,
+      failureCount: this.failureCount
+    };
   }
 
   async flush() {
@@ -76,12 +128,15 @@ export class AsyncPersistenceQueue {
       }
     }
 
-    this.drainPromise = this.drain();
+    const drainPromise = this.drain();
+    this.drainPromise = drainPromise;
 
     try {
-      await this.drainPromise;
+      await drainPromise;
     } finally {
-      this.drainPromise = null;
+      if (this.drainPromise === drainPromise) {
+        this.drainPromise = null;
+      }
     }
   }
 
@@ -100,6 +155,7 @@ export class AsyncPersistenceQueue {
       ) {
         try {
           await this.write(value);
+          this.writeCount += 1;
           writeError = null;
           break;
         } catch (error) {
@@ -108,6 +164,7 @@ export class AsyncPersistenceQueue {
       }
 
       if (writeError) {
+        this.failureCount += 1;
         if (!this.hasPending) {
           this.pending = value;
           this.hasPending = true;
@@ -125,7 +182,7 @@ export class AsyncPersistenceQueue {
 
     await this.flush();
 
-    if (this.hasPending) {
+    if (!this.isIdle()) {
       return false;
     }
 
@@ -135,41 +192,61 @@ export class AsyncPersistenceQueue {
   }
 }
 
+export function persistenceQueueRegistrySnapshot() {
+  const queues = [...registeredQueues];
+  return {
+    count: queues.length,
+    pendingCount: queues.filter((queue) => !queue.isIdle()).length,
+    queues: queues.map((queue) => queue.snapshot())
+  };
+}
+
 export async function flushAllPersistenceQueues({
   maxAttempts = 3,
-  retryDelayMs = 50
+  retryDelayMs = 50,
+  attemptTimeoutMs = 2000
 } = {}) {
   const attempts = Math.max(
     1,
     Math.min(5, Math.round(Number(maxAttempts)) || 1)
   );
   const delayMs = delayValue(retryDelayMs, 50);
+  const timeoutMs = boundedTimeout(attemptTimeoutMs, 2000);
   let pendingQueues = [];
+  let timedOutCount = 0;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const queues = [...registeredQueues];
 
-    await Promise.allSettled(
-      queues.map((queue) => queue.flush())
+    const results = await Promise.allSettled(
+      queues.map((queue) => withTimeout(
+        queue.flush(),
+        timeoutMs,
+        "PERSISTENCE_FLUSH_TIMEOUT"
+      ))
     );
 
+    timedOutCount += results.filter((result) => (
+      result.status === "rejected" &&
+      result.reason?.code === "PERSISTENCE_FLUSH_TIMEOUT"
+    )).length;
+
     pendingQueues = queues.filter(
-      (queue) => queue.hasPending
+      (queue) => !queue.isIdle()
     );
 
     if (pendingQueues.length === 0) {
       break;
     }
 
-    if (attempt < attempts && delayMs > 0) {
-      await new Promise((resolve) => {
-        setTimeout(resolve, delayMs);
-      });
+    if (attempt < attempts) {
+      await wait(delayMs);
     }
   }
 
   return {
     ok: pendingQueues.length === 0,
-    pendingCount: pendingQueues.length
+    pendingCount: pendingQueues.length,
+    ...(timedOutCount > 0 ? { timedOutCount } : {})
   };
 }

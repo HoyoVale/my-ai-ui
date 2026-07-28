@@ -5,17 +5,24 @@ import {
   withoutRuntimeIntegrity
 } from "./runtimeIntegrity.js";
 
-export const RUNTIME_JOURNAL_SCHEMA_VERSION = 2;
+export const RUNTIME_JOURNAL_SCHEMA_VERSION = 3;
 
 const CRITICAL_EVENT_PREFIXES = [
   "RUN_",
-  "SEGMENT_",
+  "RUN_UNIT_",
   "TOOL_",
   "CHECKPOINT_"
 ];
 
 function string(value) {
   return String(value ?? "");
+}
+
+function migrateEventType(value) {
+  const type = string(value);
+  if (type === "SEGMENT_STARTED") return "RUN_UNIT_STARTED";
+  if (type === "SEGMENT_COMMITTED") return "RUN_UNIT_COMMITTED";
+  return type;
 }
 
 function integer(value, fallback = 0) {
@@ -67,7 +74,7 @@ export function migrateRuntimeJournalEvent(source) {
       segmentId: string(source.segmentId),
       stepId: string(source.stepId),
       callId: string(source.callId),
-      type: string(source.type),
+      type: migrateEventType(source.type),
       actor: string(source.actor) || "runtime",
       reason: string(source.reason),
       durability: source.durability === "normal" ? "normal" : "critical",
@@ -78,6 +85,7 @@ export function migrateRuntimeJournalEvent(source) {
     };
   }
 
+  const migratedType = migrateEventType(source.type);
   const migrated = {
     version: RUNTIME_JOURNAL_SCHEMA_VERSION,
     eventId: string(source.eventId) || crypto.randomUUID(),
@@ -89,12 +97,12 @@ export function migrateRuntimeJournalEvent(source) {
     segmentId: string(source.segmentId),
     stepId: string(source.stepId),
     callId: string(source.callId),
-    type: string(source.type),
+    type: migratedType,
     actor: string(source.actor) || "runtime",
     reason: string(source.reason),
     durability: source.durability === "normal"
       ? "normal"
-      : runtimeEventDurability(source.type),
+      : runtimeEventDurability(migratedType),
     payload:
       source.payload && typeof source.payload === "object"
         ? structuredClone(source.payload)

@@ -28,6 +28,10 @@ import {
 } from "./RuntimeCheckpointStore.js";
 
 import {
+  RUNTIME_CHECKPOINT_SCHEMA_VERSION
+} from "./RuntimeCheckpointSchema.js";
+
+import {
   ToolCallSnapshotStore
 } from "./ToolCallSnapshotStore.js";
 
@@ -259,7 +263,7 @@ export class ToolExecutionLedger {
   recordRuntimeEvent(type, payload = {}, options = {}) {
     return this.journal.append(type, payload, {
       runId: options.runId ?? this.runId,
-      segmentId: options.segmentId ?? "",
+      segmentId: options.scopeId ?? options.segmentId ?? "",
       stepId: options.stepId ?? "",
       callId: options.callId ?? "",
       actor: options.actor ?? "runtime",
@@ -272,7 +276,7 @@ export class ToolExecutionLedger {
     const journalCursor = this.journal.cursor();
     const committed = [...this.journal.events]
       .reverse()
-      .find((event) => event.type === "SEGMENT_COMMITTED");
+      .find((event) => event.type === "RUN_UNIT_COMMITTED");
     const recovery = this.recoverySnapshot();
     const reportedReceiptIds = recovery.calls
       .filter((call) => call.hasReceipt)
@@ -288,7 +292,7 @@ export class ToolExecutionLedger {
     return {
       journalSequence: journalCursor.sequence,
       journalChecksum: journalCursor.checksum,
-      committedSegmentId: String(committed?.segmentId ?? ""),
+      committedRunUnitId: String(committed?.segmentId ?? ""),
       reportedReceiptIds: [...new Set(reportedReceiptIds)],
       unresolvedCallIds: [...new Set(unresolvedCallIds)]
     };
@@ -315,7 +319,7 @@ export class ToolExecutionLedger {
       },
       {
         runId: options.runId ?? stored.runId ?? this.runId,
-        segmentId: options.segmentId ?? stored.committedSegmentId ?? "",
+        segmentId: options.scopeId ?? options.segmentId ?? stored.committedRunUnitId ?? "",
         durability: "critical"
       }
     );
@@ -368,7 +372,7 @@ export class ToolExecutionLedger {
         : terminal?.[1] ?? "interrupted";
 
     return {
-      version: 3,
+      version: RUNTIME_CHECKPOINT_SCHEMA_VERSION,
       taskId: this.taskId,
       runId: String(latest?.runId ?? this.runId),
       workspaceId: this.workspaceId,
@@ -437,7 +441,7 @@ export class ToolExecutionLedger {
       },
       {
         runId: stored.runId || this.runId,
-        segmentId: stored.committedSegmentId,
+        segmentId: stored.committedRunUnitId,
         actor: "recovery-manager",
         reason: "checkpoint_rebuild",
         durability: "critical"

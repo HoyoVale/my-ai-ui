@@ -118,27 +118,28 @@ it("restores the versioned root plan and developer subplans from history", () =>
   const message = {
     id: "message-plan-2",
     role: "assistant",
-    taskId: "task-plan-2",
-    plan: [
-      { id: "stale", title: "旧投影", status: "pending" }
-    ],
-    planState: {
-      schemaVersion: 2,
-      revision: 5,
-      rootRevision: 2,
-      rootItems: [
-        { id: "inspect", title: "检查项目", status: "completed" },
-        { id: "implement", title: "实现修复", status: "in_progress" }
-      ],
-      subplans: [
-        {
-          rootStepId: "implement",
-          revision: 3,
-          items: [
-            { id: "renderer", title: "修改 Renderer", status: "in_progress" }
+    metadata: {
+      taskId: "task-plan-2",
+      legacyHistory: {
+        planState: {
+          schemaVersion: 2,
+          revision: 5,
+          rootRevision: 2,
+          rootItems: [
+            { id: "inspect", title: "检查项目", status: "completed" },
+            { id: "implement", title: "实现修复", status: "in_progress" }
+          ],
+          subplans: [
+            {
+              rootStepId: "implement",
+              revision: 3,
+              items: [
+                { id: "renderer", title: "修改 Renderer", status: "in_progress" }
+              ]
+            }
           ]
         }
-      ]
+      }
     },
     activity: {
       runId: "run-plan-2",
@@ -174,7 +175,6 @@ it("restores the versioned root plan and developer subplans from history", () =>
       ]
     }
   };
-
   const snapshot = createActivitySnapshot(message);
 
   assert.deepEqual(

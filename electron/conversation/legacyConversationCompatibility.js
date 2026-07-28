@@ -8,9 +8,6 @@ import {
 
 const LEGACY_ADVANCED_VERSION = 1;
 
-function clone(value) {
-  return value == null ? value : structuredClone(value);
-}
 
 function metadataSource(source) {
   return source?.metadata?.legacyAdvanced &&
@@ -55,29 +52,4 @@ export function sanitizeLegacyAdvancedMetadata(source) {
 
 export function getLegacyAdvancedMetadata(conversation) {
   return sanitizeLegacyAdvancedMetadata(conversation);
-}
-
-export function projectLegacyConversationFields(conversation) {
-  if (!conversation || typeof conversation !== "object") return conversation;
-
-  const projected = clone(conversation);
-  const legacy = getLegacyAdvancedMetadata(conversation);
-  const execution = legacy?.execution ?? {
-    activeExecutionThreadId: null,
-    executionThreads: [],
-    routingDecisions: []
-  };
-  const activeExecutionThreadId = execution.activeExecutionThreadId ?? null;
-  const executionThreads = clone(execution.executionThreads ?? []);
-
-  projected.goal = clone(legacy?.goal ?? null);
-  projected.activeExecutionThreadId = activeExecutionThreadId;
-  projected.executionThreads = executionThreads;
-  projected.executionThread = executionThreads.find(
-    (thread) => thread.id === activeExecutionThreadId
-  ) ?? null;
-  projected.routingDecisions = clone(execution.routingDecisions ?? []);
-  projected.legacyAdvancedReadOnly = Boolean(legacy);
-
-  return projected;
 }

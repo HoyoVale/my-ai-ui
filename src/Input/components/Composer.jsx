@@ -154,6 +154,7 @@ export function InputComposer({
 
         <button
           data-testid="input-send"
+          data-run-state={isStopping ? "stopping" : isRunning ? "running" : "idle"}
           className={`input-bar__send${isRunning ? " is-running" : ""}`}
           type="button"
           onClick={onSend}

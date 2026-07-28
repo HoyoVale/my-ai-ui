@@ -65,7 +65,7 @@ describe(
         );
         assert.doesNotMatch(
           source,
-          /maxNoProgressSegments|LongTaskOrchestrator/u
+          /LongTaskOrchestrator/u
         );
         assert.doesNotMatch(
           source,

@@ -227,12 +227,27 @@ export class CoreLiteRunLoop {
         stopReason: executionStopReason
       })
     ) {
-      await runFinalization({
+      const finalizationResult = await runFinalization({
         records,
         finishReason,
         executionStopReason,
         loopResult
       });
+
+      if (
+        finalizationResult?.aborted === true ||
+        !this.canContinue()
+      ) {
+        return {
+          cancelled: true,
+          loopResult,
+          executionStopReason:
+            RUN_STOP_REASONS.CANCELLED_BY_USER,
+          records,
+          finalText: text(getFinalText()),
+          outcome: RUN_OUTCOMES.CANCELLED
+        };
+      }
     }
 
     let finalText = text(getFinalText());

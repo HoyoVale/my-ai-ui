@@ -19,7 +19,7 @@ test("94 persists Token Ledger usage across Agent and Conversation boundaries", 
   assert.match(runtime, /recordProviderUsage\(/u);
   assert.match(runtime, /recordTool\(record\)/u);
   assert.match(runtime, /setToolDefinitions\(\s*toolSession\.definitions\s*\)/u);
-  assert.match(schema, /const STORE_VERSION = 24/u);
+  assert.match(schema, /const STORE_VERSION = 25/u);
   assert.match(schema, /sanitizeTokenLedgerSnapshot/u);
   assert.match(inspector, /data-testid="token-ledger-summary"/u);
   assert.match(inspector, /工具返回（估算）/u);
