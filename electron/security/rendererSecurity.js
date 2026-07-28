@@ -1,6 +1,10 @@
 import {
+  app,
   shell
 } from "electron";
+
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   mainEnv
@@ -38,6 +42,18 @@ export function getTrustedRendererOrigins() {
     );
   } catch {
     // 配置错误会由窗口加载失败暴露。
+  }
+
+  if (app.isPackaged) {
+    origins.add(
+      pathToFileURL(
+        path.join(
+          app.getAppPath(),
+          "dist",
+          "index.html"
+        )
+      ).href
+    );
   }
 
   return origins;

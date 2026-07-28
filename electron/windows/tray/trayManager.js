@@ -11,6 +11,10 @@ import {
   resolveAssistantDisplayName
 } from "../../../src/shared/appIdentity.js";
 
+import {
+  updateService
+} from "../../update/index.js";
+
 import { openConversationWindow } from "../conversation/conversationWindow.js";
 import { openInputWindow } from "../input/inputWindow.js";
 import { getPetWindow, createPetWindow } from "../pet/petWindow.js";
@@ -19,6 +23,10 @@ import { openSettingWindow } from "../setting/settingWindow.js";
 let tray = null;
 let assistantName = "桌面助手";
 const observedPetWindows = new WeakSet();
+
+updateService.subscribe(() => {
+  updateTrayMenu();
+});
 
 function petVisible() {
   const pet = getPetWindow();
@@ -70,9 +78,52 @@ function trayIcon() {
   return image.isEmpty() ? image : image.resize({ width: 20, height: 20, quality: "best" });
 }
 
+function updateMenuItem() {
+  const state = updateService.getState();
+
+  if (!state.supported) {
+    return null;
+  }
+
+  if (state.status === "downloaded") {
+    return {
+      label: state.downloadedVersion
+        ? `安装更新 ${state.downloadedVersion}`
+        : "安装更新并重启",
+      click: () => {
+        updateService.installUpdate();
+      }
+    };
+  }
+
+  if (state.status === "downloading") {
+    return {
+      label: `正在下载更新 ${Math.round(state.progressPercent)}%`,
+      enabled: false
+    };
+  }
+
+  if (state.status === "checking") {
+    return {
+      label: "正在检查更新…",
+      enabled: false
+    };
+  }
+
+  return {
+    label: "检查更新",
+    click: () => {
+      void updateService.checkForUpdates({
+        manual: true
+      });
+    }
+  };
+}
+
 function updateTrayMenu() {
   if (!tray || tray.isDestroyed()) return;
   tray.setToolTip(assistantName);
+  const updateItem = updateMenuItem();
   tray.setContextMenu(Menu.buildFromTemplate([
     {
       label: petVisible() ? "隐藏桌宠" : "显示桌宠",
@@ -82,6 +133,12 @@ function updateTrayMenu() {
     { label: "输入消息", click: () => openInputWindow() },
     { label: "打开会话", click: () => openConversationWindow() },
     { label: "设置", click: () => openSettingWindow() },
+    ...(updateItem
+      ? [
+          { type: "separator" },
+          updateItem
+        ]
+      : []),
     { type: "separator" },
     {
       label: `退出 ${assistantName}`,

@@ -2,7 +2,7 @@
   "name": "my-ai-ui",
   "main": "electron/main.js",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,7 @@
     "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec",
     "check": "npm run verify:core-lite-tree && npm run lint && npm run test && npm run build",
     "test:electron": "electron tests/electron/preload-smoke.cjs",
-    "check:full": "npm run check && npm run test:stress:core-lite4.8 && npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash && npm run test:benchmark && npm run test:electron && npm run test:e2e:electron-runtime-crash && npm run test:e2e:electron-rc && npm run test:e2e && npm run report:core-lite4.8",
+    "check:full": "npm run check && npm run test:core-lite4.9 && npm run test:stress:core-lite4.8 && npm run test:e2e:runtime-crash && npm run test:e2e:runtime-write-crash && npm run test:benchmark && npm run test:electron && npm run test:e2e:electron-runtime-crash && npm run test:e2e:electron-rc && npm run test:e2e && npm run report:core-lite4.8",
     "test:electron:ci": "electron --no-sandbox tests/electron/preload-smoke.cjs",
     "test:e2e": "node tests/e2e/conversation-flow.cjs && node tests/e2e/tool-approval-write-flow.cjs",
     "test:e2e:runtime-crash": "node tests/e2e/tool-runtime-crash-recovery.mjs",
@@ -43,7 +43,16 @@
     "test:e2e:electron-rc": "node tests/e2e/electron-release-candidate.cjs",
     "test:stress:core-lite4.8": "node tests/performance/core-lite-lifecycle-soak.mjs --seconds=5 --iterations=2500 --subprocess-every=250 --report=test-results/core-lite-4.8/lifecycle-soak.json",
     "test:soak:core-lite4.8": "node tests/performance/core-lite-lifecycle-soak.mjs --seconds=1800 --iterations=500000 --subprocess-every=500 --report=test-results/core-lite-4.8/lifecycle-soak.json",
-    "report:core-lite4.8": "node scripts/create-release-candidate-summary.mjs"
+    "report:core-lite4.8": "node scripts/create-release-candidate-summary.mjs",
+    "test:core-lite4.9": "node --test tests/release/updateService.test.js tests/release/releasePackagingContract.test.js tests/release/releaseScripts.test.js tests/regression/packagedRendererContract.test.js tests/contracts/ipcContract.test.js",
+    "release:bootstrap": "node scripts/bootstrap-release-dependencies.mjs",
+    "release:validate": "node scripts/verify-release-version.mjs",
+    "release:package": "npm run build && node scripts/run-electron-builder.mjs --publish never",
+    "release:package:win": "npm run build && node scripts/run-electron-builder.mjs --win --x64 --publish never",
+    "release:package:mac": "npm run build && node scripts/run-electron-builder.mjs --mac --universal --publish never",
+    "release:package:linux": "npm run build && node scripts/run-electron-builder.mjs --linux AppImage --x64 --publish never",
+    "release:manifest": "node scripts/create-release-manifest.mjs",
+    "release:verify-artifacts": "node scripts/verify-release-artifacts.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.16",
@@ -79,5 +88,14 @@
     "oxlint": "^1.71.0",
     "playwright": "^1.61.1",
     "vite": "^8.1.1"
+  },
+  "description": "Local Electron desktop AI assistant with Tool Runtime, MCP, Skill and Memory support.",
+  "author": {
+    "name": "Hoyo"
+  },
+  "license": "UNLICENSED",
+  "releaseTooling": {
+    "electronBuilder": "26.15.3",
+    "electronUpdater": "6.8.9"
   }
 }

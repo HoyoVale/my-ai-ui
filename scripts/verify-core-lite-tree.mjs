@@ -181,7 +181,26 @@ export function verifyCoreLiteTree() {
     "docs/LEGACY_HISTORY_COMPATIBILITY.md",
     "docs/CORE_LITE_PHASE4_7_129.md",
     "docs/CORE_LITE_PHASE4_8_130.md",
-    "docs/CORE_LITE_RELEASE_CANDIDATE.md"
+    "docs/CORE_LITE_RELEASE_CANDIDATE.md",
+    "electron/shared/rendererTarget.js",
+    "electron/update/UpdateService.js",
+    "electron/update/index.js",
+    "electron/ipc/handlers/updateIpc.js",
+    "electron-builder.yml",
+    "build/entitlements.mac.plist",
+    ".github/workflows/release.yml",
+    "scripts/bootstrap-release-dependencies.mjs",
+    "scripts/run-electron-builder.mjs",
+    "scripts/verify-release-version.mjs",
+    "scripts/verify-signing-environment.mjs",
+    "scripts/verify-release-artifacts.mjs",
+    "scripts/create-release-manifest.mjs",
+    "tests/release/updateService.test.js",
+    "tests/release/releasePackagingContract.test.js",
+    "tests/release/releaseScripts.test.js",
+    "tests/regression/packagedRendererContract.test.js",
+    "docs/RELEASE.md",
+    "docs/CORE_LITE_PHASE4_9_134.md"
   ]) {
     if (!exists(relativePath)) {
       errors.push(`required compatibility contract is missing: ${relativePath}`);
@@ -207,7 +226,13 @@ export function verifyCoreLiteTree() {
     "test:stress:core-lite4.8",
     "test:soak:core-lite4.8",
     "test:e2e:electron-rc",
-    "report:core-lite4.8"
+    "report:core-lite4.8",
+    "test:core-lite4.9",
+    "release:bootstrap",
+    "release:validate",
+    "release:package",
+    "release:manifest",
+    "release:verify-artifacts"
   ]) {
     if (!scripts[scriptName]) {
       errors.push(`package.json is missing ${scriptName}`);
@@ -225,14 +250,48 @@ export function verifyCoreLiteTree() {
     errors.push("CI is missing the cross-platform release summary gate");
   }
 
+  const releaseWorkflow = read(".github/workflows/release.yml");
+  for (const token of [
+    "verify-signing-environment.mjs",
+    "Get-AuthenticodeSignature",
+    "codesign --verify",
+    "xcrun stapler validate",
+    "if: github.event_name != 'workflow_dispatch' || !inputs.allow_unsigned",
+    "release-manifest.json",
+    "gh release create"
+  ]) {
+    if (!releaseWorkflow.includes(token)) {
+      errors.push(`Release workflow is missing: ${token}`);
+    }
+  }
+
+  const rendererRoutes = read("electron/shared/rendererRoutes.js");
+  const viteConfig = read("vite.config.js");
+  if (!rendererRoutes.includes("app.isPackaged")) {
+    errors.push("Packaged renderer routing must use app.isPackaged");
+  }
+  if (!viteConfig.includes("base: './'")) {
+    errors.push("Vite must use a relative production asset base");
+  }
+
   const gitignore = read(".gitignore");
   const archiveScript = read("scripts/create-source-archive.mjs");
-  for (const generatedPath of ["test-results/", "playwright-report/"]) {
+  for (const generatedPath of [
+    "test-results/",
+    "playwright-report/",
+    "release/",
+    "release-artifacts/"
+  ]) {
     if (!gitignore.includes(generatedPath)) {
       errors.push(`.gitignore must exclude generated output: ${generatedPath}`);
     }
   }
-  for (const generatedName of ["test-results", "playwright-report"]) {
+  for (const generatedName of [
+    "test-results",
+    "playwright-report",
+    "release",
+    "release-artifacts"
+  ]) {
     if (!archiveScript.includes(`"${generatedName}"`)) {
       errors.push(`source archive must exclude generated output: ${generatedName}`);
     }

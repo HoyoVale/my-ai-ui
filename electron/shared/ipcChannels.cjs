@@ -317,6 +317,23 @@ const IPC_CHANNELS =
         "workspace-remove"
     }),
 
+    update: Object.freeze({
+      GET_STATE:
+        "update-get-state",
+
+      CHECK:
+        "update-check",
+
+      DOWNLOAD:
+        "update-download",
+
+      INSTALL:
+        "update-install",
+
+      CHANGED:
+        "update-changed"
+    }),
+
     settings: Object.freeze({
       GET:
         "settings-get",

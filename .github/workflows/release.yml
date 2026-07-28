@@ -1,0 +1,205 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag to release, for example v0.1.0
+        required: true
+        type: string
+      allow_unsigned:
+        description: Allow an unsigned manual dry run. Never use for a public release.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  ALLOW_UNSIGNED: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_unsigned || false }}
+  GH_REPO_OWNER: ${{ github.repository_owner }}
+  GH_REPO_NAME: ${{ github.event.repository.name }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install locked dependencies
+        run: npm ci --registry=https://registry.npmjs.org/
+
+      - name: Verify tag and package version
+        run: node scripts/verify-release-version.mjs --tag=${RELEASE_TAG} --allow-dirty=true
+
+      - name: Verify Core Lite release gates
+        run: npm run check && npm run test:core-lite4.9 && npm run test:stress:core-lite4.8
+
+  build:
+    name: Package (${{ matrix.platform }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 55
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            builder_args: --win --x64 --arm64
+          - os: macos-latest
+            platform: darwin
+            builder_args: --mac --universal
+          - os: ubuntu-latest
+            platform: linux
+            builder_args: --linux AppImage --x64
+
+    env:
+      RELEASE_PLATFORM: ${{ matrix.platform }}
+      CSC_LINK: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CSC_LINK || matrix.platform == 'darwin' && secrets.MACOS_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CSC_KEY_PASSWORD || matrix.platform == 'darwin' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
+      APPLE_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_ID || '' }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+      APPLE_TEAM_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+      RELEASE_REQUIRE_NOTARIZATION: ${{ matrix.platform == 'darwin' && (github.event_name != 'workflow_dispatch' || !inputs.allow_unsigned) }}
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install locked dependencies
+        run: npm ci --registry=https://registry.npmjs.org/
+
+      - name: Verify signing environment
+        run: node scripts/verify-signing-environment.mjs --platform=${{ matrix.platform }} --allow-unsigned=${{ env.ALLOW_UNSIGNED }}
+
+      - name: Install pinned release tooling
+        run: npm run release:bootstrap
+
+      - name: Build renderer
+        run: npm run build
+
+      - name: Package signed application
+        run: node scripts/run-electron-builder.mjs ${{ matrix.builder_args }} --publish never
+
+      - name: Verify generated update metadata
+        run: node scripts/verify-release-artifacts.mjs --platform=${{ matrix.platform }} --directory=release/${{ matrix.platform }}
+
+      - name: Verify Windows Authenticode signature
+        if: runner.os == 'Windows' && env.ALLOW_UNSIGNED != 'true'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release/win32 -Recurse -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Signed NSIS installer was not found.' }
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($signature.Status)" }
+
+      - name: Verify macOS bundle signature
+        if: runner.os == 'macOS' && env.ALLOW_UNSIGNED != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="$(find release/darwin -type d -name '*.app' -print | sed -n '1p')"
+          test -n "$app_path"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl --assess --type execute --verbose=2 "$app_path"
+          xcrun stapler validate "$app_path"
+
+      - name: Upload packaged application
+        uses: actions/upload-artifact@v4
+        with:
+          name: xixi-desktop-${{ matrix.platform }}
+          path: release/${{ matrix.platform }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub Release
+    if: github.event_name != 'workflow_dispatch' || !inputs.allow_unsigned
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download packaged applications
+        uses: actions/download-artifact@v4
+        with:
+          pattern: xixi-desktop-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create checksums and release manifest
+        run: node scripts/create-release-manifest.mjs --input=release-artifacts --output=release-artifacts/release-manifest.json
+
+      - name: Attest public release artifacts
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release-artifacts/**
+
+      - name: Refuse to overwrite an existing release
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists." >&2
+            exit 1
+          fi
+
+      - name: Publish release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find release-artifacts -type f -print0 | sort -z)
+          options=(--verify-tag --title "Xixi Desktop $RELEASE_TAG" --generate-notes)
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            options+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" "${files[@]}" "${options[@]}"

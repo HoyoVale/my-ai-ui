@@ -9,6 +9,14 @@ import IPC_CHANNELS
   from "../../shared/ipcChannels.cjs";
 
 import {
+  APP_ID
+} from "../../../src/shared/releaseIdentity.js";
+
+import {
+  updateService
+} from "../../update/index.js";
+
+import {
   conversationManager,
   getConversationPath
 } from "../../conversation/index.js";
@@ -213,6 +221,12 @@ export function registerSettingsIpc() {
 
         version:
           app.getVersion(),
+
+        appId:
+          APP_ID,
+
+        releaseChannel:
+          updateService.getState().channel,
 
         isPackaged:
           app.isPackaged,

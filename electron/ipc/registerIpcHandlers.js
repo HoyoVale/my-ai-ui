@@ -58,6 +58,10 @@ import {
   registerToolIpc
 } from "./handlers/toolIpc.js";
 
+import {
+  registerUpdateIpc
+} from "./handlers/updateIpc.js";
+
 let registered = false;
 
 export function registerIpcHandlers() {
@@ -79,6 +83,7 @@ export function registerIpcHandlers() {
   registerSettingsIpc();
   registerSkillIpc();
   registerToolIpc();
+  registerUpdateIpc();
   registerWorkspaceIpc();
   registerSecurityIpc();
   registerWindowIpc();

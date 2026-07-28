@@ -1,33 +1,20 @@
+import { app } from "electron";
+
 import {
   mainEnv
 } from "../config/env.js";
 
-function normalizeBaseUrl(url) {
-  return String(url).replace(
-    /\/+$/,
-    ""
-  );
-}
+import {
+  resolveRendererTarget
+} from "./rendererTarget.js";
 
 export function getRendererUrl(
   route = "/"
 ) {
-  const baseUrl =
-    normalizeBaseUrl(
-      mainEnv.DEV_SERVER_URL
-    );
-
-  if (
-    !route ||
-    route === "/"
-  ) {
-    return baseUrl;
-  }
-
-  const normalizedRoute =
-    route.startsWith("/")
-      ? route
-      : `/${route}`;
-
-  return `${baseUrl}/#${normalizedRoute}`;
+  return resolveRendererTarget({
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    devServerUrl: mainEnv.DEV_SERVER_URL,
+    route
+  });
 }

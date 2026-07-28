@@ -7,6 +7,15 @@ import {
 import path from "node:path";
 
 import {
+  APP_ID,
+  PRODUCT_NAME
+} from "../src/shared/releaseIdentity.js";
+
+import {
+  updateService
+} from "./update/index.js";
+
+import {
   registerIpcHandlers
 } from "./ipc/registerIpcHandlers.js";
 
@@ -66,9 +75,35 @@ if (e2eUserData) {
   );
 }
 
-registerIpcHandlers();
+app.setName(PRODUCT_NAME);
+
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_ID);
+}
+
+const hasSingleInstanceLock =
+  app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  registerIpcHandlers();
+}
+
+app.on("second-instance", () => {
+  if (!app.isReady()) {
+    return;
+  }
+
+  const pet = createPetWindow();
+  pet?.show();
+  pet?.focus();
+});
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) {
+    return;
+  }
   let runtimeRecoveryReport = { decisions: [] };
   try {
     const runtimeRecoveryManager = new RuntimeRecoveryManager({
@@ -107,6 +142,11 @@ app.whenReady().then(async () => {
     settings
   );
 
+  await updateService.initialize({
+    schedule:
+      !process.env.XIXI_E2E_USER_DATA
+  });
+
   app.on("activate", () => {
     if (
       BrowserWindow
@@ -138,6 +178,10 @@ let persistenceFlushInProgress = false;
 app.on(
   "before-quit",
   (event) => {
+    if (!hasSingleInstanceLock) {
+      return;
+    }
+
     if (persistenceFlushInProgress) {
       return;
     }
@@ -159,7 +203,8 @@ app.on(
             retryDelayMs: 50,
             attemptTimeoutMs: 2000
           }),
-          mcpClientManager.closeAll()
+          mcpClientManager.closeAll(),
+          updateService.shutdown()
         ]);
         if (!result.ok) {
           const timeoutDetail = result.timedOutCount

@@ -561,3 +561,30 @@ Conversation 与 Memory 窗口继续采用统一的轻量桌面布局。Conversa
 - Application quit waits for the active Agent Run to settle before flushing global persistence and closing MCP clients.
 - Real Electron release-candidate tests repeatedly reload and recreate Renderer windows, restart the application with one persisted profile, and verify active-stream shutdown recovery.
 - Windows and Linux lifecycle/Electron reports are aggregated into one hashed release-candidate summary before the candidate is considered publishable.
+
+## 正式打包与发布（Core Lite 4.9）
+
+当前首个正式版本为 `0.1.0`，应用标识固定为：
+
+```text
+com.hoyo.xixi.desktop
+```
+
+生产安装包不再依赖 Vite 开发服务器；所有窗口从打包后的
+`dist/index.html` 加载。关于页和托盘提供检查更新、下载进度及安装重启入口。
+
+本地无签名打包：
+
+```powershell
+npm ci
+npm run check:full
+npm run release:bootstrap
+npm run release:package:win
+```
+
+正式公开发布必须通过 GitHub 的 `Release` 工作流，并配置 Windows/macOS
+签名密钥。Tag 必须与 `package.json` 版本完全一致，例如 `v0.1.0`。
+发布流程、Secret 名称、回滚规则和更新边界见：
+
+- [`docs/RELEASE.md`](docs/RELEASE.md)
+- [`docs/CORE_LITE_PHASE4_9_134.md`](docs/CORE_LITE_PHASE4_9_134.md)

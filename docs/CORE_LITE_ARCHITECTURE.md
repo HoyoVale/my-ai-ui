@@ -102,3 +102,17 @@ final CI job verifies both suites for both platforms, hashes the evidence and
 `package-lock.json`, and emits the Core Lite release-candidate summary. Generated
 reports are excluded from Git and source archives but may remain in a local
 working tree without violating the runtime architecture boundary.
+
+## Distribution and update authority
+
+Core Lite 4.9 separates runtime authority from distribution authority.
+`rendererTarget.js` resolves Vite only in development and the exact packaged
+`dist/index.html` entry in production. `UpdateService` is the single bounded
+auto-update state machine; it is disabled outside packaged builds and exposes
+only sanitized state through IPC.
+
+`electron-builder.yml` owns application identity and platform targets. The
+release workflow owns tag/version equality, code signing, macOS notarization,
+platform update metadata, checksums, provenance and immutable GitHub Release
+publication. An unsigned manual build is a private CI artifact only and cannot
+become an update source.

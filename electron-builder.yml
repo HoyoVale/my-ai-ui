@@ -1,0 +1,76 @@
+appId: com.hoyo.xixi.desktop
+productName: Xixi Desktop
+copyright: Copyright © 2026 Hoyo
+
+asar: true
+compression: maximum
+npmRebuild: false
+removePackageScripts: true
+
+files:
+  - dist/**
+  - electron/**
+  - src/shared/**
+  - public/**
+  - assets/**
+  - package.json
+  - '!**/*.map'
+  - '!**/.DS_Store'
+  - '!test-results/**'
+  - '!playwright-report/**'
+
+extraMetadata:
+  main: electron/main.js
+
+directories:
+  output: release/${env.RELEASE_PLATFORM}
+  buildResources: build
+
+publish:
+  - provider: github
+    owner: ${env.GH_REPO_OWNER}
+    repo: ${env.GH_REPO_NAME}
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-setup.${ext}
+  verifyUpdateCodeSignature: true
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+  differentialPackage: true
+
+mac:
+  target:
+    - dmg
+    - zip
+  icon: build/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  gatekeeperAssess: false
+  notarize: false
+
+linux:
+  target:
+    - AppImage
+  icon: build/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  category: Utility
+  synopsis: Local desktop AI assistant
+  description: Local desktop AI assistant with Tool Runtime, MCP, Skill and Memory support.
+
+generateUpdatesFilesForAllChannels: true

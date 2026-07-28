@@ -186,3 +186,28 @@ Tool Runtime 重构增加以下 Node 测试类别：
 - 大结果目录配额。
 
 真实崩溃注入 E2E 应在可运行 Electron 的 CI 环境中执行。测试必须验证“无重复副作用”，而不只是验证界面最终出现成功文案。
+## 4.9 packaging and release contracts
+
+Run the dependency-free packaging contract before attempting a signed build:
+
+```powershell
+npm run test:core-lite4.9
+```
+
+It verifies packaged renderer routing, updater state/IPC, version and lockfile
+identity, electron-builder targets, fail-closed signing rules, manifest hashes,
+platform update metadata and the GitHub Release workflow. It does not replace a
+real signed build. Formal tag releases must still pass platform-native
+Authenticode, codesign, Gatekeeper and notarization/stapling checks in CI.
+
+A local packaging rehearsal uses:
+
+```powershell
+npm run release:validate
+npm run release:bootstrap
+npm run release:package:win
+npm run release:verify-artifacts -- --platform=win32 --directory=release/win32
+```
+
+Unsigned manual workflow runs are artifact-only dry runs and cannot enter the
+GitHub Release publishing job.

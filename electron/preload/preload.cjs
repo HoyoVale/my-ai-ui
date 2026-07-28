@@ -297,6 +297,21 @@ const CHANNELS = Object.freeze({
   MEMORY_CHANGED:
     "memory-changed",
 
+  UPDATE_GET_STATE:
+    "update-get-state",
+
+  UPDATE_CHECK:
+    "update-check",
+
+  UPDATE_DOWNLOAD:
+    "update-download",
+
+  UPDATE_INSTALL:
+    "update-install",
+
+  UPDATE_CHANGED:
+    "update-changed",
+
   SETTINGS_GET:
     "settings-get",
 
@@ -1276,6 +1291,40 @@ const api = Object.freeze({
   onMemoryChanged: (callback) => {
     return subscribe(
       CHANNELS.MEMORY_CHANGED,
+      callback,
+      (state) => state
+    );
+  },
+
+  getUpdateState: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.UPDATE_GET_STATE
+    );
+  },
+
+  checkForUpdates: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.UPDATE_CHECK
+    );
+  },
+
+  downloadUpdate: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.UPDATE_DOWNLOAD
+    );
+  },
+
+  installUpdate: () => {
+    return ipcRenderer.invoke(
+      CHANNELS.UPDATE_INSTALL
+    );
+  },
+
+  onUpdateStateChanged: (
+    callback
+  ) => {
+    return subscribe(
+      CHANNELS.UPDATE_CHANGED,
       callback,
       (state) => state
     );

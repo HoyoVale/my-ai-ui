@@ -134,6 +134,12 @@ export function isTrustedRendererUrl(
     return false;
   }
 
+  if (url.protocol === "file:") {
+    url.hash = "";
+    url.search = "";
+    return trustedOrigins.has(url.href);
+  }
+
   return (
     ["http:", "https:"].includes(
       url.protocol

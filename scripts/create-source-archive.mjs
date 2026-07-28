@@ -15,17 +15,22 @@ const ZIP_UTF8_FLAG = 0x0800;
 const ZIP_STORE_METHOD = 0;
 const DOS_DATE_1980_01_01 = 0x0021;
 
-const EXCLUDED_NAMES = new Set([
+const ALWAYS_EXCLUDED_NAMES = new Set([
   ".git",
   ".env",
   "node_modules",
-  "dist",
-  "dist-ssr",
-  "test-results",
-  "playwright-report",
-  "logs",
   "temp.log",
   ".DS_Store"
+]);
+
+const ROOT_EXCLUDED_NAMES = new Set([
+  "dist",
+  "dist-ssr",
+  "release",
+  "release-artifacts",
+  "test-results",
+  "playwright-report",
+  "logs"
 ]);
 
 const CRC32_TABLE = (() => {
@@ -60,10 +65,14 @@ function parseOutputPath(argv) {
 }
 
 function shouldExclude(relativePath, entryName) {
-  if (EXCLUDED_NAMES.has(entryName)) return true;
+  if (ALWAYS_EXCLUDED_NAMES.has(entryName)) return true;
+
+  const isRootEntry = !relativePath.includes(path.sep);
+  if (isRootEntry && ROOT_EXCLUDED_NAMES.has(entryName)) return true;
   if (entryName.endsWith(".zip")) return true;
-  if (/^electron-linux/i.test(entryName)) return true;
-  if (/^corelite-.*-(work|cold)$/i.test(entryName)) return true;
+  if (isRootEntry && /^electron-linux/i.test(entryName)) return true;
+  if (isRootEntry && /^corelite-.*-(work|cold)$/i.test(entryName)) return true;
+
   const normalized = relativePath.split(path.sep).join("/");
   return normalized.startsWith(".git/");
 }

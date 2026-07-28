@@ -99,6 +99,27 @@ describe(
           true
         );
 
+        const packagedEntry =
+          "file:///opt/xixi/resources/app.asar/dist/index.html";
+        const packagedOrigins = new Set([
+          packagedEntry
+        ]);
+
+        assert.equal(
+          isTrustedRendererUrl(
+            `${packagedEntry}#/setting`,
+            packagedOrigins
+          ),
+          true
+        );
+        assert.equal(
+          isTrustedRendererUrl(
+            "file:///etc/passwd",
+            packagedOrigins
+          ),
+          false
+        );
+
         for (
           const value
           of [

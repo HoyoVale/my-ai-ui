@@ -36,3 +36,6 @@ corelite-*-work/
 corelite-*-cold/
 test-results/
 playwright-report/
+release/
+release-artifacts/
+.release-dependencies.json
